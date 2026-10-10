@@ -1,0 +1,4 @@
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% depth=3 free=1 baseline=2 granted=2 mode=static
+[box:flow] recovered-final-gpu-serialized-shared-host queued — need=2 tokens projected=1353MB estimate=class-p91 samples=104
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68660MB projected=1353MB estimate=class-p91 samples=104 reserved=16800MB total=80425MB reserve=4096MB disk=519846MB

@@ -1,0 +1,23 @@
+﻿Running main() from C:\vixen-native\gpuyield\.tmp\native-fetch\googletest-src\googletest\src\gtest_main.cc
+Note: Google Test filter = RayQueryFeasibilityTest.*
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from RayQueryFeasibilityTest
+[ RUN      ] RayQueryFeasibilityTest.GpuRayQueryMatchesCpuBruteForce
+[       OK ] RayQueryFeasibilityTest.GpuRayQueryMatchesCpuBruteForce (2682 ms)
+[ RUN      ] RayQueryFeasibilityTest.BrickmapDdaMatchesCpuBruteForce
+[       OK ] RayQueryFeasibilityTest.BrickmapDdaMatchesCpuBruteForce (251 ms)
+[ RUN      ] RayQueryFeasibilityTest.Microbench_RtQueryVsBruteForce
+[RT_QUERY]   min ns/dispatch=410200  median ns/dispatch=440600  min ns/ray=0.41  median ns/ray=0.44  (rays=1000000, dispatches=10)
+[BRUTE_AABB] min ns/dispatch=837900  median ns/dispatch=915200  min ns/ray=0.84  median ns/ray=0.92  (rays=1000000, dispatches=10)
+[BRICKMAP_DDA] min ns/dispatch=336300  median ns/dispatch=345500  min ns/ray=0.34  median ns/ray=0.35  (rays=1000000, dispatches=10)
+[       OK ] RayQueryFeasibilityTest.Microbench_RtQueryVsBruteForce (977 ms)
+[ RUN      ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes
+[R486_RT_DEVICE] name=AMD Radeon(TM) 8060S Graphics driver=8388967 width=500 height=500 frames=500
+[R486_RT_TILES] samples=40500 full_ms=0.016320 p99_ms=0.003640 max_ms=0.016400 aggregate_max_ms=0.344840 bytes=1000000 identical=1
+[       OK ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes (2846 ms)
+[----------] 4 tests from RayQueryFeasibilityTest (6759 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (6759 ms total)
+[  PASSED  ] 4 tests.

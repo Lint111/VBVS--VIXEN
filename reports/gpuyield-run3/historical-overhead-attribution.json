@@ -1,0 +1,58 @@
+[
+  {
+    "label": "tiled_backlog_unretired",
+    "source": "run2 historical evidence; not a fresh unbounded base",
+    "frames": 500,
+    "chunks_per_frame": 64.0,
+    "render_wall_s": 48.031,
+    "render_wall_ms_per_frame": 96.062,
+    "chunk_gpu_ms_per_frame": 83.17887592000001,
+    "dispatch_gpu_ms_per_frame": 83.1197376,
+    "timestamp_barrier_gpu_difference_ms_per_frame": 0.05913832000001662,
+    "host_calls_ms_per_frame": {
+      "submit": 0.915722366
+    },
+    "gpu_pass_span_mean_ms": {
+      "whole_frame_gpu_span_ms": 90.70675325203253,
+      "esvo_traverse_shade_ms": 85.17058780487805,
+      "direct_lighting_ms": 0.00044439024390243906,
+      "spatial_reuse_ms": 0.14700845528455284,
+      "probe_gather_ms": 0.0004445528455284553,
+      "shadow_visibility_wave_ms": 4.887673414634146,
+      "shadow_ray_trace_ms": 0.0004438211382113821,
+      "probe_apply_ms": 0.00044552845528455284,
+      "render_target_blit_ms": 0.008159756097560976,
+      "ui_composite_render_ms": 0.04762048780487805
+    }
+  },
+  {
+    "label": "tiled_backlog_retired",
+    "source": "run2 historical evidence; not a fresh unbounded base",
+    "frames": 500,
+    "chunks_per_frame": 64.0,
+    "render_wall_s": 58.718,
+    "render_wall_ms_per_frame": 117.436,
+    "chunk_gpu_ms_per_frame": 82.89713624000001,
+    "dispatch_gpu_ms_per_frame": 82.83717864,
+    "timestamp_barrier_gpu_difference_ms_per_frame": 0.05995760000000416,
+    "host_calls_ms_per_frame": {
+      "acquire": 0.004190824,
+      "chunk-retire": 103.020687988,
+      "submit": 2.013454868,
+      "present-and-idle": 5.379499492,
+      "frame-retire": 0.132882906
+    },
+    "gpu_pass_span_mean_ms": {
+      "whole_frame_gpu_span_ms": 111.5825162601626,
+      "esvo_traverse_shade_ms": 106.138675,
+      "direct_lighting_ms": 0.00044447154471544717,
+      "spatial_reuse_ms": 0.14893853658536585,
+      "probe_gather_ms": 0.00044504065040650405,
+      "shadow_visibility_wave_ms": 4.848053739837399,
+      "shadow_ray_trace_ms": 0.0004447154471544716,
+      "probe_apply_ms": 0.00044504065040650405,
+      "render_target_blit_ms": 0.008256504065040651,
+      "ui_composite_render_ms": 0.04720666666666667
+    }
+  }
+]

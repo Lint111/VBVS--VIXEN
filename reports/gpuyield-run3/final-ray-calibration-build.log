@@ -1,0 +1,76 @@
+[box:flow] final-ray-calibration-build cpu=48% target=90% depth=3 free=0 baseline=3 granted=4 mode=static
+[box:flow] final-ray-calibration-build queued — need=4 tokens projected=6855MB estimate=step-p90 samples=8
+[box:flow] final-ray-calibration-build cpu=38% target=90% admit
+[box:flow] final-ray-calibration-build memory=admit avail=66910MB projected=6855MB estimate=step-p90 samples=8 reserved=14090MB total=80425MB reserve=4096MB disk=524182MB
+[box:flow] final-ray-calibration-build granted tokens=3 10 11 12 mask=6,7,20,21,22,23,24,25
+[box:flow] final-ray-calibration-build running on cores 6,7,20,21,22,23,24,25 (build)
+[0/2] Re-checking globbed directories...
+[1/66] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 835 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[2/66] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[3/66] Linking CXX static library lib/libRenderGraphNodes.a
+[4/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[5/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[6/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[7/66] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[8/66] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[9/66] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[10/66] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[11/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[12/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[13/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[14/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[15/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[16/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[17/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[18/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[19/66] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[20/66] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[21/66] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[22/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[23/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[24/66] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[25/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[26/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[27/66] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[28/66] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[29/66] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[30/66] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[31/66] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[32/66] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[33/66] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[34/66] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[35/66] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[36/66] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[37/66] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[38/66] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[39/66] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[40/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[41/66] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[42/66] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[43/66] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[44/66] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[45/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[46/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[47/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[48/66] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[49/66] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[50/66] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[51/66] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[52/66] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[53/66] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[54/66] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[55/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[56/66] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[57/66] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[58/66] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[59/66] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[60/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[61/66] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[62/66] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[63/66] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[64/66] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[65/66] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+UT_JOB_DONE build final-ray-calibration-build exit=0 state=OK

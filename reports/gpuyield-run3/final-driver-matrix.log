@@ -1,0 +1,1030 @@
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% depth=3 free=0 baseline=15 granted=15 mode=static
+[box:turn] gpuyield yielding to its queued native-unbounded-merged-wave (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% depth=4 free=1 baseline=15 granted=15 mode=static
+[box:flow] final-native-and-dozen-driver-matrix queued — need=15 tokens projected=1388MB estimate=class-p91 samples=96
+[box:flow] final-native-and-dozen-driver-matrix cpu=59% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69403MB projected=1388MB estimate=class-p91 samples=96 reserved=24836MB total=80425MB reserve=4096MB disk=520587MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=57% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69307MB projected=1388MB estimate=class-p91 samples=96 reserved=24836MB total=80425MB reserve=4096MB disk=520584MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=61% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69189MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520584MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=70% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69194MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520583MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=68% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68964MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520582MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=62% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69197MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520582MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=58% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68940MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520581MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=61% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69369MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520580MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=57% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69263MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520579MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69126MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520537MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69183MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520458MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69062MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520395MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=58% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68767MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520312MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69259MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520311MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=63% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68808MB projected=1388MB estimate=class-p91 samples=96 reserved=28171MB total=80425MB reserve=4096MB disk=520311MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69113MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520265MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69432MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520264MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=62% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69376MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520263MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69317MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520262MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69175MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520261MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68905MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=68902MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520126MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69322MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520112MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69167MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520027MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69126MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519965MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69466MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519941MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69576MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519935MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69449MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519934MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69273MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519936MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69440MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519930MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69659MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519930MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69874MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519928MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69799MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519927MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71297MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519928MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72186MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72136MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519928MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=60% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71836MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519928MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71640MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519922MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71770MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519922MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71718MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519922MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71509MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519921MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71691MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519921MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71794MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519976MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72139MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519976MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72042MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519979MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72155MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519976MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71974MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=520014MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71673MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519980MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=63% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71314MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519987MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=57% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71164MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519994MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71097MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519975MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=60% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71168MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519976MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=56% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70958MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519974MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=63% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70459MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519962MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=58% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70164MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519983MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=59% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70375MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519968MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70959MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519946MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70477MB projected=1388MB estimate=class-p91 samples=96 reserved=27147MB total=80425MB reserve=4096MB disk=519903MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70628MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519903MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70455MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519901MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70328MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519899MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70293MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519888MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70195MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519789MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70272MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519772MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69780MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519769MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70305MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519768MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70270MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519768MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70288MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519762MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69986MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519658MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69869MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519599MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69801MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519496MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70565MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519486MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69537MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519486MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=60% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70495MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519448MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=63% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70573MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70326MB projected=1388MB estimate=class-p91 samples=96 reserved=15095MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=66% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70357MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70545MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70824MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70822MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70726MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70653MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70706MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70761MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70766MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70753MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70512MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519470MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70520MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70482MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70301MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70281MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70197MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70144MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70108MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70173MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70221MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519469MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70242MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519468MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70234MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519367MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70080MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519266MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69970MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519266MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69982MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519466MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70669MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519465MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70740MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519464MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70739MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519464MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70701MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71183MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71187MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=40% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71226MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71120MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71145MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519463MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71166MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71135MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71044MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70810MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70729MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70732MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519461MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70693MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519461MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70632MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519461MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70538MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519461MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70340MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519461MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70313MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70709MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=48% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71208MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71192MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71159MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71133MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519459MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71109MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519458MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70957MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519458MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70624MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519458MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70421MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519458MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70119MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519457MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69951MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519457MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69712MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519457MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=40% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69664MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69617MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69507MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69334MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69370MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69387MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519455MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69254MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519455MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69679MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519429MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69591MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519429MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69629MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519428MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69632MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519428MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69618MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519428MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69606MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69604MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69341MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69357MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69360MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69363MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69356MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69341MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70200MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70202MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70212MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70219MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70297MB projected=1388MB estimate=class-p91 samples=96 reserved=14071MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70307MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70286MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70298MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70298MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519423MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70281MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519423MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70220MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519422MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70305MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519422MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70317MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519422MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70406MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519422MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70522MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70542MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70538MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72075MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71528MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71214MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71099MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70995MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519426MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70981MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519352MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70722MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519296MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70462MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519282MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70774MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519282MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71041MB projected=1388MB estimate=class-p91 samples=96 reserved=12683MB total=80425MB reserve=4096MB disk=519280MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71971MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519280MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71684MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519280MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71609MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519279MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71550MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519279MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71540MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519279MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71806MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72472MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519277MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72687MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72496MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72279MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72491MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72123MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72264MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72485MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72766MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519278MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72542MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519277MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72480MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519277MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72490MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519277MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72432MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519277MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73660MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519275MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73453MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519275MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73458MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519274MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73483MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519274MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73468MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519256MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73387MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519129MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73295MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519110MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73086MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519110MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72944MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519113MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72609MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519113MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72676MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519150MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72894MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519150MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72645MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519150MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72356MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519149MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72686MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519149MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72526MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72915MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72651MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72301MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72406MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72506MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72300MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72133MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72106MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519148MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72452MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519147MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72697MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519147MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72998MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519147MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73146MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519146MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73282MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519146MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73386MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519146MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73449MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519144MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73253MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519143MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73234MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519143MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73245MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519129MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73234MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518999MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73257MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73136MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73001MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72835MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72722MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72500MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72710MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72883MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72838MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72698MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72576MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518969MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72557MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518968MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72556MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518968MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73011MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518968MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72917MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518968MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73081MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73173MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72753MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72386MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72202MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72342MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72208MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72161MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518967MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71937MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72780MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+sed: can't read /tmp/undertow-box-queue.wait.3102588: No such file or directory
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72522MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518965MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72243MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518965MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72813MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518965MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72886MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73231MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73284MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73570MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518963MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74375MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518962MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74095MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73690MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73578MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73699MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73411MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73592MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518961MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73395MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73971MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73417MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73022MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72693MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73025MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73164MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72840MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72380MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72804MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72423MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518959MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72160MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518958MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71964MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518958MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72924MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518958MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73319MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73839MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73454MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73036MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72641MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72447MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518957MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72203MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518956MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73073MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518956MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72711MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518956MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72460MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73138MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73756MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73415MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73078MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73198MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518955MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72782MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518954MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73264MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518954MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72861MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518954MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72649MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518954MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72957MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73309MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72941MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73519MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73213MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73503MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73086MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518953MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73170MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518952MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73199MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518952MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73550MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518952MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73090MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518952MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73474MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518952MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72971MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518951MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73244MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518951MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72823MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518951MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72625MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72902MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73206MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72865MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73323MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73126MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518950MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73369MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73009MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72868MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72576MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73020MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72598MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518949MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72702MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72442MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72966MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73723MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73186MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72708MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518948MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72353MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518947MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72162MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518947MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71878MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518947MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72064MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518946MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72295MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518947MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72097MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518946MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72898MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74143MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73718MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73474MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73668MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73253MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72956MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518945MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72547MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518944MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72601MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518944MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73079MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518944MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72932MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518944MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73306MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518943MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73009MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518943MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73227MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518942MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73210MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518942MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72790MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518942MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72522MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518941MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73481MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518941MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73464MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518941MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73403MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518941MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73041MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518940MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73243MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518940MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72960MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518940MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73076MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518940MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72877MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518940MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73222MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518939MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73228MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518939MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72927MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518939MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72545MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518939MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72549MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518938MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72682MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518939MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72247MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518938MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72654MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518938MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72167MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518938MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71941MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72346MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73117MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72723MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72353MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518937MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72049MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518936MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72111MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518936MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73478MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519009MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73203MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519009MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73561MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73293MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73179MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72710MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72372MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72117MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519008MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72703MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72413MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73454MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73211MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72924MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72585MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72414MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519007MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72277MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519006MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72535MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519006MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72643MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519005MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72695MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519005MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72583MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519005MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72430MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519004MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72180MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519004MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71942MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519004MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71757MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518966MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73912MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518803MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73951MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518803MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74002MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518972MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74780MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519002MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74669MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519002MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74689MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519001MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=8% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=75021MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519001MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74968MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=519001MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74991MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518960MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74988MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518832MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74812MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518826MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74826MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74413MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=74030MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73609MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73244MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73201MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73077MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72788MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518800MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72536MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72798MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72495MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72424MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72517MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72204MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71865MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71512MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71116MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70908MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518799MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70745MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518798MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71245MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518798MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71160MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518798MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71513MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518798MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71486MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518798MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71330MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518797MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71518MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518796MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71345MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518795MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71425MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518795MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71381MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518795MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71307MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518794MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71168MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518793MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71148MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518792MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71396MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518793MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71397MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518793MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71430MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518793MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71439MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518791MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71450MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518791MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71376MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71314MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71313MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71276MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71296MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71307MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518790MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71307MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518789MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71263MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518788MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71278MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71288MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73725MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518786MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73779MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518789MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=8% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73807MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518789MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73806MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518788MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73826MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518788MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73833MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518788MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73764MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73844MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=8% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73853MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73873MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=8% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73889MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73872MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73836MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73384MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73335MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=73211MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518787MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=72215MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71803MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71131MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70647MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70328MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70271MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70337MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70086MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69713MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69493MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70016MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518767MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70333MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518769MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70102MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518769MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70141MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518767MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69801MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518767MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69729MB projected=1388MB estimate=class-p91 samples=96 reserved=9458MB total=80425MB reserve=4096MB disk=518767MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69881MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518766MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=69773MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518763MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71522MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518717MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71113MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70866MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70772MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70763MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70693MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70593MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=70536MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71402MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71144MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518743MB
+[box:flow] final-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] final-native-and-dozen-driver-matrix memory=admit avail=71006MB projected=1388MB estimate=class-p91 samples=96 reserved=7147MB total=80425MB reserve=4096MB disk=518728MB

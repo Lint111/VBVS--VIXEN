@@ -1,105 +1,121 @@
-# gpuyield run 2 — R477 timing isolation and R486 contracts
+# gpuyield run 3 — tune bounding and finish R486
 
 ## LANDABLE NOW
 
-**PARTIAL.** The submission/accounting fix is committed as `3cfea5fd9191a8a53c1eb34151edd633ebfdf0aa`. Hardware-ray tiling is committed as `35201e4f`, compiled, and verified by the real shader-contract test; hardware output and timing remain unmeasured. Shell and indirect/grouped conversions are unfinished. This report does not certify every GPU path or Windows desktop presentation.
+**PARTIAL — final recovery witnesses pending.** Runtime changes are committed through `23037fa9`; the timestamp-validator correction is `1ece70bd`. This is not certification that all requested gates pass. The verified shell/indirect conversions and native hardware-ray artifact are complete; the latest Dozen recovery and native pacing repair still need their final execution witnesses.
 
-Current tip at report generation: `35201e4f645eaee69c5aeacedec0695014687b4f`. Starting tip: `e1ba5b5296ca26c2e9649517b291b113f401f253`. Merged wave: `1252e3705a8247f5b0b1478f0164da55c7cd44ba`; merge commit `222c28a928feedcb32733d3706c5539fef3f4850`. Latest fetch still matches this wave. Kernel pin remains `c3fb3847979e3f9eef04783510c42b70d7058ae7`. No other repository was edited; no branch was created or switched; nothing was pushed. [Run 1](gpuyield-run1.md) is preserved.
+Started 2026-10-10 17:17:15 UTC; checkpoint 20:17:15 UTC. Starting merged baseline `3b2482d95deef62b3fda03cac9282f9b9764ce3b`, wave `4ddea47390880152d35371193e10c7ac722101d9`, pinned kernel `c3fb3847979e3f9eef04783510c42b70d7058ae7`. Only the assigned primary checkout and explicitly authorized `C:\vixen-native\gpuyield` checkout were edited. No push, branch creation or branch switch. [Run 2](gpuyield-run2.md) is preserved.
 
-### Classification evidence
+### Classification and recovery evidence
 
-The first red remains preserved: a whole-tile interval of 1,103.538086 ms against 16.666666 ms, with only 198 frames before the 240-second bound. That original interval starts before entry/image barriers and the acquire wait at COMPUTE_SHADER. It is elapsed GPU-clock time, including waits/preemption, rather than an exclusive active-execution counter.
+The historical 1,103.538 ms interval includes dependency waiting and GPU preemption, not an active-execution counter. Run 2's native tiny-dispatch control measured GPU maxima below 0.009 ms while host service exceeded 1,135 ms under contention; exclusive controls reduced host-service max to 1.161 ms. That establishes scheduling/contention as a cause class, with free unknown-cost accounting and an unretired VIXEN backlog independently established. It does not reconstruct the original sample's exact active/waiting split or prove desktop presentation latency. No usable GPUView/PresentMon ETL was obtained.
 
-Before semantic fixes, diagnostic-only four-query instrumentation retained the original TOP/BOTTOM interval and added a COMPUTE_SHADER pair immediately around each dispatch. The isolated fresh merged producer completed 500 frames / 32,000 chunks, with zero invalid pairs: whole-chunk p99 1.713280 / max 2.188440 ms; dispatch interval p99 1.705600 / max 2.180720 ms. Its render loop lasted about 48.031 seconds. The peer failed after 2,397 attempts when Dozen returned VK_NOT_READY from timestamp retrieval after a successful fence wait; its 2,396 complete post-first rows are explicitly partial, not a successful 90-second probe.
+The historical 22.25% render-loop increase (48.031 to 58.718 seconds / 500 frames) is a **64-tile retired/unretired comparison**, not an unbounded full-frame baseline. Summed dispatch GPU clocks changed from 41.559869 to 41.418589 seconds, while retirement contributed 103.020688 ms/frame and host submission increased from 0.915722 to 2.013455 ms/frame. Inner-to-outer timestamp/barrier difference was only approximately 0.060 ms/frame. [Attribution](gpuyield-run3/historical-overhead-attribution.json).
 
-The same tiny SPIR-V probe ran on the native Windows AMD driver, compiled with provisioned MSVC 19.44.35229 and SDK 1.4.350.0. Contended runs had host-service maxima 1,135.410 and 1,180.120 ms while GPU intervals stayed below 0.007400 ms; polling still had a 1,090.430 ms host-service maximum and 0.008040 ms GPU maximum. Ordinary GPU CTest jobs reserved `test` resources and bypassed the queue's GPU mutex. A 15-token exclusive control reduced native service p99/max to 0.485200/1.161200 ms, GPU p99/max to 0.006960/0.008120 ms, and cadence p99/max to 31.642000/31.781100 ms.
+Fresh native unbounded controls were built from the same merged wave plus the identical portability recovery: detached control `2e7dde20053f8d8329b745f99dd3693061f852ca`. Both 500×500 and 1920×1080 completed 500 frames, exit 0, scale 1.0. There was no matching published native timing baseline, so these controls were built and measured. Binary hashes, process exit status and CSVs are retained. Cold-start compilation and teardown make total process wall time different from steady render time; the per-pass table excludes the first 10 frames.
 
-**Cause class supported by these controls: scheduling/contention delays outside the tiny GPU dispatch, with an independently proven unretired VIXEN submission backlog and free unknown-cost accounting.** The isolated producer establishes that 64×64 tile work itself fits the budget. The exact active/preemption/acquire contribution to the historical 1,103.538 ms sample cannot be reconstructed: WPR GPU/DesktopComposition start failed 0xc5585011, stop failed 0xc5583000, and no ETL was produced. GPUView/PresentMon were unavailable. Later vmwp counter snapshots are not synchronized traces of the red sample. No exclusive active-GPU or DWM presentation claim is made.
+The first full-suite attempt on this lane returned CTest 8: two capture producers segfaulted, ten dependent capture/R6 tests were not run, and AppFlow/cache gates failed. The sole accepted opcode-94 failure also appeared. The new producer failure is **this lane's regression**, not an assumed environmental or pre-existing red. The per-unit model turned latency into thousands of increasingly tiny commands. The affine recovery still exhibited a near-budget fixed-latency cliff: 441 commands became 3,969, one host frame took 12.99 seconds, then Dozen exited 139. No backtrace is available; do not attribute the segfault to query-pool lifetime as proven fact. `23037fa9` removes the subtraction that triggers subdivision collapse and releases executable query-pool references before storage growth.
 
-### Changes and limits
+Native timing exposed a separate pacing error: requested 16.67 ms deadlines used coarse Windows sleep, contributing 24.601541 ms mean pace time and 31.436691 ms CPU frame time at 500×500. The latest runtime uses a reusable per-thread high-resolution Windows waitable timer with portable fallback. Its execution results are pending below.
 
-SubmitRecord retires prior queue work before every new chunk, including the first chunk of a record: at most one submitted command chunk remains outstanding. Acquire/dependency waits stay on the first submission, and completion signals/fence on the last. Retirement failures stop subsequent submissions and propagate device loss. This uses the existing queue-owner channel and vkQueueWaitIdle, with no registry; R478 can later derive retirement from graph timelines.
+### Implemented contracts
 
-MultiDispatch charges missing/zero/uncalibrated estimates conservatively against its configured frame budget while retaining mandatory work. Its timestamp commands now lie inside command-buffer begin/end, and its sequential submit fallback shares retirement. Generic CPU TaskQueue zero-cost semantics are unchanged. Host clocks separately measure retirement, submit, acquire, frame completion and presentation. Probe queries explicitly wait for availability, complete CSV rows are flushed, and the summarizer rejects missing frames, invalid pairs and empty/invalid peer samples.
+- SubmitRecord greedily batches adjacent command buffers under the existing 2 ms submission contract, charges every missing/zero/uncalibrated estimate the full budget, retires prior batches, and preserves first-acquire/final-completion semaphore ownership. Outstanding submitted work remains capped at one batch.
+- Compute tiling calibrates from full-tile observations, reserves clipped-command and batch gaps as fixed latency, and grows the tile within the existing extent/budget data. Four timestamp queries per chunk separate shader interval and whole command. Query pools grow by capacity instead of being recreated on every count change.
+- Shell dilation uses immutable previous/next layers through the canonical derivation contract. FRONTIER is scratch for the legacy in-place dilation; production consumes surface/shell bits. The new kernel preserves every canonical frontier/surface/shell byte and compacted lookup/source-pool bytes for dilation 0–3. It does not assert that nondeterministic legacy intermediate frontier scratch was byte-identical.
+- Indirect dispatch derives bucket-major/tile-major commands from existing bucket and tile data, reflects the shader tile-origin offset, preserves padded group domains and empty buckets, and publishes all recorded command buffers to consumers. Grouped accumulation reads current producers at Execute, rebuilds mappings each execution, preserves reverse-order/second-frame bytes and rejects an invalid current producer. No new registry.
+- Hardware rays retain the typed tile-origin/full-launch contract. The native GPU witness executes shipped ray-generation/miss shaders with fixture intersection/hit stages and BLAS/TLAS/SBT, compares the entire output against a full launch, and reports 500-frame timing. It is not a complete production TraceRaysNode graph/hit-shader witness. The separate native full producer confirms the production ray-query TLAS backend is engaged.
 
-TraceRaysNode derives uvec3 tileOrigin/fullLaunchExtent offsets from ray-generation reflection, preserves the existing 64-byte camera prefix, records bounded-size launch tiles in separate primary buffers and retains first-acquire/final-completion ownership. The ray shader uses original global pixel coordinates and full launch dimensions. This is compiled source plus an ABI test, not hardware-ray timing or byte proof. The dormant legacy VoxelRT manifest was not hand-edited.
+### Native overhead — last complete runtime `9e9550f2`
 
-Shell audit: FRONTIER is explicitly exposed in the public flags SSBO, although existing production consumers found do not inspect it and the GPU test masks bits 0/1. In-place read/OR/clear across invocations is not an immutable frontier and partition changes can alter propagation and raw bits. The canonical CPU derivation has separate current/next frontiers and normalizes zero dilation to one. The optional clarification received no answer; all-32-bit parity remains the conservative assumption. No raw bytes or golden masks were changed.
+All rows are scale 1.0, 500 frames, mean GPU-clock pass spans after 10 warmup frames. Diagnostic logging was enabled for bounded runs. A later recovery rerun, including logging-disabled measurements, is queued; this table must not be represented as its result.
 
-Indirect/grouped audit: preserve the bucket's original rounded-up invocation domain, empty-bucket zero commands, pass order and barriers. Chunk commands must derive from existing bucket and tile partition data; merely splitting around vkCmdDispatchIndirect does not bound it. GPU command expansion and grouped record-only consumer handling are not implemented. See [contract audit](gpuyield-run2/r486-contract-audit.md).
+| Resolution / pass | Unbounded ms | Tuned bounded ms | Change |
+|---|---:|---:|---:|
+| 500×500 / cpu_frame_time_ms | 4.388762 | 31.436691 | +616.3% |
+| 500×500 / whole_frame_gpu_span_ms | 0.945043 | 1.193271 | +26.3% |
+| 500×500 / esvo_traverse_shade_ms | 0.337087 | 0.366588 | +8.8% |
+| 500×500 / direct_lighting_ms | 0.000280 | 0.000280 | -0.2% |
+| 500×500 / spatial_reuse_ms | 0.065224 | 0.078232 | +19.9% |
+| 500×500 / probe_gather_ms | 0.000280 | 0.000280 | -0.1% |
+| 500×500 / shadow_visibility_wave_ms | 0.052609 | 0.067572 | +28.4% |
+| 500×500 / shadow_ray_trace_ms | 0.000280 | 0.000280 | -0.2% |
+| 500×500 / probe_apply_ms | 0.000281 | 0.000280 | -0.3% |
+| 500×500 / render_target_blit_ms | 0.006421 | 0.008052 | +25.4% |
+| 500×500 / ui_composite_render_ms | 0.032687 | 0.039848 | +21.9% |
+| 1920×1080 / cpu_frame_time_ms | 5.079638 | 31.404069 | +518.2% |
+| 1920×1080 / whole_frame_gpu_span_ms | 3.934913 | 4.540448 | +15.4% |
+| 1920×1080 / esvo_traverse_shade_ms | 1.838277 | 2.205455 | +20.0% |
+| 1920×1080 / direct_lighting_ms | 0.000280 | 0.000279 | -0.4% |
+| 1920×1080 / spatial_reuse_ms | 0.745820 | 0.775138 | +3.9% |
+| 1920×1080 / probe_gather_ms | 0.000281 | 0.000280 | -0.6% |
+| 1920×1080 / shadow_visibility_wave_ms | 0.843663 | 0.838212 | -0.6% |
+| 1920×1080 / shadow_ray_trace_ms | 0.000281 | 0.000280 | -0.3% |
+| 1920×1080 / probe_apply_ms | 0.000280 | 0.000280 | -0.3% |
+| 1920×1080 / render_target_blit_ms | 0.032601 | 0.033638 | +3.2% |
+| 1920×1080 / ui_composite_render_ms | 0.038272 | 0.042713 | +11.6% |
 
-### Timing table per driver
+At 500×500, primary steady submissions fell from 64 to 1.012/frame; at 1080p they settled at 4.016/frame. Including cold frames, means are 1.704 and 7.524. Native host retirement/submission fell from 1.502507/1.045525 ms/frame for static 64 tiles to 0.028326/0.080937 ms/frame at 500×500. At 1080p they are 1.869940/0.227745 ms/frame including cold start. Outer-minus-inner mean was 2.048 µs/chunk at 500×500 and 0.796 µs/chunk at 1080p; it includes barriers and surrounding command timing, not a separately measured query-only cost. [Attribution](gpuyield-run3/coarse-pace-overhead-attribution.json).
 
-All times below are milliseconds. Both driver routes use the same physical AMD Radeon 8060S, vendor 4098/device 5510. Dozen driver integer 104865800/API 4202814; native AMD driver integer 8388967/API 4211008. The declared chunk budget is 16.666666 ms. Timestamp intervals include possible preemption.
+The tuned primary GPU span improved 87.5% against the native static-tile candidate but remains +8.8% at 500×500 and +20.0% at 1080p against the true unbounded base. Whole-frame GPU span is +26.3%/+15.4%. Near-zero overhead and full-resolution real-time output are therefore not yet claimed.
 
-| Producer driver | Phase | Chunk samples | GPU p99 | GPU max | Frames | Budget pass |
-|---|---|---:|---:|---:|---:|---|
-| Dozen / AMD | fresh diagnostic baseline | 32000 | 1.713280 | 2.188440 | 500 | True |
-| Dozen / AMD | candidate with Dozen peer | 32000 | 1.741000 | 2.257480 | 500 | True |
-| Dozen / AMD | candidate with native AMD peer | 32000 | 1.771040 | 2.249600 | 500 | True |
-| Native AMD | full VIXEN / hardware rays | unavailable | — | — | — | not measured |
+### Timing by driver — last completed measurements
 
-The native overlap harness starts its peer after the producer's render marker and rejects it unless the peer finishes while the producer remains alive; Windows and Linux steady-clock epochs are not compared.
+| Driver / workload | Frames / chunks | Chunk p99 / max ms | Submission p99 / max ms | Primary aggregate max ms | Verdict |
+|---|---:|---:|---:|---:|---|
+| AMD native / 500×500 | 500 / 864 | 0.369760 / 0.773280 | 0.369760 / 0.773280 | 1.270240 | PASS at 9e9550f2 |
+| AMD native / 1920×1080 | 500 / 3789 | 0.808000 / 0.967240 | 0.808000 / 0.967240 | 5.272640 | PASS at 9e9550f2 |
+| AMD native / bucketed | 500 / 907 | 0.499480 / 0.788640 | 0.499520 / 0.788640 | 1.657080 | PASS at 9e9550f2 |
+| AMD native / hardware query | 500 / 852 | 0.389360 / 0.409480 | 0.389360 / 0.409480 | 1.415400 | PASS at 9e9550f2 |
+| AMD native / hardware launch fixture | 500 / 40,500 | 0.003640 / 0.016400 | Separate 81-tile fixture | 0.344840 | 1,000,000 RGBA bytes identical |
+| Dozen / run-2 fixed 64 tiles | 500 / 32,000 | ~1.74 / 2.257480 | Unbatched | ~83 ms mean | Passes old 16.67 ms chunk gate; fails new 2 ms maximum |
+| Dozen / affine near-budget cliff | incomplete | Retained raw logs | Some chunks exceed 2 ms | Not a 500-frame witness | exit 139; new failure |
 
-| Completion peer driver | Context | Valid samples | GPU p99 / max | Fence-service p99 / max | Cadence p99 / max |
-|---|---|---:|---:|---:|---:|
-| Native AMD | pre-fix exclusive control | 899 | 0.006960 / 0.008120 | 0.485200 / 1.161200 | 31.642000 / 31.781100 |
-| Dozen / AMD | candidate whole 90-second peer trace | 5399 | 0.006600 / 0.010600 | 3.794940 / 9.068320 | 19.828600 / 38.327000 |
-| Native AMD | candidate exclusive control | 897 | 0.008080 / 0.008120 | 0.678200 / 0.969400 | 31.612700 / 32.829600 |
-| Native AMD | during candidate Dozen producer | 886 | 0.007600 / 0.008000 | 3.661500 / 5.020800 | 32.269800 / 33.628900 |
+Native device is AMD Radeon(TM) 8060S Graphics, driver 8388967. Four inner timestamp pairs had equal, nonzero ticks and a positive enclosing interval. The validator now records these as zero-resolution dispatch pairs instead of missing results, while rejecting backwards/missing queries and nonpositive outer intervals. Vulkan requires non-decreasing timestamp values, not strictly increasing values: [official reference](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp.html). Four focused validator regression checks pass. Zero shader-resolution samples are never used as free command cost.
 
-### Required verification and recovery
+### Required witnesses
 
-Scope: SubmitRecord and all affected RenderGraph consumers, MultiDispatch accounting/timing, shared ShaderManagement reflection consumers, ray shader reflection ABI, main/editor captures and R6, 22 pinned generation checks, RenderGraph/SVO suites, cache gate and no-op build. Native full-VIXEN execution requires a usable Windows build; the standalone probe validates the native client scope only. There is no published matching GPU timing baseline, so the fresh merged diagnostic baseline was required; the kernel CodegenTool suite was not rerun.
+| Check | Current evidence |
+|---|---|
+| Fresh Linux merged build | PASS; final runtime recovery build exit 0 |
+| 22 generation checks | PASS; all 22 canonical stamps freshly regenerated/checked; later changes affect only runtime C++/tests and Python metric tool |
+| Canonical shell raw/compacted bytes | PASS, dilation 0–3 actual GPU cases; initial descriptor-count fixture failure fixed and rerun |
+| Indirect/grouped actual GPU oracle | PASS; all hit bytes, bucket/tile coverage, reverse ordering, late producers, second execution and invalid current-producer rejection |
+| Seven generation/typed contract tests + metric fixtures | PASS |
+| Conservative accounting / submit / affine costs | 11 PASS at 9e9550f2; latest four cost cases plus three actual-node unknown-cost cases PASS (7/7); five unchanged SubmitRecord cases also passed at 9e9550f2 |
+| Native full producer | Eight 500-frame runs PASS at 9e9550f2; latest pacing/query-reference repair awaits native build/rerun |
+| Native hardware rays | All four tests PASS; hardware launch byte/timing evidence above |
+| Full ShaderManagement | Initial full suite: 57 PASS, 1 disabled |
+| Full RenderGraph/SVO | Initial 2,138-test run: 15 failures including capture regressions/dependents and accepted opcode-94 red; recovery queued |
+| Merged cache gate / R6 / PNG capture comparison | Required final recovery queued; initial capture producer failures prevent a passing claim |
+| No-op rebuild | PASS after runtime recovery: ninja: no work to do |
 
-All heavy work uses `/home/liory/.local/bin/with-test-lock.sh --agent gpuyield`. Exact helpers and arguments are preserved in [reproduction](gpuyield-run2/reproduction). Fresh merged baseline build passed (402 actions); fresh 22 generation checks passed. Candidate aggregate build passed (164 actions), the corrected shader-path target rebuild passed, and the integer-vector reflection rebuild passed (105 actions, payload 27 seconds, exit 0). A final fetch still reports wave `1252e370`.
+Native recovery ladder A: moved from the WSL CMake file(LOCK) stall to explicitly authorized NTFS clone; used vcvars64, SDK 1.4.350.0 and documented configure/build wrappers through the box queue. MSVC generated-header/alignment/max-macro compile problems were repaired identically for control and candidate. StreamProgress exposed real Ninja progress to the queue watchdog. Linux Git fetch resolves the WSL worktree pointer, native Git fast-forwards, and private TEMP/TMP isolates native scratch. Native exit status uses owned Diagnostics.Process handles rather than a launcher proxy. Exact commands and presets: [reproduction](gpuyield-run3/reproduce/README.md).
 
-The first filtered run found zero ray tests in an older executable while rebuilding and is invalid. Fresh six retirement/accounting cases passed, but the first actual ray case compiled the main-checkout shader through relative __FILE__ and failed missing tileOrigin. The fixture was fixed to receive the existing CMake shader source root, without weakening any expectation. The next actual shader case exposed INT|VECTOR reflection losing signedness and width. Shared reflection now retains UInt/Int scalar kind, width, vector byte size and C++/GLSL names. Discovery requires all seven cases. Fresh CPU validation passed all seven, including the compiled lane shader, and timing smoke checks passed (exit 0). The first queued exclusive retry was cancelled before it started (143) to let that same-agent CPU validation run; the final controlled driver witness was then requeued. Both candidate 500-frame producers passed the chunk gate, with 32,000 chunks and zero invalid timestamp pairs each. Both peers completed, and the native AMD peer finished entirely while its Dozen producer remained running. All seven standard windowed PNGs are byte-identical and were opened. Full suites, the merged cache gate and no-op rebuild were not run at the checkpoint.
+B: fresh pinned generation and the 22 checks passed; no generated hand edits, invented pin or disabled generation gate. C: supported targeted GPU/contract scopes passed from fresh binaries. The accepted full-suite opcode-94 signature is `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94`; additional producer reds cannot be excluded. There is no baseline-unobtainable STOP claim for a failure this lane must fix.
 
-Full-suite recorded status: **NOT RUN**. Only the exact permitted opcode-94 signature may be accepted; every other failure remains required. The restored cache launcher is tracked in the merged wave and is included in this suite. Fresh windowed PNG references are under captures-before; the completed after comparison found zero byte and decoded-pixel differences for all seven images. Offscreen fixtures compare against the preserved run 1 original-base reference and are labeled as such, not a new merged-base fixture capture.
+### STOPs / checkpoint handoff
 
-Native recovery A: queued build.bat configure vixen-ninja exited 1 because vswhere did not discover the installed MSVC. Explicit provisioned vcvars compiled the standalone probe. Native configure then recovered UNC linker cwd through an own-worktree drive mapping, disabled WSL Dozen provisioning for the native route, used process-local Git trust for owned dependency clones/readonly kernel, and supplied the provisioned kernel root. These are identifiable setup changes, not product fixes.
+Pending at draft time: latest native build and high-resolution pacing measurement; Dozen 500-frame recovery; full-suite recovery with cache/R6; new fixture PNG byte comparison. The near-budget cliff recovery must execute before the lane can be declared clean. Remaining production hardware-ray graph coverage needs the existing offscreen graph to instantiate actual TraceRaysNode/hit stages; the fixture and production ray-query producer are independently useful verified evidence.
 
-Native recovery B: unchanged source setup reached VixenKernelSnapshot before generation and stalled on Windows CMake file(LOCK) over the WSL worktree. The queue killed it after 231 seconds (wrapper 75, payload 141). A fresh own-file lock with TIMEOUT 5 also never returned a result and was idle-killed after 199 seconds (75/141). Linux pinned generation was fresh and green; there is no safe native regeneration route past this lock. No generated pins were invented and no gates were disabled.
-
-Native recovery C: fresh native probe compilation/execution validates its narrower driver-client scope, but cannot validate full native VIXEN or hardware-ray output. Windows descendants surviving Linux queue cleanup were identified by owned command lines, stopped, and checked absent. The native full-build result is inconclusive beyond the evidenced lock stall, not a product compile failure. See native-invocation-status.txt and invocation-*.log.
-
-### Cost and responsiveness limits
-
-The fresh diagnostic baseline sums **41.589438 seconds** of whole-chunk GPU-clock intervals; the candidate with the Dozen peer sums **41.448568 seconds** (**−0.34%**). Its 500-frame render interval grows from **48.031** to **58.718 seconds** (**+22.25%**). The candidate with the native peer takes **58.700 seconds** in its render loop. Retirement bounds the backlog at a measurable host/wall-time cost; GPU work remains approximately unchanged.
-
-The valid Dozen render-overlap subset has **3,549** peer samples: service p99/max **4.302720/9.068320 ms**, cadence p99/max **20.358500/38.327000 ms**, with **one** cadence over two periods. The table's 5,399-sample Dozen peer row covers the complete 90 seconds, including startup and time after the producer. The failed pre-fix Dozen peer is partial and cannot support a clean before/after cadence verdict. The native render-overlap probe has 886 post-first samples, service p99/max **3.661500/5.020800 ms**, cadence p99/max **32.269800/33.628900 ms**; the native exclusive before control was **31.642000/31.781100 ms**. These are Vulkan compute completion peers, not compositor presents. Host submit maxima **90.412037** and **104.527659 ms** persist despite green chunk GPU intervals. General desktop responsiveness therefore remains unproven.
-
-All seven before/after PNGs were opened. Editor toggle/undo/redo and HUD state transitions match exactly. Capture log spans and SHA-256 hashes are retained in capture-identity.json; log spans include startup/shutdown and are not dedicated wall-clock timers.
-
-### STOPs and checkpoint handoff
-
-- Native full producer — STOPPED for that platform scope: supported CMake locking on the assigned WSL share, or an explicitly assigned NTFS worktree, is needed for the remaining native producer/hardware witnesses. Missing tools is no longer the cause.
-- Shell — unfinished at checkpoint: the owner supplied the canonical derivation route; preserve the exposed FRONTIER contract when implementing immutable layer/chunk lowering, then compare raw and committed artifacts. The audit is complete; conversion is not.
-- Indirect/grouped — unfinished at checkpoint: conversion and byte/timing witnesses are unfinished; use the existing bucket/tile data, preserve padded domains and cover record-only consumers.
-- Historical red: its exact GPU-active versus dependency/preemption split lacks a synchronized trace. Controlled reference runs must not be generalized to arbitrary external GPU workloads or DWM presentation.
-
-Stopped heavy work at **17:11:00 UTC on 2026-10-10**, at the three-hour checkpoint. The outer final queue session had returned **143 at 17:10:01 UTC**, with its termination cause unclassified and its owned Linux scope still executing the generation refresh. Ownership was checked and process group 155810 was stopped with SIGTERM; its producer/generator processes were confirmed absent. The refresh log reports **17/23 CMake steps** before `ninja: build stopped: interrupted by user`; the earlier fresh merged 22-check result remains green, but this final refresh is **incomplete**, not a passing contract. See [checkpoint status](gpuyield-run2/checkpoint-status.json).
-
-The full ShaderManagement and RenderGraph/SVO suites, merged cache gate, offscreen fixture comparison/R6 suite gates and no-op rebuild were **not run**. The checkpoint guard was prepared before the full-suite phase, but the interrupted refresh never reached it. Remove the lane checkpoint marker when resuming the reproduction helper. Remaining work: shell and indirect/grouped conversion; those raw/data byte witnesses; native full-producer/hardware-ray witnesses; finish 22 checks and run the full required suites once. The committed candidate is not certified as complete R477/R486 work.
+No new items will be taken after 20:17:15 UTC. Heavy work still running at that point will be stopped with ownership-specific cleanup, its actual point and status retained here, and all completed artifacts committed.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-- proposed: Windows native build discovery rejects an installed MSVC toolchain
-- proposed: Windows native CMake builds need a supported worktree drive mapping
-- proposed: Native Windows FetchContent needs scoped trust for WSL worktree clones
-- proposed: Native Windows configure should not attempt WSL Dozen provisioning
-- proposed: GPU CTest reservations bypass the queue device mutex
-- proposed: Native codegen discovery needs the provisioned kernel root
-- proposed: GPU chunk timings need separate dependency and dispatch intervals
-- proposed: MultiDispatch timestamp commands lie outside the primary recording lifetime
-- proposed: Native build summary needs worktree-scoped logs and status
-- proposed: Box queue native interop cleanup leaves Windows payload descendants alive
-- proposed: Dozen cadence queries need explicit availability waits and durable CSV rows
-- proposed: Native CMake file locks stall on the assigned WSL worktree
-- proposed: Filtered contract witnesses must reject zero selected tests
-- proposed: Anchor compiled shader fixtures to their owning checkout
-- proposed: Consolidate chunk retirement with declared graph timeline capacity
-- proposed: Declare conservative uncalibrated GPU cost at the queue policy boundary
-- proposed: Preserve integer vector traits in the shared SPIR-V reflection contract
-- proposed: Queue wrapper termination leaves its nested Linux witness scope running
+- proposed: Treat pinned generated SIMD headers as compiler system imports
+- proposed: Declare MSVC extended-alignment requirements with generated row types
+- proposed: Keep editor AppFlow comparison immune to Windows macros
+- proposed: Forward native compiler progress to the box queue watchdog
+- proposed: Fetch WSL lane revisions through a Git transport that resolves worktree pointers
+- proposed: Retain native full-producer exit status with explicit process ownership
+- proposed: Let a GPU-device wait yield the lane turn to its ready compiler jobs
+- proposed: Read grouped accumulation inputs at their declared execute lifetime
+- proposed: Make the ConstantNode header self-contained for typed grouped producers
+- proposed: Expose a production offscreen hardware-ray graph witness
+- proposed: Provision author identity for the Windows-local witness checkout
+- proposed: Separate shared FetchContent sources from native build directories
+- proposed: Carry private temporary directories into native runtime witnesses
+- proposed: Use a native high-resolution contract for renderer frame pacing
+- proposed: Release recorded query-pool references when growing chunk instrumentation
+- proposed: Derive native queue reservations from compiler parallelism
+- proposed: Validate quantized inner GPU timestamps separately from command bounds

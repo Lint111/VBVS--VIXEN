@@ -1,0 +1,2 @@
+[box:flow] recovered-final-driver-and-full-suite cpu=62% target=90% depth=7 free=1 baseline=15 granted=15 mode=static
+[box:turn] gpuyield yielding to its queued native-timer-and-tile-recovery (fair interleaving)

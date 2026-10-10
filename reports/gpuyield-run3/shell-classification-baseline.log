@@ -1,0 +1,556 @@
+[box:flow] run3-shell-classification-baseline cpu=52% target=90% depth=1 free=0 baseline=2 granted=2 mode=static
+[box:turn] gpuyield yielding to its queued run3-merged-contract-baseline (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% depth=0 free=0 baseline=2 granted=2 mode=static
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70129MB projected=356MB estimate=class samples=81 reserved=43844MB total=80425MB reserve=4096MB disk=528827MB
+[box:flow] run3-shell-classification-baseline queued — need=2 tokens projected=356MB estimate=class samples=81
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69960MB projected=356MB estimate=class samples=81 reserved=43844MB total=80425MB reserve=4096MB disk=528798MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70125MB projected=356MB estimate=class samples=81 reserved=43783MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70333MB projected=356MB estimate=class samples=81 reserved=43783MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70179MB projected=356MB estimate=class samples=81 reserved=43783MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=47% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69877MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69781MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69822MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69696MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69810MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69797MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69722MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69624MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69521MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528780MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69463MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528779MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69535MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528779MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70113MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528779MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70103MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528779MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70019MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528779MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69942MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528778MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69789MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528778MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69719MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528778MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69718MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528778MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69691MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528778MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69690MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528777MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69717MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528777MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70155MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528777MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70101MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528777MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70079MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528777MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70123MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69953MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70246MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70208MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70138MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70125MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70148MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=27% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69869MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528776MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71816MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528775MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71803MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71620MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71418MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71304MB projected=356MB estimate=class samples=81 reserved=44553MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71289MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71541MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=27% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71402MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71246MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71037MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528745MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70795MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528744MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70646MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528744MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70901MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528744MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70778MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528744MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70633MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528744MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70800MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528743MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70656MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528743MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70374MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528743MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70311MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528743MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70967MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528742MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70740MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528723MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70533MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528706MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70343MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528706MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70456MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528705MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70204MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528705MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70173MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528705MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69955MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528704MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69653MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528704MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69535MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528703MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69674MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528703MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70054MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528703MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69927MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528703MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70404MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528702MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72340MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528702MB
+[box:flow] run3-shell-classification-baseline cpu=27% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72362MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528702MB
+[box:flow] run3-shell-classification-baseline cpu=44% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71970MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528736MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71738MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528737MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71725MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528736MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71599MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528736MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71636MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528880MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70921MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528876MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70371MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528862MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70145MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528854MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69643MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528854MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69339MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528854MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69242MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528854MB
+[box:flow] run3-shell-classification-baseline cpu=60% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69508MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528854MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69769MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528812MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70634MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528752MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70521MB projected=356MB estimate=class samples=81 reserved=31126MB total=80425MB reserve=4096MB disk=528683MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71005MB projected=356MB estimate=class samples=81 reserved=17699MB total=80425MB reserve=4096MB disk=528683MB
+[box:flow] run3-shell-classification-baseline cpu=22% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71547MB projected=356MB estimate=class samples=81 reserved=17699MB total=80425MB reserve=4096MB disk=528829MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71821MB projected=356MB estimate=class samples=81 reserved=17699MB total=80425MB reserve=4096MB disk=528828MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71628MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528824MB
+[box:flow] run3-shell-classification-baseline cpu=26% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71566MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528824MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71524MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528824MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71352MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528824MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72267MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528825MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72188MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528808MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71957MB projected=356MB estimate=class samples=81 reserved=14737MB total=80425MB reserve=4096MB disk=528743MB
+[box:flow] run3-shell-classification-baseline cpu=26% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71773MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528673MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71913MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71809MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=26% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71753MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=25% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71774MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=27% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71937MB projected=356MB estimate=class samples=81 reserved=14725MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=26% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73045MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72777MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72611MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=25% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73569MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528673MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73132MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528671MB
+[box:flow] run3-shell-classification-baseline cpu=25% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72826MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528671MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72664MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528671MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72636MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528671MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72500MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528670MB
+[box:flow] run3-shell-classification-baseline cpu=32% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72410MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528670MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72185MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528670MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72585MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528672MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72424MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528670MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72692MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528668MB
+[box:flow] run3-shell-classification-baseline cpu=26% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72759MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528668MB
+[box:flow] run3-shell-classification-baseline cpu=33% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72560MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528666MB
+[box:flow] run3-shell-classification-baseline cpu=30% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73163MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528660MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72997MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528682MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72681MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528677MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72508MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528663MB
+[box:flow] run3-shell-classification-baseline cpu=25% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72416MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528659MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72482MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528655MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72545MB projected=356MB estimate=class samples=81 reserved=17567MB total=80425MB reserve=4096MB disk=528642MB
+[box:flow] run3-shell-classification-baseline cpu=25% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72969MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528641MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73466MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528643MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73507MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528641MB
+[box:flow] run3-shell-classification-baseline cpu=29% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73423MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528641MB
+[box:flow] run3-shell-classification-baseline cpu=24% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73770MB projected=356MB estimate=class samples=81 reserved=14711MB total=80425MB reserve=4096MB disk=528641MB
+[box:flow] run3-shell-classification-baseline cpu=31% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73439MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528639MB
+[box:flow] run3-shell-classification-baseline cpu=49% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72834MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528636MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72509MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528637MB
+[box:flow] run3-shell-classification-baseline cpu=55% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72398MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528636MB
+[box:flow] run3-shell-classification-baseline cpu=63% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72194MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528636MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72253MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528637MB
+[box:flow] run3-shell-classification-baseline cpu=48% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72189MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528636MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71985MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528635MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71832MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528635MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71602MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528619MB
+[box:flow] run3-shell-classification-baseline cpu=50% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72214MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528619MB
+[box:flow] run3-shell-classification-baseline cpu=52% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72126MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528618MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71880MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528618MB
+[box:flow] run3-shell-classification-baseline cpu=44% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71800MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528618MB
+[box:flow] run3-shell-classification-baseline cpu=51% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72445MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528574MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72841MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528526MB
+[box:flow] run3-shell-classification-baseline cpu=54% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72454MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=50% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72362MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72230MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=44% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72085MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71976MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=49% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72312MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528490MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72306MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528489MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72365MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528489MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72188MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528488MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72047MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528488MB
+[box:flow] run3-shell-classification-baseline cpu=46% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71837MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528488MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72336MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72218MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71958MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71993MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71679MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=44% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71595MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72995MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73040MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73277MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=48% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73240MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=28% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73406MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528487MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73719MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528486MB
+[box:flow] run3-shell-classification-baseline cpu=46% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73615MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528485MB
+[box:flow] run3-shell-classification-baseline cpu=46% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=73020MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528485MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72635MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528485MB
+[box:flow] run3-shell-classification-baseline cpu=46% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72316MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72045MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71853MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71738MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71507MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71306MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71106MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71516MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528485MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71450MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528484MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72521MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528483MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72695MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528483MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=72303MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528483MB
+[box:flow] run3-shell-classification-baseline cpu=49% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71843MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528481MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=71339MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528483MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70870MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528482MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70607MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528482MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70458MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528482MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70108MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528481MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69608MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528457MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69110MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528437MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68877MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528437MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68718MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528437MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69181MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528436MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69843MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528436MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69593MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528567MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70091MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528566MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69743MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528551MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69687MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528550MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70373MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528550MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69965MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528544MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69711MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528486MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69450MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528423MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69019MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528418MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69517MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528389MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69205MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528336MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69043MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528372MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68725MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528353MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68526MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528353MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69095MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528352MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69739MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528351MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70099MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528351MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69762MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528350MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69509MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528350MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69292MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528350MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69029MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528350MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69438MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528349MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68985MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528349MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68773MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528349MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68568MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528349MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68950MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528348MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68741MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528348MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69875MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528347MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69697MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528347MB
+[box:flow] run3-shell-classification-baseline cpu=41% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69206MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528346MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68912MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528346MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68704MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528346MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68408MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528346MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68919MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528345MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68681MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528345MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68558MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528344MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68404MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528344MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68841MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528343MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68927MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528342MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69538MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528341MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69161MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528341MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68827MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528340MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68515MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528340MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68119MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528338MB
+[box:flow] run3-shell-classification-baseline cpu=42% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=67924MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528337MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68236MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528337MB
+[box:flow] run3-shell-classification-baseline cpu=39% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=67787MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528336MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=67690MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528336MB
+[box:flow] run3-shell-classification-baseline cpu=45% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68023MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528336MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68194MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528335MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68663MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528334MB
+[box:flow] run3-shell-classification-baseline cpu=36% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69046MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528334MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68563MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528334MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68294MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528324MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68070MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528279MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=67955MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528217MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68474MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528180MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69177MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528117MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68952MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528068MB
+[box:flow] run3-shell-classification-baseline cpu=38% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69477MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528067MB
+[box:flow] run3-shell-classification-baseline cpu=34% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68542MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528067MB
+[box:flow] run3-shell-classification-baseline cpu=40% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69880MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528021MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=70281MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528020MB
+[box:flow] run3-shell-classification-baseline cpu=43% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69746MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528020MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69296MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528019MB
+[box:flow] run3-shell-classification-baseline cpu=35% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=68956MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528018MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69009MB projected=356MB estimate=class samples=81 reserved=21878MB total=80425MB reserve=4096MB disk=528017MB
+[box:flow] run3-shell-classification-baseline cpu=37% target=90% admit
+[box:flow] run3-shell-classification-baseline memory=admit avail=69823MB projected=356MB estimate=class samples=81 reserved=21013MB total=80425MB reserve=4096MB disk=527940MB
+[box:flow] run3-shell-classification-baseline granted tokens=4 6 mask=8,9,12,13
+[box:flow] run3-shell-classification-baseline running on cores 8,9,12,13 (gpu)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = ShellRevalidateNodeTest.GpuDispatchMatchesCpuDeriveShellClassification
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from ShellRevalidateNodeTest
+[ RUN      ] ShellRevalidateNodeTest.GpuDispatchMatchesCpuDeriveShellClassification
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[ device ] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[GaiaVoxelWorld] ECS world initialized
+[ shell parity ] brickCount=504 surfaceBricks(cpu)=382 shellBricks(cpu)=504 surfaceMismatches=0 shellMismatches=0
+[GaiaVoxelWorld] ECS world destroyed
+[       OK ] ShellRevalidateNodeTest.GpuDispatchMatchesCpuDeriveShellClassification (603 ms)
+[----------] 1 test from ShellRevalidateNodeTest (603 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (603 ms total)
+[  PASSED  ] 1 test.
+UT_JOB_DONE gpu run3-shell-classification-baseline exit=0 state=OK

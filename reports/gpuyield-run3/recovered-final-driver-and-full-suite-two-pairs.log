@@ -1,0 +1,5 @@
+[box:flow] recovered-final-driver-and-full-suite-two-pairs cpu=57% target=90% depth=7 free=1 baseline=15 granted=15 mode=static
+[box:turn] gpuyield yielding to its queued native-timer-and-tile-recovery-two-pairs (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] recovered-final-driver-and-full-suite-two-pairs cpu=28% target=90% depth=4 free=0 baseline=15 granted=15 mode=static
+[box:flow] recovered-final-driver-and-full-suite-two-pairs queued — need=15 tokens projected=1353MB estimate=class-p91 samples=104

@@ -1,0 +1,775 @@
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% depth=1 free=3 baseline=15 granted=15 mode=static
+[box:turn] gpuyield yielding to its queued affine-native-and-dozen-driver-matrix (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% depth=4 free=0 baseline=15 granted=15 mode=static
+[box:flow] recovered-full-rendergraph-svo-shader-suites queued — need=15 tokens projected=1353MB estimate=class-p91 samples=100
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=73% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66005MB projected=1353MB estimate=class-p91 samples=100 reserved=14882MB total=80425MB reserve=4096MB disk=518027MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=65% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65960MB projected=1353MB estimate=class-p91 samples=100 reserved=14882MB total=80425MB reserve=4096MB disk=518025MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66244MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518024MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66103MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518023MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65918MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518023MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65673MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518023MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=47% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65518MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518023MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66006MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518022MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66285MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518021MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66773MB projected=1353MB estimate=class-p91 samples=100 reserved=13531MB total=80425MB reserve=4096MB disk=518016MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66506MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=518015MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66469MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=518015MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66326MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517835MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66202MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66074MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65908MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65809MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65744MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65313MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65696MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65545MB projected=1353MB estimate=class-p91 samples=100 reserved=14339MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65195MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517814MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64987MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517813MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64873MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517813MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65717MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517813MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66076MB projected=1353MB estimate=class-p91 samples=100 reserved=10646MB total=80425MB reserve=4096MB disk=517813MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66139MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517812MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=49% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66133MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517811MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66044MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517811MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65770MB projected=1353MB estimate=class-p91 samples=100 reserved=10317MB total=80425MB reserve=4096MB disk=517811MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66554MB projected=1353MB estimate=class-p91 samples=100 reserved=9299MB total=80425MB reserve=4096MB disk=517811MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66309MB projected=1353MB estimate=class-p91 samples=100 reserved=9299MB total=80425MB reserve=4096MB disk=517811MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66769MB projected=1353MB estimate=class-p91 samples=100 reserved=9299MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66689MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66465MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66102MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66908MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66851MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66753MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517809MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66306MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517807MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66179MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66058MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65995MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65835MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66676MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66098MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65643MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65305MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517806MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65098MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517805MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65527MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517805MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65461MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517805MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65325MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517805MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65062MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517803MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65813MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517803MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65695MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517803MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65433MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517803MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65259MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65016MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64909MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65441MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65784MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=47% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66007MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66704MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67381MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67365MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517799MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67358MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517798MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67271MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517798MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67081MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66655MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66404MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66228MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66026MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65873MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65614MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65356MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65223MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65077MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65628MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65476MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65392MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517795MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65325MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517795MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65356MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517795MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65141MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517795MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65210MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517965MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66224MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517978MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65946MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=517916MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65869MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520040MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66209MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520304MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66044MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520123MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66625MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520123MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66532MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520123MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66508MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66394MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66952MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66869MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66756MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66687MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66453MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67036MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66982MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=69% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66797MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520119MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=54% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66702MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520117MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=49% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66537MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65958MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65853MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65973MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65865MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66239MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520107MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66044MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520083MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65966MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520082MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65861MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520082MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=55% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65724MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520288MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65663MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520287MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65519MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520287MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65344MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65112MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65038MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64926MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64760MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64690MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64563MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64438MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65101MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65960MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65853MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66271MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520286MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66466MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66501MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66430MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66619MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=49% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66662MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66743MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66498MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520283MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66333MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66305MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66304MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66310MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67056MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520282MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66780MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520281MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66739MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520281MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66770MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520280MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66749MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520280MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66679MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520280MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=49% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67378MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520280MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67097MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520280MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66757MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66503MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66336MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66238MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66796MB projected=1353MB estimate=class-p91 samples=100 reserved=12937MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67079MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520279MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66908MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520277MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=55% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67335MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520277MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67337MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520277MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66841MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520277MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=66% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66634MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520276MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=52% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66383MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520276MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66110MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520276MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67250MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520276MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66996MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520276MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=47% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67707MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520274MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67913MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520274MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=47% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67976MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520273MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67966MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520273MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68511MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520273MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68623MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68560MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68591MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68508MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68629MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68508MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68429MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68614MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520272MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68291MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68177MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68146MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68107MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68098MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68118MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68047MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67947MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67888MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68028MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68191MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520270MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68329MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68311MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68215MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68089MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68490MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68560MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68524MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69337MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69265MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520254MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69240MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520252MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69266MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520252MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69363MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520252MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69186MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520250MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69040MB projected=1353MB estimate=class-p91 samples=100 reserved=16555MB total=80425MB reserve=4096MB disk=520250MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69131MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520250MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68982MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520244MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68860MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520241MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68773MB projected=1353MB estimate=class-p91 samples=100 reserved=12513MB total=80425MB reserve=4096MB disk=520241MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68637MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520241MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69230MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520202MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69116MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520202MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69139MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520202MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68989MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=27% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68891MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68982MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68973MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68946MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68937MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68914MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68838MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69400MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69213MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520201MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69334MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69338MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69675MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69291MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69067MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69162MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69182MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520200MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69096MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69096MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69155MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69102MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69017MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69025MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69062MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69087MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520198MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69037MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68755MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68632MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68448MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68385MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=54% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68320MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68889MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520196MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68686MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68485MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68457MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68220MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68119MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=54% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68307MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68244MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67971MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=56% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67945MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67929MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=55% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67650MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=56% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67560MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67492MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67465MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67480MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67456MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67397MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520193MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67663MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520195MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=43% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67372MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520195MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=48% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67089MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520195MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=51% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66672MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520194MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=54% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67213MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520192MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=45% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67226MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520192MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67189MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520191MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67066MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520184MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=60% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66668MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520182MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=60% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66458MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520182MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=70% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66235MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520181MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65933MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=67% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66162MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=54% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66194MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=50% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66098MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=49% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65897MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=60% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65704MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=51% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65440MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65223MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520166MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=62% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65221MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520140MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=58% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65171MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520124MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=51% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65249MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65184MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65067MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64976MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64957MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66138MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66036MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520122MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66077MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520119MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66024MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520118MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=47% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65871MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520121MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65769MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65764MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65618MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=44% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65534MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65570MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=40% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65483MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65200MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520120MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=59% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65075MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520118MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=39% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65041MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520118MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65026MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520118MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=42% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65050MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520112MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=51% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64982MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520109MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64967MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520109MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64963MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520109MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=46% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=64947MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520070MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65632MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520069MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65606MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520069MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66279MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520069MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66210MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66245MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=38% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66235MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66137MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66569MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66531MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66432MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520065MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=34% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66376MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66373MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=29% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66263MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=30% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66080MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65991MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65916MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65966MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520068MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=35% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65951MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520067MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=41% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65899MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520066MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65859MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520066MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=65847MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520063MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=36% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66307MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520059MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=37% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66199MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520056MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66876MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520056MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=66896MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520047MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=33% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67263MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520040MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=31% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67321MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520038MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67170MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520038MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67084MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520038MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=67108MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520038MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68731MB projected=1353MB estimate=class-p91 samples=100 reserved=15712MB total=80425MB reserve=4096MB disk=520035MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68712MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68745MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=13% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68665MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68586MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68583MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68591MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=32% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68606MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68581MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68552MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=13% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68539MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520336MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68499MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520335MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68634MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520335MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69123MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520335MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69026MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68931MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=26% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68797MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68771MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68703MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68637MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68645MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=25% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68591MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=17% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68642MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68827MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68882MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68894MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68903MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68895MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=24% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68857MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68805MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68764MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=16% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69518MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520334MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69391MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69296MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69097MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69038MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=15% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68974MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68898MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68902MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=28% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68892MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=15% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68867MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520332MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68867MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520317MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=14% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68885MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520317MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=18% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68874MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520317MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=17% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68839MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520317MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=21% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68803MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520317MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=19% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68705MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520316MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=22% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68637MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520316MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=68577MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520316MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=17% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69141MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520315MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=23% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69008MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520314MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=15% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69149MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520314MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=20% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69028MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520314MB
+[box:flow] recovered-full-rendergraph-svo-shader-suites cpu=16% target=90% admit
+[box:flow] recovered-full-rendergraph-svo-shader-suites memory=admit avail=69041MB projected=1353MB estimate=class-p91 samples=100 reserved=12498MB total=80425MB reserve=4096MB disk=520314MB

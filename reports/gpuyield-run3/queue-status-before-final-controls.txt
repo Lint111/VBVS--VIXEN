@@ -1,0 +1,33 @@
+flowing-slot: 15 physical pair-tokens (memory-first)
+memory-reservations: 10627MB projected of 80425MB total; reserve=4096MB
+disk: 516053MB free on /home/liory/projects's filesystem; floor=20480MB
+short-lane: reserved-token=14 mask=28,29
+cpu-target: 90% source=file ceiling=active measured=33%
+memory-capacity: 80425MB source=default(missing)
+flowing-jobs:
+  hk-content-codegen pid=3606211 since=22:24:32 epoch=1791660272 res=build mem=3460MB estimate=class-p91 samples=2200 priority=normal
+  bb30base:compose-build pid=3638522 since=22:25:22 epoch=1791660322 res=build mem=7167MB estimate=step-p90 samples=10 priority=lander
+recent:
+  ok   2026-10-10 22:30:43 gpu lightunify:after-overcast-cont exit=0 dur=249s cpu=8.910s rss=476MB cgpeak=448MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791660394-gpu-lightunify:after-overcast-cont.log state=OK node=ws tokens=2 cmd=bbecf3993bdb schema=8 last-ran 1m47s ago last-green 1m47s ago
+  ok   2026-10-10 22:28:19 build run7-full-build-precise-kernels exit=0 dur=65s cpu=259.560s rss=419MB cgpeak=1839MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791660434-build-run7-full-build-precise-kernels.log state=OK node=ws tokens=3 cmd=3bd76e188e69 schema=8 last-ran 4m11s ago last-green 4m11s ago
+  ok   2026-10-10 22:26:59 build hk1415:base-build-content-core exit=0 dur=3s cpu=4.960s rss=18MB cgpeak=222MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791660416-build-hk1415:base-build-content-core.log state=OK node=ws tokens=2 cmd=02b9d21d3358 buildproj=core/src/Undertow.Content.Core/Undertow.Content.Core.csproj buildtarget=default schema=8 last-ran 5m31s ago last-green 5m31s ago
+  ok   2026-10-10 22:26:35 build run7-regenerate-sdfcore-precise exit=0 dur=23s cpu=19.220s rss=105MB cgpeak=285MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791660372-build-run7-regenerate-sdfcore-precise.log state=OK node=ws tokens=3 cmd=c51af19ccc45 schema=8 last-ran 5m55s ago last-green 5m55s ago
+  ok   2026-10-10 22:26:23 build hk1415:pack-fresh exit=0 dur=58s cpu=74.660s rss=669MB cgpeak=854MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791660325-build-hk1415:pack-fresh.log state=OK node=ws tokens=2 cmd=85447f9d06c9 buildproj=tools/Undertow.Author.Cli/Undertow.Author.Cli.csproj buildtarget=default schema=8 last-ran 6m07s ago last-green 6m07s ago
+waiting (oldest first; blocked=tokens|memory|disk|gpu|ready; passes=committed/max):
+  affine-native-and-dozen-driver-matrix pid=3656991 since=22:26:12 res=gpu need=15 mem=1388MB estimate=class-p91 samples=99 agent=gpuyield priority=normal blocked=tokens passes=3/3
+  recovered-full-rendergraph-svo-shader-suites pid=3658297 since=22:26:17 res=gpu agent=gpuyield gate=held gneed=15
+  hk1415:base-build-content-core pid=3683370 since=22:27:31 res=build need=2 mem=1018MB estimate=buildkey-p90 samples=3 agent=hk1415 priority=normal blocked=ready passes=0/3
+  run7-precise-dozen-interval-fixed pid=3711999 since=22:28:29 res=gpu need=3 mem=1388MB estimate=class-p91 samples=99 agent=togglelatency priority=normal blocked=ready passes=0/3
+  lightunify:after-night-service-cont pid=3793488 since=22:30:57 res=gpu need=4 mem=1353MB estimate=class-p91 samples=100 agent=lightunify priority=normal blocked=ready passes=0/3
+  run7-lookdev-overcast pid=3828794 since=22:31:44 res=gpu agent=togglelatency gate=held gneed=4
+  run7-lookdev-night-service pid=3831995 since=22:31:48 res=gpu agent=togglelatency gate=held gneed=4
+  final-no-op-rebuild pid=3843420 since=22:31:59 res=build agent=gpuyield gate=held gneed=1
+  run7-export-precise-spv-inputs pid=3850425 since=22:32:04 res=gpu agent=togglelatency gate=held gneed=4
+turn-agents: bb30base(steps=7) gpuyield(steps=1) hk1415(steps=4) hkglobal(steps=7) lightunify(steps=2) togglelatency(steps=5)
+  turn-rule: one job per agent in the token line; held back: gpuyield(2) togglelatency(3)
+  recent-turns:
+    2026-10-10 22:26:23 hk1415 step=3 slot=flow
+    2026-10-10 22:26:35 togglelatency step=4 slot=flow
+    2026-10-10 22:26:59 hk1415 step=4 slot=flow
+    2026-10-10 22:28:19 togglelatency step=5 slot=flow
+    2026-10-10 22:30:43 lightunify step=2 slot=flow

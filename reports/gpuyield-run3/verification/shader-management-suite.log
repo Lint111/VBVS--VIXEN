@@ -1,0 +1,125 @@
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/libraries/ShaderManagement
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/libraries/ShaderManagement
+      Start  1: HlslIngestion.GeneratedKernelsCompileToSpirv
+ 1/58 Test  #1: HlslIngestion.GeneratedKernelsCompileToSpirv ..........................   Passed    0.06 sec
+      Start  2: ProbeUpdateSmokeTest.SceneBindingsChainCompilesFromNewCallSite
+ 2/58 Test  #2: ProbeUpdateSmokeTest.SceneBindingsChainCompilesFromNewCallSite ........   Passed    0.26 sec
+      Start  3: ShaderFamily.VariantsSelectByFeatureSet
+ 3/58 Test  #3: ShaderFamily.VariantsSelectByFeatureSet ...............................   Passed    0.13 sec
+      Start  4: ShaderFamily.MembersAreCachedPerCanonicalFeatureSet
+ 4/58 Test  #4: ShaderFamily.MembersAreCachedPerCanonicalFeatureSet ...................   Passed    0.17 sec
+      Start  5: AsyncShaderBundleBuilder.PreservesBuildReadinessAndCompletionEvents
+ 5/58 Test  #5: AsyncShaderBundleBuilder.PreservesBuildReadinessAndCompletionEvents ...   Passed    0.16 sec
+      Start  6: SdiVariantMerge.SingleVariantIsAllUnconditional
+ 6/58 Test  #6: SdiVariantMerge.SingleVariantIsAllUnconditional .......................   Passed    0.01 sec
+      Start  7: SdiVariantMerge.GatedBindingGetsFeaturePredicate
+ 7/58 Test  #7: SdiVariantMerge.GatedBindingGetsFeaturePredicate ......................   Passed    0.00 sec
+      Start  8: SdiVariantMerge.BaselineCommonFeaturesAreNotRequirements
+ 8/58 Test  #8: SdiVariantMerge.BaselineCommonFeaturesAreNotRequirements ..............   Passed    0.00 sec
+      Start  9: SdiVariantMerge.ConflictingBindingDeclarationsFail
+ 9/58 Test  #9: SdiVariantMerge.ConflictingBindingDeclarationsFail ....................   Passed    0.00 sec
+      Start 10: SdiVariantMerge.NonConjunctivePresenceFails
+10/58 Test #10: SdiVariantMerge.NonConjunctivePresenceFails ...........................   Passed    0.00 sec
+      Start 11: SdiVariantMerge.PushConstantMemberGating
+11/58 Test #11: SdiVariantMerge.PushConstantMemberGating ..............................   Passed    0.00 sec
+      Start 12: SdiVariantMerge.PushMemberOffsetConflictFails
+12/58 Test #12: SdiVariantMerge.PushMemberOffsetConflictFails .........................   Passed    0.00 sec
+      Start 13: SdiVariantMerge.MergedEmissionCarriesFeatureTags
+13/58 Test #13: SdiVariantMerge.MergedEmissionCarriesFeatureTags ......................   Passed    0.00 sec
+      Start 14: SdiVariantMerge.MergedEmissionNamesAndIndices
+14/58 Test #14: SdiVariantMerge.MergedEmissionNamesAndIndices .........................   Passed    0.00 sec
+      Start 15: SdiVariantMerge.DuplicateMemberNamesSkipAliases
+15/58 Test #15: SdiVariantMerge.DuplicateMemberNamesSkipAliases .......................   Passed    0.00 sec
+      Start 16: SdiVariantMerge.MergedBindingCarriesAccess
+16/58 Test #16: SdiVariantMerge.MergedBindingCarriesAccess ............................   Passed    0.00 sec
+      Start 17: SdiVariantMerge.ConflictingAccessFailsMerge
+17/58 Test #17: SdiVariantMerge.ConflictingAccessFailsMerge ...........................   Passed    0.00 sec
+      Start 18: SpirvAccess.ReflectsAccessQualifiers
+18/58 Test #18: SpirvAccess.ReflectsAccessQualifiers ..................................   Passed    0.14 sec
+      Start 19: ShaderCompilerTest.CompileSimpleVertexShader
+19/58 Test #19: ShaderCompilerTest.CompileSimpleVertexShader ..........................   Passed    0.11 sec
+      Start 20: ShaderCompilerTest.CompileSimpleFragmentShader
+20/58 Test #20: ShaderCompilerTest.CompileSimpleFragmentShader ........................   Passed    0.09 sec
+      Start 21: ShaderCompilerTest.InvalidShaderFails
+21/58 Test #21: ShaderCompilerTest.InvalidShaderFails .................................   Passed    0.04 sec
+      Start 22: ShaderCompilerTest.SyntaxErrorReported
+22/58 Test #22: ShaderCompilerTest.SyntaxErrorReported ................................   Passed    0.14 sec
+      Start 23: ShaderCompilerTest.CompileFromFile
+23/58 Test #23: ShaderCompilerTest.CompileFromFile ....................................   Passed    0.13 sec
+      Start 24: ShaderCompilerTest.CompileNonExistentFileFails
+24/58 Test #24: ShaderCompilerTest.CompileNonExistentFileFails ........................   Passed    0.01 sec
+      Start 25: ShaderCompilerTest.CompileWithOptimization
+25/58 Test #25: ShaderCompilerTest.CompileWithOptimization ............................   Passed    0.15 sec
+      Start 26: ShaderCompilerTest.CompileWithDebugInfo
+26/58 Test #26: ShaderCompilerTest.CompileWithDebugInfo ...............................   Passed    0.12 sec
+      Start 27: ShaderCompilerTest.ValidateSpirvSuccess
+27/58 Test #27: ShaderCompilerTest.ValidateSpirvSuccess ...............................***Not Run (Disabled)   0.00 sec
+      Start 28: ShaderCompilerTest.DisassembleSpirv
+28/58 Test #28: ShaderCompilerTest.DisassembleSpirv ...................................   Passed    0.11 sec
+      Start 29: ShaderCompilerTest.IsAvailable
+29/58 Test #29: ShaderCompilerTest.IsAvailable ........................................   Passed    0.01 sec
+      Start 30: ShaderCompilerTest.GetVersion
+30/58 Test #30: ShaderCompilerTest.GetVersion .........................................   Passed    0.01 sec
+      Start 31: ShaderCompilerTest.InferStageFromPath
+31/58 Test #31: ShaderCompilerTest.InferStageFromPath .................................   Passed    0.01 sec
+      Start 32: ShaderCompilerTest.CompileVertexAndFragmentShaders
+32/58 Test #32: ShaderCompilerTest.CompileVertexAndFragmentShaders ....................   Passed    0.15 sec
+      Start 33: ShaderCacheManagerTest.StoreAndRetrieveShader
+33/58 Test #33: ShaderCacheManagerTest.StoreAndRetrieveShader .........................   Passed    0.11 sec
+      Start 34: ShaderCacheManagerTest.RetrieveNonExistentShader
+34/58 Test #34: ShaderCacheManagerTest.RetrieveNonExistentShader ......................   Passed    0.01 sec
+      Start 35: ShaderCacheManagerTest.OverwriteExistingCache
+35/58 Test #35: ShaderCacheManagerTest.OverwriteExistingCache .........................   Passed    0.12 sec
+      Start 36: ShaderCacheManagerTest.TruncatedCacheMissesAndCanBeRebuilt
+36/58 Test #36: ShaderCacheManagerTest.TruncatedCacheMissesAndCanBeRebuilt ............   Passed    0.11 sec
+      Start 37: ShaderCacheManagerTest.DifferentKeysStoreSeparately
+37/58 Test #37: ShaderCacheManagerTest.DifferentKeysStoreSeparately ...................   Passed    0.09 sec
+      Start 38: ShaderCacheManagerTest.EmptyKeyShouldFail
+38/58 Test #38: ShaderCacheManagerTest.EmptyKeyShouldFail .............................   Passed    0.12 sec
+      Start 39: ShaderCacheManagerTest.HasCacheEntryReturnsTrue
+39/58 Test #39: ShaderCacheManagerTest.HasCacheEntryReturnsTrue .......................   Passed    0.11 sec
+      Start 40: ShaderCacheManagerTest.HasCacheEntryReturnsFalse
+40/58 Test #40: ShaderCacheManagerTest.HasCacheEntryReturnsFalse ......................   Passed    0.01 sec
+      Start 41: ShaderCacheManagerTest.InvalidateRemovesCache
+41/58 Test #41: ShaderCacheManagerTest.InvalidateRemovesCache .........................   Passed    0.11 sec
+      Start 42: ShaderCacheManagerTest.InvalidateNonExistentKeyDoesNotCrash
+42/58 Test #42: ShaderCacheManagerTest.InvalidateNonExistentKeyDoesNotCrash ...........   Passed    0.01 sec
+      Start 43: ShaderCacheManagerTest.ClearRemovesAllCaches
+43/58 Test #43: ShaderCacheManagerTest.ClearRemovesAllCaches ..........................   Passed    0.11 sec
+      Start 44: ShaderCacheManagerTest.CachePersistsAcrossInstances
+44/58 Test #44: ShaderCacheManagerTest.CachePersistsAcrossInstances ...................   Passed    0.10 sec
+      Start 45: ShaderCacheManagerTest.StoreEmptySpirvShouldFail
+45/58 Test #45: ShaderCacheManagerTest.StoreEmptySpirvShouldFail ......................   Passed    0.01 sec
+      Start 46: ShaderCacheManagerTest.InvalidCacheDirectoryHandling
+46/58 Test #46: ShaderCacheManagerTest.InvalidCacheDirectoryHandling ..................   Passed    0.11 sec
+      Start 47: ShaderCacheManagerTest.StoreMultipleShadersQuickly
+47/58 Test #47: ShaderCacheManagerTest.StoreMultipleShadersQuickly ....................   Passed    0.13 sec
+      Start 48: ShaderCacheManagerTest.CacheFilesCreatedOnDisk
+48/58 Test #48: ShaderCacheManagerTest.CacheFilesCreatedOnDisk ........................   Passed    0.11 sec
+      Start 49: SdiLifecycleTest.GeneratedCppFilesUseDotGInfix
+49/58 Test #49: SdiLifecycleTest.GeneratedCppFilesUseDotGInfix ........................   Passed    0.01 sec
+      Start 50: SdiLifecycleTest.BuildCompleteShaderBundleWithSDI
+50/58 Test #50: SdiLifecycleTest.BuildCompleteShaderBundleWithSDI .....................   Passed    0.13 sec
+      Start 51: SdiLifecycleTest.ValidateSdiContentStructure
+51/58 Test #51: SdiLifecycleTest.ValidateSdiContentStructure ..........................   Passed    0.14 sec
+      Start 52: SdiLifecycleTest.RegisterShaderInSDIRegistry
+52/58 Test #52: SdiLifecycleTest.RegisterShaderInSDIRegistry ..........................   Passed    0.11 sec
+      Start 53: SdiLifecycleTest.UpdateShaderAndRegenerateSdi
+53/58 Test #53: SdiLifecycleTest.UpdateShaderAndRegenerateSdi .........................   Passed    0.14 sec
+      Start 54: SdiLifecycleTest.HandleInvalidShaderGracefully
+54/58 Test #54: SdiLifecycleTest.HandleInvalidShaderGracefully ........................   Passed    0.01 sec
+      Start 55: SdiLifecycleTest.BuildVertexShaderOnly
+55/58 Test #55: SdiLifecycleTest.BuildVertexShaderOnly ................................   Passed    0.12 sec
+      Start 56: ShaderPreprocessorTest.GuardedFileIncludedTwiceNonNestedSucceeds
+56/58 Test #56: ShaderPreprocessorTest.GuardedFileIncludedTwiceNonNestedSucceeds ......   Passed    0.01 sec
+      Start 57: ShaderPreprocessorTest.TrueCircularIncludeStillDetected
+57/58 Test #57: ShaderPreprocessorTest.TrueCircularIncludeStillDetected ...............   Passed    0.01 sec
+      Start 58: sdi_merged_drift_check
+58/58 Test #58: sdi_merged_drift_check ................................................   Passed    5.85 sec
+
+100% tests passed, 0 tests failed out of 57
+
+Total Test time (real) =   9.94 sec
+
+The following tests did not run:
+	 27 - ShaderCompilerTest.ValidateSpirvSuccess (Disabled)

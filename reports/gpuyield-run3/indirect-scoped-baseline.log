@@ -1,0 +1,20 @@
+[box:flow] run3-indirect-scoped-baseline cpu=39% target=90% depth=2 free=0 baseline=2 granted=1 mode=static
+[box:flow] run3-indirect-scoped-baseline queued — need=1 tokens projected=270MB estimate=class samples=1352
+[box:flow] run3-indirect-scoped-baseline cpu=21% target=90% admit
+[box:flow] run3-indirect-scoped-baseline memory=admit avail=70115MB projected=270MB estimate=class samples=1352 reserved=23985MB total=80425MB reserve=4096MB disk=533122MB
+[box:flow] run3-indirect-scoped-baseline granted tokens=3 mask=6,7
+[box:flow] run3-indirect-scoped-baseline running on cores 6,7 (test)
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+    Start 1226: RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle
+1/2 Test #1226: RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle .....   Passed    0.61 sec
+    Start 1228: RecipeMultiBucketCompositingTest.OverlappingHotRecipesCompositeCorrectlyBothOrderings
+2/2 Test #1228: RecipeMultiBucketCompositingTest.OverlappingHotRecipesCompositeCorrectlyBothOrderings ...   Passed    0.53 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+RenderGraph    =   1.14 sec*proc (2 tests)
+
+Total Test time (real) =   1.57 sec
+UT_JOB_DONE test run3-indirect-scoped-baseline exit=0 state=OK

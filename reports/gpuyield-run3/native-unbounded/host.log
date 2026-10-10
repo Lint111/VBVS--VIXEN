@@ -1,0 +1,41 @@
+[CacheCodec] Rejected ShaderModuleCacher at C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/runtime-cache\devices\Device_0x1002008014e1\ShaderModuleCacher.cache: file size is outside the envelope bounds (will rebuild)
+[2026-10-10 22:36:51] [INFO] [Builder] Preprocessing shader source with 6 include paths
+[2026-10-10 22:36:51] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:51] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\BodyInstanceRayMarchNames.g.h
+[2026-10-10 22:36:51] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch (265ms)
+[CacheCodec] Rejected VoxelSceneCacher at C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/runtime-cache\devices\Device_0x1002008014e1\VoxelSceneCacher.cache: cache envelope magic mismatch (will rebuild)
+[2026-10-10 22:36:52] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:52] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:52] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\DirectLightingNames.g.h
+[2026-10-10 22:36:52] [INFO] [Builder] Shader bundle build completed successfully: DirectLighting (79ms)
+[2026-10-10 22:36:52] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:52] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\SpatialReuseShadeNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: SpatialReuseShade (64ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ProbeGatherNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: ProbeGather (106ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ShadowRayTraceNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: ShadowRayTrace (73ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ProbeApplyNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: ProbeApply (6ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ShadowVisibilityWaveNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: ShadowVisibilityWave (91ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\HiZDownsampleNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: HiZDownsample (3ms)
+[2026-10-10 22:36:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:36:53] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 22:36:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\InstanceOcclusionCullNames.g.h
+[2026-10-10 22:36:53] [INFO] [Builder] Shader bundle build completed successfully: InstanceOcclusionCull (7ms)
+[CacheCodec] Rejected DescriptorCacher at C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/runtime-cache\devices\Device_0x1002008014e1\DescriptorCacher.cache: file size is outside the envelope bounds (will rebuild)
+[CacheCodec] Rejected RenderPassCacher at C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/runtime-cache\devices\Device_0x1002008014e1\RenderPassCacher.cache: file size is outside the envelope bounds (will rebuild)
+[ui-host] mounted 'building' (handle 1, 500x500)

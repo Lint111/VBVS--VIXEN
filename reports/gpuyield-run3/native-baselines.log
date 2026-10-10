@@ -1,0 +1,811 @@
+[box:flow] run3-native-unbounded-and-retired cpu=15% target=90% depth=1 free=6 baseline=15 granted=15 mode=static
+[box:turn] gpuyield yielding to its queued run3-canonical-shell-bytes (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% depth=1 free=6 baseline=15 granted=15 mode=static
+[box:flow] run3-native-unbounded-and-retired queued — need=15 tokens projected=357MB estimate=class samples=86
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71937MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532360MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71559MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532360MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71492MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532360MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71969MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532359MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71947MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532359MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71673MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532359MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71384MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532359MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71759MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532359MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72270MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532358MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72551MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532358MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72488MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532358MB
+[box:flow] run3-native-unbounded-and-retired cpu=19% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72741MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532358MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72998MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72521MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72363MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72050MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71787MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71760MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532355MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72016MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532354MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71798MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532354MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71961MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532354MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71939MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532354MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71670MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532354MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72200MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72059MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71837MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71678MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71505MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71363MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71979MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532353MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71982MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71500MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71375MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71179MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71540MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71306MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70990MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70863MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70673MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532352MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71442MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532351MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71200MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532351MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72403MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72032MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71606MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71451MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71142MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70996MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70918MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70769MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70587MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532350MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71692MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532349MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71541MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532349MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71257MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532349MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71858MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532348MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71431MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532348MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72027MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532347MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71782MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532347MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71420MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532347MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71195MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532347MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71217MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70956MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70680MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71383MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71082MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70643MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532346MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70938MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71007MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71359MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71184MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70793MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70512MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532345MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70943MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532344MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70539MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532344MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70940MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532344MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70843MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532344MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70572MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532344MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71197MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532343MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70738MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532343MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70830MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532343MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70679MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532328MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70251MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532328MB
+[box:flow] run3-native-unbounded-and-retired cpu=33% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70168MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532327MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70668MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532327MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70475MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532327MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70195MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532327MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70748MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532327MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70374MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532326MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70181MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532326MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70660MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532326MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70228MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532326MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70675MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70359MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70135MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71057MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70901MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70649MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71053MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532325MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70675MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532324MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70489MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532324MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70310MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532324MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70149MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532324MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70607MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532324MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70178MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532323MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69945MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532322MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70305MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532321MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70100MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532317MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69812MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532313MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69602MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532312MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70553MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532312MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71132MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532311MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71547MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71745MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71424MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71194MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70976MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70711MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532272MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71113MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532271MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70742MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532271MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70367MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70165MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70044MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70018MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69966MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69847MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70641MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532270MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70754MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532269MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71573MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532269MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72045MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72270MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71898MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71651MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71526MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71435MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71211MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532268MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71441MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532267MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71096MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532267MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70921MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532267MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71064MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532267MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70789MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532267MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71389MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532266MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71098MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532266MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70973MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532266MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70843MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532266MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70901MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532266MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71626MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532265MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71262MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532265MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71144MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532265MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70695MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532265MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70485MB projected=357MB estimate=class samples=86 reserved=17070MB total=80425MB reserve=4096MB disk=532265MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71182MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532253MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71199MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532253MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70691MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532253MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70210MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532253MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69994MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532253MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70188MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69660MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69313MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68599MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68209MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68239MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67472MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532252MB
+[box:flow] run3-native-unbounded-and-retired cpu=43% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67607MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532251MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68291MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532251MB
+[box:flow] run3-native-unbounded-and-retired cpu=45% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68790MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532251MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67972MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532251MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67771MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532251MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67907MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68010MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68600MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67998MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67505MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67300MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66872MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532250MB
+[box:flow] run3-native-unbounded-and-retired cpu=49% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67272MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532249MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66640MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532249MB
+[box:flow] run3-native-unbounded-and-retired cpu=51% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66175MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532249MB
+[box:flow] run3-native-unbounded-and-retired cpu=52% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66190MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532249MB
+[box:flow] run3-native-unbounded-and-retired cpu=56% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66035MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532247MB
+[box:flow] run3-native-unbounded-and-retired cpu=59% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65759MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532247MB
+[box:flow] run3-native-unbounded-and-retired cpu=49% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66426MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532247MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67013MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532245MB
+[box:flow] run3-native-unbounded-and-retired cpu=46% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66376MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532238MB
+[box:flow] run3-native-unbounded-and-retired cpu=54% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65805MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532236MB
+[box:flow] run3-native-unbounded-and-retired cpu=68% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65424MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532236MB
+[box:flow] run3-native-unbounded-and-retired cpu=66% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65022MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532236MB
+[box:flow] run3-native-unbounded-and-retired cpu=65% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66330MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532235MB
+[box:flow] run3-native-unbounded-and-retired cpu=57% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65850MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532219MB
+[box:flow] run3-native-unbounded-and-retired cpu=68% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66401MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532219MB
+[box:flow] run3-native-unbounded-and-retired cpu=68% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66500MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532219MB
+[box:flow] run3-native-unbounded-and-retired cpu=59% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65864MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532219MB
+[box:flow] run3-native-unbounded-and-retired cpu=52% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65365MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532219MB
+[box:flow] run3-native-unbounded-and-retired cpu=48% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65470MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532218MB
+[box:flow] run3-native-unbounded-and-retired cpu=45% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65172MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532218MB
+[box:flow] run3-native-unbounded-and-retired cpu=54% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65713MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532218MB
+[box:flow] run3-native-unbounded-and-retired cpu=43% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65385MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532218MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64994MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532218MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65231MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532193MB
+[box:flow] run3-native-unbounded-and-retired cpu=42% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64818MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532192MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65038MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532192MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64888MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532191MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65332MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=532107MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65472MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531972MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65532MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531902MB
+[box:flow] run3-native-unbounded-and-retired cpu=57% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65170MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531734MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64741MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531674MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64694MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531600MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66080MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531545MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65624MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531545MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65295MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531544MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65047MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531544MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64779MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531544MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64891MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531543MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64668MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531543MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65457MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531542MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65104MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531541MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64737MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531541MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64575MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531541MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64519MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531525MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64939MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531524MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64759MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531524MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64721MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531524MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64603MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531523MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64548MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531523MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65163MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531523MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66252MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531521MB
+[box:flow] run3-native-unbounded-and-retired cpu=33% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66050MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531520MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65969MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531520MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67197MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531521MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67349MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531519MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67953MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531519MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67758MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531518MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67587MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531518MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67685MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531516MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67584MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531516MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68005MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531516MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67833MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531516MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67650MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531516MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67552MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531483MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67403MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531410MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67386MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531342MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67204MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531340MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67124MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531313MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67282MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531313MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66937MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531313MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66415MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531313MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65872MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531313MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65829MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531312MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65654MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531320MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65480MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531323MB
+[box:flow] run3-native-unbounded-and-retired cpu=55% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64935MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531323MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64975MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531322MB
+[box:flow] run3-native-unbounded-and-retired cpu=44% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64500MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531322MB
+[box:flow] run3-native-unbounded-and-retired cpu=53% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=63770MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531322MB
+[box:flow] run3-native-unbounded-and-retired cpu=44% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64071MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531322MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64352MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531321MB
+[box:flow] run3-native-unbounded-and-retired cpu=33% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64472MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531320MB
+[box:flow] run3-native-unbounded-and-retired cpu=46% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66564MB projected=357MB estimate=class samples=86 reserved=23925MB total=80425MB reserve=4096MB disk=531317MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66623MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=531315MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66237MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532128MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65927MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532134MB
+[box:flow] run3-native-unbounded-and-retired cpu=38% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66326MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532134MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66192MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66093MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65789MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=32% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65492MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=33% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65046MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64714MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64482MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64323MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64362MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532132MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64649MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=33% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64377MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64166MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64473MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64384MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64308MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=31% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64183MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64077MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64197MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64085MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64020MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64087MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64016MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=63962MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532130MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=63810MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532129MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=63807MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532129MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65233MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532129MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65515MB projected=357MB estimate=class samples=86 reserved=20639MB total=80425MB reserve=4096MB disk=532113MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65302MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532113MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65159MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532113MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64996MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532113MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64928MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531981MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64838MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64750MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65220MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=65279MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64995MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64936MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=64785MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531913MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66876MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531938MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66958MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531911MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67896MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=531911MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67499MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67261MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67056MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66984MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=66792MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67430MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67245MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532111MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68681MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68398MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68080MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68674MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68335MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=30% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67855MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67544MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67362MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68136MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67906MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=67351MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68120MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=68037MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69843MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532122MB
+[box:flow] run3-native-unbounded-and-retired cpu=22% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69578MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532112MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69257MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532122MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70442MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532131MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70026MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532110MB
+[box:flow] run3-native-unbounded-and-retired cpu=34% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70783MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532139MB
+[box:flow] run3-native-unbounded-and-retired cpu=41% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70511MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532155MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70179MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532146MB
+[box:flow] run3-native-unbounded-and-retired cpu=36% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69927MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532119MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69862MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532156MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69870MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532151MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69919MB projected=357MB estimate=class samples=86 reserved=21306MB total=80425MB reserve=4096MB disk=532129MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69768MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532144MB
+[box:flow] run3-native-unbounded-and-retired cpu=24% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69951MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532146MB
+[box:flow] run3-native-unbounded-and-retired cpu=29% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69818MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532154MB
+[box:flow] run3-native-unbounded-and-retired cpu=26% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69806MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532137MB
+[box:flow] run3-native-unbounded-and-retired cpu=25% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69852MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532153MB
+[box:flow] run3-native-unbounded-and-retired cpu=28% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69709MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532142MB
+[box:flow] run3-native-unbounded-and-retired cpu=19% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69530MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532146MB
+[box:flow] run3-native-unbounded-and-retired cpu=19% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69419MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532104MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69450MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532103MB
+[box:flow] run3-native-unbounded-and-retired cpu=12% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69472MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532087MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69498MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532015MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69578MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=532015MB
+[box:flow] run3-native-unbounded-and-retired cpu=10% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69615MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531844MB
+[box:flow] run3-native-unbounded-and-retired cpu=15% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=69615MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531815MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71771MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531814MB
+[box:flow] run3-native-unbounded-and-retired cpu=17% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71706MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=18% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71386MB projected=357MB estimate=class samples=86 reserved=20282MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71189MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=17% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71120MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70977MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=18% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71772MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531784MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71850MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531783MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71765MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531783MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71482MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531783MB
+[box:flow] run3-native-unbounded-and-retired cpu=37% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71274MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531783MB
+[box:flow] run3-native-unbounded-and-retired cpu=27% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71524MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531763MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72216MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531738MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72206MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531731MB
+[box:flow] run3-native-unbounded-and-retired cpu=19% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71977MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531725MB
+[box:flow] run3-native-unbounded-and-retired cpu=15% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71932MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531713MB
+[box:flow] run3-native-unbounded-and-retired cpu=19% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71884MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531702MB
+[box:flow] run3-native-unbounded-and-retired cpu=16% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71843MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531689MB
+[box:flow] run3-native-unbounded-and-retired cpu=12% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71728MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531678MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71771MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531666MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71738MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531655MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71703MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531643MB
+[box:flow] run3-native-unbounded-and-retired cpu=21% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71525MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531632MB
+[box:flow] run3-native-unbounded-and-retired cpu=23% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71336MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531619MB
+[box:flow] run3-native-unbounded-and-retired cpu=35% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71013MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531608MB
+[box:flow] run3-native-unbounded-and-retired cpu=43% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70731MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531596MB
+[box:flow] run3-native-unbounded-and-retired cpu=40% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70269MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531583MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=70028MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531567MB
+[box:flow] run3-native-unbounded-and-retired cpu=18% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71886MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531550MB
+[box:flow] run3-native-unbounded-and-retired cpu=17% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71832MB projected=357MB estimate=class samples=86 reserved=21761MB total=80425MB reserve=4096MB disk=531518MB
+[box:flow] run3-native-unbounded-and-retired cpu=39% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71595MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531506MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71509MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531495MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71474MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531484MB
+[box:flow] run3-native-unbounded-and-retired cpu=9% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=71459MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531471MB
+[box:flow] run3-native-unbounded-and-retired cpu=14% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72020MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531413MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72291MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531395MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72312MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531384MB
+[box:flow] run3-native-unbounded-and-retired cpu=13% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72317MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531371MB
+[box:flow] run3-native-unbounded-and-retired cpu=15% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72299MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531360MB
+[box:flow] run3-native-unbounded-and-retired cpu=17% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72465MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531345MB
+[box:flow] run3-native-unbounded-and-retired cpu=11% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=72454MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531334MB
+[box:flow] run3-native-unbounded-and-retired cpu=10% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=74694MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531320MB
+[box:flow] run3-native-unbounded-and-retired cpu=8% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=74710MB projected=357MB estimate=class samples=86 reserved=8334MB total=80425MB reserve=4096MB disk=531292MB
+[box:flow] run3-native-unbounded-and-retired cpu=9% target=90% admit
+[box:flow] run3-native-unbounded-and-retired memory=admit avail=74766MB projected=357MB estimate=class samples=86 reserved=0MB total=80425MB reserve=4096MB disk=531221MB
+[box:flow] run3-native-unbounded-and-retired granted tokens=0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 mask=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+[box:flow] run3-native-unbounded-and-retired running on cores 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29 (gpu)
+Native full producer: native-unbounded
+Native full-producer exit 
+At C:\vixen-native\gpuyield\.tmp\run-native-producer.ps1:18 char:24
++ ... ($p.ExitCode -ne 0){throw "Native full-producer exit $($p.ExitCode)"}
++                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Native full-producer exit :String) [], RuntimeException
+    + FullyQualifiedErrorId : Native full-producer exit 
+ 
+UT_JOB_FAILED gpu run3-native-unbounded-and-retired exit=1 log=/home/liory/.local/state/undertow/undertow-box-logs/1791655908-gpu-run3-native-unbounded-and-retired.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | Native full producer: native-unbounded
+  | Native full-producer exit 
+  | At C:\vixen-native\gpuyield\.tmp\run-native-producer.ps1:18 char:24
+  | + ... ($p.ExitCode -ne 0){throw "Native full-producer exit $($p.ExitCode)"}
+  | +                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  |     + CategoryInfo          : OperationStopped: (Native full-producer exit :String) [], RuntimeException
+  |     + FullyQualifiedErrorId : Native full-producer exit 
+  |  
+------------------------------
+UT_JOB_DONE gpu run3-native-unbounded-and-retired exit=1 state=PAYLOAD_FAIL
