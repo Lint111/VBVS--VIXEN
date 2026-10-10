@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "CapabilityGraph.h"
+#include "ConfiguredOptionalPath.h"
 
 TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureSet) {
     Vixen::CapabilityGraph graph;
@@ -14,6 +15,88 @@ TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureS
     graph.InvalidateAll();
     EXPECT_TRUE(graph.IsCapabilityAvailable(
         "DeviceFeature:fragmentStoresAndAtomics"));
+}
+
+TEST(VulkanResources_CapabilityGraph, BindingTimeAndTypedBuildFactsAreStoredOnGraphNodes) {
+    using namespace Vixen;
+    auto runtimeNode = std::make_shared<CompositeCapability>("RuntimeNode");
+    EXPECT_EQ(runtimeNode->GetBindingTime(), CapabilityBindingTime::Runtime);
+    runtimeNode->SetBindingTime(CapabilityBindingTime::BuildTime);
+    EXPECT_EQ(runtimeNode->GetBindingTime(), CapabilityBindingTime::BuildTime);
+
+    CapabilityGraph graph;
+    graph.RegisterBuildFact("BuildFact:Platform",
+        PlatformBuildFact{"Linux", "x86_64", "GNU", "15.2"});
+    const auto factNode = std::dynamic_pointer_cast<BuildFactCapability>(
+        graph.GetCapability("BuildFact:Platform"));
+    ASSERT_NE(factNode, nullptr);
+    ASSERT_TRUE(std::holds_alternative<PlatformBuildFact>(factNode->GetValue()));
+    EXPECT_EQ(factNode->GetBindingTime(), CapabilityBindingTime::BuildTime);
+}
+
+TEST(VulkanResources_CapabilityGraph, ConfiguredOptionalPathUsesBuildModeBinding) {
+    using namespace Vixen;
+    CapabilityGraph graph;
+    graph.RegisterCapability(std::make_shared<CompositeCapability>("RayQueryLighting"));
+
+    EXPECT_EQ(BuildCapabilityTraits<BuildCapabilityId::RayQueryLighting>::buildTime,
+              BuildCapabilities::kPersonalizedMode);
+    const auto path = ResolveConfiguredOptionalPath<BuildCapabilityId::RayQueryLighting>(graph);
+    if constexpr (BuildCapabilities::kPersonalizedMode &&
+                  BuildCapabilityTraits<BuildCapabilityId::RayQueryLighting>::buildTime) {
+        EXPECT_EQ(path == CapabilityPath::CapabilityEnabled,
+                  BuildCapabilities::kCapability_RayQueryLighting);
+    } else {
+        EXPECT_EQ(path, CapabilityPath::CapabilityEnabled)
+            << "full mode must preserve runtime CapabilityGraph resolution";
+    }
+}
+
+TEST(VulkanResources_CapabilityGraph, ConfiguredPathInvokesOnlyTheSelectedBody) {
+    using namespace Vixen;
+    CapabilityGraph graph;
+    graph.RegisterCapability(std::make_shared<CompositeCapability>("RayQueryLighting"));
+
+    bool enabledInvoked = false;
+    bool independentInvoked = false;
+    WithConfiguredOptionalPath<BuildCapabilityId::RayQueryLighting>(
+        graph, true,
+        [&] { enabledInvoked = true; },
+        [&] { independentInvoked = true; });
+
+    if constexpr (BuildCapabilities::kPersonalizedMode &&
+                  BuildCapabilityTraits<BuildCapabilityId::RayQueryLighting>::buildTime) {
+        EXPECT_EQ(enabledInvoked, BuildCapabilities::kCapability_RayQueryLighting);
+        EXPECT_EQ(independentInvoked, !BuildCapabilities::kCapability_RayQueryLighting);
+    } else {
+        EXPECT_TRUE(enabledInvoked);
+        EXPECT_FALSE(independentInvoked);
+    }
+}
+
+TEST(VulkanResources_CapabilityGraph, ConfiguredDeviceIdentityRejectsChangedDeviceOrDriver) {
+    using namespace Vixen;
+    if constexpr (!BuildCapabilities::kPersonalizedMode || !BuildCapabilities::kHasDeviceIdentity) {
+        GTEST_SKIP() << "full mode has no device identity bound at configure";
+    } else {
+        DeviceDriverIdentityBuildFact identity{};
+        identity.deviceName = BuildCapabilities::kDeviceName;
+        identity.driverName = BuildCapabilities::kDriverName;
+        identity.driverInfo = BuildCapabilities::kDriverInfo;
+        identity.vendorId = BuildCapabilities::kVendorId;
+        identity.deviceId = BuildCapabilities::kDeviceId;
+        identity.driverVersion = BuildCapabilities::kDriverVersion;
+        identity.driverId = BuildCapabilities::kDriverId;
+        identity.deviceUuid = BuildCapabilities::kDeviceUuid;
+        identity.driverUuid = BuildCapabilities::kDriverUuid;
+        EXPECT_TRUE(CapabilityGraph::MatchesConfiguredDeviceIdentity(identity));
+
+        identity.driverVersion ^= 1u;
+        std::string refusal;
+        EXPECT_FALSE(CapabilityGraph::MatchesConfiguredDeviceIdentity(identity, &refusal));
+        EXPECT_NE(refusal.find("expected"), std::string::npos);
+        EXPECT_NE(refusal.find(std::string(BuildCapabilities::kDeviceName)), std::string::npos);
+    }
 }
 
 TEST(VulkanResources_CapabilityGraph, OptionalPathUsesIndependentTwinWhenDisabledOrUnavailable) {

@@ -9,10 +9,19 @@
 #include <unordered_map>
 #include <memory>
 #include <optional>
+#include <utility>
+#include <variant>
 
 namespace Vixen {
 
 class CapabilityGraph;  // owning graph; leaf nodes consult its availability sets (AR#8 — was statics)
+
+/// When the configure contract decides a graph node. Full builds keep every node runtime-bound;
+/// personalized builds bind the graph to the facts captured for that device.
+enum class CapabilityBindingTime : uint8_t {
+    Runtime,
+    BuildTime,
+};
 
 /**
  * @brief Base class for GPU capability nodes
@@ -22,11 +31,17 @@ class CapabilityGraph;  // owning graph; leaf nodes consult its availability set
  */
 class CapabilityNode {
 public:
-    explicit CapabilityNode(const std::string& name) : name_(name) {}
+    explicit CapabilityNode(const std::string& name,
+                            CapabilityBindingTime bindingTime = CapabilityBindingTime::Runtime)
+        : name_(name), bindingTime_(bindingTime) {}
     virtual ~CapabilityNode() = default;
 
     /// Get capability name
     const std::string& GetName() const { return name_; }
+
+    /// The decision point declared for this node in the active build mode.
+    CapabilityBindingTime GetBindingTime() const noexcept { return bindingTime_; }
+    void SetBindingTime(CapabilityBindingTime bindingTime) noexcept { bindingTime_ = bindingTime; }
 
     /// Check if this capability is available (cached)
     bool IsAvailable() const {
@@ -74,8 +89,62 @@ protected:
 
 private:
     std::string name_;
+    CapabilityBindingTime bindingTime_;
     std::vector<std::shared_ptr<CapabilityNode>> dependencies_;
     mutable std::optional<bool> cachedResult_;
+};
+
+/// Typed facts recorded by the configure-time CapabilityGraph and embedded in personalized builds.
+struct PlatformBuildFact {
+    std::string systemName;
+    std::string architecture;
+    std::string compilerId;
+    std::string compilerVersion;
+};
+
+struct ProductVariantBuildFact {
+    std::string variant;
+};
+
+struct QueueFamilyBuildFact {
+    std::string role;
+    uint32_t index = 0;
+    VkQueueFlags flags = 0;
+    uint32_t queueCount = 0;
+};
+
+struct DeviceDriverIdentityBuildFact {
+    std::string deviceName;
+    std::string driverName;
+    std::string driverInfo;
+    uint32_t vendorId = 0;
+    uint32_t deviceId = 0;
+    uint32_t driverVersion = 0;
+    uint32_t driverId = 0;
+    std::array<uint8_t, VK_UUID_SIZE> deviceUuid{};
+    std::array<uint8_t, VK_UUID_SIZE> driverUuid{};
+};
+
+using CapabilityBuildFact = std::variant<PlatformBuildFact,
+                                         ProductVariantBuildFact,
+                                         QueueFamilyBuildFact,
+                                         DeviceDriverIdentityBuildFact>;
+
+/// One typed node family for configure facts. The variant's active type identifies the fact kind;
+/// the node name supplies graph identity and the stored value carries its typed payload.
+class BuildFactCapability final : public CapabilityNode {
+public:
+    BuildFactCapability(const std::string& name, CapabilityBuildFact value,
+                        CapabilityBindingTime bindingTime = CapabilityBindingTime::BuildTime)
+        : CapabilityNode(name, bindingTime), value_(std::move(value)) {}
+
+    [[nodiscard]] const CapabilityBuildFact& GetValue() const noexcept { return value_; }
+
+protected:
+    bool CheckAvailability() const override { return true; }
+
+private:
+    CapabilityBuildFact value_;
 };
 
 /**
@@ -322,6 +391,27 @@ public:
 
     /// Build standard Vulkan capability graph
     void BuildStandardCapabilities();
+
+    /// Record the selected physical device, its queue families, extensions and supported features.
+    void ObservePhysicalDevice(VkPhysicalDevice physicalDevice);
+
+    /// Shared feature query used by both configure-time graph evaluation and VulkanDevice setup.
+    [[nodiscard]] std::vector<std::string> QuerySupportedDeviceFeatures(
+        VkPhysicalDevice physicalDevice) const;
+
+    void RegisterBuildFact(const std::string& name, CapabilityBuildFact value,
+                           CapabilityBindingTime bindingTime = CapabilityBindingTime::BuildTime);
+    void SetAllBindingTimes(CapabilityBindingTime bindingTime) noexcept;
+
+    /// Emit the constexpr configuration from the graph's current binding and availability values.
+    void GenerateBuildConfigHeader(const std::string& path, bool personalized) const;
+
+    /// Compare a candidate adapter and graphics queue with the identity recorded by configure.
+    [[nodiscard]] static bool MatchesConfiguredDeviceIdentity(
+        const DeviceDriverIdentityBuildFact& actual, std::string* mismatchReason = nullptr);
+    [[nodiscard]] static bool MatchesConfiguredPhysicalDevice(
+        VkPhysicalDevice physicalDevice, std::string* mismatchReason = nullptr);
+    [[nodiscard]] static bool IsConfiguredGraphicsQueueFamily(uint32_t queueFamily) noexcept;
 
     /// Invalidate all cached results (call when device/instance changes)
     void InvalidateAll();

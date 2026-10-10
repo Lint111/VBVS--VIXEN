@@ -5,6 +5,7 @@
 #include "Core/RenderGraph.h"
 #include "IRenderTarget.h"
 #include "VulkanDevice.h"
+#include "ConfiguredOptionalPath.h"
 
 #include <algorithm>
 #include <bit>
@@ -49,13 +50,17 @@ void ProxyRasterStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     SetDevice(device);
     const bool forceComputeWriter = GetParameterValue<bool>(
         ProxyRasterStageNodeConfig::PARAM_FORCE_COMPUTE_WRITER, false);
-    const auto writerPath = device->GetCapabilityGraph().ResolveOptionalPath(
-        "DeviceFeature:fragmentStoresAndAtomics", !forceComputeWriter);
-    useFragmentWriter_ = writerPath == Vixen::CapabilityPath::CapabilityEnabled;
-
-    const VkPipeline selectedPipeline = useFragmentWriter_
-        ? ctx.In(ProxyRasterStageNodeConfig::PIPELINE)
-        : ctx.In(ProxyRasterStageNodeConfig::COMPUTE_PIPELINE);
+    const VkPipeline selectedPipeline = Vixen::WithConfiguredOptionalPath<
+        Vixen::BuildCapabilityId::FragmentStoresAndAtomics>(
+        device->GetCapabilityGraph(), !forceComputeWriter,
+        [&]() -> VkPipeline {
+            useFragmentWriter_ = true;
+            return ctx.In(ProxyRasterStageNodeConfig::PIPELINE);
+        },
+        [&]() -> VkPipeline {
+            useFragmentWriter_ = false;
+            return ctx.In(ProxyRasterStageNodeConfig::COMPUTE_PIPELINE);
+        });
     if (selectedPipeline == VK_NULL_HANDLE) {
         throw std::runtime_error(
             std::string("[ProxyRasterStageNode] selected ") +
