@@ -29,6 +29,18 @@ public:
         if (commands && elapsedNs > 0)
             fixedNs_ = std::max(fixedNs_, (elapsedNs * 1.1 - unitNs_ * units) / commands);
     }
+    // R503: the learned envelope is persisted per device and extent through the
+    // node's task profile, so a run starts warm. Plain values, no new store.
+    [[nodiscard]] bool Calibrated() const { return anchorUnits_ != 0; }
+    [[nodiscard]] uint64_t AnchorUnits() const { return anchorUnits_; }
+    [[nodiscard]] double UnitNs() const { return unitNs_; }
+    [[nodiscard]] double FixedNs() const { return fixedNs_; }
+    void Import(uint64_t anchorUnits, double unitNs, double fixedNs) {
+        if (!anchorUnits || !(unitNs > 0) || !(fixedNs >= 0)) return;
+        anchorUnits_ = anchorUnits;
+        unitNs_ = unitNs;
+        fixedNs_ = fixedNs;
+    }
     uint64_t Estimate(uint64_t units) const {
         return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + unitNs_ * units)) : 0;
     }

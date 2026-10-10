@@ -14,6 +14,7 @@
 #include "Nodes/Common/SwapchainBarriers.h"
 
 namespace Vixen::RenderGraph {
+class SimpleTaskProfile;
 
 // DecideRenderTargetPriorLayoutAndUpdate (KI-007 fix) moved to
 // Nodes/Common/SwapchainBarriers.h (Sampled Lighting Inc3 M1) so ComputeStageNode's
@@ -127,7 +128,10 @@ private:
     std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
     std::array<uint32_t, 4> tileNominalWorkGroupCounts_{};
     std::array<uint32_t, 4> tileQueryCapacities_{};
+    std::array<std::string, 4> tileExtentKeys_;
     GpuChunkCost chunkCost_;
+    std::string chunkCalibrationKey_;   ///< R503: "WxH" workgroup extent the envelope was learned for.
+    SimpleTaskProfile* chunkProfile_ = nullptr;  ///< R503: persisted through CalibrationStore.
     bool canTile_ = false;
 
 

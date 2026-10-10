@@ -79,12 +79,19 @@ struct SubmitRecord {
     // Each primary command buffer is a separate queue submission. Consume waits
     // once, and publish signals/fence only after the final buffer. Queue order and
     // existing entry/exit barriers retain the original graph dependency contract.
-    // Retire prior queue work before each chunk: at most one submitted chunk is
-    // outstanding. The final semaphore/fence remains owned by the final chunk.
-    // The retirement function is the existing Vulkan queue primitive; its explicit
-    // parameter lets CPU contract tests observe ordering and propagate failures.
+    // R503: at most two submitted batches are outstanding on the queue, so one
+    // batch executes while the next is queued and a pass boundary no longer costs
+    // a host round trip. Worst queued work is two submission budgets (4 ms), inside
+    // R494's 4.17 ms desktop reserve. The final semaphore/fence remains owned by the
+    // final batch. The retirement function is the existing Vulkan queue primitive;
+    // its explicit parameter lets CPU contract tests observe ordering and propagate
+    // failures. `outstandingBatches` is the queue-wide count the drain owns across
+    // records; without it (the guarded direct path) the record assumes a full queue
+    // and retires before its first batch, as before.
+    static constexpr uint32_t kOutstandingBatchCap = 2;
     VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
-                    PFN_vkQueueWaitIdle retireFn = vkQueueWaitIdle) const;
+                    PFN_vkQueueWaitIdle retireFn = vkQueueWaitIdle,
+                    uint32_t* outstandingBatches = nullptr) const;
 
     static SubmitRecord FromSubmitInfo2(const VkSubmitInfo2& si, VkFence fence) {
         SubmitRecord r;

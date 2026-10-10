@@ -1,3 +1,4 @@
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/TraceRaysNode.h"
 #include "Core/NodeRegistration.h"
@@ -551,7 +552,8 @@ void TraceRaysNode::CollectTileTiming(uint32_t frame) {
         std::to_string(submissionBatches_[frame].size()) +
         " chunks=" + std::to_string(tileCounts_[frame]) + " total_gpu_ms=" + std::to_string(total) +
         " max_submission_ms=" + std::to_string(maximum) +
-        " budget_ms=" + std::to_string(tileBudgets_[frame] / 1.0e6));
+        " budget_ms=" + std::to_string(tileBudgets_[frame] / 1.0e6) +
+        " device_class=" + GpuDeviceClassName(vulkanDevice_->gpuProperties.deviceType));
 }
 
 void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {

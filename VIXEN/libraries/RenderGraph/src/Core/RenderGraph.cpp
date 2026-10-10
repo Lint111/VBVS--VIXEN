@@ -938,7 +938,8 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
             }
         } else {
             if (device && device->fpQueueSubmit2) {
-                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue);
+                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
+                                              vkQueueWaitIdle, &outstandingBatches_[device->queue]);
                 if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
             }
         }

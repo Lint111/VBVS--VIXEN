@@ -8,6 +8,7 @@
 #include <mutex>
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderDataBundle.h"
 #include "SpirvReflector.h"
@@ -158,6 +159,8 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.5: Register GPU task profile for cost estimation and learning
     std::string profileId = GetInstanceName() + "_gpu_dispatch";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
+    chunkProfile_ = dynamic_cast<SimpleTaskProfile*>(gpuProfile_);
+    chunkCalibrationKey_.clear();
     if (gpuProfile_) {
         RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[ComputeDispatchNode] Registered GPU profile: " + profileId);
@@ -257,6 +260,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         lastPipelineLayout = currentPipelineLayout;
         lastDescriptorSets = currentDescriptorSets;
         chunkCost_ = {};
+        chunkCalibrationKey_.clear();  // re-enter from the persisted envelope (R503)
     }
 
     // Calculate push constants (time updates every frame)
@@ -424,6 +428,11 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
                     tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
             }
         }
+        // R503: publish the learned envelope to the task profile; CalibrationStore
+        // persists it per device at shutdown, keyed by this flight's extent.
+        if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
+            chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
+                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs()});
         totalMs = 0;
         for (const auto& batch : submissionBatches_[frameIndex]) {
             const double elapsed = query->GetElapsedMs(0, batch.first * 4,
@@ -446,7 +455,8 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             " chunks=" + std::to_string(tileCounts_[frameIndex]) +
             " total_gpu_ms=" + std::to_string(totalMs) +
             " max_submission_ms=" + std::to_string(maximumMs) +
-            " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6));
+            " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
+            " device_class=" + GpuDeviceClassName(vulkanDevice->gpuProperties.deviceType));
     }
 
 }
@@ -493,6 +503,23 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
     const uint64_t budgetNs = std::max(uint64_t{1},
         std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
+    // R503: the envelope is learned per extent and persisted per device through the
+    // task profile, so a known resolution starts warm; a new one starts cold.
+    const std::string extentKey = std::to_string(dispatchX) + "x" + std::to_string(dispatchY);
+    if (extentKey != chunkCalibrationKey_) {
+        chunkCalibrationKey_ = extentKey;
+        chunkCost_ = {};
+        if (chunkProfile_) {
+            if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
+                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs);
+            }
+        }
+        NODE_LOG_INFO("[GPUYIELD_CALIBRATION] node=" + GetInstanceName() + " extent=" + extentKey +
+            (chunkCost_.Calibrated() ? " start=warm anchor_units=" + std::to_string(chunkCost_.AnchorUnits()) +
+                " unit_ns=" + std::to_string(chunkCost_.UnitNs()) + " fixed_ns=" + std::to_string(chunkCost_.FixedNs())
+                : std::string(" start=cold")));
+    }
+    tileExtentKeys_[frameIndex] = extentKey;
     const uint32_t edge = canTile_
         ? chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7)
         : std::max(1u, std::max(dispatchX, dispatchY));

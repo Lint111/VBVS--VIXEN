@@ -1,3 +1,4 @@
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/MultiDispatchNode.h"
 #include "Core/NodeRegistration.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
@@ -499,7 +500,8 @@ void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
         " submissions=" + std::to_string(chunkCounts_[slot]) +
         " total_gpu_ms=" + std::to_string(total) +
-        " max_submission_ms=" + std::to_string(peak) + " budget_ms=2.000000");
+        " max_submission_ms=" + std::to_string(peak) + " budget_ms=2.000000" +
+        " device_class=" + GpuDeviceClassName(vulkanDevice_->gpuProperties.deviceType));
 }
 
 std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(

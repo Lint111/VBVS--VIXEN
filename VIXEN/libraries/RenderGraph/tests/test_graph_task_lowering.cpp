@@ -431,7 +431,9 @@ TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
     failNativeRetire = -1;
     EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 3u);
-    EXPECT_LE(nativeMaximumOutstanding, 1);
+    // R503: the direct path assumes a full queue, retires, then keeps at most two outstanding.
+    EXPECT_EQ(nativeRetireCalls, 2);
+    EXPECT_LE(nativeMaximumOutstanding, static_cast<int>(SubmitRecord::kOutstandingBatchCap));
     EXPECT_EQ(nativeOutstanding, 1);  // the final chunk owns completion
 
     for (size_t i = 0; i < nativeSubmitCalls.size(); ++i) {
@@ -461,10 +463,40 @@ TEST(SubmitRecord, RetirementFailureStopsBeforeTheNextChunkAndFinalSignal) {
     nativeRetireCalls = 0;
     failNativeRetire = 2;
     EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_ERROR_DEVICE_LOST);
-    ASSERT_EQ(nativeSubmitCalls.size(), 1u);
-    EXPECT_EQ(nativeSubmitCalls[0].signals, 0u);
-    EXPECT_EQ(nativeSubmitCalls[0].fence, VK_NULL_HANDLE);
+    // R503: two chunks were queued before the failing retirement; the final chunk never ran.
+    ASSERT_EQ(nativeSubmitCalls.size(), 2u);
+    for (const auto& call : nativeSubmitCalls) {
+        EXPECT_EQ(call.signals, 0u);
+        EXPECT_EQ(call.fence, VK_NULL_HANDLE);
+    }
     failNativeRetire = -1;
+}
+
+TEST(SubmitRecord, DrainCounterKeepsTwoBatchesOutstandingAcrossRecords) {
+    // R503: with the queue-wide counter the second record's first batch follows the first
+    // record's batch without a host round trip; the third batch retires the queue.
+    SubmitRecord first, second;
+    for (uintptr_t i = 1; i <= 2; ++i) {
+        VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
+        (i == 1 ? first : second).commandBuffers.push_back(command);
+    }
+    VkCommandBufferSubmitInfo third{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    third.commandBuffer = reinterpret_cast<VkCommandBuffer>(uintptr_t(3));
+    second.commandBuffers.push_back(third);
+    second.commandCostUpperBoundsNs = {2'000'000, 2'000'000};  // two batches
+    nativeSubmitCalls.clear();
+    nativeRetireCalls = nativeOutstanding = nativeMaximumOutstanding = 0;
+    failNativeSubmit = failNativeRetire = -1;
+    uint32_t outstanding = 0;
+    ASSERT_EQ(first.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire, &outstanding), VK_SUCCESS);
+    EXPECT_EQ(nativeRetireCalls, 0);
+    EXPECT_EQ(outstanding, 1u);
+    ASSERT_EQ(second.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire, &outstanding), VK_SUCCESS);
+    ASSERT_EQ(nativeSubmitCalls.size(), 3u);
+    EXPECT_EQ(nativeRetireCalls, 1);  // only before the third batch
+    EXPECT_EQ(nativeMaximumOutstanding, 2);
+    EXPECT_EQ(outstanding, 1u);
 }
 
 TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
@@ -495,7 +527,8 @@ TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
     EXPECT_EQ(nativeSubmitCalls[1].waits, 0u);
     EXPECT_EQ(nativeSubmitCalls[1].signals, 3u);
     EXPECT_EQ(nativeSubmitCalls[1].fence, record.fence);
-    EXPECT_EQ(nativeMaximumOutstanding, 1);
+    EXPECT_EQ(nativeMaximumOutstanding, 2);  // R503: both batches queued after one retirement
+    EXPECT_EQ(nativeRetireCalls, 1);
 }
 
 TEST(SubmitRecord, UnknownOrMissingCostReservesAWholeSubmission) {
@@ -585,6 +618,25 @@ TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
     EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
     cost.Observe(16, 16, 1'000'000);
     EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+}
+
+TEST(GpuChunkCost, ImportedEnvelopeStartsWarmAndRejectsEmptyState) {
+    // R503: a persisted envelope reproduces the learned launch; an empty or invalid
+    // record leaves the model cold.
+    GpuChunkCost learned;
+    learned.Observe(14400, 14400, 1'680'000);
+    learned.Observe(1800, 14400, 900'000);
+    GpuChunkCost warm;
+    warm.Import(learned.AnchorUnits(), learned.UnitNs(), learned.FixedNs());
+    EXPECT_TRUE(warm.Calibrated());
+    EXPECT_EQ(warm.Edge(2'000'000, 240, 7), learned.Edge(2'000'000, 240, 7));
+    EXPECT_EQ(warm.Estimate(14400), learned.Estimate(14400));
+    GpuChunkCost cold;
+    cold.Import(0, 0.0, 0.0);
+    EXPECT_FALSE(cold.Calibrated());
+    cold.Import(49, -1.0, 0.0);
+    EXPECT_FALSE(cold.Calibrated());
+    EXPECT_EQ(cold.Edge(2'000'000, 63, 7), 7u);
 }
 
 TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {

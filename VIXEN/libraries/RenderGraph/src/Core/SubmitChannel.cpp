@@ -27,7 +27,8 @@ std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
 }
 
 VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
-                              PFN_vkQueueWaitIdle retireFn) const {
+                              PFN_vkQueueWaitIdle retireFn,
+                              uint32_t* outstandingBatches) const {
     const bool trace = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
     using Clock = std::chrono::steady_clock;
     const auto ticks = [](Clock::time_point time) {
@@ -36,14 +37,19 @@ VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
     };
     const auto batches = SubmissionBatches();
     const std::size_t count = batches.size();
+    uint32_t assumedFull = kOutstandingBatchCap;
+    uint32_t& outstanding = outstandingBatches ? *outstandingBatches : assumedFull;
     for (std::size_t i = 0; i < count; ++i) {
-        const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
-        const VkResult retired = retireFn(queue);
-        if (trace) {
-            std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
-                i, count, ticks(retireStarted), ticks(Clock::now()), static_cast<int>(retired));
+        if (outstanding >= kOutstandingBatchCap) {
+            const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
+            const VkResult retired = retireFn(queue);
+            if (trace) {
+                std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
+                    i, count, ticks(retireStarted), ticks(Clock::now()), static_cast<int>(retired));
+            }
+            if (retired != VK_SUCCESS) return retired;
+            outstanding = 0;
         }
-        if (retired != VK_SUCCESS) return retired;
 
         VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
         if (i == 0) {
@@ -66,6 +72,7 @@ VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
                 i, count, ticks(started), ticks(Clock::now()), static_cast<int>(result));
         }
         if (result != VK_SUCCESS) return result;
+        ++outstanding;
     }
     return VK_SUCCESS;
 }

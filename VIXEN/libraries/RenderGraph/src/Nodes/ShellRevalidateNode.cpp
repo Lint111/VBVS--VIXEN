@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Surface-Shell ESVO cache — GPU dispatch of shaders/ShellDerive.comp.
 
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/ShellRevalidateNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
@@ -394,7 +395,8 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" + std::to_string(chunks) +
-        " total_gpu_ms=" + std::to_string(totalMs) + " max_submission_ms=" + std::to_string(maximumMs) + " budget_ms=2.000000");
+        " total_gpu_ms=" + std::to_string(totalMs) + " max_submission_ms=" + std::to_string(maximumMs) + " budget_ms=2.000000" +
+        " device_class=" + GpuDeviceClassName(vulkanDevice_->gpuProperties.deviceType));
     ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, layers % 2 == 0 ? shellFlagsBuffer_ : previousFlagsBuffer_);
 }
 
