@@ -1,5 +1,6 @@
 #include "Headers.h"
 #include <cstdlib>  // std::getenv for VIXEN_PIPELINE_STATS
+#include "ConfiguredOptionalPath.h"
 #include "Nodes/DeviceNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -212,7 +213,24 @@ bool DeviceNode::IsDiscreteGPU(VkPhysicalDevice gpu) {
 void DeviceNode::SelectPhysicalDevice() {
     std::string selectionReason;
 
-    if (selectedGPUIndex == DeviceNodeConfig::GPU_INDEX_AUTO) {
+    if constexpr (Vixen::BuildCapabilities::kPersonalizedMode) {
+        bool matched = false;
+        std::string mismatchReason;
+        for (uint32_t i = 0; i < availableGPUs.size(); ++i) {
+            if (Vixen::CapabilityGraph::MatchesConfiguredPhysicalDevice(
+                    availableGPUs[i], &mismatchReason)) {
+                selectedGPUIndex = i;
+                selectionReason = "matched the device and driver recorded by this personalized build";
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            throw std::runtime_error(
+                "This personalized VIXEN build cannot run on the detected device/driver (" +
+                mismatchReason + "). Rebuild this application for this device and driver.");
+        }
+    } else if (selectedGPUIndex == DeviceNodeConfig::GPU_INDEX_AUTO) {
         // No explicit preference: prefer the first discrete GPU, if any.
         selectedGPUIndex = 0;
         bool foundDiscrete = false;
@@ -268,6 +286,14 @@ void DeviceNode::CreateLogicalDevice() {
         return;
     }
 
+    if constexpr (Vixen::BuildCapabilities::kPersonalizedMode) {
+        if (!Vixen::CapabilityGraph::IsConfiguredGraphicsQueueFamily(queueResult.value())) {
+            throw std::runtime_error(
+                "This personalized VIXEN build's recorded graphics queue family no longer matches "
+                "the selected device. Rebuild this application for this device and driver.");
+        }
+    }
+
     NODE_LOG_INFO("[DeviceNode] Graphics queue family index: " + std::to_string(queueResult.value()));
 
     // Get physical device properties and memory properties
@@ -290,12 +316,14 @@ void DeviceNode::CreateLogicalDevice() {
     // extension prerequisites; VulkanDevice republishes the actually-enabled set after creation.
     auto& capabilityGraph = vulkanDevice->GetCapabilityGraph();
     capabilityGraph.BuildStandardCapabilities();
-    std::vector<std::string> availableExtensionNames;
-    availableExtensionNames.reserve(availableExts.size());
-    for (const auto& ext : availableExts) {
-        availableExtensionNames.emplace_back(ext.extensionName);
+    capabilityGraph.ObservePhysicalDevice(selectedGPU);
+    if constexpr (Vixen::BuildCapabilities::kPersonalizedMode) {
+        if (!capabilityGraph.IsCapabilityAvailable("VulkanApi:RequiredFloor")) {
+            throw std::runtime_error(
+                "This device is below the Vulkan API minimum required by this application. "
+                "Update the driver or rebuild for a device that meets the declared minimum.");
+        }
     }
-    capabilityGraph.SetAvailableDeviceExtensions(std::move(availableExtensionNames));
 
     auto hasExt = [&availableExts](const char* name) {
         for (const auto& ext : availableExts) {
@@ -343,63 +371,62 @@ void DeviceNode::CreateLogicalDevice() {
     // from the enabled AS/ray-query/BDA leaves; the pipeline extension is not part of
     // that tier and must not be an accidental prerequisite.
     auto rayQueryLightingExtensions = VulkanDevice::GetRayQueryLightingExtensions();
-    const auto rayQueryLightingPath = capabilityGraph.ResolveOptionalPath("RayQueryLighting");
-    const bool rayQueryLightingAvailable =
-        rayQueryLightingPath == Vixen::CapabilityPath::CapabilityEnabled;
     for (const auto& rayQueryExt : rayQueryLightingExtensions) {
         if (!hasExt(rayQueryExt)) {
             NODE_LOG_INFO("[DeviceNode] RayQueryLighting extension not available: " + std::string(rayQueryExt));
         }
     }
-    if (rayQueryLightingAvailable) {
-        NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions available - enabling optional shadow-wave backend");
-        for (const auto& rayQueryExt : rayQueryLightingExtensions) {
-            bool alreadyAdded = false;
-            for (const auto& existingExt : allExtensions) {
-                if (strcmp(existingExt, rayQueryExt) == 0) {
-                    alreadyAdded = true;
-                    break;
+    Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
+        capabilityGraph, true,
+        [&] {
+            NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions available - enabling optional shadow-wave backend");
+            for (const auto& rayQueryExt : rayQueryLightingExtensions) {
+                bool alreadyAdded = false;
+                for (const auto& existingExt : allExtensions) {
+                    if (strcmp(existingExt, rayQueryExt) == 0) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (!alreadyAdded) {
+                    allExtensions.push_back(rayQueryExt);
+                    NODE_LOG_INFO("[DeviceNode]   + " + std::string(rayQueryExt));
                 }
             }
-            if (!alreadyAdded) {
-                allExtensions.push_back(rayQueryExt);
-                NODE_LOG_INFO("[DeviceNode]   + " + std::string(rayQueryExt));
-            }
-        }
-    } else {
-        NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions not available - shadow wave will use DDA twin");
-    }
+        },
+        [this] {
+            NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions not available - shadow wave will use DDA twin");
+        });
 
     // Phase K: Auto-enable the full RTX pipeline bundle if available
     auto rtxExtensions = VulkanDevice::GetRTXExtensions();
-
-    const auto rtxPath = capabilityGraph.ResolveOptionalPath("RTXSupport");
-    const bool rtxAvailable = rtxPath == Vixen::CapabilityPath::CapabilityEnabled;
     for (const auto& rtxExt : rtxExtensions) {
         if (!hasExt(rtxExt)) {
             NODE_LOG_INFO("[DeviceNode] RTX extension not available: " + std::string(rtxExt));
         }
     }
-
-    if (rtxAvailable) {
-        NODE_LOG_INFO("[DeviceNode] RTX extensions available - enabling hardware ray tracing");
-        for (const auto& rtxExt : rtxExtensions) {
-            // Avoid duplicates
-            bool alreadyAdded = false;
-            for (const auto& existingExt : allExtensions) {
-                if (strcmp(existingExt, rtxExt) == 0) {
-                    alreadyAdded = true;
-                    break;
+    Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RTXSupport>(
+        capabilityGraph, true,
+        [&] {
+            NODE_LOG_INFO("[DeviceNode] RTX extensions available - enabling hardware ray tracing");
+            for (const auto& rtxExt : rtxExtensions) {
+                // Avoid duplicates
+                bool alreadyAdded = false;
+                for (const auto& existingExt : allExtensions) {
+                    if (strcmp(existingExt, rtxExt) == 0) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (!alreadyAdded) {
+                    allExtensions.push_back(rtxExt);
+                    NODE_LOG_INFO("[DeviceNode]   + " + std::string(rtxExt));
                 }
             }
-            if (!alreadyAdded) {
-                allExtensions.push_back(rtxExt);
-                NODE_LOG_INFO("[DeviceNode]   + " + std::string(rtxExt));
-            }
-        }
-    } else {
-        NODE_LOG_INFO("[DeviceNode] RTX extensions not available - hardware RT disabled");
-    }
+        },
+        [this] {
+            NODE_LOG_INFO("[DeviceNode] RTX extensions not available - hardware RT disabled");
+        });
 
     // VIXEN_PIPELINE_STATS=1: opt-in VK_KHR_pipeline_executable_properties for per-pipeline
     // register/spill stats (see ComputePipelineCacher::CreateComputePipeline). Strict no-op when

@@ -401,6 +401,63 @@ endif()
 # and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
 project(${Recipe_Name} VERSION 0.1.0)
 
+# The CapabilityGraph owns build-time capability evaluation as well as runtime resolution. The
+# configure probe compiles that graph with its Vulkan loader dependency and asks it to emit the
+# constexpr header consumed by all VIXEN targets.
+set(VIXEN_CAPABILITY_BUILD_MODE "FULL" CACHE STRING
+    "CapabilityGraph binding mode: FULL keeps every node runtime-bound; PERSONALIZED binds to this device")
+set_property(CACHE VIXEN_CAPABILITY_BUILD_MODE PROPERTY STRINGS FULL PERSONALIZED)
+string(TOUPPER "${VIXEN_CAPABILITY_BUILD_MODE}" VIXEN_CAPABILITY_BUILD_MODE)
+if(NOT VIXEN_CAPABILITY_BUILD_MODE STREQUAL "FULL" AND
+   NOT VIXEN_CAPABILITY_BUILD_MODE STREQUAL "PERSONALIZED")
+    message(FATAL_ERROR "VIXEN_CAPABILITY_BUILD_MODE must be FULL or PERSONALIZED (got '${VIXEN_CAPABILITY_BUILD_MODE}')")
+endif()
+set(VIXEN_PRODUCT_VARIANT "default" CACHE STRING "Product variant recorded by CapabilityGraph")
+
+set(_vixen_capability_config_header "${CMAKE_BINARY_DIR}/generated/CapabilityGraphBuildConfig.h")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+unset(_vixen_capability_probe_compiled CACHE)
+unset(_vixen_capability_probe_result CACHE)
+unset(_vixen_capability_probe_compiled)
+unset(_vixen_capability_probe_result)
+
+# The configure probe must query the same Dozen adapter that the WSL test and run environment uses.
+if(VIXEN_WSL_DZN_ICD AND (NOT DEFINED ENV{VK_ICD_FILENAMES} OR "$ENV{VK_ICD_FILENAMES}" STREQUAL ""))
+    set(ENV{VK_ICD_FILENAMES} "${VIXEN_WSL_DZN_ICD}")
+endif()
+
+try_run(_vixen_capability_probe_result _vixen_capability_probe_compiled
+    SOURCES
+        "${VIXEN_ROOT}/libraries/VulkanResources/src/CapabilityGraphConfigureProbe.cpp"
+        "${VIXEN_ROOT}/libraries/VulkanResources/src/CapabilityGraph.cpp"
+    CMAKE_FLAGS
+        "-DCMAKE_CXX_STANDARD:STRING=23"
+        "-DINCLUDE_DIRECTORIES:STRING=${VIXEN_ROOT}/libraries/VulkanResources/include;${CMAKE_BINARY_DIR}/generated"
+    COMPILE_DEFINITIONS -DVIXEN_CAPABILITY_CONFIGURE_PROBE=1
+    LINK_LIBRARIES Vulkan::Vulkan
+    ARGS
+        "${_vixen_capability_config_header}"
+        "${VIXEN_CAPABILITY_BUILD_MODE}"
+        "${CMAKE_SYSTEM_NAME}"
+        "${CMAKE_SYSTEM_PROCESSOR}"
+        "${CMAKE_CXX_COMPILER_ID}"
+        "${CMAKE_CXX_COMPILER_VERSION}"
+        "${VIXEN_PRODUCT_VARIANT}"
+    COMPILE_OUTPUT_VARIABLE _vixen_capability_probe_compile_output
+    RUN_OUTPUT_VARIABLE _vixen_capability_probe_run_output)
+if(NOT _vixen_capability_probe_compiled)
+    message(FATAL_ERROR
+        "CapabilityGraph configure probe failed to compile:\n${_vixen_capability_probe_compile_output}")
+endif()
+if(NOT "${_vixen_capability_probe_result}" STREQUAL "0")
+    message(FATAL_ERROR
+        "CapabilityGraph configure probe failed (${_vixen_capability_probe_result}):\n${_vixen_capability_probe_run_output}")
+endif()
+message(STATUS "[CapabilityGraph] ${VIXEN_CAPABILITY_BUILD_MODE} mode; generated ${_vixen_capability_config_header}")
+if(_vixen_capability_probe_run_output)
+    message(STATUS "[CapabilityGraph] ${_vixen_capability_probe_run_output}")
+endif()
+
 # ============================================================================
 # msbuild ninja job pool (task #29): no two MSBuild-entering custom commands may
 # ============================================================================

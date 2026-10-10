@@ -25,7 +25,28 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
-        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "ON"
+        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "ON",
+        "VIXEN_CAPABILITY_BUILD_MODE": "FULL"
+      }
+    },
+    {
+      "name": "vixen-wsl-full",
+      "inherits": "vixen-wsl",
+      "displayName": "VIXEN WSL Full Capability Build (CI path coverage)",
+      "description": "Full runtime-bound CapabilityGraph configuration; compiles every optional path for CI.",
+      "binaryDir": "${sourceDir}/../build/wsl-full",
+      "cacheVariables": {
+        "VIXEN_CAPABILITY_BUILD_MODE": "FULL"
+      }
+    },
+    {
+      "name": "vixen-wsl-personalized",
+      "inherits": "vixen-wsl",
+      "displayName": "VIXEN WSL Personalized Capability Build (Dozen device-bound)",
+      "description": "Binds build-time CapabilityGraph nodes to the selected WSL/Dozen device and strips ruled-out optional paths.",
+      "binaryDir": "${sourceDir}/../build/wsl-personalized",
+      "cacheVariables": {
+        "VIXEN_CAPABILITY_BUILD_MODE": "PERSONALIZED"
       }
     },
     {
@@ -45,6 +66,8 @@
   "buildPresets": [
     { "name": "vixen-ninja", "configurePreset": "vixen-ninja" },
     { "name": "vixen-wsl", "configurePreset": "vixen-wsl" },
+    { "name": "vixen-wsl-full", "configurePreset": "vixen-wsl-full" },
+    { "name": "vixen-wsl-personalized", "configurePreset": "vixen-wsl-personalized" },
     { "name": "vixen-wsl-debug", "configurePreset": "vixen-wsl-debug" }
   ]
 }
