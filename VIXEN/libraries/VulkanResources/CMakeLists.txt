@@ -69,6 +69,7 @@ target_include_directories(VulkanResources
         # Headers.h and other shared headers now come from Core::Core (linked below), not the
         # application layer (AR#3/#4 build-layering severance).
     PRIVATE
+        "${CMAKE_BINARY_DIR}/generated"
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 

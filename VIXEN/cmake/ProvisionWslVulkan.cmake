@@ -11,12 +11,16 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/VulkanSdkSettings.cmake")
+
 option(VIXEN_AUTO_PROVISION_WSL_VULKAN "Build Mesa Dozen for GPU Vulkan on WSL2" ON)
 
 set(VIXEN_WSL_DZN_ICD "" CACHE INTERNAL "Path to the provisioned Dozen ICD json (empty = none)")
 set(VIXEN_WSL_DZN_LIBRARY_DIR "" CACHE INTERNAL "Directory containing the provisioned Dozen ICD library (empty = none)")
 
 if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
+    message(STATUS "[ProvisionWslVulkan] Vulkan SDK setting: expected ${VIXEN_VULKAN_SDK_VERSION} "
+                   "(override with VIXEN_VULKAN_SDK_VERSION).")
     if(DEFINED ENV{XDG_CACHE_HOME})
         set(_wsl_cache "$ENV{XDG_CACHE_HOME}/vixen/wsl-vulkan")
     else()
@@ -33,7 +37,8 @@ if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
         message(STATUS "[ProvisionWslVulkan] WSL2 GPU detected; building Mesa Dozen (first time, "
                        "a few minutes) into ${_wsl_cache} ...")
         execute_process(
-            COMMAND bash "${CMAKE_CURRENT_LIST_DIR}/provision-wsl-vulkan.sh" "${_wsl_cache}"
+            COMMAND "${CMAKE_COMMAND}" -E env "VIXEN_VULKAN_SDK_VERSION=${VIXEN_VULKAN_SDK_VERSION}"
+                    bash "${CMAKE_CURRENT_LIST_DIR}/provision-wsl-vulkan.sh" "${_wsl_cache}"
             RESULT_VARIABLE _dzn_rc)
         if(_dzn_rc EQUAL 0 AND EXISTS "${_dzn_icd}")
             message(STATUS "[ProvisionWslVulkan] Dozen ready: ${_dzn_icd}")

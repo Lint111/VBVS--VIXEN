@@ -1,4 +1,4 @@
-# Purpose: run `cmake --preset <preset>` (the CONFIGURE step) under a machine-wide lock,
+# Purpose: run `cmake -S <source> --preset <preset>` (the CONFIGURE step) under a machine-wide lock,
 # closing a real race: CMake's FetchContent drives its clone/update/"recompaction" (internal
 # stamp-file rewrite) during CONFIGURE, not build — and FETCHCONTENT_BASE_DIR is deliberately
 # ONE shared directory across every worktree on this machine (VIXEN/CMakeLists.txt's
@@ -16,7 +16,7 @@
 # lazy-baseline-inc0) each hit this on different FetchContent subbuilds during the same
 # ~15-minute window.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File run_configure_locked.ps1 -CMakeExe <path> -Preset <name> [-LockTimeoutSeconds N] [-SkipLock]
+# Usage: powershell -ExecutionPolicy Bypass -File run_configure_locked.ps1 -CMakeExe <path> -Preset <name> [-SourceDir <path>] [-LockTimeoutSeconds N] [-SkipLock]
 #
 # Deliberately a SEPARATE, narrower Mutex (Global\VixenConfigureLock) from the build lock
 # (Global\VixenBuildLock), not the same one: configure and build serialize independently here
@@ -31,6 +31,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$CMakeExe,
     [Parameter(Mandatory=$true)][string]$Preset,
+    [string]$SourceDir = "",
     [int]$LockTimeoutSeconds = 1800,
     [switch]$SkipLock
 )
@@ -57,7 +58,11 @@ if (-not $SkipLock) {
 }
 
 try {
-    & $CMakeExe --preset $Preset
+    if ($SourceDir) {
+        & $CMakeExe -S $SourceDir --preset $Preset
+    } else {
+        & $CMakeExe --preset $Preset
+    }
     exit $LASTEXITCODE
 } finally {
     # Released even if cmake throws or this script is Ctrl+C'd -- the Mutex also auto-releases

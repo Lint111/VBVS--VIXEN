@@ -5,6 +5,19 @@
 # treats that as non-fatal and falls back to software Vulkan).
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# This provisioning step builds the Dozen driver, while the expected LunarG SDK version is still
+# part of the same visible provisioning report and comes from the shared defaults file.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vulkan-sdk-settings.env"
+if [[ -z "${VIXEN_VULKAN_SDK_VERSION:-}" ]]; then
+    if [[ -e /dev/dxg || -n "${WSL_INTEROP:-}" ]]; then
+        VIXEN_VULKAN_SDK_VERSION="$VIXEN_VULKAN_SDK_VERSION_WSL_DEFAULT"
+    else
+        VIXEN_VULKAN_SDK_VERSION="$VIXEN_VULKAN_SDK_VERSION_OTHER_DEFAULT"
+    fi
+fi
+
 CACHE="${1:?cache dir required}"
 DEPS="$CACHE/deps"
 MESA="$CACHE/mesa"
@@ -13,6 +26,8 @@ ICD="$CACHE/dzn_icd.json"
 MESA_TAG="mesa-25.2.8"
 
 mkdir -p "$CACHE" "$DEPS"
+
+echo "[provision-wsl-vulkan] expected LunarG Vulkan SDK: $VIXEN_VULKAN_SDK_VERSION (override with VIXEN_VULKAN_SDK_VERSION)"
 
 # Already built? Nothing to do.
 if [ -f "$DZN_SO" ] && [ -f "$ICD" ]; then
