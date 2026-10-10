@@ -42,4 +42,4 @@ No SPT task IDs were assigned in this brief. R484 and R485 are Undertow register
 
 ## CONSOLIDATION ISSUES
 
-None.
+- proposed: Provide a CodeGraph index in VIXEN lane worktrees
