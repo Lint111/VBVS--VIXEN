@@ -896,7 +896,15 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
             presentInfo.pSwapchains = &rec.swapchain;
             presentInfo.pImageIndices = &rec.imageIndex;
             if (rec.presentFn && device) {
+                const auto started = std::chrono::steady_clock::now();
                 const VkResult r = rec.presentFn(device->queue, &presentInfo);
+                if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+                    const auto completed = std::chrono::steady_clock::now();
+                    std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
+                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count()),
+                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
+                        static_cast<int>(r));
+                }
                 // VK_SUBOPTIMAL_KHR / OUT_OF_DATE are handled by the swapchain nodes as before; only
                 // a hard failure is a channel fault. (Present result is not fed back per-node today.)
                 if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {

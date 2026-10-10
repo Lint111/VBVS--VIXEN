@@ -17,10 +17,12 @@ static void Check(VkResult result, const char* operation) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
-        std::cerr << "Usage: gpu-cadence-probe <spv> <csv> <seconds> <period-ns>\n";
+    if (argc != 5 && argc != 6) {
+        std::cerr << "Usage: gpu-cadence-probe <spv> <csv> <seconds> <period-ns> [poll]\n";
         return 2;
     }
+    const bool pollFence = argc == 6 && std::string(argv[5]) == "poll";
+    if (argc == 6 && !pollFence) return 2;
     const double seconds = std::strtod(argv[3], nullptr);
     const auto period = std::chrono::nanoseconds(std::strtoll(argv[4], nullptr, 10));
     if (seconds <= 0 || period.count() <= 0) return 2;
@@ -48,6 +50,9 @@ int main(int argc, char** argv) {
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(gpu, &properties);
     std::cerr << "device=" << properties.deviceName << " period_ns=" << period.count() << '\n';
+    std::cerr << "vendor=" << properties.vendorID << " device_id=" << properties.deviceID
+              << " driver=" << properties.driverVersion << " api=" << properties.apiVersion << '\n';
+    std::cerr << "completion=" << (pollFence ? "poll-fence" : "wait-fence") << '\n';
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, nullptr);
     std::vector<VkQueueFamilyProperties> families(familyCount);
@@ -147,10 +152,19 @@ int main(int argc, char** argv) {
     vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    if (families[family].timestampValidBits == 0) return 1;
+    VkQueryPoolCreateInfo qpci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    qpci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    qpci.queryCount = 2;
+    VkQueryPool queries{};
+    Check(vkCreateQueryPool(device, &qpci, nullptr, &queries), "create timestamp pool");
     Check(vkBeginCommandBuffer(command, &begin), "begin command buffer");
+    vkCmdResetQueryPool(command, queries, 0, 2);
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 1, &set, 0, nullptr);
+    vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queries, 0);
     vkCmdDispatch(command, 1, 1, 1);
+    vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries, 1);
     VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
@@ -168,20 +182,41 @@ int main(int argc, char** argv) {
     const auto end = started + std::chrono::duration<double>(seconds);
     auto deadline = started;
     auto previousCompletion = started;
-    csv << "frame,scheduled_ms,submit_ms,complete_ms,service_ms,cadence_ms,deadline_lateness_ms,complete_monotonic_ns\n";
+    csv << "frame,scheduled_ms,submit_ms,complete_ms,service_ms,cadence_ms,deadline_lateness_ms,complete_monotonic_ns,submit_call_ms,fence_wait_ms,gpu_elapsed_ms,query_read_ms\n";
     uint64_t frame = 0;
     while (Clock::now() < end) {
         std::this_thread::sleep_until(deadline);
         const auto submitted = Clock::now();
         Check(vkQueueSubmit(queue, 1, &submit, fence), "submit frame");
-        Check(vkWaitForFences(device, 1, &fence, VK_TRUE, 5'000'000'000ull), "wait for frame");
+        const auto submitReturned = Clock::now();
+        if (pollFence) {
+            VkResult status;
+            while ((status = vkGetFenceStatus(device, fence)) == VK_NOT_READY) {
+                if (Clock::now() - submitReturned > std::chrono::seconds(5))
+                    Check(VK_TIMEOUT, "poll frame timeout");
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            Check(status, "poll frame");
+        } else {
+            Check(vkWaitForFences(device, 1, &fence, VK_TRUE, 5'000'000'000ull), "wait for frame");
+        }
         const auto complete = Clock::now();
+        uint64_t timestamps[2]{};
+        Check(vkGetQueryPoolResults(device, queries, 0, 2, sizeof(timestamps), timestamps,
+                                   sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "read timestamps");
+        const auto queriesReturned = Clock::now();
+        const auto bits = families[family].timestampValidBits;
+        const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t(1) << bits) - 1;
+        const double gpuMs = ((timestamps[1] - timestamps[0]) & mask) * properties.limits.timestampPeriod / 1.0e6;
         if (*static_cast<uint32_t*>(mapped) != 0x477u) return 1;
         const auto ms = [](auto duration) { return std::chrono::duration<double, std::milli>(duration).count(); };
         csv << ++frame << ',' << ms(deadline - started) << ',' << ms(submitted - started) << ','
             << ms(complete - started) << ',' << ms(complete - submitted) << ','
             << ms(complete - previousCompletion) << ',' << ms(complete - deadline) << ','
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(complete.time_since_epoch()).count() << '\n';
+            << std::chrono::duration_cast<std::chrono::nanoseconds>(complete.time_since_epoch()).count() << ','
+            << ms(submitReturned - submitted) << ',' << ms(complete - submitReturned) << ',' << gpuMs << ','
+            << ms(queriesReturned - complete) << '\n';
+        csv.flush();  // Preserve complete rows if a later Vulkan call fails.
         previousCompletion = complete;
         Check(vkResetFences(device, 1, &fence), "reset fence");
         // Missed slots do not trigger a burst of catch-up submissions.
@@ -190,6 +225,7 @@ int main(int argc, char** argv) {
     }
     Check(vkDeviceWaitIdle(device), "drain device");
     vkDestroyFence(device, fence, nullptr);
+    vkDestroyQueryPool(device, queries, nullptr);
     vkDestroyCommandPool(device, pool, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);

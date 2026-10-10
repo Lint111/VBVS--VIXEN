@@ -18,8 +18,9 @@
 // not as a mutex. Present is drained/issued in its own final wave, naturally last (Present depends on
 // the render-complete semaphore, so the schedule already places it after every render submit).
 //
-// SCOPE (P1, controller ruling Option A): the ASYNC frame-path submits only (fence/semaphore signal,
-// no inline WaitIdle). The synchronous submit+WaitIdle sites (CommandBufferUtility, TextureLoader,
+// SCOPE (P1, controller ruling Option A): the frame-path submits only. R477 additionally retires
+// the previous queue chunk in the owner drain, bounding outstanding submissions to one. The
+// synchronous submit+WaitIdle sites (CommandBufferUtility, TextureLoader,
 // CashSystem AS build, RenderTargetReadback, the one-shot transition/clear nodes) and BatchedUploader
 // keep VK2 as a documented residual; converting them to two-phase observe is a separate P1b lane.
 //
@@ -72,28 +73,12 @@ struct SubmitRecord {
     // Each primary command buffer is a separate queue submission. Consume waits
     // once, and publish signals/fence only after the final buffer. Queue order and
     // existing entry/exit barriers retain the original graph dependency contract.
-    VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue) const {
-        const std::size_t count = commandBuffers.empty() ? 1 : commandBuffers.size();
-        for (std::size_t i = 0; i < count; ++i) {
-            VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-            if (i == 0) {
-                si.waitSemaphoreInfoCount = static_cast<uint32_t>(waits.size());
-                si.pWaitSemaphoreInfos = waits.empty() ? nullptr : waits.data();
-            }
-            if (!commandBuffers.empty()) {
-                si.commandBufferInfoCount = 1;
-                si.pCommandBufferInfos = &commandBuffers[i];
-            }
-            const bool last = i + 1 == count;
-            if (last) {
-                si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
-                si.pSignalSemaphoreInfos = signals.empty() ? nullptr : signals.data();
-            }
-            const VkResult result = submitFn(queue, 1, &si, last ? fence : VK_NULL_HANDLE);
-            if (result != VK_SUCCESS) return result;
-        }
-        return VK_SUCCESS;
-    }
+    // Retire prior queue work before each chunk: at most one submitted chunk is
+    // outstanding. The final semaphore/fence remains owned by the final chunk.
+    // The retirement function is the existing Vulkan queue primitive; its explicit
+    // parameter lets CPU contract tests observe ordering and propagate failures.
+    VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
+                    PFN_vkQueueWaitIdle retireFn = vkQueueWaitIdle) const;
 
     static SubmitRecord FromSubmitInfo2(const VkSubmitInfo2& si, VkFence fence) {
         SubmitRecord r;

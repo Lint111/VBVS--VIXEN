@@ -7,6 +7,9 @@
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "Message.h"
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph {
 
@@ -367,6 +370,7 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     }
 
     auto* devicePtr = GetDevice();
+    const auto acquireStarted = std::chrono::steady_clock::now();
     VkResult result = VIXEN_FAULT_FILTER(GetOwningGraph(), Acquire,
         swapChainWrapper->fpAcquireNextImageKHR(
             devicePtr->device,
@@ -376,6 +380,13 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
             VK_NULL_HANDLE, // Fence
             &currentImageIndex
         ));
+    if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+        const auto completed = std::chrono::steady_clock::now();
+        std::fprintf(stderr, "[GPUYIELD_HOST] operation=acquire elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
+            std::chrono::duration<double, std::milli>(completed - acquireStarted).count(),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(acquireStarted.time_since_epoch()).count()),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
+    }
 
     // VK_ERROR_OUT_OF_DATE_KHR: the acquire genuinely failed -- currentImageIndex is not valid,
     // there is nothing to render/present this frame. Abort it and recreate.

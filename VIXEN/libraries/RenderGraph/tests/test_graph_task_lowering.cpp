@@ -389,6 +389,15 @@ struct NativeSubmitCall {
 };
 std::vector<NativeSubmitCall> nativeSubmitCalls;
 int failNativeSubmit = -1;
+int nativeOutstanding = 0;
+int nativeMaximumOutstanding = 0;
+int nativeRetireCalls = 0;
+int failNativeRetire = -1;
+VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeRetire(VkQueue) {
+    if (++nativeRetireCalls == failNativeRetire) return VK_ERROR_DEVICE_LOST;
+    nativeOutstanding = 0;
+    return VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
     VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence fence) {
     EXPECT_EQ(count, 1u);
@@ -396,8 +405,11 @@ VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
     nativeSubmitCalls.push_back({si.waitSemaphoreInfoCount, si.commandBufferInfoCount,
         si.signalSemaphoreInfoCount, fence,
         si.commandBufferInfoCount ? si.pCommandBufferInfos[0].commandBuffer : VK_NULL_HANDLE});
-    return static_cast<int>(nativeSubmitCalls.size()) == failNativeSubmit
-        ? VK_ERROR_DEVICE_LOST : VK_SUCCESS;
+    if (static_cast<int>(nativeSubmitCalls.size()) == failNativeSubmit)
+        return VK_ERROR_DEVICE_LOST;
+    ++nativeOutstanding;
+    nativeMaximumOutstanding = std::max(nativeMaximumOutstanding, nativeOutstanding);
+    return VK_SUCCESS;
 }
 
 TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
@@ -412,8 +424,15 @@ TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
     }
     nativeSubmitCalls.clear();
     failNativeSubmit = -1;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_SUCCESS);
+    nativeOutstanding = 1;
+    nativeMaximumOutstanding = 1;
+    nativeRetireCalls = 0;
+    failNativeRetire = -1;
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 3u);
+    EXPECT_LE(nativeMaximumOutstanding, 1);
+    EXPECT_EQ(nativeOutstanding, 1);  // the final chunk owns completion
+
     for (size_t i = 0; i < nativeSubmitCalls.size(); ++i) {
         EXPECT_EQ(nativeSubmitCalls[i].commands, 1u);
         EXPECT_EQ(nativeSubmitCalls[i].command, record.commandBuffers[i].commandBuffer);
@@ -423,9 +442,28 @@ TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
     }
     nativeSubmitCalls.clear();
     failNativeSubmit = 2;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_ERROR_DEVICE_LOST);
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_ERROR_DEVICE_LOST);
     EXPECT_EQ(nativeSubmitCalls.size(), 2u);
     failNativeSubmit = -1;
+}
+
+TEST(SubmitRecord, RetirementFailureStopsBeforeTheNextChunkAndFinalSignal) {
+    SubmitRecord record;
+    record.signals.resize(1);
+    for (uintptr_t i = 1; i <= 3; ++i) {
+        VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
+        record.commandBuffers.push_back(command);
+    }
+    nativeSubmitCalls.clear();
+    failNativeSubmit = -1;
+    nativeRetireCalls = 0;
+    failNativeRetire = 2;
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_ERROR_DEVICE_LOST);
+    ASSERT_EQ(nativeSubmitCalls.size(), 1u);
+    EXPECT_EQ(nativeSubmitCalls[0].signals, 0u);
+    EXPECT_EQ(nativeSubmitCalls[0].fence, VK_NULL_HANDLE);
+    failNativeRetire = -1;
 }
 
 TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
@@ -437,7 +475,7 @@ TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
     const auto record = SubmitRecord::FromSubmitInfo2(info, fence);
     nativeSubmitCalls.clear();
     failNativeSubmit = -1;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_SUCCESS);
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 1u);
     EXPECT_EQ(nativeSubmitCalls[0].commands, 0u);
     EXPECT_EQ(nativeSubmitCalls[0].waits, 0u);

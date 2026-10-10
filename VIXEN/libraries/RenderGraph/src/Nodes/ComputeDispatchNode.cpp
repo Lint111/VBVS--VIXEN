@@ -400,7 +400,17 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
     if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
         double totalMs = 0, maximumMs = 0;
         for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
-            const double ms = query->GetElapsedMs(0, i * 2, i * 2 + 1);
+            const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+            if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+                NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
+                    " flight=" + std::to_string(frameIndex) + " chunk=" + std::to_string(i) +
+                    " start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4)) +
+                    " end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 3)) +
+                    " dispatch_start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 1)) +
+                    " dispatch_end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 2)) +
+                    " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
+                    " elapsed_gpu_ms=" + std::to_string(ms));
+            }
             totalMs += ms;
             maximumMs = std::max(maximumMs, ms);
         }
@@ -483,7 +493,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     if (count > 1)
         recordedBuffers.insert(recordedBuffers.end(), extraBuffers.begin(), extraBuffers.begin() + (count - 1));
     if (tileCounts_[frameIndex] != count) {
-        tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(vulkanDevice, 1, count * 2);
+        tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(vulkanDevice, 1, count * 4);
         tileCounts_[frameIndex] = count;
     }
     tileBudgets_[frameIndex] = budgetNs;
@@ -552,6 +562,8 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     uint32_t tileIndex = 0;
     for (uint32_t baseY = 0; baseY < dispatchY; baseY += edge) {
         for (uint32_t baseX = 0; baseX < dispatchX; baseX += edge) {
+            tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     tileIndex * 4 + 1);
             if (canTile_) {
                 vkCmdDispatchBase(cmdBuffer, baseX, baseY, 0,
                                   std::min(edge, dispatchX - baseX),
@@ -559,16 +571,18 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
             } else {
                 vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
             }
+            tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     tileIndex * 4 + 2);
             if (++tileIndex != count) {
                 tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                         tileIndex * 2 - 1);
+                                         tileIndex * 4 - 1);
                 if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
                     throw std::runtime_error("ComputeDispatchNode: failed to end tile commands");
                 cmdBuffer = recordedBuffers[tileIndex];
                 if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
                     throw std::runtime_error("ComputeDispatchNode: failed to begin tile commands");
                 tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                         tileIndex * 2);
+                                         tileIndex * 4);
                 BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
                 SetPushConstants(ctx, cmdBuffer, pipelineLayout, pushConstantData);
             }
@@ -600,7 +614,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         swapchainInfo->SetImageLayout(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     }
 
-    tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 2 - 1);
+    tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 4 - 1);
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);

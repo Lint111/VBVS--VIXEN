@@ -92,12 +92,12 @@ public:
     /**
      * @brief Queue a compute dispatch for execution (backward compatible)
      *
-     * Adds a dispatch pass to the queue with zero-cost estimate (no budget checking).
+     * Adds mandatory work without admission rejection, charging one frame for unknown cost.
      * All queued passes are recorded to the command buffer during ExecuteImpl, then
      * the queue is cleared.
      *
-     * **Backward Compatibility:** Sprint 6.1 code uses this method. Zero-cost tasks
-     * always accepted regardless of budget. Use TryQueueDispatch() for budget awareness.
+     * **Backward Compatibility:** mandatory passes remain accepted regardless of budget.
+     * Unknown work still consumes budget; use TryQueueDispatch() for admission checking.
      *
      * @param pass Dispatch pass descriptor (moved)
      * @return Index of the queued pass (for barrier insertion)
@@ -113,7 +113,7 @@ public:
      * (lenient mode).
      *
      * @param pass Dispatch pass descriptor (moved)
-     * @param estimatedCostNs Estimated GPU time in nanoseconds
+     * @param estimatedCostNs Estimated GPU time in nanoseconds; zero reserves one frame
      * @param priority Execution priority (0=lowest, 255=highest)
      * @return true if task accepted, false if rejected (strict mode only)
      */
@@ -248,7 +248,7 @@ private:
     /**
      * @brief Record all queued dispatches to command buffer
      */
-    void RecordDispatches(VkCommandBuffer cmdBuffer);
+    void RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex);
 
     /**
      * @brief Insert automatic UAV barrier between passes

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <sstream>  // Sprint 6.1: Task #314 - For enhanced logging
 #include <mutex>    // Inc4 M3: SubmitMutex guard around vkQueueSubmit2
+#include <algorithm>
 #include <set>      // Inc4 M3: distinctSignalValues dedup
 
 namespace Vixen::RenderGraph {
@@ -56,14 +57,14 @@ size_t MultiDispatchNode::QueueDispatch(DispatchPass&& pass) {
             std::to_string(MultiDispatchNodeConfig::MAX_DISPATCHES_PER_FRAME) + " max)");
     }
 
-    // Sprint 6.2: Use EnqueueUnchecked for backward compatibility (no budget checking)
-    // Zero-cost estimate = always accepted regardless of budget
+    // Mandatory work stays accepted, but unknown GPU cost reserves a full frame.
+    // The submit owner bounds outstanding work independently of admission.
     size_t index = taskQueue_.GetQueuedCount();
     std::string debugName = pass.debugName;  // Capture before move
 
     TaskQueue<DispatchPass>::TaskSlot slot;
     slot.data = std::move(pass);
-    slot.estimatedCostNs = 0;  // Zero cost = backward compatible
+    slot.estimatedCostNs = std::max(uint64_t{1}, taskQueue_.GetFrameBudget());
     slot.priority = 128;        // Default priority
 
     taskQueue_.EnqueueUnchecked(std::move(slot));
@@ -95,6 +96,10 @@ bool MultiDispatchNode::TryQueueDispatch(DispatchPass&& pass, uint64_t estimated
         }
         return false;
     }
+
+    // An absent/uncalibrated estimate cannot claim free GPU work.
+    if (estimatedCostNs == 0)
+        estimatedCostNs = std::max(uint64_t{1}, taskQueue_.GetFrameBudget());
 
     // Sprint 6.2: Budget-aware enqueue
     std::string debugName = pass.debugName;  // Capture before move
@@ -369,28 +374,11 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Measure recording time
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // Sprint 6.3: Phase 2.2 - Write start timestamp if query manager available
-    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
-        uint32_t framesInFlight = queryManager_->GetFrameCount();
-        uint32_t queryFrameIndex = currentFrameIndex % framesInFlight;
-
-        // Begin frame and write start timestamp
-        queryManager_->BeginFrame(cmdBuffer, queryFrameIndex, querySlot_);
-        queryManager_->WriteTimestamp(cmdBuffer, queryFrameIndex, querySlot_,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-    }
-
     // Record all queued dispatches
-    RecordDispatches(cmdBuffer);
+    RecordDispatches(cmdBuffer, currentFrameIndex);
 
-    // Sprint 6.3: Phase 2.2 - Write end timestamp
+    // Publish timing availability after successful command recording.
     if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
-        uint32_t framesInFlight = queryManager_->GetFrameCount();
-        uint32_t queryFrameIndex = currentFrameIndex % framesInFlight;
-
-        queryManager_->WriteTimestamp(cmdBuffer, queryFrameIndex, querySlot_,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-
         // Mark that timestamps were written for this frame
         auto& timingData = frameTimingData_.GetValue(imageIndex);
         timingData.timestampsWritten = true;
@@ -466,7 +454,8 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // the channel is inactive (sequential/headless), fall back to the guarded direct submit.
         if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE))) {
             std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-            const VkResult result = vulkanDevice_->fpQueueSubmit2(vulkanDevice_->queue, 1, &si, VK_NULL_HANDLE);
+            const VkResult result = SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE).Submit(
+                vulkanDevice_->fpQueueSubmit2, vulkanDevice_->queue);
             if (result != VK_SUCCESS) {
                 if (result == VK_ERROR_DEVICE_LOST) {
                     GetOwningGraph()->NotifyDeviceLost("MultiDispatchNode::ExecuteImpl vkQueueSubmit2");
@@ -513,7 +502,7 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD DISPATCHES
 // ============================================================================
 
-void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
+void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex) {
     // Begin command buffer
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -523,6 +512,13 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[MultiDispatchNode::RecordDispatches] "
             "Failed to begin command buffer");
+    }
+
+    // Query reset and writes are commands: they must be inside begin/end recording.
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        const uint32_t frame = currentFrameIndex % queryManager_->GetFrameCount();
+        queryManager_->BeginFrame(cmdBuffer, frame, querySlot_);
+        queryManager_->WriteTimestamp(cmdBuffer, frame, querySlot_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     }
 
     // Sprint 6.1: Check if using group-based dispatch or legacy queue
@@ -732,6 +728,11 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
             ++stats_.barrierCount;
         }
     }  // End of legacy queue-based dispatch
+
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        const uint32_t frame = currentFrameIndex % queryManager_->GetFrameCount();
+        queryManager_->WriteTimestamp(cmdBuffer, frame, querySlot_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    }
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);

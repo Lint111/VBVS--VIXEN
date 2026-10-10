@@ -5,6 +5,9 @@
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
 #include <mutex>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph {
 
@@ -130,6 +133,7 @@ VkResult PresentNode::Present(Context& ctx) {
 
     // Queue present. Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel
     // executor can schedule another node's submit on the same queue.
+    const auto presentStarted = std::chrono::steady_clock::now();
     {
         std::lock_guard submitLock(device->SubmitMutex(device->queue));
         lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
@@ -143,6 +147,13 @@ VkResult PresentNode::Present(Context& ctx) {
     const bool presentSucceeded = (lastResult == VK_SUCCESS || lastResult == VK_SUBOPTIMAL_KHR);
     if (waitForIdle && presentSucceeded && device != nullptr) {
         vkDeviceWaitIdle(device->device);
+    }
+    if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+        const auto completed = std::chrono::steady_clock::now();
+        std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-and-idle elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
+            std::chrono::duration<double, std::milli>(completed - presentStarted).count(),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(presentStarted.time_since_epoch()).count()),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
     }
 
     // Set outputs
