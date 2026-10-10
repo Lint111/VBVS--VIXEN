@@ -1,0 +1,290 @@
+[box:flow] run2-ray-contract-build cpu=20% target=90% depth=6 free=11 baseline=3 granted=5 mode=dynamic
+[box:flow] run2-ray-contract-build queued — need=5 tokens projected=6278MB estimate=step samples=1
+[box:flow] run2-ray-contract-build cpu=54% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=73929MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=46% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=73332MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=49% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72798MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=43% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72590MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549703MB
+[box:flow] run2-ray-contract-build cpu=25% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72642MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=26% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72545MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=18% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72549MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549719MB
+[box:flow] run2-ray-contract-build cpu=30% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72534MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549694MB
+[box:flow] run2-ray-contract-build cpu=30% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72244MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549663MB
+[box:flow] run2-ray-contract-build cpu=30% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=72042MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549663MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71818MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549644MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71349MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549626MB
+[box:flow] run2-ray-contract-build cpu=38% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71402MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549546MB
+[box:flow] run2-ray-contract-build cpu=53% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71275MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549541MB
+[box:flow] run2-ray-contract-build cpu=53% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71107MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549526MB
+[box:flow] run2-ray-contract-build cpu=40% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71004MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549498MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71006MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549515MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71009MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549512MB
+[box:flow] run2-ray-contract-build cpu=35% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70983MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549481MB
+[box:flow] run2-ray-contract-build cpu=36% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70985MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549457MB
+[box:flow] run2-ray-contract-build cpu=43% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70857MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549457MB
+[box:flow] run2-ray-contract-build cpu=48% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70655MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549435MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70559MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549420MB
+[box:flow] run2-ray-contract-build cpu=37% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70408MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549396MB
+[box:flow] run2-ray-contract-build cpu=39% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70337MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549387MB
+[box:flow] run2-ray-contract-build cpu=45% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70590MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549382MB
+[box:flow] run2-ray-contract-build cpu=35% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70459MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549379MB
+[box:flow] run2-ray-contract-build cpu=46% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70387MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549361MB
+[box:flow] run2-ray-contract-build cpu=38% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70260MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549333MB
+[box:flow] run2-ray-contract-build cpu=39% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70118MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549300MB
+[box:flow] run2-ray-contract-build cpu=28% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70186MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549272MB
+[box:flow] run2-ray-contract-build cpu=43% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70455MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549241MB
+[box:flow] run2-ray-contract-build cpu=21% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70399MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549214MB
+[box:flow] run2-ray-contract-build cpu=28% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70416MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549188MB
+[box:flow] run2-ray-contract-build cpu=20% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70462MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549185MB
+[box:flow] run2-ray-contract-build cpu=26% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70610MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549185MB
+[box:flow] run2-ray-contract-build cpu=21% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70521MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549176MB
+[box:flow] run2-ray-contract-build cpu=23% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70358MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549165MB
+[box:flow] run2-ray-contract-build cpu=20% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70335MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549151MB
+[box:flow] run2-ray-contract-build cpu=23% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70327MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549146MB
+[box:flow] run2-ray-contract-build cpu=14% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70687MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549141MB
+[box:flow] run2-ray-contract-build cpu=23% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71480MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549139MB
+[box:flow] run2-ray-contract-build cpu=26% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71203MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549157MB
+[box:flow] run2-ray-contract-build cpu=34% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71078MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549157MB
+[box:flow] run2-ray-contract-build cpu=18% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71070MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549146MB
+[box:flow] run2-ray-contract-build cpu=32% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70966MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549129MB
+[box:flow] run2-ray-contract-build cpu=39% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70887MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549126MB
+[box:flow] run2-ray-contract-build cpu=31% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70749MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549125MB
+[box:flow] run2-ray-contract-build cpu=28% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=70768MB projected=6278MB estimate=step samples=1 reserved=21372MB total=80425MB reserve=4096MB disk=549106MB
+[box:flow] run2-ray-contract-build cpu=22% target=90% admit
+[box:flow] run2-ray-contract-build memory=admit avail=71404MB projected=6278MB estimate=step samples=1 reserved=20264MB total=80425MB reserve=4096MB disk=549053MB
+[box:flow] run2-ray-contract-build granted tokens=0 1 2 3 14 mask=0,1,2,3,4,5,6,7,28,29
+[box:flow] run2-ray-contract-build running on cores 0,1,2,3,4,5,6,7,28,29 (build)
+[0/2] Re-checking globbed directories...
+[1/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/DirectConnectionRule.cpp.o
+[2/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/VariadicConnectionRule.cpp.o
+[3/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphLifecycleHooks.cpp.o
+[4/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/SubmitChannel.cpp.o
+[5/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeInstance.cpp.o
+[6/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceDependencyTracker.cpp.o
+[7/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/EngineContext.cpp.o
+[8/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BlitNode.dir/src/Nodes/BlitNode.cpp.o
+[9/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:514:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  514 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from ../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+../../VIXEN/libraries/CashSystem/include/MainCacher.h:570:10: note: declared here
+  570 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[10/164] Linking CXX static library lib/libRenderGraphCore.a
+[11/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ConstantNode.dir/src/Nodes/ConstantNode.cpp.o
+[12/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CommandPoolNode.dir/src/Nodes/CommandPoolNode.cpp.o
+[13/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[14/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeStageNode.dir/src/Nodes/ComputeStageNode.cpp.o
+[15/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProxyRasterStageNode.dir/src/Nodes/ProxyRasterStageNode.cpp.o
+[16/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputePipelineNode.dir/src/Nodes/ComputePipelineNode.cpp.o
+[17/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthBufferNode.dir/src/Nodes/DepthBufferNode.cpp.o
+[18/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderTargetNode.dir/src/Nodes/RenderTargetNode.cpp.o
+[19/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MultiDispatchNode.dir/src/Nodes/MultiDispatchNode.cpp.o
+[20/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PickIdTargetNode.dir/src/Nodes/PickIdTargetNode.cpp.o
+[21/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceBufferNode.dir/src/Nodes/InstanceBufferNode.cpp.o
+[22/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_StorageBufferNode.dir/src/Nodes/StorageBufferNode.cpp.o
+[23/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DynamicInstanceBufferNode.dir/src/Nodes/DynamicInstanceBufferNode.cpp.o
+[24/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightingConfigNode.dir/src/Nodes/LightingConfigNode.cpp.o
+[25/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShadowConfigNode.dir/src/Nodes/ShadowConfigNode.cpp.o
+[26/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationConfigNode.dir/src/Nodes/AccumulationConfigNode.cpp.o
+[27/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationHistoryNode.dir/src/Nodes/AccumulationHistoryNode.cpp.o
+[28/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WorldPosHistoryNode.dir/src/Nodes/WorldPosHistoryNode.cpp.o
+[29/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthTargetNode.dir/src/Nodes/DepthTargetNode.cpp.o
+[30/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PrevCameraConfigNode.dir/src/Nodes/PrevCameraConfigNode.cpp.o
+[31/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_HitAccumParamsConfigNode.dir/src/Nodes/HitAccumParamsConfigNode.cpp.o
+[32/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ReservoirConfigNode.dir/src/Nodes/ReservoirConfigNode.cpp.o
+[33/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MiningBeamBufferNode.dir/src/Nodes/MiningBeamBufferNode.cpp.o
+[34/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeGridConfigNode.dir/src/Nodes/ProbeGridConfigNode.cpp.o
+[35/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightTreeBufferNode.dir/src/Nodes/LightTreeBufferNode.cpp.o
+[36/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeAtlasNode.dir/src/Nodes/ProbeAtlasNode.cpp.o
+[37/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MvpUniformNode.dir/src/Nodes/MvpUniformNode.cpp.o
+[38/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorResourceGathererNode.dir/src/Nodes/DescriptorResourceGathererNode.cpp.o
+[39/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FrameSyncNode.dir/src/Nodes/FrameSyncNode.cpp.o
+[40/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DeviceNode.dir/src/Nodes/DeviceNode.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp: In member function ‘void Vixen::RenderGraph::DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry&)’:
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:610:36: warning: ‘void CashSystem::DeviceRegistry::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  610 |     deviceRegistry.SetBudgetManager(budgetManager.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Nodes/DeviceNode.h:7,
+                 from ../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:3:
+../../VIXEN/libraries/CashSystem/include/DeviceIdentifier.h:197:10: note: declared here
+  197 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+      |          ^~~~~~~~~~~~~~~~
+[41/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorSetNode.dir/src/Nodes/DescriptorSetNode.cpp.o
+[42/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GeometryRenderNode.dir/src/Nodes/GeometryRenderNode.cpp.o
+[43/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceNode.dir/src/Nodes/InstanceNode.cpp.o
+[44/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LoopBridgeNode.dir/src/Nodes/LoopBridgeNode.cpp.o
+[45/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GraphicsPipelineNode.dir/src/Nodes/GraphicsPipelineNode.cpp.o
+[46/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PresentNode.dir/src/Nodes/PresentNode.cpp.o
+[47/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PassGroupNode.dir/src/Nodes/PassGroupNode.cpp.o
+[48/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderPassNode.dir/src/Nodes/RenderPassNode.cpp.o
+[49/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SwapChainNode.dir/src/Nodes/SwapChainNode.cpp.o
+[50/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShaderLibraryNode.dir/src/Nodes/ShaderLibraryNode.cpp.o
+[51/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VertexBufferNode.dir/src/Nodes/VertexBufferNode.cpp.o
+[52/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TextureLoaderNode.dir/src/Nodes/TextureLoaderNode.cpp.o
+[53/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelAABBConverterNode.dir/src/Nodes/VoxelAABBConverterNode.cpp.o
+[54/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelGridNode.dir/src/Nodes/VoxelGridNode.cpp.o
+[55/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccelerationStructureNode.dir/src/Nodes/AccelerationStructureNode.cpp.o
+[56/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[57/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellParamsConfigNode.dir/src/Nodes/PhotonCellParamsConfigNode.cpp.o
+[58/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkyProjectionNode.dir/src/Nodes/SkyProjectionNode.cpp.o
+[59/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_UIRenderNode.dir/src/Nodes/UIRenderNode.cpp.o
+[60/164] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BodyOctreeSceneNode.dir/src/Nodes/BodyOctreeSceneNode.cpp.o
+[61/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildUIGraph.cpp.o
+[62/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildInstancingDemoGraph.cpp.o
+[63/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildAutoSyncDemoGraph.cpp.o
+[64/164] Linking CXX static library lib/libRenderGraphNodes.a
+[65/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildFanInDemoGraph.cpp.o
+[66/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_subgraph.dir/test_subgraph_nodes.cpp.o
+[67/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_slot_task.dir/test_slot_task.cpp.o
+[68/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_a.dir/Core/test_recompile_dedup.cpp.o
+[69/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_compute_dispatch_node.cpp.o
+[70/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_render_target_node.cpp.o
+[71/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[72/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Nodes/test_push_constant_gatherer_node.cpp.o
+[73/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_descriptorgatherer.dir/Nodes/test_descriptor_resource_gatherer_node.cpp.o
+[74/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sdi_stage_wiring.dir/test_sdi_stage_wiring.cpp.o
+[75/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_connection_rule.dir/test_connection_rule.cpp.o
+[76/164] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[77/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_dispatch.dir/test_multidispatch_integration.cpp.o
+[78/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_multi_bucket_compositing.dir/Nodes/test_recipe_multi_bucket_compositing.cpp.o
+[79/164] Linking CXX static library lib/libVixenApp.a
+[80/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_bucketing_perf.dir/Nodes/test_recipe_bucketing_perf.cpp.o
+[81/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_tracking.dir/test_graph_task_lowering.cpp.o
+[82/164] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_syncbarrier.dir/test_graph_topology.cpp.o
+[83/164] Building CXX object application/main/CMakeFiles/VIXEN.dir/source/main.cpp.o
+[84/164] Building CXX object application/main/CMakeFiles/test_headless_ui_graph.dir/tests/test_headless_ui_graph.cpp.o
+[85/164] Building CXX object application/main/CMakeFiles/test_headless_starfield_graph.dir/tests/test_headless_starfield_graph.cpp.o
+[86/164] Building CXX object application/main/CMakeFiles/test_headless_cornell_graph.dir/tests/test_headless_cornell_graph.cpp.o
+[87/164] Building CXX object application/main/CMakeFiles/test_cel_shading_graph.dir/tests/test_cel_shading_graph.cpp.o
+[88/164] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 833 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[89/164] Building CXX object application/main/CMakeFiles/vixen_lookdev_capture.dir/tests/test_lookdev_capture.cpp.o
+[90/164] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[91/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[92/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[93/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[94/164] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[95/164] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[96/164] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[97/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[98/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[99/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[100/164] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/main.cpp.o
+[101/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[102/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[103/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[104/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[105/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[106/164] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[107/164] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[108/164] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[109/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[110/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[111/164] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[112/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[113/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[114/164] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[115/164] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[116/164] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[117/164] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[118/164] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[119/164] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[120/164] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[121/164] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[122/164] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[123/164] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[124/164] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[125/164] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[126/164] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[127/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[128/164] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[129/164] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[130/164] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[131/164] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[132/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[133/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[134/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[135/164] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[136/164] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[137/164] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[138/164] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[139/164] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[140/164] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[141/164] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[142/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[143/164] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[144/164] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[145/164] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[146/164] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[147/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[148/164] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[149/164] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[150/164] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[151/164] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[152/164] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[153/164] Linking CXX executable binaries/VIXEN
+[154/164] Linking CXX executable application/main/test_app_run_tick
+[155/164] Linking CXX executable application/main/test_hud_view
+[156/164] Linking CXX executable application/main/test_view_blob_equiv
+[157/164] Linking CXX executable application/main/test_headless_ui_graph
+[158/164] Linking CXX executable application/main/test_headless_cornell_graph
+[159/164] Linking CXX executable application/main/test_headless_starfield_graph
+[160/164] Linking CXX executable application/main/vixen_lookdev_capture
+[161/164] Linking CXX executable application/main/test_cel_shading_graph
+[162/164] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/EditorApplication.cpp.o
+[163/164] Linking CXX executable binaries/vixen_editor
+UT_JOB_DONE build run2-ray-contract-build exit=0 state=OK

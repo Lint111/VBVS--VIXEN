@@ -1,0 +1,78 @@
+HwSchMode: not explicitly set
+
+
+Id          : 3716
+ProcessName : amdfendrsr
+CPU         : 
+StartTime   : 
+
+Id          : 21372
+ProcessName : amdow
+CPU         : 0.109375
+StartTime   : 10/10/2026 12:02:19 PM
+
+Id          : 6112
+ProcessName : AmdPpkgSvc
+CPU         : 
+StartTime   : 
+
+Id          : 15240
+ProcessName : AMDRSServ
+CPU         : 14.953125
+StartTime   : 10/10/2026 12:02:17 PM
+
+Id          : 21364
+ProcessName : AMDRSSrcExt
+CPU         : 0.453125
+StartTime   : 10/10/2026 12:02:19 PM
+
+Id          : 2704
+ProcessName : dwm
+CPU         : 
+StartTime   : 
+
+Id          : 17724
+ProcessName : vmwp
+CPU         : 
+StartTime   : 
+
+
+
+
+
+Timestamp   : 10/10/2026 5:29:14 PM
+Path        : \\corsairai\gpu engine(pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d#2)\utilization 
+              percentage
+CookedValue : 17.3461429052132
+
+Timestamp   : 10/10/2026 5:29:14 PM
+Path        : \\corsairai\gpu engine(pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d#1)\utilization 
+              percentage
+CookedValue : 108.484619620121
+
+Timestamp   : 10/10/2026 5:29:14 PM
+Path        : \\corsairai\gpu engine(pid_2704_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d)\utilization 
+              percentage
+CookedValue : 0.0072407426729272
+
+
+
+
+
+Timestamp   : 10/10/2026 5:29:15 PM
+Path        : \\corsairai\gpu engine(pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d#2)\utilization 
+              percentage
+CookedValue : 17.4300272068003
+
+Timestamp   : 10/10/2026 5:29:15 PM
+Path        : \\corsairai\gpu engine(pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d#1)\utilization 
+              percentage
+CookedValue : 110.66274437833
+
+Timestamp   : 10/10/2026 5:29:15 PM
+Path        : \\corsairai\gpu engine(pid_2704_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d)\utilization 
+              percentage
+CookedValue : 0.00482135883567032
+
+
+

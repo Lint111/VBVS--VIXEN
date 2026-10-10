@@ -62,3 +62,25 @@ The MultiDispatch timing wrapper currently writes its start query before
 after that function ends it (`MultiDispatchNode.cpp:368–389`, `:522`, `:737`).
 Those calls cannot provide a trustworthy per-pass timing inventory. Queries must
 be recorded inside the command-buffer lifetime as part of the conversion.
+
+## Conversion status in run 2
+
+The ray-generation conversion extends this push block with reflected `uvec3`
+`tileOrigin` and `fullLaunchExtent`. Every chunk retains the original global pixel
+coordinates and full-image UV denominator. TraceRaysNode records separate primary
+buffers, four timestamps per chunk, and uses the existing SubmitRecord channel
+(first acquire, final completion/fence). This is a source-level contract argument;
+it does not substitute for an AMD hardware-ray byte/timing witness.
+
+MultiDispatch timestamp reset/start/end were moved inside its command-buffer
+recording lifetime. Unknown estimates now reserve the configured frame budget,
+including null/uncalibrated profiles, while mandatory passes remain accepted.
+This repairs accounting and measurement but does not partition the indirect or
+grouped dispatches. Those conversions remain outstanding.
+
+The shell decision is narrower than run 1's missing-design STOP: the owner selected
+the canonical derivation contract. The unresolved question is whether the exposed
+raw FRONTIER bit must reproduce the current in-place implementation or receive the
+canonical last-layer meaning. Source inspection cannot prove all-32-bit byte parity
+for an order-dependent original. No shell bytes or masked golden expectations have
+been changed.

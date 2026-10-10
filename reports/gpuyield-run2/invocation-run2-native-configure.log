@@ -1,0 +1,2 @@
+[build] ERROR: no Visual Studio install with the C++ x64 toolchain was found.
+[build] Install the "Desktop development with C++" workload.

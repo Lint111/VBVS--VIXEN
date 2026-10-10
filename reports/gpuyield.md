@@ -1,174 +1,105 @@
-# gpuyield — R477 bounded GPU work and paced rendering
+# gpuyield run 2 — R477 timing isolation and R486 contracts
 
 ## LANDABLE NOW
 
-Status: **R477 PARTIAL / NOT READY TO LAND AS COMPLETE WORK.** The candidate preserves standard output and improves several measured runs, but a repeated interactive witness exceeded the submission budget and timed out. Its cause is **unclassified**. The merged full-suite cache gate also cannot launch because its script is absent. Independently useful inventory, probes, captures and recovery evidence are preserved; no universal bounded-submission claim is made.
+**PARTIAL.** The submission/accounting fix is committed as `3cfea5fd9191a8a53c1eb34151edd633ebfdf0aa`. Hardware-ray tiling is committed as `35201e4f`, compiled, and verified by the real shader-contract test; hardware output and timing remain unmeasured. Shell and indirect/grouped conversions are unfinished. This report does not certify every GPU path or Windows desktop presentation.
 
-Original base: `5da61a1897c40ae2f5b7affc1a44d594c4976d24`. Implementation commit: `b4cacedf`. Merged wave: `742fddb6`; tested merged source: `a5cc7f3330ec888a929880a7467a888c04760235`. The latest fetch at 13:19 UTC still resolved to that wave. The lane remains `lane-gpuyield`; no branch was created and nothing was pushed. Kernel pin remains `c3fb3847979e3f9eef04783510c42b70d7058ae7`.
+Current tip at report generation: `35201e4f645eaee69c5aeacedec0695014687b4f`. Starting tip: `e1ba5b5296ca26c2e9649517b291b113f401f253`. Merged wave: `1252e3705a8247f5b0b1478f0164da55c7cd44ba`; merge commit `222c28a928feedcb32733d3706c5539fef3f4850`. Latest fetch still matches this wave. Kernel pin remains `c3fb3847979e3f9eef04783510c42b70d7058ae7`. No other repository was edited; no branch was created or switched; nothing was pushed. [Run 1](gpuyield-run1.md) is preserved.
 
-The standard full-frame `ComputeDispatchNode` records native dispatch-base tiles as separate primary command buffers. Existing submit records issue each buffer separately; acquire/dependency waits occur once, and completion signals and the binary fence occur only on the final buffer. Both sequential and lowered graph execution share this submission method. The existing compute pipeline cacher enables Vulkan's dispatch-base creation flag.
+### Classification evidence
 
-The tile budget comes from `TimelineCapacityTracker::Config::gpuTimeBudgetNs` (default 16,666,666 ns). The candidate Dozen/AMD default is eight workgroups per tile edge, or 64×64 pixels. Smaller configured budgets reduce the tile area. No configuration surface, attribute, registry, node family, or shader origin payload was added. Missing shader bundles and shaders consuming `NumWorkgroups` retain their original dispatch and are explicitly logged as unbounded; changing this builtin would change output. The check uses the existing SPIRV-Reflect dependency, not a handwritten bytecode parser.
+The first red remains preserved: a whole-tile interval of 1,103.538086 ms against 16.666666 ms, with only 198 frames before the 240-second bound. That original interval starts before entry/image barriers and the acquire wait at COMPUTE_SHADER. It is elapsed GPU-clock time, including waits/preemption, rather than an exclusive active-execution counter.
 
-FIFO replaces the preference for IMMEDIATE/MAILBOX. The existing frame-completion timeline marker is retired before `RenderFrame` returns, bounding outstanding graph work to one frame while retaining the four-slot resource allocation ring. This also protects the next host `PreTick` parameter writes. Successful graph frames use the existing configured frame budget without catch-up bursts; aborted/error frames return promptly.
+Before semantic fixes, diagnostic-only four-query instrumentation retained the original TOP/BOTTOM interval and added a COMPUTE_SHADER pair immediately around each dispatch. The isolated fresh merged producer completed 500 frames / 32,000 chunks, with zero invalid pairs: whole-chunk p99 1.713280 / max 2.188440 ms; dispatch interval p99 1.705600 / max 2.180720 ms. Its render loop lasted about 48.031 seconds. The peer failed after 2,397 attempts when Dozen returned VK_NOT_READY from timestamp retrieval after a successful fence wait; its 2,396 complete post-first rows are explicitly partial, not a successful 90-second probe.
 
-Two meaningful gates were added: the procedural GPU test compares RGBA, hit-record bytes, and SDF-trace bytes for tiled versus original dispatch; the live editor fixture checks timestamp-measured submission maxima against the budget reported by that graph. The final flight-ring samples are collected at cleanup. CPU tests cover the submit wait/signal/fence contract, stop-on-error, semaphore-only submits, pacing in both execution modes, and unchanged frame counts.
+The same tiny SPIR-V probe ran on the native Windows AMD driver, compiled with provisioned MSVC 19.44.35229 and SDK 1.4.350.0. Contended runs had host-service maxima 1,135.410 and 1,180.120 ms while GPU intervals stayed below 0.007400 ms; polling still had a 1,090.430 ms host-service maximum and 0.008040 ms GPU maximum. Ordinary GPU CTest jobs reserved `test` resources and bypassed the queue's GPU mutex. A 15-token exclusive control reduced native service p99/max to 0.485200/1.161200 ms, GPU p99/max to 0.006960/0.008120 ms, and cadence p99/max to 31.642000/31.781100 ms.
 
-The independent client in `tools/gpu-cadence-probe.cpp` submits a tiny Vulkan compute frame at a requested cadence. `tools/measure-gpu-cadence.py` owns both children, limits their runtime, and summarizes only samples overlapping the observed VIXEN render loop. This measures another Vulkan client's GPU completion cadence, **not DWM presents or Windows input latency**. The render-marker boundary has 50 ms polling resolution; the first overlap interval is discarded.
+**Cause class supported by these controls: scheduling/contention delays outside the tiny GPU dispatch, with an independently proven unretired VIXEN submission backlog and free unknown-cost accounting.** The isolated producer establishes that 64×64 tile work itself fits the budget. The exact active/preemption/acquire contribution to the historical 1,103.538 ms sample cannot be reconstructed: WPR GPU/DesktopComposition start failed 0xc5585011, stop failed 0xc5583000, and no ETL was produced. GPUView/PresentMon were unavailable. Later vmwp counter snapshots are not synchronized traces of the red sample. No exclusive active-GPU or DWM presentation claim is made.
 
-## Measured device and submission inventory
+### Changes and limits
 
-Fresh Linux/WSL Release build, GCC 15.2, Vulkan SDK 1.4.350.1, provisioned Dozen ICD, `Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)`. Standard windowed and offscreen captures are 500×500. Hardware ray tracing is unavailable on this driver. No synthetic CPU load was used.
+SubmitRecord retires prior queue work before every new chunk, including the first chunk of a record: at most one submitted command chunk remains outstanding. Acquire/dependency waits stay on the first submission, and completion signals/fence on the last. Retirement failures stop subsequent submissions and propagate device loss. This uses the existing queue-owner channel and vkQueueWaitIdle, with no registry; R478 can later derive retirement from graph timelines.
 
-| Work | Existing implementation / partition | Timing coverage and remaining boundary |
-|---|---|---|
-| Full-frame procedural and baked raymarch | `RenderGraph/src/Nodes/ComputeDispatchNode.cpp`; native 8×8 shader groups | Existing whole-dispatch timestamps; this lane adds timestamp pairs for separate tile command buffers. Standard main/editor path changed. |
-| Shadow, lighting, spatial reuse, probe/photon stages | `RenderGraph/src/Nodes/ComputeStageNode.cpp` | Existing stage timestamps. Standard active stages measured below; generic stage dispatch remains whole-grid. Disabled stages' tiny timestamp markers are not workload measurements. |
-| Procedural bucket splice/grouped direct or indirect passes | `RenderGraph/src/Nodes/MultiDispatchNode.cpp` | Existing task admission budget does not split the recorded command buffer. Production graph does not supply its optional query manager. Unmeasured/unbounded residual. |
-| Recipe specialization | `SVO/include/Recipe/RecipeTileSpecialization.h` | CPU pruning over a 3D recipe domain; not a screen-dispatch partition or queue-submission boundary. |
-| CPU bake, octree build, rematerialisation and dirty shell repair | `RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp`, `SVO/include/ShellDerive.h`, `RevalidateShellBricks` | Standard path is CPU work plus buffer upload. This lane does not alter bake/octree algorithms. Matching before/after native hash traces cover uploaded nodes, brick pools, lookup and configs. Serialized octree/bake-file byte identity remains unverified. |
-| Optional GPU shell classify/dilation | `RenderGraph/src/Nodes/ShellRevalidateNode.cpp`, `shaders/ShellDerive.comp` | One submit contains classify and all dilation layers. No timestamp queries. Dilation reads/updates the same frontier; splitting can change propagation/order. Requires a governing decision before claiming byte identity. |
-| Hardware rays | `RenderGraph/src/Nodes/TraceRaysNode.cpp`, `shaders/VoxelRT.rgen` | Existing dispatch timestamps, but unsupported on measured Dozen. `gl_LaunchIDEXT` has no tile-origin payload. No hardware-duration distribution or bounded trace claim. |
-| BLAS/TLAS builds | `CashSystem/src/AccelerationStructureCacher.cpp`, `CashSystem/src/DynamicTLAS.cpp`, scene TLAS path | Native build commands; no timestamp coverage or interruptible individual-build partition. Unsupported hardware capability on measured driver. |
-| Grouped passes / proxy raster | `RenderGraph/src/Core/PassRecorder.cpp`, `RenderGraph/src/Nodes/PassGroupNode.cpp`, `ProxyRasterStageNode.cpp` | Existing whole command buffers; generic compute/draw workload not certified. |
-| Uploads / texture and sky transfers | `ResourceManagement/src/Memory/BatchedUploader.cpp`, command-buffer utilities, texture loader and sky nodes | Existing byte/count/deadline batching caps; a byte cap is not a measured duration cap. No new duration claim. |
-| Capture and readback | `application/main/source/FrameCapture.cpp`, `RenderTargetReadback.h`, `application/editor/source/AppFlowReadback.cpp` | Separate copy/readback submits, existing fence/idle waits. Capture bytes checked below; copy-submission timestamp distributions remain unmeasured. |
-| Standalone GPU-test renderers | GPU fixtures under RenderGraph/SVO tests | Most bypass `RenderFrame`; graph pacing cannot bound these automatically. The changed procedural feasibility test is explicitly identified, not represented as a conversion of every GPU harness. |
+MultiDispatch charges missing/zero/uncalibrated estimates conservatively against its configured frame budget while retaining mandatory work. Its timestamp commands now lie inside command-buffer begin/end, and its sequential submit fallback shares retirement. Generic CPU TaskQueue zero-cost semantics are unchanged. Host clocks separately measure retirement, submit, acquire, frame completion and presentation. Probe queries explicitly wait for availability, complete CSV rows are flushed, and the summarizer rejects missing frames, invalid pairs and empty/invalid peer samples.
 
-### Baseline duration distributions
+TraceRaysNode derives uvec3 tileOrigin/fullLaunchExtent offsets from ray-generation reflection, preserves the existing 64-byte camera prefix, records bounded-size launch tiles in separate primary buffers and retains first-acquire/final-completion ownership. The ray shader uses original global pixel coordinates and full launch dimensions. This is compiled source plus an ABI test, not hardware-ray timing or byte proof. The dormant legacy VoxelRT manifest was not hand-edited.
 
-Existing GPU timestamp columns, discard first eight rows to exclude the resource-ring warm-up. Editor: 492 rows from the 500-frame concurrent-probe run. HUD: 77 rows from the unchanged 85-frame standard script without the second client. Values are milliseconds; these are distributions, not golden expectations.
+Shell audit: FRONTIER is explicitly exposed in the public flags SSBO, although existing production consumers found do not inspect it and the GPU test masks bits 0/1. In-place read/OR/clear across invocations is not an immutable frontier and partition changes can alter propagation and raw bits. The canonical CPU derivation has separate current/next frontiers and normalizes zero dilation to one. The optional clarification received no answer; all-32-bit parity remains the conservative assumption. No raw bytes or golden masks were changed.
 
-| Scene / pass | Mean | p50 | p95 | p99 | Maximum |
-|---|---:|---:|---:|---:|---:|
-| Editor full-frame march | 79.883 | 79.376 | 83.548 | 85.087 | 89.175 |
-| Editor shadow visibility | 4.950 | 4.917 | 5.441 | 5.571 | 5.697 |
-| Editor spatial reuse | 0.152 | 0.151 | 0.162 | 0.170 | 0.183 |
-| Editor blit | 0.0097 | 0.0095 | 0.0110 | 0.0116 | 0.0361 |
-| Editor UI | 0.0491 | 0.0485 | 0.0558 | 0.0573 | 0.0592 |
-| HUD full-frame march | 189.186 | 187.892 | 195.063 | 248.206 | 248.206 |
-| HUD shadow visibility | 2.677 | 2.655 | 2.835 | 3.284 | 3.284 |
-| HUD spatial reuse | 0.148 | 0.147 | 0.159 | 0.161 | 0.161 |
-| HUD blit | 0.0097 | 0.0097 | 0.0106 | 0.0109 | 0.0109 |
-| HUD UI | 0.0269 | 0.0270 | 0.0290 | 0.0311 | 0.0311 |
+Indirect/grouped audit: preserve the bucket's original rounded-up invocation domain, empty-bucket zero commands, pass order and barriers. Chunk commands must derive from existing bucket and tile partition data; merely splitting around vkCmdDispatchIndirect does not bound it. GPU command expansion and grouped record-only consumer handling are not implemented. See [contract audit](gpuyield-run2/r486-contract-audit.md).
 
-The existing trace-enabled procedural oracle separately measured a 500×500 editor dispatch at 97.752 ms and a 400×400 twisted-sphere dispatch at 76.137 ms. These are single samples, not distributions. Extra SDF-trace writes and the analytic test scene distinguish this harness from the runtime column above.
+### Timing table per driver
 
-Raw CSV, summaries and producer logs: `reports/gpuyield-evidence/baseline/`. The baseline probe used the saved fresh executable `vixen_editor.baseline`; the otherwise unused `VIXEN_EDITOR_TEST_OFFSCREEN` environment name did not select offscreen presentation. Its log shows a windowed swapchain. The real offscreen fixture uses `VIXEN_EDITOR_OFFSCREEN_CAPTURE`.
+All times below are milliseconds. Both driver routes use the same physical AMD Radeon 8060S, vendor 4098/device 5510. Dozen driver integer 104865800/API 4202814; native AMD driver integer 8388967/API 4211008. The declared chunk budget is 16.666666 ms. Timestamp intervals include possible preemption.
 
-### Responsiveness probe
+| Producer driver | Phase | Chunk samples | GPU p99 | GPU max | Frames | Budget pass |
+|---|---|---:|---:|---:|---:|---|
+| Dozen / AMD | fresh diagnostic baseline | 32000 | 1.713280 | 2.188440 | 500 | True |
+| Dozen / AMD | candidate with Dozen peer | 32000 | 1.741000 | 2.257480 | 500 | True |
+| Dozen / AMD | candidate with native AMD peer | 32000 | 1.771040 | 2.249600 | 500 | True |
+| Native AMD | full VIXEN / hardware rays | unavailable | — | — | — | not measured |
 
-Requested period: 16.666666 ms. Successful summaries exclude the first probe frame and first render-overlap interval. Every producer was requested to run the same 500 frames. Values below are milliseconds. The probe measures second-client compute completion, not Windows input latency or DWM presents.
+The native overlap harness starts its peer after the producer's render marker and rejects it unless the peer finishes while the producer remains alive; Windows and Linux steady-clock epochs are not compared.
 
-| Run | CPU cores reserved | Samples | Cadence mean | p50 | p95 | p99 | Max | Gaps > 33.333 ms |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Unloaded baseline | 2 | 900 | 16.666 | 16.667 | 16.825 | 17.506 | 19.221 | 0 |
-| Original windowed editor | 2 | 423 | 86.225 | 87.956 | 95.716 | 100.116 | 102.958 | 407 |
-| Candidate before wave merge | 2 | 3,103 | 16.667 | 16.590 | 19.501 | 21.777 | 29.950 | 0 |
-| Merged candidate, completed run | 4 | 3,780 | 16.687 | 16.629 | 21.068 | 25.094 | 40.637 | 2 |
-| Merged candidate, failed repeat* | 2 | 1,585 | 56.991 | 16.698 | 61.021 | 1,104.950 | 1,160.600 | 105 |
+| Completion peer driver | Context | Valid samples | GPU p99 / max | Fence-service p99 / max | Cadence p99 / max |
+|---|---|---:|---:|---:|---:|
+| Native AMD | pre-fix exclusive control | 899 | 0.006960 / 0.008120 | 0.485200 / 1.161200 | 31.642000 / 31.781100 |
+| Dozen / AMD | candidate whole 90-second peer trace | 5399 | 0.006600 / 0.010600 | 3.794940 / 9.068320 | 19.828600 / 38.327000 |
+| Native AMD | candidate exclusive control | 897 | 0.008080 / 0.008120 | 0.678200 / 0.969400 | 31.612700 / 32.829600 |
+| Native AMD | during candidate Dozen producer | 886 | 0.007600 / 0.008000 | 3.661500 / 5.020800 | 32.269800 / 33.628900 |
 
-*The failed repeat is the **entire 90-second peer trace after its first frame**, including producer startup; it is not a completed render-overlap summary. The producer was killed after its 240-second bound and did not finish 500 frames. Its 198 collected frame-max samples contain one reported budget violation: **1,103.538086 ms against 16.666666 ms**, at `[16:34:15.648]`. Raw evidence is retained under `after-merged-matched/editor-concurrent/`; `failed-partial-summary.json` explicitly labels the failure. This result prevents a clean R477 responsiveness/budget verdict.
+### Required verification and recovery
 
-The original baseline helper did not retain terminal process lifetime when the editor outlived the probe. The native log supplies its 44.728-second render interval; the successful selected samples remain inside that interval. The completed merged four-core interval was 62.221 seconds. A post-failure Windows GPU-engine/process snapshot was collected at 13:48:51 UTC while another queued GPU job was active; it is diagnostic evidence, **not a causal measurement of the earlier failed run**. It found no process named VIXEN/cadence. GPU clock/power and DWM frame statistics were not correlated with the failure.
+Scope: SubmitRecord and all affected RenderGraph consumers, MultiDispatch accounting/timing, shared ShaderManagement reflection consumers, ray shader reflection ABI, main/editor captures and R6, 22 pinned generation checks, RenderGraph/SVO suites, cache gate and no-op build. Native full-VIXEN execution requires a usable Windows build; the standalone probe validates the native client scope only. There is no published matching GPU timing baseline, so the fresh merged diagnostic baseline was required; the kernel CodegenTool suite was not rerun.
 
-### Budget, identity and cost witnesses
+All heavy work uses `/home/liory/.local/bin/with-test-lock.sh --agent gpuyield`. Exact helpers and arguments are preserved in [reproduction](gpuyield-run2/reproduction). Fresh merged baseline build passed (402 actions); fresh 22 generation checks passed. Candidate aggregate build passed (164 actions), the corrected shader-path target rebuild passed, and the integer-vector reflection rebuild passed (105 actions, payload 27 seconds, exit 0). A final fetch still reports wave `1252e370`.
 
-The declared existing capacity budget is 16.666666 ms. All scenes below are 500×500, with 64 separately submitted native tiles per frame. Runtime columns summarize **maximum submission per frame**; the GPU oracle separately records all 64 tile intervals.
+The first filtered run found zero ray tests in an older executable while rebuilding and is invalid. Fresh six retirement/accounting cases passed, but the first actual ray case compiled the main-checkout shader through relative __FILE__ and failed missing tileOrigin. The fixture was fixed to receive the existing CMake shader source root, without weakening any expectation. The next actual shader case exposed INT|VECTOR reflection losing signedness and width. Shared reflection now retains UInt/Int scalar kind, width, vector byte size and C++/GLSL names. Discovery requires all seven cases. Fresh CPU validation passed all seven, including the compiled lane shader, and timing smoke checks passed (exit 0). The first queued exclusive retry was cancelled before it started (143) to let that same-agent CPU validation run; the final controlled driver witness was then requeued. Both candidate 500-frame producers passed the chunk gate, with 32,000 chunks and zero invalid timestamp pairs each. Both peers completed, and the native AMD peer finished entirely while its Dozen producer remained running. All seven standard windowed PNGs are byte-identical and were opened. Full suites, the merged cache gate and no-op rebuild were not run at the checkpoint.
 
-| Producer | Frame samples | p50 of frame maxima | p95 | p99 | Maximum | Budget result |
-|---|---:|---:|---:|---:|---:|---|
-| Merged offscreen editor / R6 fixture | 140 | 1.996 | 3.412 | 3.956 | 3.965 | PASS |
-| Merged offscreen HUD fixture | 85 | 3.694 | 5.011 | 7.314 | 7.314 | PASS |
-| Merged windowed editor, 2 cores | 120 | 1.757 | 2.957 | 3.432 | 3.514 | PASS |
-| Merged windowed HUD, 2 cores | 85 | 3.948 | 7.368 | 7.426 | 7.426 | PASS |
-| Merged concurrent editor, 4 cores | 500 | 1.873 | 2.350 | 3.100 | 5.812 | PASS |
-| Merged concurrent editor, failed 2-core repeat | 198 / incomplete | 1.744 | 2.191 | 2.260 | **1,103.538** | **FAIL** |
+Full-suite recorded status: **NOT RUN**. Only the exact permitted opcode-94 signature may be accepted; every other failure remains required. The restored cache launcher is tracked in the merged wave and is included in this suite. Fresh windowed PNG references are under captures-before; the completed after comparison found zero byte and decoded-pixel differences for all seven images. Offscreen fixtures compare against the preserved run 1 original-base reference and are labeled as such, not a new merged-base fixture capture.
 
-The full-suite procedural oracle passed exact RGBA, hit-record and SDF-trace byte comparisons. Its 64 individual submission intervals had p50 1.354920, p95 1.525800, p99/max 1.949640 ms, total GPU time 87.511560 ms. The paired cost measurements below use an untiled reference and tiled version in the **same process**, summing GPU timestamp intervals rather than CPU fence waits.
+Native recovery A: queued build.bat configure vixen-ninja exited 1 because vswhere did not discover the installed MSVC. Explicit provisioned vcvars compiled the standalone probe. Native configure then recovered UNC linker cwd through an own-worktree drive mapping, disabled WSL Dozen provisioning for the native route, used process-local Git trust for owned dependency clones/readonly kernel, and supplied the provisioned kernel root. These are identifiable setup changes, not product fixes.
 
-| Paired editor oracle | Untiled GPU ms | Sum of tiled GPU ms | Measured change | Max tile ms |
-|---|---:|---:|---:|---:|
-| Before wave merge, 2 cores | 79.608040 | 86.463920 | +8.61% | 1.545760 |
-| Merged candidate, 4 cores | 94.643880 | 199.819440 | +111.13% | 4.316880 |
-| Merged candidate, 2 cores | 89.481680 | 120.160840 | +34.29% | 3.190800 |
+Native recovery B: unchanged source setup reached VixenKernelSnapshot before generation and stalled on Windows CMake file(LOCK) over the WSL worktree. The queue killed it after 231 seconds (wrapper 75, payload 141). A fresh own-file lock with TIMEOUT 5 also never returned a result and was idle-killed after 199 seconds (75/141). Linux pinned generation was fresh and green; there is no safe native regeneration route past this lock. No generated pins were invented and no gates were disabled.
 
-The overhead varies substantially in these real-host runs. Its cause has not been isolated; no constant overhead guarantee is asserted. Whole-dispatch CSV spans also include inter-tile gaps and must not be substituted for the tile sums.
+Native recovery C: fresh native probe compilation/execution validates its narrower driver-client scope, but cannot validate full native VIXEN or hardware-ray output. Windows descendants surviving Linux queue cleanup were identified by owned command lines, stopped, and checked absent. The native full-build result is inconclusive beyond the evidenced lock stall, not a product compile failure. See native-invocation-status.txt and invocation-*.log.
 
-| Capture producer | Frames unchanged | Original render wall s | Before-merge candidate s | Final merged, 2 cores s | Final change |
-|---|---:|---:|---:|---:|---:|
-| Windowed HUD | 85 | 17.832 | 19.305 | 22.419 | +25.72% |
-| Windowed editor | 120 | 16.035 | 19.112 | 20.673 | +28.92% |
-| Offscreen HUD fixture | 85 | 15.804 | — | 19.315 | +22.22% |
-| Offscreen editor fixture | 140 | 38.980 | — | 23.334 | −40.14% |
+### Cost and responsiveness limits
 
-The isolated pre-merge wall changes were +8.26% HUD and +19.19% editor. Final merged comparisons also include the landed cache changes and varying host conditions; they do not isolate tiling cost. The failed 500-frame repeat has no successful full-run wall-time result.
+The fresh diagnostic baseline sums **41.589438 seconds** of whole-chunk GPU-clock intervals; the candidate with the Dozen peer sums **41.448568 seconds** (**−0.34%**). Its 500-frame render interval grows from **48.031** to **58.718 seconds** (**+22.25%**). The candidate with the native peer takes **58.700 seconds** in its render loop. Retirement bounds the backlog at a measurable host/wall-time cost; GPU work remains approximately unchanged.
 
-Seven windowed PNGs and nine offscreen fixture PNGs from the merged run are **byte-identical** to fresh original-base captures: zero changed pixels/channels. Both `sample_tri_layer.vxd` and the actual saved `sample_tri_layer.edited.vxd` are byte-identical. All selected baseline and completed candidate images were opened, individually or in full-size contact sheets. Native node/pool/lookup/config hash traces match exactly (2/2 HUD-windowed rows, 8/8 editor-windowed, 18/18 editor-fixture, 2/2 HUD-fixture). These hashes are supplementary data evidence, not serialized bake-file byte proof. The seven additional two-core captures were opened and their comparator passed: all byte-identical, zero changed pixels. This gives 23 completed post-merge PNG comparisons across the two windowed runs and offscreen fixtures.
+The valid Dozen render-overlap subset has **3,549** peer samples: service p99/max **4.302720/9.068320 ms**, cadence p99/max **20.358500/38.327000 ms**, with **one** cadence over two periods. The table's 5,399-sample Dozen peer row covers the complete 90 seconds, including startup and time after the producer. The failed pre-fix Dozen peer is partial and cannot support a clean before/after cadence verdict. The native render-overlap probe has 886 post-first samples, service p99/max **3.661500/5.020800 ms**, cadence p99/max **32.269800/33.628900 ms**; the native exclusive before control was **31.642000/31.781100 ms**. These are Vulkan compute completion peers, not compositor presents. Host submit maxima **90.412037** and **104.527659 ms** persist despite green chunk GPU intervals. General desktop responsiveness therefore remains unproven.
 
-Raw CSV, producer logs, PNGs, artifact SHA-256 values and statuses are in [gpuyield-evidence](gpuyield-evidence/README.md). `provenance.json` records original and merged executable hashes.
+All seven before/after PNGs were opened. Editor toggle/undo/redo and HUD state transitions match exactly. Capture log spans and SHA-256 hashes are retained in capture-identity.json; log spans include startup/shutdown and are not dedicated wall-clock timers.
 
-## Verification and recovery record
+### STOPs and checkpoint handoff
 
-Required scope: changed shader reflection, cached compute pipeline creation, submit channel, full-frame dispatch, frame synchronization/pacing, their main/editor consumers, standard capture/R6 fixtures, all 22 generation checks, RenderGraph/SVO suites, and a no-op rebuild. Generation uses the unchanged tracked kernel pin. No Undertow managed solution build is required or used.
+- Native full producer — STOPPED for that platform scope: supported CMake locking on the assigned WSL share, or an explicitly assigned NTFS worktree, is needed for the remaining native producer/hardware witnesses. Missing tools is no longer the cause.
+- Shell — unfinished at checkpoint: the owner supplied the canonical derivation route; preserve the exposed FRONTIER contract when implementing immutable layer/chunk lowering, then compare raw and committed artifacts. The audit is complete; conversion is not.
+- Indirect/grouped — unfinished at checkpoint: conversion and byte/timing witnesses are unfinished; use the existing bucket/tile data, preserve padded domains and cover record-only consumers.
+- Historical red: its exact GPU-active versus dependency/preemption split lacks a synchronized trace. Controlled reference runs must not be generalized to arbitrary external GPU workloads or DWM presentation.
 
-- CodeGraph-first query: no index existed; `codegraph explore --path . --max-files 4 GPU submission dispatch frame pacing timestamp` returned 1. Used `rg` afterwards; did not index.
-- Fresh documented `vixen-wsl` configure succeeded, provisioning SDK/windowing dependencies inside this worktree. It reported the SDK's `Include/glslang` case mismatch. Applied the documented worktree-local `Include -> include` symlink and reconfigured successfully. No generated sources/pins were hand-edited.
-- The initial queued j4 build never received admission. After over 12 minutes it was explicitly cancelled (143, no target results). The documented `--credits 1`, j2 route admitted the same fresh baseline build, which passed (602 actions, 452 s). This was admission recovery, not a product baseline red.
-- The separate probe build passed strict compilation. Its unloaded 15-second runtime passed.
-- Baseline standard windowed captures, the existing editor GPU oracle/benchmark, offscreen fixtures, and the standard HUD profile passed.
-- An overlapping same-build-tree targeted build was cancelled (wrapper 76, payload 141); its result is inconclusive. The aggregate suite build and integrated build passed. The final build is run after freezing source inputs and includes the later timing-collection changes, so these intermediate outputs are not the final witness.
-- The wave initially matched the original base. Before final verification it advanced to `742fddb6`; the feature was committed as `b4cacedf` and merged without conflicts as `a5cc7f33`. The merge retained the dispatch-base creation flag and shared submit/pacing changes. The final fresh merged native rebuild and all 22 selected check targets passed; a subsequent queued rebuild reported `ninja: no work to do`.
+Stopped heavy work at **17:11:00 UTC on 2026-10-10**, at the three-hour checkpoint. The outer final queue session had returned **143 at 17:10:01 UTC**, with its termination cause unclassified and its owned Linux scope still executing the generation refresh. Ownership was checked and process group 155810 was stopped with SIGTERM; its producer/generator processes were confirmed absent. The refresh log reports **17/23 CMake steps** before `ninja: build stopped: interrupted by user`; the earlier fresh merged 22-check result remains green, but this final refresh is **incomplete**, not a passing contract. See [checkpoint status](gpuyield-run2/checkpoint-status.json).
 
-The full RenderGraph/SVO suite ran **once**, serially, on the merged source: 2,126 registered, 2,102 passed, 3 failed, 20 skipped and 1 disabled (CTest exit 8; 319.38 seconds). RenderGraph: 1,355 registered, 1,341 passed, 2 failed, 12 skipped. SVO: 771 registered, 761 passed, 1 failed, 8 skipped, 1 disabled. The three failures and recovery outcomes are:
-
-- `FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder`: two-core reservation yielded `maxActive=1`. The same fresh binary passed the unchanged assertion with `--resource test --credits 2` (four cores); its CTest case also passed with four cores. `FramePipeline.h`, `TaskExecutor` and the fixture are unchanged from the original base. This was invocation/resource recovery; no product/test assertion was weakened.
-- `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`: exact permitted `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` / T-1449 finding.
-- `vixen_multiinstance_cache_gate`: Python could not open `VIXEN/tools/multiinstance_cache_gate.py`. This file is absent from the merged tree and latest fetched wave. `VIXEN/.gitignore:80` ignores `tools/`. **Unresolved required gate**, not excluded as a clean full-suite result.
-
-The live editor/R6 fixture, parameter propagation/save/reopen/undo/redo/navigation checks, new budget test and AppFlow channel gate passed. The merged focused submit/pacing run passed 3/3. The full-suite shader eligibility test passed. Native budget/cost and 16-artifact identity checks passed before the repeated concurrent-probe failure described above. The actual failed producer log was replayed through the existing `EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget` gate, using its existing capture-directory override and a worktree-local log alias. The gate failed exactly on `1103.538086 > 16.666666` (exit 1). The valid 140-frame fixture log was preserved separately and was not replaced.
-
-Recovery ladder for the missing launcher: **A** checked both documented script locations, tracked tree, ignore rule and fresh origin fetch; no launcher is available. **B** not applicable: it is a handwritten Python launcher, not generated output; all 22 generation contracts are green. **C** the remaining native checks and standard producers can be validated independently, but the brief requires the full RenderGraph gate, so this missing test cannot be excluded. Owner action: publish the intended script (force-add it or fix the ignore rule), then rerun that gate. No substitute test or skip guard was created.
-
-Recovery ladder for the repeated interactive timing failure: **A** the same loader/ICD, work directory and queue route were valid; the producer rendered 198 timestamp samples before its 240-second cleanup bound. The supported offscreen alternative was run on both saved original-base and candidate executables, same scene, two reserved cores, 500 requested frames, 90-second peer trace and 120-second producer bound. **Both producers timed out**, and neither completed 500 frames or produced a success summary. The candidate yielded only seven collected tile samples, max 2.166480 ms, before its timeout. This demonstrates a contemporary completion failure on the original executable too; it does **not** classify the distinct 1,103 ms interval as pre-existing. The diagnostic batch itself exited 0 because it collected both child statuses; `status.txt` records each child as failed. Native Windows tooling is not in the merged wave used here; the lane was instructed to use Dozen. A read-only PowerShell engine/process snapshot succeeded. **B** no stale generated input, missing native binary or pin mismatch was observed; generation is green and the exact merged binaries are hashed. No blind regeneration/cache deletion was performed. **C** the failure is inside the requested GPU-budget/responsiveness scope; it remains **unclassified** and cannot be excluded as environmental or pre-existing. No claim of a clean full R477 change is made.
-
-All builds and tests used `/home/liory/.local/bin/with-test-lock.sh`, stable agent `gpuyield`. Queue requests cancelled before admission had no test results and are not counted as suite executions. The later two-core probe request executed and failed; its failure is retained. Logs/statuses are under `gpuyield-evidence/verification/`, with durable queue logs under `~/.local/state/undertow/undertow-box-logs/`.
-
-Reproduction tips: configure the existing `vixen-wsl` preset against the unchanged tracked kernel pin; use j2/one build credit for native compilation. Mixed full-suite CPU pipeline checks require at least four reserved cores. Standard capture producers use the real `VIXEN_EDITOR_OFFSCREEN_CAPTURE=1` and `VIXEN_HUD_OFFSCREEN_CAPTURE=1` flags; `VIXEN_EDITOR_TEST_OFFSCREEN` is not the offscreen selector. Compile the second-client tool with the provisioned SDK (`glslc tools/gpu-cadence-probe.comp` and C++20/Vulkan), through the build queue. Run `tools/measure-gpu-cadence.py --seconds 90 --timeout 240 --command ./vixen_editor` through the GPU queue from the binary directory, with the configured Dozen runtime environment and `VIXEN_EXIT_AFTER_FRAMES=500`. Use `VIXEN_RIMLEAK_BENCHMARK=after` for paired oracle cost output.
-
-## STOPs / governing decisions still needed
-
-**STOP: required interactive timing property remains red.** The 1,103.538086 ms tile interval and incomplete 500-frame run are reproducible evidence to retain, not an approved outlier. Root cause remains unclassified. Next work must isolate the current Dozen/host scheduling and presentation behavior with a contemporary baseline/candidate replay, then establish a green budget/responsiveness witness. Investigating FIFO versus the existing alternate present choices, and the R475 native-driver route, are options; this lane has not proved either is the cause or fix.
-
-**STOP: required merged full-suite cache gate cannot launch.** Owner must land `VIXEN/tools/multiinstance_cache_gate.py` omitted by the merge. This is separate from the permitted opcode-94 finding.
-
-**REFER-TO-ORCHESTRATOR: optional paths cannot yet share the bounded-output guarantee.** No new abstraction was invented to hide these gaps.
-
-1. Hardware rays need either an existing payload field designated as tile origin by an owner ruling, or an approved origin addition to the existing shader/push-constant contract. Recommendation: extend the existing typed contract; do not invent a ray-scheduling registry. Keep the software path as the measured witness until a native driver/toolchain lane supplies hardware measurements.
-2. GPU shell dilation needs a decision on immutable per-layer frontier input versus routing to the existing CPU shell derivation/repair. A snapshot/second frontier changes the present implementation, while splitting the in-place loop can change bytes. Recommendation: use the existing canonical shell derivation contract and establish which frontier bits are observable before converting the GPU mirror.
-3. Indirect/grouped procedural passes need a ruled use of existing bucket/tile data that supplies a safe tile grid and separately submitted work. An indirect dispatch has no Vulkan dispatch-base variant; a full-screen indirect workload cannot simply be divided by this lane's primary-buffer split. Recommendation: derive chunk commands from the existing bucket/partition contract together with the multiinstance/togglelatency lanes, not another task registry.
-4. Individual acceleration builds, arbitrary raster draws, transfer batches, and raw GPU-test fixtures still lack complete duration coverage. Inventory is explicit but its full measurement/bounding obligation remains unfinished. No universal or unmeasured-device budget guarantee is asserted.
-
-The original standard-path baseline was recovered and established before semantic implementation. This report does not stop on the original unbounded dispatch it was sent to fix. It preserves independently completed work and explicitly marks the newly observed required timing failure, omitted merged launcher, and remaining optional-path work as unfinished. R477 must not be closed or landed as fully verified from this report.
-
-## SPT DISPOSITION
-
-R477 — PARTIAL / REQUIRED GATES UNRESOLVED: standard full-frame compute tiling, graph pacing and probe implementation; repeated interactive timing failure, missing merged launcher, optional conversions and full inventory timing coverage remain as above. The brief supplied no SPT task identifier to close.
-
-No kernel or Undertow declaration changes, no `Program.Legacy.cs` changes, and no new attribute/registry/id space. Native policy changes use existing `SubmitRecord`, command pools, timestamp queries, timeline completion markers and capacity configuration. R412 added-line mechanical check passed with zero hits; no new schema/system/reference declaration requires an exemplar. No native source changed after the tested merge.
-
-## Checkpoint / remaining work
-
-Started around 11:10 UTC; stopped taking new items before the approximately 14:10 UTC checkpoint. Final stop point: all 23 selected post-merge PNG comparisons and both documents are byte-identical; the full suite ran once; CPU overlap recovery passed; the real failed producer budget test failed; both offscreen replay producers timed out. No diagnostic child or queue request is intentionally left running. Remaining work is the required timing failure diagnosis/fix, publication/retest of the omitted launcher, optional GPU path conversions and full duration inventory; serialized bake-file byte identity and before/after identity of other scene captures remain unverified. The committed native implementation is a candidate with unresolved required gates, not a clean complete R477 result.
+The full ShaderManagement and RenderGraph/SVO suites, merged cache gate, offscreen fixture comparison/R6 suite gates and no-op rebuild were **not run**. The checkpoint guard was prepared before the full-suite phase, but the interrupted refresh never reached it. Remove the lane checkpoint marker when resuming the reproduction helper. Remaining work: shell and indirect/grouped conversion; those raw/data byte witnesses; native full-producer/hardware-ray witnesses; finish 22 checks and run the full required suites once. The committed candidate is not certified as complete R477/R486 work.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-- proposed: Make the provisioned Linux Vulkan SDK glslang include lookup case-tolerant
-- proposed: Size VIXEN queued build credits from the requested compiler parallelism
-- proposed: Derive compute pipeline dispatch-base capability from bounded command recording
-- proposed: Preserve compute builtin dependencies in the existing shader reflection contract
-- proposed: Make zero-count Vulkan submit payload copies safe without pointer arithmetic
-- proposed: Make CodeGraph first queries usable in isolated VIXEN worktrees
-- proposed: Share configured Vulkan runtime environment with standalone GPU witness tools
-- proposed: Declare CPU concurrency requirements for mixed GPU RenderGraph suites
-- proposed: Require registered CTest launcher scripts to be tracked and present
+- proposed: Windows native build discovery rejects an installed MSVC toolchain
+- proposed: Windows native CMake builds need a supported worktree drive mapping
+- proposed: Native Windows FetchContent needs scoped trust for WSL worktree clones
+- proposed: Native Windows configure should not attempt WSL Dozen provisioning
+- proposed: GPU CTest reservations bypass the queue device mutex
+- proposed: Native codegen discovery needs the provisioned kernel root
+- proposed: GPU chunk timings need separate dependency and dispatch intervals
+- proposed: MultiDispatch timestamp commands lie outside the primary recording lifetime
+- proposed: Native build summary needs worktree-scoped logs and status
+- proposed: Box queue native interop cleanup leaves Windows payload descendants alive
+- proposed: Dozen cadence queries need explicit availability waits and durable CSV rows
+- proposed: Native CMake file locks stall on the assigned WSL worktree
+- proposed: Filtered contract witnesses must reject zero selected tests
+- proposed: Anchor compiled shader fixtures to their owning checkout
+- proposed: Consolidate chunk retirement with declared graph timeline capacity
+- proposed: Declare conservative uncalibrated GPU cost at the queue policy boundary
+- proposed: Preserve integer vector traits in the shared SPIR-V reflection contract
+- proposed: Queue wrapper termination leaves its nested Linux witness scope running

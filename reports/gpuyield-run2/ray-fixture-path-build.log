@@ -1,0 +1,275 @@
+[box:flow] run2-ray-fixture-path-build cpu=39% target=90% depth=2 free=0 baseline=3 granted=3 mode=dynamic
+[box:flow] run2-ray-fixture-path-build queued — need=3 tokens projected=13076MB estimate=class-max samples=939
+[box:flow] run2-ray-fixture-path-build cpu=34% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69224MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546619MB
+[box:flow] run2-ray-fixture-path-build cpu=28% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68826MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546631MB
+[box:flow] run2-ray-fixture-path-build cpu=31% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69564MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546633MB
+[box:flow] run2-ray-fixture-path-build cpu=32% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69209MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546521MB
+[box:flow] run2-ray-fixture-path-build cpu=27% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69683MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546563MB
+[box:flow] run2-ray-fixture-path-build cpu=32% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69505MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546618MB
+[box:flow] run2-ray-fixture-path-build cpu=42% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69173MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546608MB
+[box:flow] run2-ray-fixture-path-build cpu=50% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69273MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546585MB
+[box:flow] run2-ray-fixture-path-build cpu=55% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=70079MB projected=13076MB estimate=class-max samples=939 reserved=21761MB total=80425MB reserve=4096MB disk=546555MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69470MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546555MB
+[box:flow] run2-ray-fixture-path-build cpu=33% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69639MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546554MB
+[box:flow] run2-ray-fixture-path-build cpu=33% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69316MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546541MB
+[box:flow] run2-ray-fixture-path-build cpu=45% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69030MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546541MB
+[box:flow] run2-ray-fixture-path-build cpu=34% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68651MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546541MB
+[box:flow] run2-ray-fixture-path-build cpu=35% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68473MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=46% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68179MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=47% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68088MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67887MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=40% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67626MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=44% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67559MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=45% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67120MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=39% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67113MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=42% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=66996MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=40% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=66844MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=49% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=66911MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=41% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=66619MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=40% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68767MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=44% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68215MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=43% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67809MB projected=13076MB estimate=class-max samples=939 reserved=21484MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=50% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67523MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546519MB
+[box:flow] run2-ray-fixture-path-build cpu=47% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68052MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=42% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=69189MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=52% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68818MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=49% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68506MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=44% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68212MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=48% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67829MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546518MB
+[box:flow] run2-ray-fixture-path-build cpu=49% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68580MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=55% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68505MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=46% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68219MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=46% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67921MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=45% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67513MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=48% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67539MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546500MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68198MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=58% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67141MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546507MB
+[box:flow] run2-ray-fixture-path-build cpu=52% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67025MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=54% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67252MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=50% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67916MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546512MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67812MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546516MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68387MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=51% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68123MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546517MB
+[box:flow] run2-ray-fixture-path-build cpu=53% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67985MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546516MB
+[box:flow] run2-ray-fixture-path-build cpu=46% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=67631MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546516MB
+[box:flow] run2-ray-fixture-path-build cpu=43% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68064MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546516MB
+[box:flow] run2-ray-fixture-path-build cpu=40% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68227MB projected=13076MB estimate=class-max samples=939 reserved=23188MB total=80425MB reserve=4096MB disk=546516MB
+[box:flow] run2-ray-fixture-path-build cpu=28% target=90% admit
+[box:flow] run2-ray-fixture-path-build memory=admit avail=68163MB projected=13076MB estimate=class-max samples=939 reserved=12774MB total=80425MB reserve=4096MB disk=546512MB
+[box:flow] run2-ray-fixture-path-build granted tokens=4 5 6 mask=8,9,10,11,12,13
+[box:flow] run2-ray-fixture-path-build running on cores 8,9,10,11,12,13 (build)
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Using system ccache: /home/liory/.local/bin/ccache
+-- VIXEN: expected Vulkan SDK 1.4.350.1 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: found Vulkan SDK 1.4.350.1 — expected version matches.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.1; found SDK 1.4.350.1; API headers 1.4.0; glslang 16.3.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d)
+-- [ProvisionWslVulkan] Vulkan SDK setting: expected 1.4.350.1 (override with VIXEN_VULKAN_SDK_VERSION).
+-- [ProvisionWslVulkan] cache hit: /home/liory/.cache/vixen/wsl-vulkan/mesa/build/src/microsoft/vulkan/libvulkan_dzn.so
+-- VIXEN: gdb not found (set -DVIXEN_AUTO_PROVISION_GDB=ON to auto-fetch, no sudo required) — no debugger target available.
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64
+-- FetchContent base directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- *************************************************************
+-- gaia-ecs v1.0.0 (Release)
+-- Copyright (c) 2021-2026 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: GNU
+-- CompPath: /usr/bin/g++
+-- CompSim: 
+-- CPU: x86_64
+-- *************************************************************
+-- VIXEN: Gaia source verified at a2e62491b56a8589c31da97128f0658088050a70
+-- Checking for one of the modules 'hwloc'
+-- IPO enabled
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- KernelDispatch library configured (E7 dispatch D1: Tier-A extraction + data-only ABI)
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- VIXEN: wayland-scanner not found; GLFW Wayland backend disabled (X11 only).
+-- VIXEN: X11 dev provisioned at /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.windowing-deps; GLFW X11 backend enabled.
+-- Including X11 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- [RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)
+-- [RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)
+-- [RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)
+-- [RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)
+-- ✓ test_sdi_stage_wiring configured (Semantic Wiring S2)
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)
+-- ✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)
+-- [RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)
+-- ✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)
+-- ✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)
+-- ✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)
+-- ✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)
+-- ✓ test_view_container_builder configured (native UTVC container decode)
+-- ✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)
+-- [CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- [codegen] using discovered Undertow schema catalogue: /home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json
+-- [codegen] using tracked Yeroket kernel pin: c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- [codegen] reusing pinned kernel snapshot: /home/liory/.cache/vixen/kernel-codegen/sources/yeroket-c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- vixen_generate_node_manifest: wrote 65 node type(s) to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- vixen_link_used_nodes: VixenApp scoped-linked 65 node OBJECT librar(y/ies) (whole-archived) from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- VIXEN: Generated shader files output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/shaders
+-- VIXEN: SDI headers output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- [Application Tests] Added: test_headless_ui_graph (offscreen UI render/readback)
+-- [Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)
+-- [Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)
+-- [Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)
+-- [Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)
+-- Application configured - all executables defined
+-- RenderGraph/SVO verification target available: rendergraph_svo_tests
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (2.1s)
+-- Generating done (0.8s)
+-- Build files have been written to: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+[0/4] Re-checking globbed directories...
+[1/6] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Selection/test_selection_set.cpp.o
+[2/6] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Nodes/test_push_constant_gatherer_node.cpp.o
+[3/6] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+UT_JOB_DONE build run2-ray-fixture-path-build exit=0 state=OK

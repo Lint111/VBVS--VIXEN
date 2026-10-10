@@ -1,0 +1,20 @@
+[box:nested] run2-final-22-checks reusing the held light admission
+[0/2] Re-checking globbed directories...
+[1/23] [codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)
+[2/23] [codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)
+[3/23] [codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations
+[4/23] [codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels
+[5/23] [codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes
+[6/23] [codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)
+[7/23] [codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)
+[8/23] [codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)
+[9/23] [codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)
+[10/23] [codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)
+[11/23] [codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)
+[12/23] [codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)
+[13/23] [codegen] golden check: MiningBeamBuffer.g.h/.glsl match canonical schema
+[14/23] [codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)
+[15/23] [codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)
+[16/23] [codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)
+[17/23] [codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)
+ninja: build stopped: interrupted by user.
