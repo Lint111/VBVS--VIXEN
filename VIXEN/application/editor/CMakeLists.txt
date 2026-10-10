@@ -10,6 +10,8 @@ cmake_minimum_required(VERSION 3.15...4.2 FATAL_ERROR)
 add_executable(vixen_editor
     ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/EditorApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/AppFlowChannel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/AppFlowReadback.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/EditorLayersViewBridge.cpp
 )
 
@@ -30,6 +32,9 @@ vixen_whole_archive_link_vixen_app(vixen_editor PRIVATE)
 # vixen_editor only pulled gaia.h TRANSITIVELY via SVO's octree headers (VixenApp), never linked
 # the library that actually instantiates a World.
 target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld VoxelDocument)
+if(WIN32)
+    target_link_libraries(vixen_editor PRIVATE ws2_32)
+endif()
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
@@ -131,4 +136,22 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
         vixen_lock_gpu_tests(TESTS vixen_wsl_capture_witness)
     endif()
+endif()
+
+if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME vixen_editor_appflow_channel_gate
+        COMMAND ${Python3_EXECUTABLE} "${VIXEN_ROOT}/tools/appflow_channel_gate.py"
+            --editor "$<TARGET_FILE:vixen_editor>"
+            --server "${VIXEN_ROOT}/tools/appflow_mcp_server.py"
+            --document "${VIXEN_EDITOR_TEST_DOCUMENT}"
+            --transcript "${VIXEN_EDITOR_CAPTURE_DIR}/appflow-channel-transcript.json")
+    set_tests_properties(vixen_editor_appflow_channel_gate PROPERTIES
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
+        TIMEOUT 300)
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_editor_appflow_channel_gate
+        TEST_ENVIRONMENT
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
+            "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1")
+    vixen_lock_gpu_tests(TESTS vixen_editor_appflow_channel_gate)
 endif()
