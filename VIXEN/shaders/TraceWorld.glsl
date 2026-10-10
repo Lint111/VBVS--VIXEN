@@ -973,9 +973,11 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 float uberParams[6] = float[6](
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
+                g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
                                            pc.raySizeCoef, uberParams, pNormal, pT, pSteps);
+                g_recipeProvenStepOnly = false;
             }
 #endif
 

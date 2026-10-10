@@ -1,99 +1,65 @@
-# lightunify — shared SDF shadows and local night lighting
+# lightunify — SDF-recipe shadows and material-driven shading (salvage under R502)
+
+Owner ruling R502 changed this lane: lighting is agnostic to the number of lights. Lights are emitters and cost follows a fixed sample or photon budget, never lights x pixels. Direct light will use stochastic many-light sampling through the existing reservoirs; indirect light will use photon emission into the photon cells. A separate design pass covers that path and this lane does not build it. This pass keeps only what holds for any light count.
+
+Lane branch `lane-lightunify`. Base `ed36300c`; this pass adds new commits on top (no rewrite, no push).
 
 ## LANDABLE NOW
 
-**Checkpoint state: implementation and fresh build/targeted shadow witnesses are ready; visual and broad runtime gates remain unfinished.** Lane branch: `lane-lightunify`. Merged base SHA: `3bdcefb7b07bd3da3266d948f6f8b5862326b37f` (`origin/wave/authoring-convergence`). No other worktree was edited.
+### Kept
 
-### Diagnosis and repair
+- **SDF-recipe shadows through the shared traversal.** The lighting-family shaders splice the registered recipes with the same `SpliceProceduralRecipesIntoSource` the primary march uses (`BuildRenderGraph.cpp`, `VulkanGraphApplication.{h,cpp}`). `ShadowVisibilityWave.comp` and the debug path of `SpatialReuseShade.comp` declare the occupancy buffer (binding 48), include `recipe/SdfCoreKernels.g.glsl` and carry the splice marker ahead of `SceneBindings.glsl`. `DirectLighting.comp`, `ProbeGather.comp` and `ShadowRayTrace.comp` include the recipe declarations. No second recipe evaluator.
+- **Shadow-reach fix.** The lighting-family splices pass no occupancy blob (the primary march owns the upload), so binding 48 is empty in the wave and `sampleRecipeOccupancy` returns `kNoGridSentinel`. With `gridDim != 0` the relaxed-step boost (8x) then overshot occluders farther than about 1 unit from the receiver, so shadows stopped short. A global `g_recipeProvenStepOnly` (`SdfRecipes.glsl`, set around the shadow any-hit `traceUberRecipeBody` call in `TraceWorldShadowImpl`, `TraceWorld.glsl`) restricts the boost to a real per-cell bound. The primary march is unchanged.
+- **Shading from the receiver's own material and cel band.** A shadowed pixel shows the receiver's albedo, hue-shifted by the authored `celShadowHueShiftDegrees` (-18 degrees; lit +18) at a lower band. There is no fixed shadow tint.
+- Scene data stays: per-pane light declarations and per-emitter recipes in `LookdevSceneDefinition.h`. Nothing requires one mask bit per light.
 
-The look-dev fixture contains 39 authored primitives plus four figure appendages. `VIXEN/application/main/include/graph/LookdevSceneDefinition.h:89-158,247-320` groups these into registered SDF recipes and body instances; the hull, trees, rocks, figure, plinth, water and props are all opaque procedural instances. There is no sprite path in this fixture. Stored SVO bodies outside the fixture also use the common world traversal.
+### Dropped
 
-The primary marcher already compiled the registry's generated SDF functions. The original default `ShadowVisibilityWave.comp` source did not include the recipe-splice marker and so compiled out `TraceWorldShadowImpl`'s registered-recipe branch. That shared traversal already handles stored octree occupancy and registered recipes (`VIXEN/shaders/TraceWorld.glsl:879-1010`); the gap was that the default wave omitted the recipe declarations and shared occupancy binding. The lighting-family source provider now calls the same `SpliceProceduralRecipesIntoSource` used by the marcher when a shader declares the marker (`VIXEN/application/main/source/graph/BuildRenderGraph.cpp:2294-2310`), and the wave declares binding 48 and the marker (`VIXEN/shaders/ShadowVisibilityWave.comp:57-63`). No second recipe evaluator or hand-written caster list was added. Recipe registration invalidates every registered shader-family consumer (`VIXEN/application/main/source/VulkanGraphApplication.cpp:4378-4395`).
+- The per-light visibility-mask growth: `LightingConfig` capacity back to 4 (`LightingConfig.cs`, `LightingConfig.g.h`, `LightingConfig.glsl`), `HitRecord.glsl` and `PhotonCellsCommon.glsl` back to the base layout (bits 0-3 lights, bit 4 reservoir answer, bits 8-15 policy stencil), the two parity tests back to capacity 4.
+- Per-source night isolation captures and the radial falloff / timing / `--isolation` helpers in `tools/check-lightunify-captures.py`; the test `LookdevLighting.CapturesEachNightSourceAndAmbientControl` and its registration.
 
-The wave and receiver shader share one visibility word. Bits 0–3 remain lights 0–3; bits 16–27 carry lights 4–15, preserving the reservoir answer at bit 4 and the primary policy stencil at bits 8–15 (`VIXEN/shaders/HitRecord.glsl:46-81`). `ShadowVisibilityWave.comp:246-299` traces active declared lights through `TraceWorldShadow` and writes only that visibility field. `SpatialReuseShade.comp:596-633` gates the receiver's own material colour and cel band by that visibility and the authored range falloff; it does not replace shadow pixels with a fixed tint.
+### Known gap (closed by R502 sampling, not worked around)
 
-The earlier night fixture used one point source for twelve emissive windows. `LookdevSceneDefinition.h:105-124,251-295,329-391` now derives one source and one source-exclusion recipe per registered pane. Each pane receives one twelfth of the old window-row radiance and a short local range; the roof worklight and flood remain separate, longer-range sources. The 15-light set fits the generated 16-light `LightingConfig`. `LightEvaluation.glsl:19-34` supplies point-source range falloff; cel spill remains scaled by per-light purpose and attenuation in `SpatialReuseShade.comp:612-629`. The scene has no facade-specific brightening term. The look-dev test does not enable DDGI/reservoir lighting, so this report does not attribute night energy to those disabled paths. Emissive appearance remains the registered material's own emission channel.
+The look-dev night scene declares 15 lights; `LightingConfigNode::SetLights` clamps the upload to the base capacity of 4. In declaration order that is the key light and three window panes; the remaining panes, the roof worklight and the flood are dropped. The night captures therefore show the warm floor pool and flood/worklight glow of the base gone, a nearly black plinth, and large dark shadow regions on the hull. They are labelled as this gap and are not gated. I did not reorder the declarations to hide it.
 
-The exact per-emitter/source assertion is in `VIXEN/application/main/tests/test_lookdev_capture.cpp:70-103`; isolated source and ambient captures are provided by `:476-484`. The production-chain shadow correctness witness dispatches march → shared shadow wave → shade, including a registered-recipe caster/receiver through the last declared light (`VIXEN/libraries/RenderGraph/tests/Nodes/test_shadow_correctness.cpp:1550-1600`).
+### Witnesses
 
-### Witnesses and gates
+All on the lane worktree; the GPU runs use dzn (Dozen), so they prove correctness only and **this report makes no timing claims**.
 
-| Check | Result at checkpoint |
+| Check | Result |
 |---|---|
-| Fresh merged-tree CMake build | **PASS** — queued build, exit 0; log `/home/liory/.local/state/undertow/undertow-box-logs/1791656838-build-lightunify:merged-full-build-j2.log`. |
-| 22 VIXEN generation checks | **PASS through the fresh default build graph**; changed `LightingConfig.g.h/.glsl` golden check ran. The prescribed `tools/check-content-codegen.sh` is absent from both consumer `tools/` locations; this gap has an SPT proposal. |
-| Targeted `ShadowCorrectnessTest.*` | **PASS, 5/5** after fixing the direct test builder's shared SVO include root and matching its Vulkan descriptor type/pool to shader reflection. |
-| Emitter declaration, recipe splice and LightingConfig parity witnesses | **PASS** in the focused runs recorded before checkpoint; full suite remains the required final witness. |
-| Before captures | **PASS, 4 states × 4 angles**, fresh pre-change binary on base SHA above. `before/merged-base-sha.txt` records that SHA; instrumentation-only captures matched the stored repeated baseline pixels. |
-| After captures/contact sheet | **INCOMPLETE.** A fresh midday state completed with the repeat-pixel CTest and four captures. I opened all four raw midday images; new dark receiving-surface footprints are visible on the plinth. Other three states did not complete. The interrupted late-afternoon queued CTest had not started its payload; my own pending waiters were stopped at the checkpoint. |
-| Shadow-mask, family coverage and receiver-colour gates | **NOT EVALUATED on the complete 16-tile after set.** The before mask is all-white for visible surfaces, consistent with the missing registered-recipe wave path. The four midday after images alone are not represented as a full gate pass. |
-| Night radial falloff per source and explained-energy gate | **NOT RUN.** The queued isolated-source/ambient test was not admitted before checkpoint. |
-| GPU timestamps, before/after p50/p95/max | **PARTIAL.** Before has 896 steady samples (16 tiles × 56 post-warmup samples). The corresponding full after aggregate is unavailable because only one after state completed; no regression claim is made. Baseline values (ms): |
+| Build, 22 `codegen/*_check` generation checks plus `test_rendergraph_criticalnodes_gpurender2b`, `..._sdiparity`, `test_rendergraph_core`, `test_uber_shader_splice`, `vixen_lookdev_capture` (`nice -n 10 ninja -j4`) | PASS, exit 0; log `.tmp/lightunify/salvage-build.log` |
+| Focused tests via the test queue | PASS, 18/18: LightingConfigParity x4; ShadowCorrectnessTest x5 (occluded, registered recipes through the last declared slot, cel point-light falloff, two emissive); LightingConfigSdiParity; UberShaderSplice x8; log `.tmp/lightunify/salvage-tests.log` |
+| Midday and night-service captures, one job per state | PASS: `Application.LookdevCapture` and `Application.LookdevLighting.EmittersHaveDistinctDeclaredSources` 2/2 per state |
+| `tools/check-lightunify-captures.py ... --gate` (midday gated; night recorded only) | PASS, exit 0, 8 tiles, no failures |
 
-| Pass | Before p50 | Before p95 | Before max |
-|---|---:|---:|---:|
-| `direct_lighting_ms` | 0.000480 | 0.000560 | 0.000760 |
-| `esvo_traverse_shade_ms` | 882.936000 | 999.570000 | 1048.510000 |
-| `probe_apply_ms` | 0.000480 | 0.000560 | 0.000760 |
-| `probe_gather_ms` | 0.000480 | 0.000560 | 0.000760 |
-| `shadow_ray_trace_ms` | 0.000480 | 0.000560 | 0.000760 |
-| `shadow_visibility_wave_ms` | 14.802300 | 29.525000 | 36.046800 |
-| `spatial_reuse_ms` | 0.093540 | 0.108000 | 0.130800 |
+Shadow footprint (occluded / tested), midday, before -> after: machine 0 -> 7/7, 91/91, 560/560, 22/22 over the four angles; foliage 184/184, 746/746, 310/310 (0 before); figure 83/83, 44/44; rock 46/46, 13/13. Night-service is also 100% after, 0 before. Fill is unchanged (midday 0.416 / 0.343 / 0.349 / 0.359). Unexplained-energy pixels: 0 in every tile.
 
-| Check | Result at checkpoint |
-|---|---|
-| editormaterials fill and lighting-ratio properties | **NOT RUN** — requires all 16 fresh after tiles. |
-| R434 visibility | **NOT RUN in this lane.** Its test is present in the RenderGraph/SVO label set. |
-| R6 | **NOT RUN in this lane.** All eight named R6 tests are present in the RenderGraph/SVO label set. |
-| RenderGraph/SVO suites | **NOT RUN in this lane.** A queued full label run was cancelled before payload admission at the checkpoint; no result from another worktree is substituted. The SVO opcode-94 allowance remains the previously documented accepted baseline only if the same signature recurs. |
-| R477/gpuyield budget | **Superseded by the controller.** This report does not wait for gpuyield or claim a bounded-dispatch budget. The replacement GPU-time gate is incomplete as described above. |
+Receiver colour (midday, observable materials): shadow hue is 17-26 degrees from the receiver's own albedo hue (allowed: authored shift 18 + 20 tonemap drift), and the shadow luma is below the lit luma. Near-grey materials (Structure, DarkMetal) carry no measurable hue and are recorded as unobservable.
 
-### Reviewed visual evidence
+### Sheets (I opened each image)
 
-The base 4×4 contact sheet and shadow-mask sheet were opened and checked. The tracked copies are [before contact sheet](lightunify-visual/captures-before/contact-sheet.png) and [before shadow-mask sheet](lightunify-visual/captures-before/shadow-mask-sheet.png). The mask sheet shows visible receivers as unoccluded; it is the pre-change result. I also opened the four completed post-change midday images. There is no fabricated or mixed-state after contact sheet: the required 16-tile after sheet and its mask still need to be produced.
+- `reports/lightunify-visual/salvage/midday-before-after.png`: rows are before image, after image, before shadow mask, after shadow mask; columns are the four angles. Before: almost no cast shadows beyond about 1 unit. After: hull, tree and figure shadows fall on the plinth, in the receiver's own dark hue; the mask rows show black footprints where before they were white.
+- `reports/lightunify-visual/salvage/night-service-before-after.png`: same layout. After shows the 4-light truncation described above (known gap).
+- `reports/lightunify-visual/salvage/after-contact-sheet.png` and `after-shadow-mask-sheet.png`: the 8 analyzer tiles (rows: midday angles 0-3, night-service angles 0-3, four per row pair as written by the analyzer). Midday tiles match the midday sheet; night tiles show the truncated lighting.
+- `reports/lightunify-visual/captures-before/*` and `owner-{before,after}-contact-sheet.png` are the earlier committed sheets (15-light plan; superseded by the above).
 
-One observation per before tile:
+### Canonical-shape checklist (R412)
 
-| Tile | Observation |
-|---|---|
-| Midday angle 0 | Front view, tree and figure in frame; no resolved cast footprint on the plinth. |
-| Midday angle 1 | Tree partly covers the cab; plinth has no distinct receiving shadow. |
-| Midday angle 2 | Rear view with tree and rock; no distinct cast footprint. |
-| Midday angle 3 | Side view and figure visible; no distinct cast footprint. |
-| Late-afternoon angle 0 | Warm front view; foliage/figure shadows are not resolved on the plinth. |
-| Late-afternoon angle 1 | Oblique view; plinth has no distinct cast footprint. |
-| Late-afternoon angle 2 | Rear/side view; no distinct caster footprints. |
-| Late-afternoon angle 3 | Side view; no distinct receiver shadow. |
-| Overcast angle 0 | Front view; no distinct cast footprint. |
-| Overcast angle 1 | Oblique view; no distinct cast footprint. |
-| Overcast angle 2 | Rear view; no distinct cast footprint. |
-| Overcast angle 3 | Side view; no distinct cast footprint. |
-| Night-service angle 0 | Dark front pool; no measured per-source radial falloff. |
-| Night-service angle 1 | Dark oblique pool; the shared window source has no local-bin measurement. |
-| Night-service angle 2 | Rear pool; no measured receiver shadow mask. |
-| Night-service angle 3 | Side pool; no per-light isolation evidence. |
+Added lines are GLSL, C++ tests, CMake and a Python tool; none touches C#/Undertow code. The `throw`, `KindRef`, `PipeWriter`, `.Baked()` and `static readonly` greps over the added lines are empty. `Program.Legacy.cs` line delta: 0.
 
-The four opened post-change midday frames show dark footprints around the projected tree/figure regions at angles 0–3. This is visual evidence only; colour tolerance and projected-family coverage await the complete analyzer run.
+## STOPs
 
-### Checkpoint and remaining work
+1. **Night scene under the 4-light mask.** Options: (a) leave the scene as is and wait for R502 sampling (recommended; zero extra work, honest picture); (b) reorder `LookdevSceneDefinition.h` so key, worklight and flood come first and the panes after, which makes the night look nearer the base but is a workaround of exactly the kind R502 rules out; (c) merge the panes back into one emitter. I took (a).
+2. **Cel shadow hue shift of -18 degrees is authored, not derived.** A hue-shifted shadow is a style decision; if the owner wants the shadow to keep the albedo hue, the value lives in `LightingConfig` (`celShadowHueShiftDegrees`).
+3. **No unit test for the shadow-reach fix.** `ShadowCorrectnessTest`'s dummy SDF buffer has `gridDim == 0`, so it cannot hit the empty-grid boost. Evidence is the captures (footprints 0% -> 100%). A test would need a registered-recipe case with `gridDim != 0` and an empty occupancy buffer; I did not add one in this pass.
+4. **Not re-run in this redirected pass:** editormaterials fill / lighting-ratio checks, R434/R6, and the RenderGraph/SVO suites; only midday and night-service were captured (late-afternoon and overcast were not). Earlier attribution: minor-material fill failures are base-red, and the angle-1 fill drop is expected from the new plinth shadows. Known baseline reds: `Undertow.Core.Tests` and `Undertow.Content.Core.Tests` do not build on main-wave; wizard jobs `core-callable-registries` and `transpiled-app-system-schedule`.
 
-At approximately 19:15 UTC on 2026-10-10, the lane was approaching the three-hour checkpoint measured from its 16:24 UTC start. The global queue showed another lane's full RenderGraph/SVO work running and a 15-token GPU matrix ahead of this lane. My own queued post-change state, source-isolation, property-analysis and suite requests had not started their payloads; I stopped those waiters rather than leave GPU work running beyond the checkpoint. No required check failed in this lane; these gates are unrun, not classified as product regressions.
+## SPT DISPOSITION
 
-Remaining items for the continuation lane: capture late-afternoon, overcast and night-service on the merged tree; create/open the 4×4 after contact and mask sheets; run the complete shadow/colour/night-energy properties and editormaterials fill/ratio checker; compute matching per-pass after timestamps and assess any rise against the newly shadowed recipe bodies and individual night emitters; run R434, R6, and the complete RenderGraph/SVO suite; then refresh this report with exact results.
+- `lightunify` shadow/night-light unification task (proposals in `.spt-proposals/lightunify.jsonl`): PARTIAL. Shared-traversal SDF shadows and material-driven shading are done; the many-light night path is R502's sampling design and is not built here.
 
-The original audit's R477 STOP is removed. The captured before data and this implementation are independently useful and committed; no gpuyield contract change is requested.
+## CONSOLIDATION ISSUES
 
-## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
-
-- Publish a reusable VIXEN CodeGraph index for engine lanes
-- Derive live recipe invalidation for every shader registry consumer
-- Apply the canonical GPU environment to every application capture test
-- Provide GPU timing isolation without reserving every CPU queue token
-- Declare pass-output snapshots before pipelined buffer reuse
-- Resolve the worktree FetchContent cache from the VIXEN preset
-- Make dotnet run honor its worktree-local CodegenTool artifacts path
-- Generate the analytic visibility bit layout from the light contract
-- Provide the prescribed content-codegen light gate in consumer trees
-- Centralize shared SVO shader include roots for direct shader test builders
-- Derive direct Vulkan test descriptor layouts from shader reflection
-- Offer a single-pass queued look-dev capture artifact mode
+- The primary march probably shares the empty-occupancy-buffer ordering defect (the BodyOctreeSceneNode placeholder buffer feeds `gridDim != 0` with a sentinel grid). Unverified and unchanged, to avoid altering pixels; worth a separate look. Unified form: one occupancy upload owned by one node and bound identically for the march and lighting families, instead of the lighting splices passing `nullptr`.
+- The shadow-reach flag `g_recipeProvenStepOnly` is a global set by the caller. Cleaner would be an argument of `traceUberRecipeBody`; I kept the global to avoid touching every generated call site.

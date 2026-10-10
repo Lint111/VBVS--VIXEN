@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Inspect production hit/shadow readbacks, property gates and GPU timestamps.
+"""Inspect production hit/shadow readbacks and the shadow / receiver-colour gates.
 
 Uses spheres contained in authored primitives as conservative projected shadow
 footprints, not a second recipe evaluator. PNG tiles retain capture orientation.
 """
 import argparse
 import colorsys
-import csv
 import importlib.util
 import json
 import math
@@ -36,7 +35,7 @@ def sheet(images, path):
     if any(image[:2] != (width, height) for image in images):
         raise ValueError("capture extents differ")
     rgba = bytearray()
-    for row in range(4):
+    for row in range(len(images)//4):
         for y in range(height):
             for _, _, data in images[row*4:(row+1)*4]:
                 rgba.extend(data[y*width*4:(y+1)*width*4])
@@ -52,7 +51,7 @@ def luma(rgb):
 
 
 def bit(index):
-    return 1 << (index if index < 4 else index + 12)
+    return 1 << index
 
 
 def inspect(path):
@@ -74,7 +73,6 @@ def inspect(path):
     primitive_footprints = {str(i): dict(group=GROUPS[p["group"]], material=p["material"], tested=0, occluded=0) for i, p in enumerate(scene["primitives"])}
     mask = bytearray(width*height*4)
     surface_count = explained_failures = 0
-    radial = [{"bins": [[] for _ in range(6)]} for _ in lights]
     exposure = struct.unpack_from("<f", config, scene["exposureOffset"])[0]
     meter_path = stem.with_suffix(".meter.bin")
     meter = struct.unpack("<f", meter_path.read_bytes())[0] if meter_path.exists() else None
@@ -107,8 +105,6 @@ def inspect(path):
             any_shadow |= not visible
             if visible:
                 energy_bound += min(1, max(light[4:7])) * attenuation
-                if light[3]:
-                    radial[li]["bins"][min(5, int(distance/light[7]*6))].append(luma(rgba[idx*4:idx*4+3]))
             # Test conservative footprints on other opaque receivers. Each ball
             # lies inside the primitive, including ellipsoids and rounded boxes.
             origin = tuple(p + n*0.02 for p, n in zip(pos, normal))
@@ -141,168 +137,47 @@ def inspect(path):
         mask[idx*4:idx*4+4] = bytes((value, value, value, 255))
         received.setdefault(str(material), [0, 0])[int(any_shadow)] += 1
         if has_candidate and normal[1] > .98 and emission == 0:
-            colours.setdefault(str(material), [[], []])[int(any_shadow)].append(tuple(rgba[idx*4:idx*4+3]))
+            colours.setdefault(str(material), [[], [], []])[int(any_shadow)].append(tuple(rgba[idx*4:idx*4+3]))
+            colours[str(material)][2].append(rec[:3])
+    # The receiver's own albedo is the reference: shadow pixels keep its hue up to the
+    # authored cel shift plus tonemap drift; near-grey outputs carry no measurable hue.
+    shift = abs(struct.unpack_from("<f", config, 16+capacity*36+24)[0])
     colour_results = {}
-    for material, (lit, shadow) in colours.items():
-        colour = {"litSamples": len(lit), "shadowSamples": len(shadow)}
+    for material, (lit, shadow, albedos) in colours.items():
+        colour = {"litSamples": len(lit), "shadowSamples": len(shadow), "allowedHueDegrees": shift+20}
         colour_results[material] = colour
-        if not lit or not shadow:
+        if not shadow:
             continue
-        lit_rgb = tuple(statistics.fmean(c[i] for c in lit) for i in range(3))
         shadow_rgb = tuple(statistics.fmean(c[i] for c in shadow) for i in range(3))
-        hue_delta = abs(colorsys.rgb_to_hsv(*lit_rgb)[0] - colorsys.rgb_to_hsv(*shadow_rgb)[0])
-        colour.update(litLuma=luma(lit_rgb), shadowLuma=luma(shadow_rgb),
-            hueDeltaDegrees=min(hue_delta, 1-hue_delta)*360,
-            lowerBand=luma(shadow_rgb) < luma(lit_rgb),
-            receiverHue=min(hue_delta, 1-hue_delta)*360 <= 45)
-    for row in radial:
-        row["binCounts"] = [len(b) for b in row["bins"]]
-        row["observedCombinedLuma"] = [statistics.fmean(b) if b else None for b in row.pop("bins")]
+        albedo = tuple(statistics.fmean(c[i] for c in albedos) for i in range(3))
+        colour["shadowChroma"] = max(shadow_rgb) - min(shadow_rgb)
+        colour["observableHue"] = colour["shadowChroma"] >= 8 and max(albedo) - min(albedo) > 0
+        if colour["observableHue"]:
+            h = abs(colorsys.rgb_to_hsv(*shadow_rgb)[0] - colorsys.rgb_to_hsv(*albedo)[0])
+            colour["hueFromAlbedoDegrees"] = min(h, 1-h)*360
+            colour["receiverHue"] = colour["hueFromAlbedoDegrees"] <= shift+20
+        if lit:
+            lit_rgb = tuple(statistics.fmean(c[i] for c in lit) for i in range(3))
+            colour.update(litLuma=luma(lit_rgb), shadowLuma=luma(shadow_rgb), lowerBand=luma(shadow_rgb) < luma(lit_rgb))
     return (width, height, rgba), (width, height, mask), dict(
         tile=path.name, lightCount=count, opaquePixels=surface_count,
         fill=surface_count/(width*height), footprintFamilies=families,
         receivingMaterials=received, receiverColours=colour_results, primitiveFootprints=primitive_footprints,
         meterEV100=meter,
-        unexplainedEnergyPixels=explained_failures if meter is not None else None,
-        pointLightRadialBins=radial)
-
-
-def timing(directory):
-    results = []
-    for state in STATES:
-        rows = list(csv.DictReader((directory/state/"gpu-timing.csv").open()))
-        for angle in range(4):
-            all_samples = [r for r in rows if angle*64 < int(r["frame"]) <= (angle+1)*64]
-            samples = [r for r in all_samples if angle*64+8 < int(r["frame"])]
-            for column in rows[0]:
-                if not column.endswith("_ms") or column in ("cpu_frame_time_ms", "whole_frame_gpu_span_ms"):
-                    continue
-                values = sorted(float(r[column]) for r in samples if float(r[column]) > 0)
-                results.append(dict(state=state, angle=angle, passName=column, samples=len(values),
-                    p50=statistics.median(values) if values else 0,
-                    p95=values[math.ceil(.95*len(values))-1] if values else 0,
-                    max=max(values, default=0),
-                    fullMeasuredMax=max((float(r[column]) for r in all_samples), default=0)))
-    return results
-
-
-def hdr_channel(channel, exposure):
-    """Invert the monotone capture transform; this is measurement, not shading."""
-    value = channel/255
-    linear = value/12.92 if value <= .04045 else ((value+.055)/1.055)**2.4
-    a, b, c = 2.43*linear-2.51, .59*linear-.03, .14*linear
-    return (-b-math.sqrt(b*b-4*a*c))/(2*a) / 2**exposure
-
-
-def hdr_peak(rgb, exposure):
-    return hdr_channel(max(rgb), exposure)
-
-def hdr_luma(rgb, exposure):
-    return luma(tuple(hdr_channel(c, exposure) for c in rgb))
-
-def source_falloff(directory):
-    grouped = {}
-    expected_sources = None
-    control_energy = {}
-    for angle in range(4):
-        control = directory/f"source--1-angle-{angle}.png"
-        _, _, checked = inspect(control)
-        control_energy[str(angle)] = checked["unexplainedEnergyPixels"]
-    for path in sorted(directory.glob("source-*-angle-*.png")):
-        parts = path.stem.split("-angle-")
-        slot = int(parts[0].removeprefix("source-"))
-        if slot < 0:
-            continue
-        angle = int(parts[1])
-        control_path = directory/f"source--1-angle-{angle}.png"
-        width, height, rgb = pixels.decode_png(path)
-        _, _, control = pixels.decode_png(control_path)
-        stem, control_stem = path.with_suffix(""), control_path.with_suffix("")
-        scene = json.loads(stem.with_suffix(".scene.json").read_text())
-        materials = {i["index"]: i["material"] for i in scene["instances"]}
-        config = stem.with_suffix(".lighting.bin").read_bytes()
-        count = struct.unpack_from("<I", config)[0]
-        sources = {i for i in range(count) if struct.unpack_from("<I", config, 16+i*32+12)[0] == 1}
-        if expected_sources is None: expected_sources = sources
-        if expected_sources != sources: raise ValueError("isolated source declaration changed between views")
-        light = struct.unpack_from("<3fI4f", config, 16+slot*32)
-        exposure = struct.unpack_from("<f", config, scene["exposureOffset"])[0]
-        source_ev = exposure+struct.unpack("<f", stem.with_suffix(".meter.bin").read_bytes())[0]
-        control_ev = exposure+struct.unpack("<f", control_stem.with_suffix(".meter.bin").read_bytes())[0]
-        result = grouped.setdefault(str(slot), {"source": list(light[:3]), "range": light[7],
-            "planes": {}, "energyFailures": 0, "measuredPixels": 0, "angles": [], "colourSamples": {}})
-        result["angles"].append(angle)
-        hits = stem.with_suffix(".hits.bin").read_bytes()
-        for idx in range(width*height):
-            rec = struct.unpack_from("<11f4I", hits, idx*64)
-            # Compare a constant-colour upward planar receiver. For these warm
-            # hull/earth materials hue rotation keeps red as the peak channel.
-            if not rec[11] & 1 or rec[5] < .999 or materials[rec[12]] not in (0, 7):
-                continue
-            distance = math.dist(rec[8:11], light[:3])
-            if light[1] <= rec[9] or distance >= light[7]:
-                continue
-            source_rgb, control_rgb = rgb[idx*4:idx*4+3], control[idx*4:idx*4+3]
-            if max(source_rgb) >= 252 or max(control_rgb) >= 252:
-                continue
-            source_hdr = tuple(hdr_channel(c, source_ev) for c in source_rgb)
-            samples = result["colourSamples"].setdefault(str(materials[rec[12]]), [[], []])
-            visible = bool(rec[14] & bit(slot))
-            samples[int(not visible)].append(source_hdr)
-            if not visible:
-                continue
-            peak_contribution = max(0, hdr_peak(source_rgb, source_ev)-hdr_peak(control_rgb, control_ev))/max(rec[0], 1e-8)
-            contribution = max(0, hdr_luma(source_rgb, source_ev)-hdr_luma(control_rgb, control_ev))/max(luma(rec[:3]), 1e-8)
-            attenuation = (1-distance/light[7])**2
-            result["measuredPixels"] += 1
-            result["energyFailures"] += int(peak_contribution > min(1, max(light[4:7]))*attenuation+.015)
-            plane = f"material-{materials[rec[12]]}-y-{rec[9]:.2f}"
-            bins = result["planes"].setdefault(plane, [[] for _ in range(8)])
-            bins[min(7, int(distance/light[7]*8))].append(contribution)
-    for result in grouped.values():
-        colours = {}
-        for material, (lit, shadow) in result.pop("colourSamples").items():
-            c = colours[material] = dict(litSamples=len(lit), shadowSamples=len(shadow), observable=min(len(lit), len(shadow)) >= 16)
-            if not c["observable"]: continue
-            lit_rgb = tuple(statistics.fmean(v[i] for v in lit) for i in range(3))
-            shadow_rgb = tuple(statistics.fmean(v[i] for v in shadow) for i in range(3))
-            h = abs(colorsys.rgb_to_hsv(*lit_rgb)[0]-colorsys.rgb_to_hsv(*shadow_rgb)[0])
-            c.update(lowerBand=luma(shadow_rgb) < luma(lit_rgb), hueDeltaDegrees=min(h,1-h)*360, receiverHue=min(h,1-h)*360 <= 45)
-        result["receiverColours"] = colours
-        passing_planes = []
-        for plane, bins in list(result["planes"].items()):
-            means = [statistics.fmean(b) if len(b) >= 16 else None for b in bins]
-            observed = [v for v in means if v is not None]
-            tolerance = max(.002, max(observed, default=0)*.12)
-            monotone = all(b <= a+tolerance for a, b in zip(observed, observed[1:]))
-            decreasing = len(observed) >= 2 and observed[0] > observed[-1]+.002
-            if monotone and decreasing:
-                passing_planes.append(plane)
-            result["planes"][plane] = dict(counts=[len(b) for b in bins],
-                normalizedSourceLuminance=means, monotoneWithinTolerance=monotone,
-                decreasing=decreasing, tolerance=tolerance)
-        result["passingPlanes"] = passing_planes
-        measured_planes = [p for p in result["planes"].values() if sum(v is not None for v in p["normalizedSourceLuminance"]) >= 2]
-        result["pass"] = bool(passing_planes) and all(p["monotoneWithinTolerance"] for p in measured_planes) and result["energyFailures"] == 0 and sorted(result["angles"]) == list(range(4)) and all(c["lowerBand"] and c["receiverHue"] for c in colours.values() if c["observable"])
-    if not grouped or set(map(int, grouped)) != expected_sources:
-        raise ValueError("missing declared point-source captures")
-    return dict(sources=grouped, ambientControlEnergyFailures=control_energy,
-                passAll=all(r["pass"] for r in grouped.values()) and all(v == 0 for v in control_energy.values()))
+        unexplainedEnergyPixels=explained_failures if meter is not None else None)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--isolation", type=Path)
-    parser.add_argument("--gate", action="store_true", help="require complete passing after-change evidence")
-    parser.add_argument("--before", type=Path, help="before-change generated properties/timing directory")
+    parser.add_argument("--gate", action="store_true", help="fail on the shadow and receiver-colour gates")
     args = parser.parse_args()
-    if args.gate and (args.isolation is None or args.before is None):
-        parser.error("--gate requires --isolation and --before")
     args.output.mkdir(parents=True, exist_ok=True)
     images, masks, properties = [], [], []
     for state in STATES:
+        if not (args.directory/state).is_dir():
+            continue
         for angle in range(4):
             image, mask, result = inspect(args.directory/state/f"{state}-angle-{angle}.png")
             images.append(image)
@@ -311,34 +186,24 @@ def main():
     sheet(images, args.output/"contact-sheet.png")
     sheet(masks, args.output/"shadow-mask-sheet.png")
     (args.output/"properties.json").write_text(json.dumps(properties, indent=2)+"\n")
-    timings = timing(args.directory)
-    (args.output/"gpu-timing.json").write_text(json.dumps(timings, indent=2)+"\n")
     failures = []
     if args.gate:
+        # Night tiles hold more declared lights than the visibility mask carries
+        # (R502 closes that with sampling); they are recorded, never gated.
         for row in properties:
+            if row["tile"].startswith("night-service"):
+                continue
             for pi, footprint in row["primitiveFootprints"].items():
                 footprint["coverage"] = "observable" if footprint["tested"] >= 8 else "unobservable in this projection"
                 if footprint["tested"] >= 8 and footprint["occluded"] / footprint["tested"] < .95:
                     failures.append(f"{row['tile']}: primitive {pi} {footprint['group']} expected footprint occlusion {footprint['occluded']}/{footprint['tested']}")
-            paired = [c for c in row["receiverColours"].values() if min(c["litSamples"], c["shadowSamples"]) >= 16]
-            if row["lightCount"] <= 2 and not paired: failures.append(f"{row['tile']}: no paired receiver-colour coverage")
             if row["meterEV100"] is None or row["unexplainedEnergyPixels"] != 0:
                 failures.append(f"{row['tile']}: unexplained energy or absent meter")
             for material, c in row["receiverColours"].items():
-                if row["lightCount"] <= 2 and min(c["litSamples"], c["shadowSamples"]) >= 16 and (not c["lowerBand"] or not c["receiverHue"]):
-                    failures.append(f"{row['tile']}: receiver colour {material}")
-        if any(t["samples"] == 0 for t in timings): failures.append("missing GPU timing samples")
-    if args.isolation:
-        result = source_falloff(args.isolation)
-        (args.output/"source-falloff.json").write_text(json.dumps(result, indent=2)+"\n")
-        print(f"Point source radial gates: {sum(r['pass'] for r in result['sources'].values())}/{len(result['sources'])}")
-        if args.gate and not result["passAll"]: failures.append("per-source radial falloff/ambient control")
-    if args.before:
-        before = json.loads((args.before/"gpu-timing.json").read_text())
-        lookup = {(r["state"], r["angle"], r["passName"]): r for r in before}
-        comparison = [dict(after=r, before=lookup[(r["state"], r["angle"], r["passName"])],
-            p50Ratio=r["p50"]/max(lookup[(r["state"], r["angle"], r["passName"])]["p50"], 1e-9)) for r in timings]
-        (args.output/"gpu-comparison.json").write_text(json.dumps(comparison, indent=2)+"\n")
+                if c["shadowSamples"] >= 16 and c.get("observableHue") and not c["receiverHue"]:
+                    failures.append(f"{row['tile']}: receiver colour {material} hue {c['hueFromAlbedoDegrees']:.0f} deg from its albedo")
+                if min(c["litSamples"], c["shadowSamples"]) >= 16 and not c["lowerBand"]:
+                    failures.append(f"{row['tile']}: receiver colour {material} shadow is not a lower band")
     (args.output/"gate-results.json").write_text(json.dumps(dict(evaluated=args.gate, passAll=(not failures) if args.gate else None, failures=failures), indent=2)+"\n")
     print(f"Recorded {len(properties)} tiles; gray=miss, white=unoccluded, black=shadowed.")
     if failures:

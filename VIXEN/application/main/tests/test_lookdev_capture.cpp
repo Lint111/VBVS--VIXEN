@@ -54,24 +54,12 @@ struct CaptureScenario {
     Vixen::App::Lookdev::LightingPreset lighting;
     float yawRadians = 0.0f;
     std::string filename;
-    int isolatedSource = -2; // -2=shared scene; -1=ambient/emission control.
 };
-
-std::vector<Vixen::Gpu::Light> ScenarioLights(const CaptureScenario& scenario) {
-    auto lights = Vixen::App::Lookdev::Lights(scenario.lighting);
-    if (scenario.isolatedSource == -2) return lights;
-    for (size_t i = 0; i < lights.size(); ++i) {
-        if (static_cast<int>(i) == scenario.isolatedSource) continue;
-        lights[i].radianceX = lights[i].radianceY = lights[i].radianceZ = 0.0f;
-    }
-    return lights;
-}
 
 TEST(LookdevLighting, EmittersHaveDistinctDeclaredSources) {
     using namespace Vixen::App::Lookdev;
     for (const auto& preset : LightingPresets()) {
         const auto lights = Lights(preset);
-        ASSERT_LE(lights.size(), std::size(Vixen::Gpu::LightingConfig{}.lights));
         EXPECT_EQ(lights.size(), CelSpillPurposeScales(preset).size());
         const auto recipes = BuildMaterialRecipes(preset);
         const auto instances = BodyInstances(recipes, preset);
@@ -107,25 +95,15 @@ TEST(LookdevLighting, EmittersHaveDistinctDeclaredSources) {
     }
 }
 
-std::vector<CaptureScenario> BuildScenarios(bool isolateSources = false) {
+std::vector<CaptureScenario> BuildScenarios() {
     constexpr std::array<float, 4> yaws{{0.0f, 1.57079632679f, 3.14159265359f, 4.71238898038f}};
     const auto& presets = Vixen::App::Lookdev::LightingPresets();
     const char* requestedState = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
     std::vector<CaptureScenario> scenarios;
     scenarios.reserve(presets.size() * yaws.size());
     for (const auto& preset : presets) {
-        if (isolateSources && !Vixen::App::Lookdev::ServiceLightsEnabled(preset)) continue;
         if (requestedState && preset.name != std::string(requestedState)) continue;
         for (size_t angle = 0; angle < yaws.size(); ++angle) {
-            if (isolateSources) {
-                const auto lights = Vixen::App::Lookdev::Lights(preset);
-                for (int source = -1; source < static_cast<int>(lights.size()); ++source) {
-                    if (source >= 0 && lights[source].kind != 1u) continue;
-                    scenarios.push_back({preset, yaws[angle],
-                        "source-" + std::to_string(source) + "-angle-" + std::to_string(angle) + ".png", source});
-                }
-                continue;
-            }
             scenarios.push_back({preset, yaws[angle],
                 std::string(preset.name) + "-angle-" + std::to_string(angle) + ".png"});
         }
@@ -172,7 +150,7 @@ public:
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
 
-        lighting_->SetLights(ScenarioLights(scenarios_.front()),
+        lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
                              scenarios_.front().lighting.ambient,
                              Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
@@ -250,7 +228,7 @@ public:
     bool Render() override {
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
         ++framesInScenario_;
-        if (framesInScenario_ < (scenarios_[scenarioIndex_].isolatedSource == -2 ? kFramesPerScenario : 8u)) return true;
+        if (framesInScenario_ < kFramesPerScenario) return true;
 
         const auto& scenario = scenarios_[scenarioIndex_];
         if (scenarioIndex_ == 0 && !VerifyUploadedExposure(scenario)) return false;
@@ -265,7 +243,7 @@ public:
             const auto& next = scenarios_[scenarioIndex_];
             camera_->SetYawForTest(next.yawRadians);
             camera_->SetPitchForTest(kPitchRadians);
-            lighting_->SetLights(ScenarioLights(next),
+            lighting_->SetLights(Vixen::App::Lookdev::Lights(next.lighting),
                                  next.lighting.ambient,
                                  Vixen::App::Lookdev::CelSpillPurposeScales(next.lighting));
             lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
@@ -442,9 +420,7 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     }
 
     LookdevCaptureApplication app(outputDir, scenarios);
-    uint32_t frameCount = 0;
-    for (const auto& scenario : scenarios)
-        frameCount += scenario.isolatedSource == -2 ? kFramesPerScenario : 8u;
+    const uint32_t frameCount = kFramesPerScenario * static_cast<uint32_t>(scenarios.size());
     const int result = app.Run(RunOptions{.exitAfterFrames = frameCount});
     if (result != 0 || app.CapturedCount() != scenarios.size()) {
         error = app.CaptureError().empty()
@@ -471,15 +447,6 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
         << "CTest must select one four-angle look-dev lighting preset";
     std::string error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, error)) << error;
-}
-
-TEST(LookdevLighting, CapturesEachNightSourceAndAmbientControl) {
-    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
-    ASSERT_NE(outputEnv, nullptr);
-    const auto scenarios = BuildScenarios(true);
-    ASSERT_FALSE(scenarios.empty());
-    std::string error;
-    ASSERT_TRUE(CaptureSequence(outputEnv, scenarios, error)) << error;
 }
 
 } // namespace

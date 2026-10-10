@@ -30,12 +30,5 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             ENVIRONMENT_MODIFICATION
                 "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
-    add_test(NAME Application.LookdevLighting.CapturesEachNightSourceAndAmbientControl
-        COMMAND $<TARGET_FILE:vixen_lookdev_capture>
-            --gtest_filter=LookdevLighting.CapturesEachNightSourceAndAmbientControl)
-    set_tests_properties(Application.LookdevLighting.CapturesEachNightSourceAndAmbientControl
-        PROPERTIES LABELS "Application" TIMEOUT 1200
-        ENVIRONMENT "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=night-service;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lightunify-sources;VIXEN_LOOKDEV_READBACK=1;VIXEN_ACCUMULATION_ENABLED=0;VIXEN_ACCUMULATION_REPROJECT=0")
-    vixen_lock_gpu_tests(TESTS Application.LookdevLighting.CapturesEachNightSourceAndAmbientControl)
     message(STATUS "[Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)")
 endif()
