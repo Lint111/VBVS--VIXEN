@@ -108,7 +108,14 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
                     info.baseType = SpirvTypeInfo::BaseType::Array;
                 }
             } else if (typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_VECTOR) {
-                info.baseType = SpirvTypeInfo::BaseType::Vector;
+                // Integer vectors retain their scalar kind for typed resource dispatch.
+                if (typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_INT) {
+                    info.baseType = typeDesc->traits.numeric.scalar.signedness == 0
+                        ? SpirvTypeInfo::BaseType::UInt : SpirvTypeInfo::BaseType::Int;
+                    info.width = typeDesc->traits.numeric.scalar.width;
+                } else {
+                    info.baseType = SpirvTypeInfo::BaseType::Vector;
+                }
                 info.vecSize = typeDesc->traits.numeric.vector.component_count;
             }
             break;
@@ -116,7 +123,7 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
 
     // Size information
     info.sizeInBytes = typeDesc->traits.numeric.scalar.width / 8;
-    if (info.baseType == SpirvTypeInfo::BaseType::Vector) {
+    if (info.baseType == SpirvTypeInfo::BaseType::Vector || info.vecSize > 1) {
         info.sizeInBytes *= info.vecSize;
     } else if (info.baseType == SpirvTypeInfo::BaseType::Matrix) {
         info.sizeInBytes = (info.width / 8) * info.rows * info.columns;
@@ -267,10 +274,12 @@ std::string SpirvTypeInfo::ToCppType() const {
             oss << "bool";
             break;
         case BaseType::Int:
-            oss << (width == 64 ? "int64_t" : "int32_t");
+            if (vecSize > 1) oss << (width == 64 ? "glm::i64vec" : "glm::ivec") << vecSize;
+            else oss << (width == 64 ? "int64_t" : "int32_t");
             break;
         case BaseType::UInt:
-            oss << (width == 64 ? "uint64_t" : "uint32_t");
+            if (vecSize > 1) oss << (width == 64 ? "glm::u64vec" : "glm::uvec") << vecSize;
+            else oss << (width == 64 ? "uint64_t" : "uint32_t");
             break;
         case BaseType::Float:
             oss << (width == 64 ? "double" : "float");
@@ -331,10 +340,12 @@ std::string SpirvTypeInfo::ToGlslType() const {
             oss << "bool";
             break;
         case BaseType::Int:
-            oss << "int";
+            if (vecSize > 1) oss << (width == 64 ? "i64vec" : "ivec") << vecSize;
+            else oss << "int";
             break;
         case BaseType::UInt:
-            oss << "uint";
+            if (vecSize > 1) oss << (width == 64 ? "u64vec" : "uvec") << vecSize;
+            else oss << "uint";
             break;
         case BaseType::Float:
             oss << (width == 64 ? "double" : "float");

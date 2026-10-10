@@ -7,6 +7,7 @@
 #include "Data/Nodes/TraceRaysNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include <memory>
+#include "GPUTimestampQuery.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -44,7 +45,7 @@ public:
  * 5. Bind RT pipeline
  * 6. Bind descriptor set (TLAS, output image)
  * 7. Push camera constants
- * 8. vkCmdTraceRaysKHR(width, height, depth)
+ * 8. vkCmdTraceRaysKHR in separately submitted tiles with reflected origins
  * 9. Transition output image to PRESENT_SRC layout
  * 10. End and submit command buffer
  */
@@ -67,6 +68,7 @@ private:
      * @brief Allocate command buffers (one per swapchain image)
      */
     bool AllocateCommandBuffers();
+    void CollectTileTiming(uint32_t frame);
 
     /**
      * @brief Load RTX function pointers
@@ -93,6 +95,12 @@ private:
     // Command buffers (one per swapchain image - matches ComputeDispatchNode)
     std::vector<VkCommandBuffer> commandBuffers_;
     uint32_t swapChainImageCount_ = 0;
+    std::vector<std::vector<VkCommandBuffer>> tileCommandBuffers_;
+    std::vector<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>> tileQueries_;
+    std::vector<uint32_t> tileCounts_;
+    std::vector<uint64_t> tileBudgets_;
+    uint32_t tileOriginOffset_ = 0;
+    uint32_t fullLaunchExtentOffset_ = 0;
 
     // Dispatch dimensions
     uint32_t width_ = 1920;
