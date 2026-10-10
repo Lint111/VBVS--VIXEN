@@ -361,6 +361,26 @@ endif()
 vixen_gtest_discover_tests(SVO test_mip_sample_bake)
 
 # ===========================================================================
+# Sparse emitter power lane (R502.2, EmitterPower.h): sum-of-leaves == root,
+# brute-force parity, concatenated-stream placement, shell pass-through.
+# ===========================================================================
+add_executable(test_emitter_power test_emitter_power.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_emitter_power PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_emitter_power PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_emitter_power PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_emitter_power POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_emitter_power>
+        COMMENT "Copying TBB DLL for test_emitter_power")
+endif()
+vixen_gtest_discover_tests(SVO test_emitter_power)
+
+# ===========================================================================
 # Mip Aniso Pool Tests (Deep-Field Mip Policy — anisotropic coarse mips,
 # MipAnisoPool.h). Uses a synthetic single-node Octree, no recipe/SdfBake
 # plumbing needed.

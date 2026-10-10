@@ -47,6 +47,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "EmitterPower.h"
 #include "MipAnisoPool.h"
 #include "MipSample.h"
 #include "ShellDerive.h"
@@ -65,6 +66,9 @@ struct MipPool {
     std::vector<MipSample> samples;  // size == nodeCount * channelCount
     uint32_t nodeCount = 0;
     uint32_t channelCount = 0;
+    // R502.2 sparse emitter power lane (EmitterPower.h), baked in the same pass. Empty for
+    // trees with no emissive voxel.
+    std::vector<uint8_t> emitterPower;
 
     MipSample Get(uint32_t nodeIdx, uint32_t channelIdx) const {
         const size_t idx = static_cast<size_t>(nodeIdx) * channelCount + channelIdx;
@@ -440,6 +444,7 @@ inline MipPool BakeMipPool(const Octree& oct, const SerializedOctree& serialized
         }
     }
 
+    pool.emitterPower = BakeEmitterPowerLane(oct, serialized);
     return pool;
 }
 
@@ -463,6 +468,7 @@ inline std::vector<uint8_t> SerializeMipPool(const MipPool& pool) {
 inline void BakeAndAttachMipPool(const Octree& oct, SerializedOctree& serialized) {
     MipPool pool = BakeMipPool(oct, serialized);
     serialized.mipPool = SerializeMipPool(pool);
+    serialized.emitterPowerPool = std::move(pool.emitterPower);
 }
 
 // ===========================================================================
@@ -555,6 +561,10 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         } else {
             setNormalMipPoolDescriptor(s.config, 0u, false);
         }
+        setEmitterPowerPoolDescriptor(
+            s.config,
+            mipPoolBase + static_cast<uint32_t>((s.mipPool.size() + s.normalMipPool.size()) / sizeof(MipSample)),
+            !s.emitterPowerPool.empty());
         setTierRefTableBase(s.config, tierRefBase);
         // brickLookupBase: exact prefix sum over each octree's own bpa^3 — see
         // ShellOctreeGpu.h::ConcatenateSdf (same formula, mirrored here per this
@@ -575,6 +585,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
         cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
         cat.mipPool.insert(cat.mipPool.end(), s.normalMipPool.begin(), s.normalMipPool.end());
+        cat.mipPool.insert(cat.mipPool.end(), s.emitterPowerPool.begin(), s.emitterPowerPool.end());
         cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
 
         if (cat.materials.empty()) {
@@ -586,6 +597,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample));
         mipPoolBase += static_cast<uint32_t>(s.normalMipPool.size() / sizeof(MipSample));
+        mipPoolBase += static_cast<uint32_t>(s.emitterPowerPool.size() / sizeof(MipSample));
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
         brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
@@ -672,6 +684,10 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         } else {
             setNormalMipPoolDescriptor(s.config, 0u, false);
         }
+        setEmitterPowerPoolDescriptor(
+            s.config,
+            mipPoolBase + static_cast<uint32_t>((s.mipPool.size() + s.normalMipPool.size()) / sizeof(MipSample)),
+            !s.emitterPowerPool.empty());
         setTierRefTableBase(s.config, tierRefBase);
         setBrickLookupBase(s.config, brickLookupBase);
 
@@ -690,6 +706,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
         cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
         cat.mipPool.insert(cat.mipPool.end(), s.normalMipPool.begin(), s.normalMipPool.end());
+        cat.mipPool.insert(cat.mipPool.end(), s.emitterPowerPool.begin(), s.emitterPowerPool.end());
         cat.mipAnisoPool.insert(cat.mipAnisoPool.end(),
                                 s.mipAnisoPool.begin(), s.mipAnisoPool.end());
         cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
@@ -703,6 +720,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample));
         mipPoolBase += static_cast<uint32_t>(s.normalMipPool.size() / sizeof(MipSample));
+        mipPoolBase += static_cast<uint32_t>(s.emitterPowerPool.size() / sizeof(MipSample));
         mipAnisoBase += static_cast<uint32_t>(s.mipAnisoPool.size() / sizeof(MipAnisoSample));
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
         brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));

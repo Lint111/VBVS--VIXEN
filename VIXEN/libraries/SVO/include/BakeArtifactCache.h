@@ -76,7 +76,9 @@ public:
     // recipe/params could otherwise hash to a v1 file that predates dedup and is
     // silently stale (correct pixels, but NOT deduplicated, and NOT what a fresh
     // bake under the current code would produce) -- bump forces a clean re-bake.
-    static constexpr uint32_t kFormatVersion = 2u;
+    // v3 (R502.2): mip bake now appends the sparse emitter power lane to cat.mipPool and stamps
+    // OctreeConfig._tailPad[6..7]; v2 entries predate the lane and would load without it.
+    static constexpr uint32_t kFormatVersion = 3u;
 
     BakeArtifactKeyBuilder() { addU32(kFormatVersion); }
 
