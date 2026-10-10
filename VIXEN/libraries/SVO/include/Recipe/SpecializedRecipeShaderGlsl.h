@@ -206,6 +206,7 @@ layout(push_constant) uniform Push {
     uint  screenHeight;  // FULL screen height
     uint  maxMembersPerBucket; // bucketMembers[] row stride (same for every recipe)
     uint  recipeId;      // THIS dispatch's bucket selector into BucketMetaBuffer/bucketMembers[]
+    uvec2 tileOrigin;    // pixel origin within this bucket's padded dispatch rectangle
 } pc;
 
 vec3 getRayDir(vec2 uv) {
@@ -261,7 +262,7 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << kSpecializedRecipeInterfaceGlsl;
     out << "void main() {\n";
     out << "    BucketMeta meta = bucketMeta[pc.recipeId];\n";
-    out << "    ivec2 rectCoord = ivec2(gl_GlobalInvocationID.xy);\n";
+    out << "    ivec2 rectCoord = ivec2(gl_GlobalInvocationID.xy + pc.tileOrigin);\n";
     out << "    ivec2 pixelCoords = rectCoord + ivec2(int(meta.rectMinX), int(meta.rectMinY));\n";
     out << "    if (pixelCoords.x >= int(pc.screenWidth) || pixelCoords.y >= int(pc.screenHeight)) return;\n";
     out << "    if (pixelCoords.x < 0 || pixelCoords.y < 0) return;\n\n";
@@ -412,7 +413,7 @@ inline std::string EmitSpecializedRecipeShadeShader(
     out << kSpecializedRecipeInterfaceGlsl;
     out << "void main() {\n";
     out << "    BucketMeta meta = bucketMeta[pc.recipeId];\n";
-    out << "    ivec2 rectCoord = ivec2(gl_GlobalInvocationID.xy);\n";
+    out << "    ivec2 rectCoord = ivec2(gl_GlobalInvocationID.xy + pc.tileOrigin);\n";
     out << "    ivec2 pixelCoords = rectCoord + ivec2(int(meta.rectMinX), int(meta.rectMinY));\n";
     out << "    if (pixelCoords.x >= int(pc.screenWidth) || pixelCoords.y >= int(pc.screenHeight)) return;\n";
     out << "    if (pixelCoords.x < 0 || pixelCoords.y < 0) return;\n\n";

@@ -153,6 +153,7 @@ struct SpecializedPush {
     uint32_t  screenHeight;
     uint32_t  maxMembersPerBucket;
     uint32_t  recipeId;
+    glm::uvec2 tileOrigin{0, 0};
 };
 
 // Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).
@@ -985,13 +986,17 @@ protected:
 
             node->Execute();
             using MC2 = MultiDispatchNodeConfig;
-            VkCommandBuffer cmdBuffer = node->GetOutput(MC2::COMMAND_BUFFER_Slot::index, 0)->GetHandle<VkCommandBuffer>();
+            const auto commands = node->GetOutput(MC2::COMMAND_BUFFERS_Slot::index, 0)->GetHandle<std::vector<VkCommandBuffer>>();
+            VkCommandBuffer cmdBuffer = commands.front();
             EXPECT_NE(cmdBuffer, VK_NULL_HANDLE);
 
             VkSubmitInfo si{}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             si.commandBufferCount = 1; si.pCommandBuffers = &cmdBuffer;
-            EXPECT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
-            EXPECT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+            for (auto command : commands) {
+                si.pCommandBuffers = &command;
+                EXPECT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+                EXPECT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+            }
 
             node->Cleanup(CleanupReason::FinalTeardown);
         };

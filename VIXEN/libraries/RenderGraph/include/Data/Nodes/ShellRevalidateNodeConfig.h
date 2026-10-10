@@ -27,10 +27,11 @@ namespace ShellRevalidateNodeCounts {
  * (Surface-Shell ESVO cache derivation, GPU mirror of Vixen::SVO::DeriveShell).
  *
  * Owns its own VkPipeline/VkDescriptorSetLayout/VkPipelineLayout built from the shipped
- * ShellDerive.comp SPIR-V (compiled at build time — see CMakeLists.txt), binds the 4
- * buffers ShellDerive.comp expects at bindings 0-3 (source channel pool, brick-grid
- * lookup, shell-flags output, OctreeConfig), and records mode-0 (surface classify)
- * followed by `shellDilationLayers` mode-1 (dilation) dispatches into ONE command buffer.
+ * ShellDerive.comp SPIR-V (compiled at build time — see CMakeLists.txt), binds five
+ * buffers at bindings 0-4 (source pool, grid lookup, output flags, OctreeConfig,
+ * immutable previous flags). Classification and canonical dilation phases are
+ * recorded in bounded brick ranges and retired before the next submission.
+ * Zero dilation normalizes to one layer, matching DeriveShell.
  *
  * This is intentionally a STANDALONE node (not wired into BodyOctreeSceneNode, which
  * already derives the shell on the CPU) — it exists to (a) prove the GPU dispatch
@@ -107,7 +108,8 @@ CONSTEXPR_NODE_CONFIG(ShellRevalidateNodeConfig,
         SlotScope::NodeLevel);
 
     /** @brief Number of mode-1 dilation dispatches to record after the mode-0 pass (mirrors
-     *  BodyOctreeSceneNode::shellDilation_ / ShellDeriveParams::shellDilation). */
+     *  BodyOctreeSceneNode::shellDilation_ / ShellDeriveParams::shellDilation).
+     *  Zero requests one layer, matching the canonical CPU contract. */
     INPUT_SLOT(SHELL_DILATION, uint32_t, 7,
         SlotNullability::Required,
         SlotRole::Execute,
@@ -116,7 +118,9 @@ CONSTEXPR_NODE_CONFIG(ShellRevalidateNodeConfig,
 
     // ===== OUTPUTS =====
 
-    /** @brief Per-brick shell membership flags SSBO (bit0=SURFACE, bit1=SHELL, bit2=FRONTIER) */
+    /** @brief Per-brick flags: bit0=SURFACE, bit1=SHELL, bit2=the final canonical
+     *  layer's newly reached frontier. Other bits are zero. Compacted cache bytes
+     *  remain the CPU DeriveShell contract; no production consumer reads bit2. */
     OUTPUT_SLOT(SHELL_FLAGS_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);

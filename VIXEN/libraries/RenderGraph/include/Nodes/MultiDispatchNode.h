@@ -11,6 +11,7 @@
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 
 #include <vector>
+#include "GPUTimestampQuery.h"
 #include <map>  // Sprint 6.1: For groupedDispatches_ (deterministic ordering)
 #include <memory>  // Sprint 6.3: For shared_ptr
 
@@ -35,7 +36,7 @@ public:
 /**
  * @brief Node that queues and executes multiple compute dispatches
  *
- * Records multiple vkCmdDispatch calls to a single command buffer with
+ * Records bounded primary commands for the existing bucket/tile partition with
  * optional automatic barrier insertion between passes. Designed for
  * multi-pass compute sequences like:
  *
@@ -248,7 +249,8 @@ private:
     /**
      * @brief Record all queued dispatches to command buffer
      */
-    void RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex);
+    std::vector<VkCommandBuffer> RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex, uint32_t slot);
+    void CollectChunkTiming(uint32_t slot);
 
     /**
      * @brief Insert automatic UAV barrier between passes
@@ -270,6 +272,9 @@ private:
 
     // Per-swapchain-image command buffers
     StatefulContainer<VkCommandBuffer> commandBuffers_;
+    std::vector<std::vector<VkCommandBuffer>> chunkBuffers_;
+    std::vector<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>> chunkQueries_;
+    std::vector<uint32_t> chunkCounts_;
 
     // Sprint 6.2: Budget-aware task queue (replaces dispatchQueue_)
     TaskQueue<DispatchPass> taskQueue_;

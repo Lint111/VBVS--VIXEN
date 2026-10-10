@@ -466,6 +466,52 @@ TEST(SubmitRecord, RetirementFailureStopsBeforeTheNextChunkAndFinalSignal) {
     failNativeRetire = -1;
 }
 
+TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
+    SubmitRecord record;
+    record.waits.resize(2);
+    record.signals.resize(3);
+    record.fence = reinterpret_cast<VkFence>(uintptr_t(9));
+    for (uintptr_t i = 1; i <= 4; ++i) {
+        VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
+        record.commandBuffers.push_back(command);
+    }
+    record.commandCostUpperBoundsNs = {600'000, 500'000, 800'000, 100'001};
+    const auto batches = record.SubmissionBatches();
+    ASSERT_EQ(batches.size(), 2u);
+    EXPECT_EQ(batches[0].first, 0u);
+    EXPECT_EQ(batches[0].count, 3u);
+    EXPECT_EQ(batches[1].first, 3u);
+    EXPECT_EQ(batches[1].count, 1u);
+    nativeSubmitCalls.clear();
+    nativeRetireCalls = nativeOutstanding = nativeMaximumOutstanding = 0;
+    failNativeSubmit = failNativeRetire = -1;
+    ASSERT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
+    ASSERT_EQ(nativeSubmitCalls.size(), 2u);
+    EXPECT_EQ(nativeSubmitCalls[0].commands, 3u);
+    EXPECT_EQ(nativeSubmitCalls[0].waits, 2u);
+    EXPECT_EQ(nativeSubmitCalls[0].signals, 0u);
+    EXPECT_EQ(nativeSubmitCalls[1].waits, 0u);
+    EXPECT_EQ(nativeSubmitCalls[1].signals, 3u);
+    EXPECT_EQ(nativeSubmitCalls[1].fence, record.fence);
+    EXPECT_EQ(nativeMaximumOutstanding, 1);
+}
+
+TEST(SubmitRecord, UnknownOrMissingCostReservesAWholeSubmission) {
+    SubmitRecord record;
+    record.commandBuffers.resize(4);
+    record.commandCostUpperBoundsNs = {500'000, 0, 500'000};
+    const auto batches = record.SubmissionBatches();
+    ASSERT_EQ(batches.size(), 4u);
+    for (const auto& batch : batches) EXPECT_EQ(batch.count, 1u);
+    record.commandCostUpperBoundsNs = {1'000'000, 1'000'000, 0, 3'000'000};
+    const auto exact = record.SubmissionBatches();
+    ASSERT_EQ(exact.size(), 3u);
+    EXPECT_EQ(exact[0].count, 2u);
+    EXPECT_EQ(exact[1].count, 1u);
+    EXPECT_EQ(exact[2].count, 1u);
+}
+
 TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
     VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
     VkSubmitInfo2 info{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};

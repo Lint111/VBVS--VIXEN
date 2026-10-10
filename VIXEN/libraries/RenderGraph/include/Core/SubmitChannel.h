@@ -48,6 +48,12 @@ namespace Vixen::RenderGraph {
 struct SubmitRecord {
     std::vector<VkSemaphoreSubmitInfo> waits;
     std::vector<VkCommandBufferSubmitInfo> commandBuffers;
+    // Calibrated upper bounds supplied by the existing producer's timestamp history.
+    // Missing/zero entries reserve a whole submission; they can never enable batching.
+    std::vector<uint64_t> commandCostUpperBoundsNs;
+    uint64_t submissionBudgetNs = 2'000'000;
+    struct Batch { std::size_t first, count; };
+    [[nodiscard]] std::vector<Batch> SubmissionBatches() const;
     std::vector<VkSemaphoreSubmitInfo> signals;
     VkFence fence = VK_NULL_HANDLE;   ///< Binary in-flight fence for the designated fence-owning submit, else VK_NULL_HANDLE.
     bool present = false;             ///< True for the present record (issued via presentFn, not vkQueueSubmit2).

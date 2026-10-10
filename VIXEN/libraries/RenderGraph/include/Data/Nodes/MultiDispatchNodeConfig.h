@@ -30,7 +30,7 @@ namespace MultiDispatchNodeCounts {
     // behaving byte-identically: ExecuteImpl only calls vkQueueSubmit2 when the fence
     // input is actually connected (see that function's own guard).
     static constexpr size_t INPUTS = 11;  // Sprint 6.1: GROUP_INPUTS; Inc4 M3: +5 submit inputs
-    static constexpr size_t OUTPUTS = 2;
+    static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -41,7 +41,7 @@ namespace MultiDispatchNodeCounts {
 /**
  * @brief Node that queues and executes multiple compute dispatches
  *
- * Records multiple vkCmdDispatch calls to a single command buffer with
+ * Records bounded primary commands for the existing bucket/tile partition with
  * automatic barrier insertion between passes. Useful for multi-pass
  * compute sequences like:
  * - Prefilter -> Main -> Postfilter
@@ -198,10 +198,10 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    // ===== OUTPUTS (3) =====
 
     /**
-     * @brief Recorded command buffer with all dispatches
+     * @brief First recorded command; use COMMAND_BUFFERS for the complete sequence
      */
     OUTPUT_SLOT(COMMAND_BUFFER, VkCommandBuffer, 0,
         SlotNullability::Required,
@@ -211,6 +211,12 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
      * @brief Pass-through device for downstream nodes
      */
     OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    /** @brief All bounded primary commands, in dependency order. Record-only callers
+     * submit and retire each entry; COMMAND_BUFFER is the first-entry compatibility face. */
+    OUTPUT_SLOT(COMMAND_BUFFERS, std::vector<VkCommandBuffer>, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -265,6 +271,9 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         INIT_OUTPUT_DESC(COMMAND_BUFFER, "command_buffer",
             ResourceLifetime::Transient, cmdBufferDesc);
 
+        HandleDescriptor commandBuffersDesc{"std::vector<VkCommandBuffer>"};
+        INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers",
+            ResourceLifetime::Transient, commandBuffersDesc);
         HandleDescriptor deviceOutDesc{"VulkanDevice*"};
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out",
             ResourceLifetime::Persistent, deviceOutDesc);

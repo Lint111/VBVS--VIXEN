@@ -12,6 +12,9 @@
 #include <mutex>
 #include <stdexcept>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph {
 
@@ -154,6 +157,7 @@ void ShellRevalidateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     }
 
     BuildPipeline();
+    chunkQuery_ = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(vulkanDevice_, 1, 4);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -184,7 +188,7 @@ void ShellRevalidateNode::BuildPipeline() {
         throw std::runtime_error("[ShellRevalidateNode] vkCreateShaderModule failed");
     }
 
-    // Bindings 0-3, ALL storage buffers (ShellDerive.comp:35,38,41,44).
+    // Immutable input frontier and distinct output frontier, all storage buffers.
     auto bindL = [](uint32_t b) {
         VkDescriptorSetLayoutBinding lb{};
         lb.binding         = b;
@@ -193,8 +197,8 @@ void ShellRevalidateNode::BuildPipeline() {
         lb.stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
         return lb;
     };
-    const std::array<VkDescriptorSetLayoutBinding, 4> bindings = {
-        bindL(0), bindL(1), bindL(2), bindL(3)
+    const std::array<VkDescriptorSetLayoutBinding, 5> bindings = {
+        bindL(0), bindL(1), bindL(2), bindL(3), bindL(4)
     };
     VkDescriptorSetLayoutCreateInfo dslci{};
     dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -225,17 +229,18 @@ void ShellRevalidateNode::BuildPipeline() {
     cpci.stage.module = shaderModule_;
     cpci.stage.pName  = "main";
     cpci.layout       = pipelineLayout_;
+    cpci.flags        = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
     // Hand-rolled creation site, bypasses ComputePipelineCacher -- not covered by VIXEN_PIPELINE_STATS.
     if (vkCreateComputePipelines(vulkanDevice_->device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline_) != VK_SUCCESS) {
         throw std::runtime_error("[ShellRevalidateNode] vkCreateComputePipelines failed");
     }
 
     const std::array<VkDescriptorPoolSize, 1> poolSizes = {{
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4}
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10}
     }};
     VkDescriptorPoolCreateInfo dpci{};
     dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    dpci.maxSets       = 1;
+    dpci.maxSets       = 2;
     dpci.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     dpci.pPoolSizes    = poolSizes.data();
     if (vkCreateDescriptorPool(vulkanDevice_->device, &dpci, nullptr, &descriptorPool_) != VK_SUCCESS) {
@@ -245,11 +250,13 @@ void ShellRevalidateNode::BuildPipeline() {
     VkDescriptorSetAllocateInfo dsai{};
     dsai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     dsai.descriptorPool     = descriptorPool_;
-    dsai.descriptorSetCount = 1;
-    dsai.pSetLayouts        = &descriptorSetLayout_;
-    if (vkAllocateDescriptorSets(vulkanDevice_->device, &dsai, &descriptorSet_) != VK_SUCCESS) {
+    const std::array<VkDescriptorSetLayout, 2> setLayouts{descriptorSetLayout_, descriptorSetLayout_};
+    dsai.descriptorSetCount = static_cast<uint32_t>(setLayouts.size());
+    dsai.pSetLayouts        = setLayouts.data();
+    if (vkAllocateDescriptorSets(vulkanDevice_->device, &dsai, descriptorSets_.data()) != VK_SUCCESS) {
         throw std::runtime_error("[ShellRevalidateNode] vkAllocateDescriptorSets failed");
     }
+    descriptorSet_ = descriptorSets_[0];
 }
 
 void ShellRevalidateNode::DestroyPipeline() {
@@ -265,91 +272,69 @@ void ShellRevalidateNode::DestroyPipeline() {
 }
 
 void ShellRevalidateNode::BuildDescriptorSet(VkBuffer sourcePool, VkBuffer brickLookup,
-                                              VkBuffer shellFlags, VkBuffer config) {
-    VkDescriptorBufferInfo sourcePoolInfo{sourcePool, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo brickLookupInfo{brickLookup, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo shellFlagsInfo{shellFlags, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo configInfo{config, 0, VK_WHOLE_SIZE};
-
-    auto wB = [&](uint32_t b, VkDescriptorBufferInfo* info) {
-        VkWriteDescriptorSet w{};
-        w.sType          = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        w.dstSet         = descriptorSet_;
-        w.dstBinding     = b;
-        w.descriptorCount = 1;
-        w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w.pBufferInfo    = info;
-        return w;
-    };
-    const std::array<VkWriteDescriptorSet, 4> writes = {
-        wB(0, &sourcePoolInfo), wB(1, &brickLookupInfo), wB(2, &shellFlagsInfo), wB(3, &configInfo)
-    };
-    vkUpdateDescriptorSets(vulkanDevice_->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+                                              VkBuffer config) {
+    for (uint32_t output = 0; output < 2; ++output) {
+        const std::array<VkDescriptorBufferInfo, 5> infos{{
+            {sourcePool, 0, VK_WHOLE_SIZE}, {brickLookup, 0, VK_WHOLE_SIZE},
+            {output == 0 ? shellFlagsBuffer_ : previousFlagsBuffer_, 0, VK_WHOLE_SIZE},
+            {config, 0, VK_WHOLE_SIZE},
+            {output == 0 ? previousFlagsBuffer_ : shellFlagsBuffer_, 0, VK_WHOLE_SIZE}
+        }};
+        std::array<VkWriteDescriptorSet, 5> writes{};
+        for (uint32_t binding = 0; binding < writes.size(); ++binding) {
+            writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[binding].dstSet = descriptorSets_[output];
+            writes[binding].dstBinding = binding;
+            writes[binding].descriptorCount = 1;
+            writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[binding].pBufferInfo = &infos[binding];
+        }
+        vkUpdateDescriptorSets(vulkanDevice_->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+    }
 }
 
 void ShellRevalidateNode::EnsureShellFlagsBuffer(uint32_t brickCount) {
-    const VkDeviceSize needed =
-        std::max<VkDeviceSize>(static_cast<VkDeviceSize>(brickCount) * sizeof(uint32_t), 1);
-    if (shellFlagsBuffer_ != VK_NULL_HANDLE && shellFlagsCapacity_ >= needed) {
-        // Reuse: zero it out (a fresh derive should not see stale FRONTIER/SHELL bits
-        // from a previous dispatch at a different brickCount).
-        void* mapped = nullptr;
-        if (vkMapMemory(vulkanDevice_->device, shellFlagsMemory_, 0, needed, 0, &mapped) == VK_SUCCESS) {
-            std::memset(mapped, 0, static_cast<size_t>(needed));
-            vkUnmapMemory(vulkanDevice_->device, shellFlagsMemory_);
-        }
-        return;
-    }
-    if (shellFlagsBuffer_ != VK_NULL_HANDLE) { vkDestroyBuffer(vulkanDevice_->device, shellFlagsBuffer_, nullptr); shellFlagsBuffer_ = VK_NULL_HANDLE; }
-    if (shellFlagsMemory_ != VK_NULL_HANDLE) { vkFreeMemory(vulkanDevice_->device, shellFlagsMemory_, nullptr); shellFlagsMemory_ = VK_NULL_HANDLE; }
-    std::vector<uint8_t> zeros(static_cast<size_t>(needed), 0);
-    CreateHostBuffer(vulkanDevice_, needed,
-                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      zeros.data(), shellFlagsBuffer_, shellFlagsMemory_, "shell flags SSBO");
+    const VkDeviceSize needed = std::max<VkDeviceSize>(static_cast<VkDeviceSize>(brickCount) * sizeof(uint32_t), 4);
+    if (shellFlagsBuffer_ != VK_NULL_HANDLE && previousFlagsBuffer_ != VK_NULL_HANDLE && shellFlagsCapacity_ >= needed)
+        return; // Classification overwrites every live element; no CPU clearing/copying.
+    if (shellFlagsBuffer_) vkDestroyBuffer(vulkanDevice_->device, shellFlagsBuffer_, nullptr);
+    if (shellFlagsMemory_) vkFreeMemory(vulkanDevice_->device, shellFlagsMemory_, nullptr);
+    if (previousFlagsBuffer_) vkDestroyBuffer(vulkanDevice_->device, previousFlagsBuffer_, nullptr);
+    if (previousFlagsMemory_) vkFreeMemory(vulkanDevice_->device, previousFlagsMemory_, nullptr);
+    shellFlagsBuffer_ = previousFlagsBuffer_ = VK_NULL_HANDLE;
+    shellFlagsMemory_ = previousFlagsMemory_ = VK_NULL_HANDLE;
+    CreateHostBuffer(vulkanDevice_, needed, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        nullptr, shellFlagsBuffer_, shellFlagsMemory_, "shell flags SSBO");
+    CreateHostBuffer(vulkanDevice_, needed, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        nullptr, previousFlagsBuffer_, previousFlagsMemory_, "immutable shell frontier SSBO");
     shellFlagsCapacity_ = needed;
 }
 
 void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCount, uint32_t bpa,
-                                          uint32_t dilationLayers) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                                          uint32_t mode, uint32_t firstGroup, uint32_t groups, uint32_t output) {
+    VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
+    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS)
         throw std::runtime_error("[ShellRevalidateNode] vkBeginCommandBuffer failed");
-    }
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSet_, 0, nullptr);
-
-    const uint32_t groupCount = (brickCount + 63u) / 64u;  // local_size_x = 64 (ShellDerive.comp:31)
-
-    // Mode 0: surface classify (ShellDerive.comp:75-90).
-    PushConstants pc0{brickCount, bpa, 0u, 0u};
-    vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc0), &pc0);
-    vkCmdDispatch(cmd, groupCount, 1, 1);
-
-    // A barrier between passes: mode-1 reads shellFlags[] written by the previous
-    // dispatch (mode-0's seed, or the prior dilation layer's atomicOr updates).
-    auto shellFlagsBarrier = [&]() {
-        VkMemoryBarrier mb{};
-        mb.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    chunkQuery_->ResetQueries(cmd, 0);
+    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    if (mode == 1 && firstGroup == 0) {
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                              0, 1, &mb, 0, nullptr, 0, nullptr);
-    };
-
-    // Mode 1: `dilationLayers` dilation passes (ShellDerive.comp:92-128).
-    for (uint32_t layer = 0; layer < dilationLayers; ++layer) {
-        shellFlagsBarrier();
-        PushConstants pc1{brickCount, bpa, 1u, 0u};
-        vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc1), &pc1);
-        vkCmdDispatch(cmd, groupCount, 1, 1);
+            0, 1, &barrier, 0, nullptr, 0, nullptr);
     }
-
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSets_[output], 0, nullptr);
+    const PushConstants pc{brickCount, bpa, mode, 0};
+    vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1);
+    vkCmdDispatchBase(cmd, firstGroup, 0, 0, groups, 1, 1);
+    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 2);
+    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 3);
+    if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
         throw std::runtime_error("[ShellRevalidateNode] vkEndCommandBuffer failed");
-    }
 }
 
 // ============================================================================
@@ -368,24 +353,49 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] A required buffer input is null");
     }
 
+    // This standalone synchronous node retains its existing queue owner/mutex.
+    // Each layer reads an immutable completed frontier; each submission owns a
+    // disjoint brick range, then retires before the command buffer is reused.
+    std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+    if (vkQueueWaitIdle(vulkanDevice_->queue) != VK_SUCCESS)
+        throw std::runtime_error("[ShellRevalidateNode] prior queue retirement failed");
     EnsureShellFlagsBuffer(brickCount);
-    BuildDescriptorSet(sourcePool, brickLookup, shellFlagsBuffer_, config);
-    RecordDispatch(commandBuffer_, brickCount, bpa, dilation);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &commandBuffer_;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-        if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-            throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] vkQueueSubmit failed");
+    BuildDescriptorSet(sourcePool, brickLookup, config);
+    const uint32_t groupCount = (brickCount + 63u) / 64u;
+    const uint32_t layers = std::max(1u, dilation); // canonical zero -> one layer
+    uint32_t chunks = 0;
+    double totalMs = 0, maximumMs = 0;
+    for (uint32_t phase = 0; phase <= layers; ++phase) {
+        for (uint32_t first = 0; first < groupCount; first += 4) {
+            RecordDispatch(commandBuffer_, brickCount, bpa, phase == 0 ? 0u : 1u,
+                first, std::min(4u, groupCount - first), phase % 2);
+            VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &commandBuffer_;
+            if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS ||
+                vkQueueWaitIdle(vulkanDevice_->queue) != VK_SUCCESS)
+                throw std::runtime_error("[ShellRevalidateNode] bounded chunk submit/retirement failed");
+            if (chunkQuery_->IsTimestampSupported()) {
+                if (!chunkQuery_->ReadResults(0))
+                    throw std::runtime_error("[ShellRevalidateNode] retired chunk timestamps unavailable");
+                const double ms = chunkQuery_->GetElapsedMs(0, 0, 3);
+                totalMs += ms;
+                maximumMs = std::max(maximumMs, ms);
+                if (std::getenv("VIXEN_GPUYIELD_TRACE"))
+                    NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() + " phase=" + std::to_string(phase) +
+                        " chunk=" + std::to_string(chunks) + " start_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 0)) +
+                        " end_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 3)) +
+                        " dispatch_start_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 1)) +
+                        " dispatch_end_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 2)) +
+                        " dispatch_gpu_ms=" + std::to_string(chunkQuery_->GetElapsedMs(0, 1, 2)) +
+                        " elapsed_gpu_ms=" + std::to_string(ms));
+            }
+            ++chunks;
         }
-        vkQueueWaitIdle(vulkanDevice_->queue);
     }
-
-    ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, shellFlagsBuffer_);
+    NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" + std::to_string(chunks) +
+        " total_gpu_ms=" + std::to_string(totalMs) + " max_submission_ms=" + std::to_string(maximumMs) + " budget_ms=2.000000");
+    ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, layers % 2 == 0 ? shellFlagsBuffer_ : previousFlagsBuffer_);
 }
 
 // ============================================================================
@@ -408,6 +418,11 @@ void ShellRevalidateNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
             vkFreeMemory(vulkanDevice_->device, shellFlagsMemory_, nullptr);
             shellFlagsMemory_ = VK_NULL_HANDLE;
         }
+        if (previousFlagsBuffer_) vkDestroyBuffer(vulkanDevice_->device, previousFlagsBuffer_, nullptr);
+        if (previousFlagsMemory_) vkFreeMemory(vulkanDevice_->device, previousFlagsMemory_, nullptr);
+        previousFlagsBuffer_ = VK_NULL_HANDLE;
+        previousFlagsMemory_ = VK_NULL_HANDLE;
+        chunkQuery_.reset();
         shellFlagsCapacity_ = 0;
 
         DestroyPipeline();

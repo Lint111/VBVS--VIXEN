@@ -238,7 +238,7 @@ void main() {
         return;
     }
 
-    if (pc.mode == 2u) {
+    if ((pc.mode & 255u) == 2u || (pc.mode & 255u) == 3u) {
         // Finalize pass (Task 4): one thread per bucket slot, converts the now-final
         // per-bucket pixel-space AABB into a VkDispatchIndirectCommand sized to just that
         // bucket's coverage — (coverageWidth+7)/8 x (coverageHeight+7)/8 x 1, mirroring
@@ -254,7 +254,27 @@ void main() {
         float maxY = uintBitsToFloat(bucketCoverageMaxY[gid]);
 
         uint outBase = gid * 3u;
-        if (maxX <= minX || maxY <= minY) {
+        bool empty = maxX <= minX || maxY <= minY;
+        if ((pc.mode & 255u) == 3u) {
+            // Mode 3 retains the original header and appends clipped commands in
+            // bucket-major/tile-major order. The host supplies the existing tile
+            // edge in mode's upper bits; no CPU readback or new bucket registry.
+            uint edge = max(1u, pc.mode >> 8u);
+            uvec2 grid = (uvec2((pc.screenWidth + 7u) / 8u,
+                                (pc.screenHeight + 7u) / 8u) + edge - 1u) / edge;
+            uint tileCount = grid.x * grid.y;
+            uvec2 extent = empty ? uvec2(0u) :
+                (uvec2(uint(ceil(maxX - minX)), uint(ceil(maxY - minY))) + 7u) / 8u;
+            for (uint tile = 0u; tile < tileCount; ++tile) {
+                uvec2 origin = uvec2(tile % grid.x, tile / grid.x) * edge;
+                uvec2 groups = min(uvec2(edge), extent - min(origin, extent));
+                uint at = (pc.maxBuckets + gid * tileCount + tile) * 3u;
+                bucketIndirectCommands[at] = groups.x;
+                bucketIndirectCommands[at + 1u] = groups.y;
+                bucketIndirectCommands[at + 2u] = empty ? 0u : 1u;
+            }
+        }
+        if (empty) {
             // Untouched/degenerate bucket (mode==1's sentinel never overwritten, or a
             // zero-area rect): emit a legal zero-workgroup command, a documented no-op.
             bucketIndirectCommands[outBase + 0u] = 0u;

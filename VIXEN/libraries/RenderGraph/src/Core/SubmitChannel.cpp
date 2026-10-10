@@ -4,8 +4,27 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 
 namespace Vixen::RenderGraph {
+
+std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
+    if (commandBuffers.empty()) return {{0, 0}};
+    std::vector<Batch> batches;
+    const uint64_t budget = std::max(uint64_t{1}, submissionBudgetNs);
+    uint64_t used = 0;
+    for (std::size_t i = 0; i < commandBuffers.size(); ++i) {
+        const uint64_t cost = i < commandCostUpperBoundsNs.size() && commandCostUpperBoundsNs[i]
+            ? commandCostUpperBoundsNs[i] : budget;
+        if (batches.empty() || cost > budget || used > budget - std::min(cost, budget)) {
+            batches.push_back({i, 0});
+            used = 0;
+        }
+        ++batches.back().count;
+        used = std::min(budget, used + std::min(cost, budget));
+    }
+    return batches;
+}
 
 VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
                               PFN_vkQueueWaitIdle retireFn) const {
@@ -15,7 +34,8 @@ VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
         return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             time.time_since_epoch()).count());
     };
-    const std::size_t count = commandBuffers.empty() ? 1 : commandBuffers.size();
+    const auto batches = SubmissionBatches();
+    const std::size_t count = batches.size();
     for (std::size_t i = 0; i < count; ++i) {
         const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
         const VkResult retired = retireFn(queue);
@@ -31,8 +51,8 @@ VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
             si.pWaitSemaphoreInfos = waits.empty() ? nullptr : waits.data();
         }
         if (!commandBuffers.empty()) {
-            si.commandBufferInfoCount = 1;
-            si.pCommandBufferInfos = &commandBuffers[i];
+            si.commandBufferInfoCount = static_cast<uint32_t>(batches[i].count);
+            si.pCommandBufferInfos = &commandBuffers[batches[i].first];
         }
         const bool last = i + 1 == count;
         if (last) {

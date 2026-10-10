@@ -256,6 +256,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         lastPipeline = currentPipeline;
         lastPipelineLayout = currentPipelineLayout;
         lastDescriptorSets = currentDescriptorSets;
+        workGroupCostUpperBoundNs_ = 0;
     }
 
     // Calculate push constants (time updates every frame)
@@ -365,9 +366,16 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // submit on the same queue.
     // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
     // order after the wave (a fault there surfaces device-loss). Inactive channel -> guarded submit.
-    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, submitFence))) {
+    auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
+    record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
+    for (uint32_t groups : tileWorkGroupCounts_[currentFrameIndex]) {
+        record.commandCostUpperBoundsNs.push_back(workGroupCostUpperBoundNs_ > 0
+            ? static_cast<uint64_t>(std::ceil(groups * workGroupCostUpperBoundNs_)) : 0);
+    }
+    submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
+    if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
         std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        const VkResult result = SubmitRecord::FromSubmitInfo2(si, submitFence).Submit(
+        const VkResult result = record.Submit(
             vulkanDevice->fpQueueSubmit2, vulkanDevice->queue);
         if (result != VK_SUCCESS) {
             if (result == VK_ERROR_DEVICE_LOST) {
@@ -412,10 +420,34 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
                     " elapsed_gpu_ms=" + std::to_string(ms));
             }
             totalMs += ms;
-            maximumMs = std::max(maximumMs, ms);
+            if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
+                // Retain the high-water observation, including barriers/timestamps, with
+                // ten percent margin. Never replace it with an average or free unknown cost.
+                workGroupCostUpperBoundNs_ = std::max(workGroupCostUpperBoundNs_,
+                    ms * 1.1e6 / tileWorkGroupCounts_[frameIndex][i]);
+            }
+        }
+        totalMs = 0;
+        for (const auto& batch : submissionBatches_[frameIndex]) {
+            const double elapsed = query->GetElapsedMs(0, batch.first * 4,
+                (batch.first + batch.count) * 4 - 1);
+            maximumMs = std::max(maximumMs, elapsed);
+            totalMs += elapsed;
+            uint64_t groups = 0;
+            for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
+                groups += tileWorkGroupCounts_[frameIndex][i];
+            if (groups)
+                workGroupCostUpperBoundNs_ = std::max(workGroupCostUpperBoundNs_, elapsed * 1.1e6 / groups);
+            if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+                NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
+                    " first_chunk=" + std::to_string(batch.first) +
+                    " chunks=" + std::to_string(batch.count) +
+                    " elapsed_gpu_ms=" + std::to_string(elapsed));
+            }
         }
         NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
-            " submissions=" + std::to_string(tileCounts_[frameIndex]) +
+            " submissions=" + std::to_string(submissionBatches_[frameIndex].size()) +
+            " chunks=" + std::to_string(tileCounts_[frameIndex]) +
             " total_gpu_ms=" + std::to_string(totalMs) +
             " max_submission_ms=" + std::to_string(maximumMs) +
             " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6));
@@ -469,12 +501,15 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     uint32_t dispatchY = (dispatchExtent.height + 7) / 8;
     uint32_t dispatchZ = 1;
 
-    // Measured conservative default on Dozen/AMD 8060S: 8x8 groups (64x64 pixels).
-    // Smaller configured frame budgets reduce the tile area; no separate budget surface.
-    const uint64_t budgetNs = GetOwningGraph()->GetCapacityTracker().GetConfig().gpuTimeBudgetNs;
-    const double ratio = std::min(1.0, budgetNs / 16'666'666.0);
+    // Cold-start below the observed Dozen 64px peak; calibrated devices grow the
+    // tile to the largest square fitting the existing submission budget. Keep
+    // the frame budget separate: smaller chunks do not make an expensive pass cheap.
+    const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
+    const uint64_t budgetNs = std::max(uint64_t{1},
+        std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
     const uint32_t edge = canTile_
-        ? std::max(1u, static_cast<uint32_t>(8 * std::sqrt(ratio)))
+        ? std::max(1u, std::min(std::max(dispatchX, dispatchY), workGroupCostUpperBoundNs_ > 0
+            ? static_cast<uint32_t>(std::sqrt(budgetNs * 0.95 / workGroupCostUpperBoundNs_)) : 7u))
         : std::max(1u, std::max(dispatchX, dispatchY));
     const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
     auto& extraBuffers = tileCommandBuffers_[frameIndex];
@@ -497,6 +532,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         tileCounts_[frameIndex] = count;
     }
     tileBudgets_[frameIndex] = budgetNs;
+    tileWorkGroupCounts_[frameIndex].clear();
     auto& tileQuery = *tileQueries_[frameIndex];
     tileQuery.ResetQueries(cmdBuffer, 0);
     tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
@@ -562,6 +598,9 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     uint32_t tileIndex = 0;
     for (uint32_t baseY = 0; baseY < dispatchY; baseY += edge) {
         for (uint32_t baseX = 0; baseX < dispatchX; baseX += edge) {
+            tileWorkGroupCounts_[frameIndex].push_back(canTile_
+                ? std::min(edge, dispatchX - baseX) * std::min(edge, dispatchY - baseY)
+                : dispatchX * dispatchY);
             tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                      tileIndex * 4 + 1);
             if (canTile_) {

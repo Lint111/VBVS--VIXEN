@@ -152,7 +152,6 @@ void MultiDispatchNode::QueueBarrier(DispatchBarrier&& barrier) {
 void MultiDispatchNode::ClearQueue() {
     taskQueue_.Clear();          // Sprint 6.2: Clear TaskQueue
     barrierQueue_.clear();
-    groupedDispatches_.clear();  // Sprint 6.1: Clear group map
     stats_ = MultiDispatchStats{};
 }
 
@@ -215,12 +214,15 @@ void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[MultiDispatchNode::CompileImpl] SwapChain info is null");
     }
 
-    uint32_t imageCount = swapchainInfo->GetImageCount();
+    uint32_t imageCount = std::max(swapchainInfo->GetImageCount(), uint32_t{4});
     NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocating " +
         std::to_string(imageCount) + " command buffers");
 
     // Allocate command buffers (one per swapchain image)
     commandBuffers_.resize(imageCount);
+    chunkBuffers_.resize(imageCount);
+    chunkQueries_.resize(imageCount);
+    chunkCounts_.resize(imageCount);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -267,6 +269,7 @@ void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.1: Read GROUP_INPUTS and partition by group ID
     // GROUP_INPUTS is optional - if not connected, groupedDispatches_ stays empty
     // and we fall back to QueueDispatch() API
+    groupedDispatches_.clear();
     const auto& groupInputs = ctx.In(MultiDispatchNodeConfig::GROUP_INPUTS);
 
     if (!groupInputs.empty()) {
@@ -326,6 +329,11 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
+    // Flight ownership, rather than acquisition order, protects submitted commands.
+    const uint32_t slot = ctx.In(MultiDispatchNodeConfig::IN_FLIGHT_FENCE) != VK_NULL_HANDLE
+        ? currentFrameIndex % static_cast<uint32_t>(commandBuffers_.size()) : imageIndex;
+    CollectChunkTiming(slot);
+
     // Sprint 6.3: Phase 2.2 - Read previous frame's timing results
     if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
         auto& timingData = frameTimingData_.GetValue(imageIndex);
@@ -369,13 +377,13 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     stats_ = MultiDispatchStats{};
 
     // Get command buffer for this image
-    VkCommandBuffer cmdBuffer = commandBuffers_.GetValue(imageIndex);
+    VkCommandBuffer cmdBuffer = commandBuffers_.GetValue(slot);
 
     // Measure recording time
     auto startTime = std::chrono::high_resolution_clock::now();
 
     // Record all queued dispatches
-    RecordDispatches(cmdBuffer, currentFrameIndex);
+    auto recorded = RecordDispatches(cmdBuffer, currentFrameIndex, slot);
 
     // Publish timing availability after successful command recording.
     if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
@@ -388,7 +396,7 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     stats_.recordTimeMs = std::chrono::duration<double, std::milli>(
         endTime - startTime).count();
 
-    commandBuffers_.MarkReady(imageIndex);
+    commandBuffers_.MarkReady(slot);
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: submit this node's own recorded command
     // buffer, mirroring ComputeStageNode::ExecuteImpl's PRODUCER branch exactly (this node
@@ -404,8 +412,12 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         VkSemaphore timelineSem = ctx.In(MultiDispatchNodeConfig::TIMELINE_SEMAPHORE_IN);
         uint64_t frameBase = ctx.In(MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-        VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-        cmdInfo.commandBuffer = cmdBuffer;
+        std::vector<VkCommandBufferSubmitInfo> cmdInfos;
+        for (auto command : recorded) {
+            VkCommandBufferSubmitInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+            info.commandBuffer = command;
+            cmdInfos.push_back(info);
+        }
 
         std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
@@ -434,8 +446,8 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
         si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
         si.pWaitSemaphoreInfos      = waits.data();
-        si.commandBufferInfoCount   = 1;
-        si.pCommandBufferInfos      = &cmdInfo;
+        si.commandBufferInfoCount   = static_cast<uint32_t>(cmdInfos.size());
+        si.pCommandBufferInfos      = cmdInfos.data();
         si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
         si.pSignalSemaphoreInfos    = signals.data();
 
@@ -468,6 +480,7 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Output command buffer
     ctx.Out(MultiDispatchNodeConfig::COMMAND_BUFFER, cmdBuffer);
+    ctx.Out(MultiDispatchNodeConfig::COMMAND_BUFFERS, recorded);
     ctx.Out(MultiDispatchNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice_);
 
     // Log stats periodically (Sprint 6.1: Task #314 - Enhanced with per-group stats)
@@ -502,244 +515,195 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD DISPATCHES
 // ============================================================================
 
-void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex) {
-    // Begin command buffer
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[MultiDispatchNode::RecordDispatches] "
-            "Failed to begin command buffer");
+void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
+    auto& query = chunkQueries_[slot];
+    if (!query || !query->ReadResults(0)) return;
+    double total = 0, peak = 0;
+    for (uint32_t i = 0; i < chunkCounts_[slot]; ++i) {
+        const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+        total += ms;
+        peak = std::max(peak, ms);
+        if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+            NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
+                " chunk=" + std::to_string(i) +
+                " start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4)) +
+                " end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 3)) +
+                " dispatch_start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 1)) +
+                " dispatch_end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 2)) +
+                " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
+                " elapsed_gpu_ms=" + std::to_string(ms));
+        }
     }
+    NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
+        " submissions=" + std::to_string(chunkCounts_[slot]) +
+        " total_gpu_ms=" + std::to_string(total) +
+        " max_submission_ms=" + std::to_string(peak) + " budget_ms=2.000000");
+}
 
-    // Query reset and writes are commands: they must be inside begin/end recording.
-    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
-        const uint32_t frame = currentFrameIndex % queryManager_->GetFrameCount();
-        queryManager_->BeginFrame(cmdBuffer, frame, querySlot_);
-        queryManager_->WriteTimestamp(cmdBuffer, frame, querySlot_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-    }
-
-    // Sprint 6.1: Check if using group-based dispatch or legacy queue
+std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(
+    VkCommandBuffer first, uint32_t currentFrameIndex, uint32_t slot) {
+    std::vector<const DispatchPass*> passes;
     if (!groupedDispatches_.empty()) {
-        // GROUP-BASED DISPATCH: Process each group independently
-        NODE_LOG_DEBUG("[MultiDispatchNode] Recording " +
-            std::to_string(groupedDispatches_.size()) + " dispatch groups");
-
-        bool firstGroup = true;
-        for (const auto& [groupId, passes] : groupedDispatches_) {
-            // Sprint 6.1: Task #314 - Start timing this group
-            auto groupStartTime = std::chrono::high_resolution_clock::now();
-
-            // Insert barrier between groups (if auto-barriers enabled and not first group)
-            if (autoBarriers_ && !firstGroup) {
-                InsertAutoBarrier(cmdBuffer);
-                ++stats_.barrierCount;
-                NODE_LOG_DEBUG("[MultiDispatchNode] Inserted barrier between groups");
-            }
-            firstGroup = false;
-
-            NODE_LOG_DEBUG("[MultiDispatchNode] Recording group " + std::to_string(groupId) +
-                " with " + std::to_string(passes.size()) + " dispatches");
-
-            // Sprint 6.1: Task #314 - Initialize group stats
-            GroupDispatchStats groupStats{};
-
-            // Record all passes in this group
-            for (size_t i = 0; i < passes.size(); ++i) {
-                const auto& pass = passes[i];
-
-                // Insert barrier between passes within group (if enabled and not first pass)
-                if (autoBarriers_ && i > 0) {
-                    InsertAutoBarrier(cmdBuffer);
+        for (const auto& [group, groupPasses] : groupedDispatches_) {
+            (void)group;
+            for (const auto& pass : groupPasses) passes.push_back(&pass);
+        }
+    } else {
+        taskQueue_.ExecuteWithMetadata([&](const TaskQueue<DispatchPass>::TaskSlot& task) {
+            passes.push_back(&task.data);
+        });
+    }
+    const auto partition = [](const DispatchPass& pass) {
+        if (pass.tiles) return *pass.tiles;
+        DispatchPass::TilePartition tile;
+        if (!pass.indirectBuffer && pass.groupId) {
+            tile.grid = (pass.workGroupCount + tile.groupEdge - 1u) / tile.groupEdge;
+        }
+        return tile;
+    };
+    uint32_t count = 0;
+    for (const auto* pass : passes) {
+        const auto tile = partition(*pass);
+        if (!tile.groupEdge || !tile.grid.x || !tile.grid.y || !tile.grid.z)
+            throw std::runtime_error("MultiDispatchNode: invalid tile partition");
+        count += tile.grid.x * tile.grid.y * tile.grid.z;
+    }
+    count = std::max(1u, count);
+    auto& extras = chunkBuffers_[slot];
+    if (extras.size() + 1 < count) {
+        std::vector<VkCommandBuffer> allocated(count - 1 - extras.size());
+        VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocation.commandPool = commandPool_;
+        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocation.commandBufferCount = static_cast<uint32_t>(allocated.size());
+        if (vkAllocateCommandBuffers(vulkanDevice_->device, &allocation, allocated.data()) != VK_SUCCESS)
+            throw std::runtime_error("MultiDispatchNode: tile command allocation failed");
+        extras.insert(extras.end(), allocated.begin(), allocated.end());
+    }
+    std::vector<VkCommandBuffer> commands{first};
+    commands.insert(commands.end(), extras.begin(), extras.begin() + count - 1);
+    // Mock command-recording tests have no physical device. Production and actual
+    // device fixtures use the normal device-owned query API, including record-only paths.
+    if (vulkanDevice_->gpu && *vulkanDevice_->gpu != VK_NULL_HANDLE && chunkCounts_[slot] != count)
+        chunkQueries_[slot] = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(vulkanDevice_, 1, count * 4);
+    chunkCounts_[slot] = count;
+    auto* query = chunkQueries_[slot].get();
+    std::sort(barrierQueue_.begin(), barrierQueue_.end(),
+        [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::size_t barrierIndex = 0, chunk = 0;
+    std::vector<VkDescriptorSet> inheritedSets;
+    struct PushState { VkPipelineLayout layout; PushConstantData data; };
+    std::vector<PushState> inheritedPush;
+    const auto begin = [&](VkCommandBuffer cmd) {
+        VkCommandBufferBeginInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(cmd, &info) != VK_SUCCESS)
+            throw std::runtime_error("MultiDispatchNode: begin tile command failed");
+        if (query) {
+            if (chunk == 0) query->ResetQueries(cmd, 0);
+            query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, static_cast<uint32_t>(chunk * 4));
+        }
+        if (chunk == 0 && queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+            const uint32_t frame = currentFrameIndex % queryManager_->GetFrameCount();
+            queryManager_->BeginFrame(cmd, frame, querySlot_);
+            queryManager_->WriteTimestamp(cmd, frame, querySlot_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+        }
+    };
+    const auto finish = [&](VkCommandBuffer cmd) {
+        if (chunk + 1 == count && queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT)
+            queryManager_->WriteTimestamp(cmd, currentFrameIndex % queryManager_->GetFrameCount(),
+                querySlot_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        if (query) query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            static_cast<uint32_t>(chunk * 4 + 3));
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+            throw std::runtime_error("MultiDispatchNode: end tile command failed");
+        ++chunk;
+    };
+    for (std::size_t passIndex = 0; passIndex < passes.size(); ++passIndex) {
+        const auto& pass = *passes[passIndex];
+        if (!pass.descriptorSets.empty()) {
+            inheritedSets.resize(std::max(inheritedSets.size(), pass.firstSet + pass.descriptorSets.size()), VK_NULL_HANDLE);
+            std::copy(pass.descriptorSets.begin(), pass.descriptorSets.end(), inheritedSets.begin() + pass.firstSet);
+        }
+        if (pass.pushConstants) {
+            const auto& pc = *pass.pushConstants;
+            inheritedPush.erase(std::remove_if(inheritedPush.begin(), inheritedPush.end(),
+                [&](const PushState& old) {
+                    return old.layout == pass.layout && old.data.offset == pc.offset &&
+                        old.data.stageFlags == pc.stageFlags && old.data.data.size() == pc.data.size();
+                }), inheritedPush.end());
+            inheritedPush.push_back({pass.layout, pc});
+        }
+        const auto tile = partition(pass);
+        const uint32_t tiles = tile.grid.x * tile.grid.y * tile.grid.z;
+        for (uint32_t t = 0; t < tiles; ++t) {
+            VkCommandBuffer cmd = commands[chunk];
+            begin(cmd);
+            if (t == 0) {
+                while (barrierIndex < barrierQueue_.size() && barrierQueue_[barrierIndex].first <= passIndex) {
+                    RecordBarrier(cmd, barrierQueue_[barrierIndex++].second);
                     ++stats_.barrierCount;
                 }
-
-                // Bind pipeline
-                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
-
-                // Bind descriptor sets
-                if (!pass.descriptorSets.empty()) {
-                    vkCmdBindDescriptorSets(
-                        cmdBuffer,
-                        VK_PIPELINE_BIND_POINT_COMPUTE,
-                        pass.layout,
-                        pass.firstSet,
-                        static_cast<uint32_t>(pass.descriptorSets.size()),
-                        pass.descriptorSets.data(),
-                        0, nullptr
-                    );
+                if (autoBarriers_ && passIndex > 0) { InsertAutoBarrier(cmd); ++stats_.barrierCount; }
+            }
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
+            for (uint32_t at = 0; at < inheritedSets.size();) {
+                if (inheritedSets[at] == VK_NULL_HANDLE) { ++at; continue; }
+                uint32_t end = at + 1;
+                while (end < inheritedSets.size() && inheritedSets[end] != VK_NULL_HANDLE) ++end;
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pass.layout, at,
+                    end - at, inheritedSets.data() + at, 0, nullptr);
+                at = end;
+            }
+            for (const auto& pc : inheritedPush)
+                vkCmdPushConstants(cmd, pc.layout, pc.data.stageFlags, pc.data.offset,
+                    static_cast<uint32_t>(pc.data.data.size()), pc.data.data.data());
+            const glm::uvec3 origin{(t % tile.grid.x) * tile.groupEdge,
+                ((t / tile.grid.x) % tile.grid.y) * tile.groupEdge,
+                (t / (tile.grid.x * tile.grid.y)) * tile.groupEdge};
+            if (query) query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                static_cast<uint32_t>(chunk * 4 + 1));
+            if (pass.indirectBuffer) {
+                if (pass.tiles) {
+                    const glm::uvec2 pixelOrigin = glm::uvec2(origin) * tile.localSize;
+                    vkCmdPushConstants(cmd, pass.layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                        tile.originPushOffset, sizeof(pixelOrigin), &pixelOrigin);
                 }
-
-                // Push constants
-                if (pass.pushConstants.has_value()) {
-                    const auto& pc = pass.pushConstants.value();
-                    vkCmdPushConstants(
-                        cmdBuffer,
-                        pass.layout,
-                        pc.stageFlags,
-                        pc.offset,
-                        static_cast<uint32_t>(pc.data.size()),
-                        pc.data.data()
-                    );
-                }
-
-                // Dispatch (Recipe GPU Instance Bucketing Inc2 M2 Task 4: indirect-buffer
-                // branch — strictly additive, the fixed-workgroup path below is
-                // byte-identical to pre-M2 behavior when indirectBuffer is unset)
-                if (pass.indirectBuffer.has_value()) {
-                    vkCmdDispatchIndirect(
-                        cmdBuffer,
-                        pass.indirectBuffer.value(),
-                        pass.indirectBufferOffset
-                    );
-                } else {
-                    vkCmdDispatch(
-                        cmdBuffer,
-                        pass.workGroupCount.x,
-                        pass.workGroupCount.y,
-                        pass.workGroupCount.z
-                    );
-                }
-
-                // Update overall statistics
-                ++stats_.dispatchCount;
-                stats_.totalWorkGroups += pass.TotalWorkGroups();
-
-                // Sprint 6.1: Task #314 - Update group statistics
-                ++groupStats.dispatchCount;
-                groupStats.totalWorkGroups += pass.TotalWorkGroups();
-
-                NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
-                    ", pass " + std::to_string(i) + ": " + pass.debugName);
-            }
-
-            // Sprint 6.1: Task #314 - Measure group recording time
-            auto groupEndTime = std::chrono::high_resolution_clock::now();
-            groupStats.recordTimeMs = std::chrono::duration<double, std::milli>(
-                groupEndTime - groupStartTime).count();
-
-            // Sprint 6.1: Task #314 - Store group statistics
-            stats_.groupStats[groupId] = groupStats;
-
-            NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
-                " complete: " + std::to_string(groupStats.dispatchCount) + " dispatches, " +
-                std::to_string(groupStats.recordTimeMs) + "ms");
-        }
-
-        NODE_LOG_DEBUG("[MultiDispatchNode] Recorded " +
-            std::to_string(stats_.dispatchCount) + " total dispatches across " +
-            std::to_string(groupedDispatches_.size()) + " groups");
-    } else {
-        // LEGACY QUEUE-BASED DISPATCH: Process taskQueue_ (backward compatibility)
-        // Sprint 6.2: Updated to use TaskQueue with priority execution
-        NODE_LOG_DEBUG("[MultiDispatchNode] Recording " +
-            std::to_string(taskQueue_.GetQueuedCount()) + " queued dispatches (legacy mode)");
-
-        // Sort barriers by insertion index
-        std::sort(barrierQueue_.begin(), barrierQueue_.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-
-        size_t barrierIdx = 0;
-
-        // Sprint 6.2: Execute TaskQueue with priority-based ordering
-        size_t dispatchIndex = 0;
-        taskQueue_.ExecuteWithMetadata([&](const TaskQueue<DispatchPass>::TaskSlot& slot) {
-            const auto& pass = slot.data;
-
-            // Insert any barriers scheduled before this dispatch
-            while (barrierIdx < barrierQueue_.size() &&
-                   barrierQueue_[barrierIdx].first <= dispatchIndex) {
-                RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
-                ++barrierIdx;
-                ++stats_.barrierCount;
-            }
-
-            // Insert automatic barrier between passes (if enabled and not first pass)
-            if (autoBarriers_ && dispatchIndex > 0) {
-                InsertAutoBarrier(cmdBuffer);
-                ++stats_.barrierCount;
-            }
-
-            // Bind pipeline
-            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pass.pipeline);
-
-            // Bind descriptor sets
-            if (!pass.descriptorSets.empty()) {
-                vkCmdBindDescriptorSets(
-                    cmdBuffer,
-                    VK_PIPELINE_BIND_POINT_COMPUTE,
-                    pass.layout,
-                    pass.firstSet,
-                    static_cast<uint32_t>(pass.descriptorSets.size()),
-                    pass.descriptorSets.data(),
-                    0, nullptr
-                );
-            }
-
-            // Push constants
-            if (pass.pushConstants.has_value()) {
-                const auto& pc = pass.pushConstants.value();
-                vkCmdPushConstants(
-                    cmdBuffer,
-                    pass.layout,
-                    pc.stageFlags,
-                    pc.offset,
-                    static_cast<uint32_t>(pc.data.size()),
-                    pc.data.data()
-                );
-            }
-
-            // Dispatch (indirect-buffer branch, see grouped-dispatch path above for rationale)
-            if (pass.indirectBuffer.has_value()) {
-                vkCmdDispatchIndirect(
-                    cmdBuffer,
-                    pass.indirectBuffer.value(),
-                    pass.indirectBufferOffset
-                );
+                vkCmdDispatchIndirect(cmd, *pass.indirectBuffer,
+                    pass.indirectBufferOffset + VkDeviceSize(t) * sizeof(VkDispatchIndirectCommand));
+            } else if (pass.tiles || pass.groupId) {
+                const glm::uvec3 groups = glm::min(glm::uvec3(tile.groupEdge), pass.workGroupCount - origin);
+                vkCmdDispatchBase(cmd, origin.x, origin.y, origin.z, groups.x, groups.y, groups.z);
             } else {
-                vkCmdDispatch(
-                    cmdBuffer,
-                    pass.workGroupCount.x,
-                    pass.workGroupCount.y,
-                    pass.workGroupCount.z
-                );
+                vkCmdDispatch(cmd, pass.workGroupCount.x, pass.workGroupCount.y, pass.workGroupCount.z);
             }
-
-            // Update statistics
-            ++stats_.dispatchCount;
-            stats_.totalWorkGroups += pass.TotalWorkGroups();
-
-            NODE_LOG_DEBUG("[MultiDispatchNode] Recorded dispatch #" + std::to_string(dispatchIndex) +
-                ": " + pass.debugName + " [priority=" + std::to_string(slot.priority) +
-                ", cost=" + std::to_string(slot.estimatedCostNs) + "ns] [" +
-                std::to_string(pass.workGroupCount.x) + "x" +
-                std::to_string(pass.workGroupCount.y) + "x" +
-                std::to_string(pass.workGroupCount.z) + "]");
-
-            ++dispatchIndex;
-        });  // End TaskQueue::ExecuteWithMetadata lambda
-
-        // Insert any remaining barriers
-        while (barrierIdx < barrierQueue_.size()) {
-            RecordBarrier(cmdBuffer, barrierQueue_[barrierIdx].second);
-            ++barrierIdx;
-            ++stats_.barrierCount;
+            if (query) query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                static_cast<uint32_t>(chunk * 4 + 2));
+            if (passIndex + 1 == passes.size() && t + 1 == tiles) {
+                while (barrierIndex < barrierQueue_.size()) {
+                    RecordBarrier(cmd, barrierQueue_[barrierIndex++].second); ++stats_.barrierCount;
+                }
+            }
+            finish(cmd);
         }
-    }  // End of legacy queue-based dispatch
-
-    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
-        const uint32_t frame = currentFrameIndex % queryManager_->GetFrameCount();
-        queryManager_->WriteTimestamp(cmdBuffer, frame, querySlot_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        ++stats_.dispatchCount;
+        stats_.totalWorkGroups += pass.TotalWorkGroups();
+        if (pass.groupId) {
+            auto& group = stats_.groupStats[*pass.groupId];
+            ++group.dispatchCount;
+            group.totalWorkGroups += pass.TotalWorkGroups();
+        }
     }
-
-    // End command buffer
-    result = vkEndCommandBuffer(cmdBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[MultiDispatchNode::RecordDispatches] "
-            "Failed to end command buffer");
+    if (passes.empty()) {
+        begin(first);
+        while (barrierIndex < barrierQueue_.size()) { RecordBarrier(first, barrierQueue_[barrierIndex++].second); ++stats_.barrierCount; }
+        if (query) {
+            query->WriteTimestamp(first, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1);
+            query->WriteTimestamp(first, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 2);
+        }
+        finish(first);
     }
+    return commands;
 }
 
 // ============================================================================
@@ -809,6 +773,14 @@ void MultiDispatchNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Clear queues
     ClearQueue();
 
+    groupedDispatches_.clear();
+    chunkQueries_.clear();
+    for (auto& buffers : chunkBuffers_) {
+        if (!buffers.empty()) vkFreeCommandBuffers(vulkanDevice_->device, commandPool_,
+            static_cast<uint32_t>(buffers.size()), buffers.data());
+    }
+    chunkBuffers_.clear();
+    chunkCounts_.clear();
     // Free command buffers
     if (vulkanDevice_ && vulkanDevice_->device != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {

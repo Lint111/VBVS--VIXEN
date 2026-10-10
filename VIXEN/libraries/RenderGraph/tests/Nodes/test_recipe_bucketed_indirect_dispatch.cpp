@@ -153,6 +153,7 @@ struct SpecializedPush {
     uint32_t  screenHeight;
     uint32_t  maxMembersPerBucket;
     uint32_t  recipeId;
+    glm::uvec2 tileOrigin{0, 0};
 };
 
 // Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).

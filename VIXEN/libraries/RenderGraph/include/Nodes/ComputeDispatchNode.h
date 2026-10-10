@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include "Core/SubmitChannel.h"
 #include "GPUTimestampQuery.h"
 
 #include "Core/TypedNodeInstance.h"
@@ -121,6 +122,9 @@ private:
     std::array<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>, 4> tileQueries_;
     std::array<uint32_t, 4> tileCounts_{};
     std::array<uint64_t, 4> tileBudgets_{};
+    std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
+    std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
+    double workGroupCostUpperBoundNs_ = 0;
     bool canTile_ = false;
 
 
