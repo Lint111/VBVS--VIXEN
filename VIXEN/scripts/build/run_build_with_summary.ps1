@@ -1,4 +1,6 @@
-﻿# Purpose: run `cmake --build --preset <preset> -- -k 0` (keep going past compile failures
+# Purpose: run `cmake --build <binary-dir> -- -k 0` when BuildDir is supplied, or
+# `cmake --build --preset <preset> -- -k 0` for callers using the current-directory route
+# (keep going past compile failures
 # instead of stopping at the first one) with a PERIODIC status file an agent/human can poll
 # mid-build, plus the same end-of-build FAILED-target summary as the old
 # run_build_with_summary.bat. Rewritten in PowerShell (see Worktree-Build-Artifact-
@@ -16,7 +18,7 @@
 # builds on one machine contend for the same CPU/IO and make ALL of them slower, not faster —
 # observed directly this session running concurrent verification builds.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>] [-BuildId <id>]
+# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-BuildDir <path>] [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>] [-BuildId <id>]
 #
 # -Target scopes the build to a single CMake target (`cmake --build ... --target <name>`)
 # instead of the full default graph - e.g. just `VixenApp` or a single test binary, so an
@@ -48,6 +50,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$CMakeExe,
     [Parameter(Mandatory=$true)][string]$Preset,
+    [string]$BuildDir = "",
     [string]$StatusFile = "$env:TEMP\vixen_build_status.txt",
     [int]$LockTimeoutSeconds = 1800,
     [switch]$SkipLock,
@@ -138,8 +141,8 @@ Write-StatusFile "RUNNING" 0 "?" 0 0 "" @()
 # sees live output) and the log file, via a background job so this script can poll the log on
 # a timer without blocking on the build's own completion. Start-Job spawns a fresh PowerShell
 # process that does NOT inherit the caller's current directory (it uses its own profile
-# default, e.g. OneDrive\Documents) — pass $PWD explicitly and Set-Location inside the job, or
-# `cmake --build --preset` silently resolves CMakePresets.json from the wrong place and fails.
+# default, e.g. OneDrive\Documents). Pass an explicit build directory for callers whose source
+# tree is on a UNC share; retain the old working-directory behavior for existing callers.
 # Tee-Object writes UTF-16 by default in Windows PowerShell 5.1, which breaks line-based regex
 # parsing against the log — force UTF-8 by piping through Out-File -Encoding utf8 instead.
 if ($Target) {
@@ -150,12 +153,20 @@ if ($Target) {
 
 $workDir = $PWD.Path
 $job = Start-Job -ScriptBlock {
-    param($cmakeExe, $preset, $logPath, $workDir, $maxJobs, $target)
-    Set-Location $workDir
-    if ($target) {
-        & $cmakeExe --build --preset $preset --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+    param($cmakeExe, $preset, $logPath, $workDir, $buildDir, $maxJobs, $target)
+    if ($buildDir) {
+        if ($target) {
+            & $cmakeExe --build $buildDir --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        } else {
+            & $cmakeExe --build $buildDir -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        }
     } else {
-        & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        Set-Location $workDir
+        if ($target) {
+            & $cmakeExe --build --preset $preset --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        } else {
+            & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        }
     }
     # Capture the REAL exit code of the cmake/ninja invocation and return it as the job's
     # result. $job.ChildJobs[0].JobStateInfo.State only reports 'Failed' for a terminating
@@ -165,7 +176,7 @@ $job = Start-Job -ScriptBlock {
     # a real case: an invalid -Target name made ninja exit 1 immediately with zero targets
     # attempted, but the old logic reported "All targets built successfully" (exit 0).
     $LASTEXITCODE
-} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $MaxParallelJobs, $Target
+} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $BuildDir, $MaxParallelJobs, $Target
 
 $progressPattern = '^\[(\d+)/(\d+)\]\s+(.+)$'
 $failedPattern = '^FAILED:\s+\[code=\d+\]\s+(\S+)'

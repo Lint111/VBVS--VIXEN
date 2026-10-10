@@ -18,11 +18,9 @@ the overhead isn't worth it (a single-file fix, no distinct milestones).
 
 ## File Paths
 
-**Always use absolute Windows paths with drive letters:**
+Use repository-relative paths in discussion and code references.
 
-✅ `C:\cpp\VBVS--VIXEN\VIXEN\libraries\Profiler\src\BenchmarkConfig.cpp`
-❌ `libraries/Profiler/src/BenchmarkConfig.cpp`
-❌ `./libraries/Profiler/src/BenchmarkConfig.cpp`
+When a Windows command needs an absolute path, derive it from the current worktree with `wslpath -w "$(git rev-parse --show-toplevel)"` rather than assuming a checkout location.
 
 ## Agent Protocol
 

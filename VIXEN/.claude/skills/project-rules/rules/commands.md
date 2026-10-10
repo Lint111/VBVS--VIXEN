@@ -8,14 +8,20 @@
 
 **Strong default: build and test on the WINDOWS side.** For GPU / render / Vulkan work this is the strong recommendation, not just a preference. Fall back to WSL only when Windows-side is unavailable or a flow is genuinely WSL-only (e.g. Linux/GCC-specific validation via the `vixen-wsl` / `vixen-wsl-debug` presets = Mesa-Dozen real-GPU).
 
-Windows-side invocation (presets: `vixen-ninja` build/config; templates in `VIXEN/temp/win_*.bat`). Because **WSL env vars don't reach a Windows `.exe`** and `cmake.exe` needs the MSVC env, drive it through a `.bat` via `cmd.exe /c`:
+
+**Windows-native invocation:** provision first, then build with the tracked repository launcher and the `vixen-ninja` preset. Run from a drvfs working directory so the Windows shell does not start with a UNC current directory. These commands derive the current worktree path instead of assuming a machine-specific checkout location:
 ```bash
-# Configure (first time / after CMake changes) — runs vcvars64 then cmake.exe --preset
-cmd.exe /c "C:\\cpp\\VBVS--VIXEN\\VIXEN\\temp\\win_configure.bat"
-# Build (vcvars64 + cmake.exe --build --preset vixen-ninja --target <targets>)
-cmd.exe /c "C:\\cpp\\VBVS--VIXEN\\VIXEN\\temp\\win_build.bat"
+repo_win="$(wslpath -w "$(git rev-parse --show-toplevel)")"
+cd /mnt/c
+native_powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+
+# First run and whenever the pinned native toolchain changes
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' provision; exit \$LASTEXITCODE"
+
+# Configure and build
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' all vixen-ninja; exit \$LASTEXITCODE"
 ```
-Adapt/copy a `win_*.bat` when you need different targets. Set any `VIXEN_*` runtime env INSIDE the `.bat` (as `temp/run_debug_1440.bat` does), never as a bash `VAR=1 ./x.exe` prefix.
+The provisioner detects each pinned tool, caches installers, and logs each step under `VIXEN/.win-native-toolchain/`. If installation requires elevation, it stops and prints the exact command to rerun in an elevated PowerShell; rerunning skips tools already installed. Set any `VIXEN_*` runtime env inside a Windows `.bat` (as `temp/run_debug_1440.bat` does), never as a bash `VAR=1 ./x.exe` prefix.
 
 **Note:** a WSL `cmake --build` in this harness AUTO-BACKGROUNDS even without a background flag — overlapping builds of the SAME target race on the link output and truncate the binary. Build one target at a time and block on it. (See the watcher-polling note under Test Commands and the friction log.)
 

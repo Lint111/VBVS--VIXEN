@@ -74,6 +74,80 @@ TEST(VulkanResources_CapabilityGraph, RayQueryAndSubgroupCompositesUseAvailabili
     EXPECT_FALSE(graph.IsCapabilityAvailable("SubgroupCoopTraversal"));
 }
 
+TEST(VulkanResources_CapabilityGraph, VersionRequirementsSelectIndependentPathsByToolchainAndApi) {
+    using Vixen::CapabilityGraph;
+    using Vixen::CapabilityPath;
+    using Vixen::CapabilityVersionSource;
+    using Vixen::CapabilityVersionValue;
+
+    CapabilityGraph graph;
+    graph.BuildStandardCapabilities();
+
+    ASSERT_NE(graph.GetCapability("Version:VulkanApi"), nullptr);
+    ASSERT_NE(graph.GetCapability("Version:VulkanSdk"), nullptr);
+    ASSERT_NE(graph.GetCapability("Version:Glslang"), nullptr);
+    ASSERT_NE(graph.GetCapability("Version:SpirvTarget"), nullptr);
+    ASSERT_NE(graph.GetCapability("VulkanApi:RequiredFloor"), nullptr);
+    ASSERT_NE(graph.GetCapability("SpirvTarget:RayQueryFloor"), nullptr);
+    EXPECT_TRUE(graph.IsCapabilityAvailable("Version:VulkanSdk"));
+    EXPECT_TRUE(graph.IsCapabilityAvailable("Version:Glslang"));
+    EXPECT_TRUE(graph.IsCapabilityAvailable("Version:SpirvTarget"));
+
+    const std::vector<std::string> rayQueryExtensions{
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
+    };
+    auto rayQueryExtensionsWithSync2 = rayQueryExtensions;
+    rayQueryExtensionsWithSync2.emplace_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    graph.SetAvailableDeviceExtensions(rayQueryExtensionsWithSync2);
+    graph.SetAvailableDeviceFeatures({"synchronization2"});
+
+    const auto oldApi = CapabilityVersionValue::Parse("1.2.0");
+    const auto belowApiFloor = CapabilityVersionValue::Parse("1.1.0");
+    const auto oldSpirv = CapabilityVersionValue::Parse("1.3.0");
+    ASSERT_TRUE(oldApi.has_value());
+    ASSERT_TRUE(belowApiFloor.has_value());
+    ASSERT_TRUE(oldSpirv.has_value());
+    graph.SetVersion(CapabilityVersionSource::VulkanApi, *belowApiFloor);
+    graph.SetVersion(CapabilityVersionSource::SpirvTarget, *oldSpirv);
+
+    EXPECT_FALSE(graph.IsCapabilityAvailable("VulkanApi:RequiredFloor"));
+    EXPECT_FALSE(graph.IsCapabilityAvailable("DeviceFeature:synchronization2"));
+    EXPECT_FALSE(graph.IsCapabilityAvailable("SpirvTarget:RayQueryFloor"));
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting"),
+              CapabilityPath::CapabilityIndependent);
+
+    // Vulkan 1.2 uses the KHR promotion path: the extension plus its feature bit satisfies
+    // synchronization2, while the old SPIR-V target still selects the independent ray-query twin.
+    graph.SetVersion(CapabilityVersionSource::VulkanApi, *oldApi);
+    EXPECT_TRUE(graph.IsCapabilityAvailable("VulkanApi:RequiredFloor"));
+    graph.SetAvailableDeviceExtensions(rayQueryExtensions);
+    EXPECT_FALSE(graph.IsCapabilityAvailable("DeviceFeature:synchronization2"));
+    graph.SetAvailableDeviceExtensions(rayQueryExtensionsWithSync2);
+    EXPECT_TRUE(graph.IsCapabilityAvailable("DeviceFeature:synchronization2"));
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting"),
+              CapabilityPath::CapabilityIndependent);
+
+    // Vulkan 1.3 exposes synchronization2 as core; no extension advertisement is needed.
+    graph.SetAvailableDeviceExtensions(rayQueryExtensions);
+    const auto newApi = CapabilityVersionValue::Parse("1.3.0");
+    const auto newSpirv = CapabilityVersionValue::Parse("1.6.0");
+    ASSERT_TRUE(newApi.has_value());
+    ASSERT_TRUE(newSpirv.has_value());
+    graph.SetVersion(CapabilityVersionSource::VulkanApi, *newApi);
+    graph.SetVersion(CapabilityVersionSource::SpirvTarget, *newSpirv);
+
+    EXPECT_TRUE(graph.IsCapabilityAvailable("VulkanApi:RequiredFloor"));
+    EXPECT_TRUE(graph.IsCapabilityAvailable("DeviceFeature:synchronization2"));
+    EXPECT_TRUE(graph.IsCapabilityAvailable("SpirvTarget:RayQueryFloor"));
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting"),
+              CapabilityPath::CapabilityEnabled);
+}
+
 TEST(VulkanResources_CapabilityGraph, BackgroundGpuPrefersIntegratedAndLesserDevice) {
     using Vixen::CapabilityGraph;
     using Vixen::PhysicalDeviceClass;

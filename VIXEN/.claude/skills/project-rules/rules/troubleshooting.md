@@ -216,7 +216,9 @@ the env var is silently dropped.
 **Cause:** A WSL bash `VAR=1 ./x.exe` prefix is not seen by a Windows process.
 **Solution:** set the var inside the cmd.exe session:
 ```bash
-cmd.exe /c "set VIXEN_AUTOSYNC_DEMO=1&& set VIXEN_VULKAN_VALIDATION=1&& C:\cpp\VBVS--VIXEN\VIXEN\binaries\VIXEN.exe"
+repo_win="$(wslpath -w "$(git rev-parse --show-toplevel)")"
+cd /mnt/c
+cmd.exe /d /c "set VIXEN_AUTOSYNC_DEMO=1&& set VIXEN_VULKAN_VALIDATION=1&& $repo_win\\VIXEN\\binaries\\VIXEN.exe"
 ```
 Note `set VAR=1&&` with NO space before `&&`. Use `taskkill /F /IM VIXEN.exe` to
 reap a windowed run.

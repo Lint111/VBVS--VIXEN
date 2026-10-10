@@ -12,6 +12,28 @@
 
 using namespace Vixen::Vulkan::Resources;
 
+namespace {
+
+std::vector<std::string> EnumerateSupportedDeviceExtensions(VkPhysicalDevice physicalDevice) {
+    uint32_t count = 0;
+    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, nullptr) != VK_SUCCESS ||
+        count == 0u) {
+        return {};
+    }
+    std::vector<VkExtensionProperties> properties(count);
+    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, properties.data()) != VK_SUCCESS) {
+        return {};
+    }
+    std::vector<std::string> extensions;
+    extensions.reserve(count);
+    for (const auto& property : properties) {
+        extensions.emplace_back(property.extensionName);
+    }
+    return extensions;
+}
+
+} // namespace
+
 VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
     gpu = physicalDevice;
 }
@@ -28,6 +50,16 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     float queuePriorities[1] = { 0.0 };
 
+    uint32_t physicalDeviceApiVersion = 0;
+    if (gpu && *gpu != VK_NULL_HANDLE) {
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(*gpu, &properties);
+        physicalDeviceApiVersion = properties.apiVersion;
+        capabilityGraph_.SetVersion(
+            Vixen::CapabilityVersionSource::VulkanApi,
+            Vixen::CapabilityVersionValue::FromVulkanApi(properties.apiVersion));
+    }
+
     // Create the object information
     VkDeviceQueueCreateInfo queueInfo = {};
     queueInfo.queueFamilyIndex = graphicsQueueIndex;
@@ -40,6 +72,9 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     // feature-enablement decisions below are gated via capabilityGraph_.IsCapabilityAvailable()
     // (same convention as device extensions) rather than ad-hoc inline queries.
     capabilityGraph_.BuildStandardCapabilities();
+    if (gpu && *gpu != VK_NULL_HANDLE) {
+        capabilityGraph_.SetAvailableDeviceExtensions(EnumerateSupportedDeviceExtensions(*gpu));
+    }
     capabilityGraph_.SetAvailableDeviceFeatures(QueryAvailableDeviceFeatures());  // AR#8: per-graph, was static
 
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
@@ -168,38 +203,30 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
     }
 
-    // synchronization2 is REQUIRED — the renderer records all GPU barriers via
-    // vkCmdPipelineBarrier2KHR (ComputeDispatchNode, MultiDispatchNode, PassRecorder, and 6 more
-    // call sites; see the per-device VulkanDevice::fpCmdPipelineBarrier2). Gated through the
-    // capability graph like timelineSemaphore/bufferDeviceAddress; unlike those it is mandatory,
-    // so a device that lacks it is a hard error (cf. shaderStorageImageWriteWithoutFormat below).
-    //
-    // Requested BOTH ways deliberately, not redundantly: the VkPhysicalDeviceVulkan13Features
-    // struct below only takes effect when the negotiated apiVersion is >= 1.3 (a 1.2 driver
-    // silently ignores it, even though vkGetPhysicalDeviceFeatures2 still reports the feature bit
-    // true via the same query path a pre-1.3 driver uses for its extension-level struct) --
-    // discovered via Mesa Dozen (WSL2's Vulkan-over-D3D12 driver): it reports apiVersion 1.2.318,
-    // synchronization2=TRUE, and implements VK_KHR_synchronization2 as a genuine, working
-    // extension (confirmed live: vkGetDeviceProcAddr("vkCmdPipelineBarrier2KHR") resolves to a
-    // valid, callable pointer once the extension is in ppEnabledExtensionNames) -- it was VIXEN
-    // never asking for it as an extension, not a driver bug, that left the promotion unresolved
-    // and crashed the first render frame on a null vkCmdPipelineBarrier2 (bare core name, which a
-    // 1.2 device's loader correctly returns null for per spec). Explicitly requesting the
-    // extension makes this correct on 1.2-plus-extension drivers (Dozen today) and is a no-op
-    // pNext addition (safely ignored) on genuine 1.3-core drivers.
-    // This local must outlive vkCreateDevice() below; it is scoped to this function.
+    // synchronization2 is REQUIRED. CapabilityGraph resolves the promotion rule: Vulkan 1.3 core,
+    // or VK_KHR_synchronization2 on Vulkan 1.2. Query and enable the matching feature struct so
+    // WSL's Vulkan 1.2 Dozen path and Vulkan 1.3+ drivers share the same graph decision.
     VkPhysicalDeviceVulkan13Features vulkan13Features{};
     vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2Features{};
+    synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
     if (!capabilityGraph_.IsCapabilityAvailable("DeviceFeature:synchronization2")) {
         throw std::runtime_error(
-            "GPU does not support synchronization2 (Vulkan 1.3 core or VK_KHR_synchronization2 "
-            "extension) - required: the renderer records all GPU barriers via "
+            "GPU does not support required synchronization2 (Vulkan 1.3 core or Vulkan 1.2 "
+            "with VK_KHR_synchronization2) - the renderer records all GPU barriers via "
             "vkCmdPipelineBarrier2KHR.");
     }
-    vulkan13Features.synchronization2 = VK_TRUE;
-    pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan13Features));
+    if (physicalDeviceApiVersion >= VK_API_VERSION_1_3) {
+        vulkan13Features.synchronization2 = VK_TRUE;
+        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan13Features));
+    } else {
+        synchronization2Features.synchronization2 = VK_TRUE;
+        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &synchronization2Features));
+    }
 
-    if (!HasExtension(extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
+    if (physicalDeviceApiVersion < VK_API_VERSION_1_3 &&
+        capabilityGraph_.IsDeviceExtensionAvailable(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) &&
+        !HasExtension(extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
         extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
     }
 
@@ -249,20 +276,24 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
 
-    // Resolve THIS device's promoted-or-extension synchronization2 entry points (per-instance
-    // members — see fpCmdPipelineBarrier2/fpQueueSubmit2 in VulkanDevice.h) via the KHR-suffixed
-    // names -- correct whether the driver negotiated real 1.3 core (where core and KHR names alias
-    // the same pointer) or is 1.2-plus-extension like Dozen (where only the KHR name resolves; the
-    // bare core name's dispatch-table entry is null per spec on a non-1.3 apiVersion). A null
-    // result here means the extensions.push_back() above didn't take -- e.g. HasExtension's
-    // driver-side enumeration disagreeing with the request -- a genuine, unexpected environment
-    // problem worth failing loudly on rather than segfaulting three frames into the first render.
+    // Resolve the promoted synchronization2 entry points for this device. On 1.2 the KHR extension
+    // must be enabled and its names are used; on 1.3+ use the core names, with KHR aliases as a
+    // driver compatibility fallback. A null result is an unexpected dispatch failure, not a
+    // capability fallback: every renderer barrier uses synchronization2.
     fpCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
         vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2KHR"));
-    // Same extension bundle, same promotion gap, same resolution strategy -- vkQueueSubmit2 is
-    // part of VK_KHR_synchronization2 alongside vkCmdPipelineBarrier2, not a separate capability.
     fpQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2KHR>(
         vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR"));
+    if (physicalDeviceApiVersion >= VK_API_VERSION_1_3) {
+        if (!fpCmdPipelineBarrier2) {
+            fpCmdPipelineBarrier2 = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+                vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2"));
+        }
+        if (!fpQueueSubmit2) {
+            fpQueueSubmit2 = reinterpret_cast<PFN_vkQueueSubmit2KHR>(
+                vkGetDeviceProcAddr(device, "vkQueueSubmit2"));
+        }
+    }
     if (!fpCmdPipelineBarrier2 || !fpQueueSubmit2) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(*gpu, &props);
@@ -271,8 +302,8 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         throw std::runtime_error(
             std::string("GPU driver '") + props.deviceName + "' reports synchronization2 support "
             "but " + (!fpCmdPipelineBarrier2 ? "vkCmdPipelineBarrier2KHR" : "vkQueueSubmit2KHR") +
-            " failed to resolve even with VK_KHR_synchronization2 requested as a device "
-            "extension. The renderer requires a real synchronization2 implementation; there is "
+            " failed to resolve through the promoted Vulkan API or extension entry points. "
+            "The renderer requires a real synchronization2 implementation; there is "
             "no legacy vkCmdPipelineBarrier/vkQueueSubmit fallback path.");
     }
 
@@ -625,19 +656,34 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     // a matching name push_back) as more non-concrete features are adopted.
     std::vector<std::string> supported;
 
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(*gpu, &properties);
+
     VkPhysicalDeviceVulkan12Features vulkan12{};
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
     VkPhysicalDeviceVulkan13Features vulkan13{};
     vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan12.pNext = &vulkan13;
+    VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2{};
+    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    const bool apiSupportsVulkan12 = properties.apiVersion >= VK_API_VERSION_1_2;
+    const bool apiSupportsSynchronization2Core = properties.apiVersion >= VK_API_VERSION_1_3;
+    const bool extensionSupportsSynchronization2 =
+        !apiSupportsSynchronization2Core && capabilityGraph_.IsDeviceExtensionAvailable(
+            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    if (apiSupportsVulkan12) {
+        features2.pNext = &vulkan12;
+        if (apiSupportsSynchronization2Core) {
+            vulkan12.pNext = &vulkan13;
+        } else if (extensionSupportsSynchronization2) {
+            vulkan12.pNext = &synchronization2;
+        }
+    }
 
     VkPhysicalDeviceSubgroupProperties subgroup{};
     subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-
-    VkPhysicalDeviceFeatures2 features2{};
-    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features2.pNext = &vulkan12;
 
     // Subgroup properties are returned through VkPhysicalDeviceProperties2, not the features
     // chain. Publish only the compute operations the shader variants may rely on; consumers then
@@ -649,13 +695,14 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
 
     vkGetPhysicalDeviceFeatures2(*gpu, &features2);
 
-    if (vulkan12.timelineSemaphore) {
+    if (apiSupportsVulkan12 && vulkan12.timelineSemaphore) {
         supported.emplace_back("timelineSemaphore");
     }
-    if (vulkan12.hostQueryReset) {
+    if (apiSupportsVulkan12 && vulkan12.hostQueryReset) {
         supported.emplace_back("hostQueryReset");
     }
-    if (vulkan13.synchronization2) {
+    if ((apiSupportsSynchronization2Core && vulkan13.synchronization2) ||
+        (extensionSupportsSynchronization2 && synchronization2.synchronization2)) {
         supported.emplace_back("synchronization2");
     }
     if (features2.features.fragmentStoresAndAtomics) {

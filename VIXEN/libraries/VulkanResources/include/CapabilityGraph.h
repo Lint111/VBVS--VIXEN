@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -179,6 +181,86 @@ enum class CapabilityPath : uint8_t {
     CapabilityEnabled,
 };
 
+/** Version values compared by capability nodes and the configure-time toolchain contract. */
+struct CapabilityVersionValue {
+    uint32_t major = 0;
+    uint32_t minor = 0;
+    uint32_t patch = 0;
+    uint32_t revision = 0;
+
+    static std::optional<CapabilityVersionValue> Parse(const std::string& value);
+    static CapabilityVersionValue FromVulkanApi(uint32_t value) noexcept;
+    [[nodiscard]] std::string ToString() const;
+
+    friend bool operator<(const CapabilityVersionValue& left,
+                          const CapabilityVersionValue& right) noexcept {
+        if (left.major != right.major) return left.major < right.major;
+        if (left.minor != right.minor) return left.minor < right.minor;
+        if (left.patch != right.patch) return left.patch < right.patch;
+        return left.revision < right.revision;
+    }
+    friend bool operator>=(const CapabilityVersionValue& left,
+                           const CapabilityVersionValue& right) noexcept {
+        return !(left < right);
+    }
+};
+
+enum class CapabilityVersionSource : uint8_t {
+    VulkanApi,
+    VulkanSdk,
+    Glslang,
+    SpirvTarget,
+    Count,
+};
+
+/** A graph input for a version observed at runtime or recorded by the build. */
+class VersionInputCapability : public CapabilityNode {
+public:
+    VersionInputCapability(const std::string& name, CapabilityVersionSource source)
+        : CapabilityNode(name), source_(source) {}
+
+protected:
+    bool CheckAvailability() const override;
+
+private:
+    CapabilityVersionSource source_;
+};
+
+/** A requirement node becomes available when its version input meets the declared floor. */
+class VersionRequirementCapability : public CapabilityNode {
+public:
+    VersionRequirementCapability(const std::string& name,
+                                 CapabilityVersionSource source,
+                                 CapabilityVersionValue minimum)
+        : CapabilityNode(name), source_(source), minimum_(minimum) {}
+
+protected:
+    bool CheckAvailability() const override;
+
+private:
+    CapabilityVersionSource source_;
+    CapabilityVersionValue minimum_;
+};
+
+/** A promoted feature is available through its core API version or its extension on older APIs. */
+class PromotedDeviceFeatureCapability : public CapabilityNode {
+public:
+    PromotedDeviceFeatureCapability(const std::string& name,
+                                   const std::string& featureName,
+                                   const std::string& extensionName,
+                                   CapabilityVersionValue coreVersion)
+        : CapabilityNode(name), featureName_(featureName), extensionName_(extensionName),
+          coreVersion_(coreVersion) {}
+
+protected:
+    bool CheckAvailability() const override;
+
+private:
+    std::string featureName_;
+    std::string extensionName_;
+    CapabilityVersionValue coreVersion_;
+};
+
 /** Capability node for a detected, non-primary adapter suitable for bounded background work. */
 class BackgroundGpuCapability : public CapabilityNode {
 public:
@@ -253,6 +335,9 @@ public:
     void SetAvailableInstanceLayers(std::vector<std::string> layers);
     void SetAvailableDeviceExtensions(std::vector<std::string> extensions);
     void SetAvailableDeviceFeatures(std::vector<std::string> features);
+    void SetVersion(CapabilityVersionSource source, CapabilityVersionValue version);
+    [[nodiscard]] std::optional<CapabilityVersionValue> GetVersion(
+        CapabilityVersionSource source) const;
 
     bool IsInstanceExtensionAvailable(const std::string& name) const;
     bool IsInstanceLayerAvailable(const std::string& name) const;
@@ -288,6 +373,8 @@ private:
     std::vector<std::string> availableInstanceLayers_;
     std::vector<std::string> availableDeviceExtensions_;
     std::vector<std::string> availableDeviceFeatures_;
+    std::array<std::optional<CapabilityVersionValue>,
+               static_cast<size_t>(CapabilityVersionSource::Count)> versions_{};
 
     std::vector<PhysicalDeviceInfo> physicalDevices_;
     std::optional<BackgroundGpuSelection> backgroundGpuSelection_;

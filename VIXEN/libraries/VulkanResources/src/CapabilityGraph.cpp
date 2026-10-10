@@ -1,5 +1,7 @@
 #include "CapabilityGraph.h"
+#include "VulkanCapabilityConfig.h"
 #include <algorithm>
+#include <charconv>
 #include <limits>
 #include <cstring>
 
@@ -48,6 +50,44 @@ std::vector<std::string> EnumerateAvailableInstanceLayers() {
 
 } // namespace
 
+std::optional<CapabilityVersionValue> CapabilityVersionValue::Parse(const std::string& value) {
+    CapabilityVersionValue parsed{};
+    std::array<uint32_t*, 4> fields{&parsed.major, &parsed.minor, &parsed.patch, &parsed.revision};
+    size_t start = 0;
+    size_t count = 0;
+    while (start <= value.size() && count < fields.size()) {
+        const size_t end = value.find('.', start);
+        const size_t tokenEnd = end == std::string::npos ? value.size() : end;
+        if (tokenEnd == start) return std::nullopt;
+        const char* first = value.data() + start;
+        const char* last = value.data() + tokenEnd;
+        const auto result = std::from_chars(first, last, *fields[count]);
+        if (result.ec != std::errc{} || result.ptr != last) return std::nullopt;
+        ++count;
+        if (end == std::string::npos) {
+            start = value.size() + 1;
+            break;
+        }
+        start = end + 1;
+    }
+    if (start <= value.size() || count < 2) return std::nullopt;
+    return parsed;
+}
+
+CapabilityVersionValue CapabilityVersionValue::FromVulkanApi(uint32_t value) noexcept {
+    return {
+        VK_API_VERSION_MAJOR(value),
+        VK_API_VERSION_MINOR(value),
+        VK_API_VERSION_PATCH(value),
+        0u,
+    };
+}
+
+std::string CapabilityVersionValue::ToString() const {
+    return std::to_string(major) + "." + std::to_string(minor) + "." +
+           std::to_string(patch) + "." + std::to_string(revision);
+}
+
 //==============================================================================
 // Leaf capability availability checks — consult the owning graph's per-instance
 // availability sets (AR#8: replaces the former process-wide static vectors).
@@ -66,7 +106,27 @@ bool DeviceExtensionCapability::CheckAvailability() const {
 }
 
 bool DeviceFeatureCapability::CheckAvailability() const {
-    return graph_ && graph_->IsDeviceFeatureAvailable(featureName_);
+    return graph_ && graph_->IsDeviceFeatureAvailable(featureName_) && AreDependenciesSatisfied();
+}
+
+bool VersionInputCapability::CheckAvailability() const {
+    return graph_ && graph_->GetVersion(source_).has_value();
+}
+
+bool VersionRequirementCapability::CheckAvailability() const {
+    if (!graph_ || !AreDependenciesSatisfied()) return false;
+    const auto version = graph_->GetVersion(source_);
+    return version.has_value() && *version >= minimum_;
+}
+
+bool PromotedDeviceFeatureCapability::CheckAvailability() const {
+    if (!graph_ || !graph_->IsDeviceFeatureAvailable(featureName_) ||
+        !AreDependenciesSatisfied()) {
+        return false;
+    }
+    const auto apiVersion = graph_->GetVersion(CapabilityVersionSource::VulkanApi);
+    if (!apiVersion) return false;
+    return *apiVersion >= coreVersion_ || graph_->IsDeviceExtensionAvailable(extensionName_);
 }
 
 bool BackgroundGpuCapability::CheckAvailability() const {
@@ -140,6 +200,20 @@ bool CapabilityGraph::IsDeviceExtensionAvailable(const std::string& name) const 
 
 bool CapabilityGraph::IsDeviceFeatureAvailable(const std::string& name) const {
     return Contains(availableDeviceFeatures_, name);
+}
+
+void CapabilityGraph::SetVersion(CapabilityVersionSource source, CapabilityVersionValue version) {
+    const auto index = static_cast<size_t>(source);
+    if (index >= versions_.size()) return;
+    versions_[index] = version;
+    InvalidateAll();
+}
+
+std::optional<CapabilityVersionValue> CapabilityGraph::GetVersion(
+    CapabilityVersionSource source) const {
+    const auto index = static_cast<size_t>(source);
+    if (index >= versions_.size()) return std::nullopt;
+    return versions_[index];
 }
 
 PhysicalDeviceClass CapabilityGraph::ClassifyPhysicalDevice(VkPhysicalDeviceType type) noexcept {
@@ -219,10 +293,50 @@ void CapabilityGraph::EnumeratePhysicalDevices(VkInstance instance, VkPhysicalDe
 }
 
 void CapabilityGraph::BuildStandardCapabilities() {
+    // The build records the provisioned SDK and shader compiler versions in the generated config
+    // header. The Vulkan API version remains a per-device input set by VulkanDevice.
+    if (const auto version = CapabilityVersionValue::Parse(VIXEN_CONFIGURED_VULKAN_SDK_VERSION)) {
+        SetVersion(CapabilityVersionSource::VulkanSdk, *version);
+    }
+    if (const auto version = CapabilityVersionValue::Parse(VIXEN_CONFIGURED_GLSLANG_VERSION)) {
+        SetVersion(CapabilityVersionSource::Glslang, *version);
+    }
+    if (const auto version = CapabilityVersionValue::Parse(VIXEN_CONFIGURED_SPIRV_TARGET_VERSION)) {
+        SetVersion(CapabilityVersionSource::SpirvTarget, *version);
+    }
+
     // AR#8: self-populate instance-level availability from the loader (globally queryable, no
     // VkInstance needed). Device-level sets are filled in later by the owning VulkanDevice.
     SetAvailableInstanceExtensions(EnumerateAvailableInstanceExtensions());
     SetAvailableInstanceLayers(EnumerateAvailableInstanceLayers());
+
+    auto vulkanApiVersion = CreateCapability<VersionInputCapability>(
+        "Version:VulkanApi", "Version:VulkanApi", CapabilityVersionSource::VulkanApi);
+    auto vulkanSdkVersion = CreateCapability<VersionInputCapability>(
+        "Version:VulkanSdk", "Version:VulkanSdk", CapabilityVersionSource::VulkanSdk);
+    auto glslangVersion = CreateCapability<VersionInputCapability>(
+        "Version:Glslang", "Version:Glslang", CapabilityVersionSource::Glslang);
+    auto spirvTargetVersion = CreateCapability<VersionInputCapability>(
+        "Version:SpirvTarget", "Version:SpirvTarget", CapabilityVersionSource::SpirvTarget);
+
+    const auto minimumApi = CapabilityVersionValue::Parse(VIXEN_MINIMUM_VULKAN_API_VERSION)
+                                .value_or(CapabilityVersionValue{1u, 2u, 0u, 0u});
+    auto vulkanApiRequirement = CreateCapability<VersionRequirementCapability>(
+        "VulkanApi:RequiredFloor", "VulkanApi:RequiredFloor", CapabilityVersionSource::VulkanApi,
+        minimumApi);
+    vulkanApiRequirement->AddDependency(vulkanApiVersion);
+
+    const auto minimumSpirv = CapabilityVersionValue::Parse(VIXEN_MINIMUM_SPIRV_TARGET_VERSION)
+                                  .value_or(CapabilityVersionValue{1u, 4u, 0u, 0u});
+    auto spirvRequirement = CreateCapability<VersionRequirementCapability>(
+        "SpirvTarget:RayQueryFloor", "SpirvTarget:RayQueryFloor",
+        CapabilityVersionSource::SpirvTarget, minimumSpirv);
+    spirvRequirement->AddDependency(spirvTargetVersion);
+    spirvRequirement->AddDependency(vulkanSdkVersion);
+    spirvRequirement->AddDependency(glslangVersion);
+
+    // The SPIR-V target requirement depends on a known SDK and glslang input as well as the target
+    // itself, keeping this optional shader route tied to the configured toolchain.
 
     //==========================================================================
     // Base Device Extensions
@@ -303,8 +417,13 @@ void CapabilityGraph::BuildStandardCapabilities() {
     // vkCmdPipelineBarrier2 (ComputeDispatchNode, MultiDispatchNode); without it every barrier2
     // call fails validation (VUID-vkCmdPipelineBarrier2-synchronization2-03848). Gated through the
     // graph like timelineSemaphore; enablement (and a hard-error-if-missing) lives in VulkanDevice.
-    auto synchronization2 = CreateCapability<DeviceFeatureCapability>(
-        "DeviceFeature:synchronization2", "synchronization2");
+    const auto synchronization2CoreVersion =
+        CapabilityVersionValue::Parse(VIXEN_SYNCHRONIZATION2_CORE_API_VERSION)
+            .value_or(CapabilityVersionValue{1u, 3u, 0u, 0u});
+    auto synchronization2 = CreateCapability<PromotedDeviceFeatureCapability>(
+        "DeviceFeature:synchronization2", "DeviceFeature:synchronization2", "synchronization2",
+        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, synchronization2CoreVersion);
+    synchronization2->AddDependency(vulkanApiRequirement);
 
     // fragmentStoresAndAtomics (core Vulkan 1.0). B2's preferred proxy writer uses
     // fragment-shader SSBO atomics. The compute-writer twin is the capability-free
@@ -370,6 +489,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
     rtxSupport->AddDependency(bufferDeviceAddress);
     rtxSupport->AddDependency(spirv14);
     rtxSupport->AddDependency(shaderFloatControls);
+    rtxSupport->AddDependency(spirvRequirement);
     RegisterCapability(rtxSupport);
 
     // Tier-1 lighting ray queries intentionally do not depend on the RT-pipeline extension.
@@ -383,6 +503,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
     rayQueryLighting->AddDependency(deferredHostOps);
     rayQueryLighting->AddDependency(spirv14);
     rayQueryLighting->AddDependency(shaderFloatControls);
+    rayQueryLighting->AddDependency(spirvRequirement);
     RegisterCapability(rayQueryLighting);
 
     auto subgroupCoopTraversal = std::make_shared<CompositeCapability>("SubgroupCoopTraversal");
