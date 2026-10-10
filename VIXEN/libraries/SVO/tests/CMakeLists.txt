@@ -1768,3 +1768,23 @@ else()
 endif()
 
 vixen_register_verification_targets("${CMAKE_CURRENT_BINARY_DIR}")
+
+# ===========================================================================
+# Emitter Sampling Tests (R502 / R502.2 S0): recipe/sparse emitter table, CPU mirror of
+# shaders/EmitterSampling.glsl, seeded replay.
+# ===========================================================================
+add_executable(test_emitter_sampling test_emitter_sampling.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_emitter_sampling PRIVATE
+        GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+else()
+    target_link_libraries(test_emitter_sampling PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_emitter_sampling PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_emitter_sampling POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_emitter_sampling>
+        COMMENT "Copying TBB DLL for test_emitter_sampling")
+endif()
+vixen_gtest_discover_tests(SVO test_emitter_sampling)

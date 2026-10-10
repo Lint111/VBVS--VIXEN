@@ -6,7 +6,8 @@ using Yeroket.Util.KernelFramework;
 // row == EmitterTotals.phiRecipe). The surface-cell list is shared per recipe: rows of the
 // same recipe point at the same [cellOffset, cellOffset + cellCount) slice of the cell-index
 // list; a cell index is x + dim * (y + dim * z) into the recipe's occupancy grid.
-// 48 B std430.
+// Bound-sphere fallback rows (cellCount == 0, flags bit0): gridAabbMin = bound centre and
+// cellSize = bound radius. 48 B std430.
 [GpuStruct]
 public struct RecipeEmitterEntry
 {

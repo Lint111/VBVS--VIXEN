@@ -6,9 +6,10 @@
 // whole number of MipSample (8 B) units:
 //   [0]                     emissiveLeafCount (uint)
 //   [1]                     root power, float   (== sum over leaves)
-//   [2 .. 2+N)              phi per node, float, N = nodeCount (BFS node ordinal)
-//   [2+N .. 2+N+L)          emissive leaf node ordinals, uint, ascending (L = emissiveLeafCount)
-//   [2+N+L .. 2+N+9L)       8 octant sums per emissive leaf, float, same order (32 B per brick)
+//   [2]                     nodeCount N (uint)
+//   [3 .. 3+N)              phi per node, float (BFS node ordinal)
+//   [3+N .. 3+N+L)          emissive leaf node ordinals, uint, ascending (L = emissiveLeafCount)
+//   [3+N+L .. 3+N+9L)       8 octant sums per emissive leaf, float, same order (32 B per brick)
 // Power is in octree-normalized units: phi_voxel = emission * (1 / (bricksPerAxis * 8))^2,
 // i.e. emission-weighted area in the octree's own [0,1]^3 frame. A consumer scales by
 // (kWorldGridSize * instanceScale)^2 and applies pi. Non-emissive trees bake an EMPTY lane,
@@ -31,7 +32,7 @@
 
 namespace Vixen::SVO {
 
-inline constexpr uint32_t kEmitterPowerHeaderWords = 2u;
+inline constexpr uint32_t kEmitterPowerHeaderWords = 3u;
 inline constexpr uint32_t kEmitterPowerOctantWords = 8u;
 
 struct EmitterPowerLaneView {
@@ -80,13 +81,36 @@ struct EmitterPowerLaneView {
     }
 };
 
-inline EmitterPowerLaneView ViewEmitterPowerLane(const std::vector<uint8_t>& bytes, uint32_t nodeCount) {
+inline EmitterPowerLaneView ViewEmitterPowerLane(const uint8_t* bytes, size_t size) {
     EmitterPowerLaneView v;
-    if (bytes.size() < kEmitterPowerHeaderWords * sizeof(uint32_t)) return v;
-    v.words = reinterpret_cast<const uint32_t*>(bytes.data());
-    v.wordCount = static_cast<uint32_t>(bytes.size() / sizeof(uint32_t));
-    v.nodeCount = nodeCount;
+    if (bytes == nullptr || size < kEmitterPowerHeaderWords * sizeof(uint32_t)) return v;
+    v.words = reinterpret_cast<const uint32_t*>(bytes);
+    v.wordCount = static_cast<uint32_t>(size / sizeof(uint32_t));
+    v.nodeCount = v.words[2];
     return v;
+}
+
+inline EmitterPowerLaneView ViewEmitterPowerLane(const std::vector<uint8_t>& bytes) {
+    return ViewEmitterPowerLane(bytes.data(), bytes.size());
+}
+
+// The lane of octree `octreeIdx` inside a concatenated mip stream; invalid view when the
+// octree was not lane-baked (non-emissive, or a stream assembled without the lane).
+template <typename ConcatenatedT>
+inline EmitterPowerLaneView ViewEmitterPowerLaneOf(const ConcatenatedT& cat, uint32_t octreeIdx) {
+    if (octreeIdx >= cat.configs.size() || !emitterPowerPoolBakedOf(cat.configs[octreeIdx])) return {};
+    const size_t byteOffset = static_cast<size_t>(emitterPowerPoolBaseOf(cat.configs[octreeIdx])) * 8u;
+    if (byteOffset >= cat.mipPool.size()) return {};
+    return ViewEmitterPowerLane(cat.mipPool.data() + byteOffset, cat.mipPool.size() - byteOffset);
+}
+
+// Root power (octree-normalized units) of every octree in a concatenated stream; 0 where the
+// octree carries no lane.
+template <typename ConcatenatedT>
+inline std::vector<float> EmitterRootPowers(const ConcatenatedT& cat) {
+    std::vector<float> roots(cat.configs.size(), 0.0f);
+    for (uint32_t i = 0; i < roots.size(); ++i) roots[i] = ViewEmitterPowerLaneOf(cat, i).RootPower();
+    return roots;
 }
 
 namespace detail {
@@ -183,6 +207,7 @@ inline std::vector<uint8_t> BakeEmitterPowerLane(const Octree& oct, const Serial
     auto putF = [&](uint32_t i, double v) { const float f = static_cast<float>(v); std::memcpy(&w[i], &f, 4); };
     w[0] = L;
     putF(1u, nodePhi[0]);
+    w[2] = nodeCount;
     for (uint32_t n = 0; n < nodeCount; ++n) putF(kEmitterPowerHeaderWords + n, nodePhi[n]);
     const uint32_t idxBase = kEmitterPowerHeaderWords + nodeCount;
     const uint32_t octBase = idxBase + L;

@@ -65,8 +65,9 @@ TEST_P(EmitterPowerSizes, SigmaLeafPowerEqualsRootPower) {
     ASSERT_FALSE(s.emitterPowerPool.empty());
     ASSERT_EQ(s.emitterPowerPool.size() % sizeof(MipSample), 0u);
 
-    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool, s.nodeCount);
+    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool);
     ASSERT_GT(lane.LeafCount(), 0u);
+    EXPECT_EQ(lane.nodeCount, s.nodeCount) << "lane header carries the node count";
     double sumLeaves = 0.0;
     uint32_t prev = 0u;
     for (uint32_t i = 0; i < lane.LeafCount(); ++i) {
@@ -88,7 +89,7 @@ TEST(EmitterPower, InteriorNodePowerIsChildSum) {
     SerializedOctree s = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     s.emitterPowerPool = BakeEmitterPowerLane(*oct, s);
-    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool, s.nodeCount);
+    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool);
     const auto& nodes = oct->root->childDescriptors;
     uint32_t checkedInterior = 0u;
     // Walk only real interior nodes: a brick-leaf slot's own descriptor is not a parent.
@@ -123,7 +124,7 @@ TEST(EmitterPower, OctantSumsPartitionTheBrick) {
     SdfBodyOctree body = MakeBody(32, 12.0f, HalfEmitter);
     SerializedOctree s = SerializeSdf(body);
     s.emitterPowerPool = BakeEmitterPowerLane(*body.octree->getOctree(), s);
-    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool, s.nodeCount);
+    const EmitterPowerLaneView lane = ViewEmitterPowerLane(s.emitterPowerPool);
     for (uint32_t i = 0; i < lane.LeafCount(); ++i) {
         float positive = 0.0f;
         for (uint32_t o = 0; o < 8; ++o) {
