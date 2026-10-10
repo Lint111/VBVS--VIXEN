@@ -33,6 +33,27 @@ This document defines which GPU capabilities are required for various features, 
 | VK_KHR_GET_SURFACE_CAPABILITIES_2 | OPTIONAL | Extended capability queries | Skip - Use basic capability queries |
 | VK_EXT_DEBUG_REPORT | OPTIONAL (Debug) | Debug messaging | Skip - No debug output |
 
+## Version and Shader-Tool Dimensions
+
+Version requirements use the same per-device `CapabilityGraph` as extensions and features. The
+checked-in settings are in `VIXEN/cmake/vulkan-sdk-settings.env`; CMake reads them for static
+configure checks and generates the values consumed by `CapabilityGraph`. Windows and WSL retain
+different LunarG defaults because their official feeds differ. Set the process environment
+variable `VIXEN_VULKAN_SDK_VERSION` to choose another SDK version; configure prints both the
+expected and detected versions.
+
+| Dimension | Requirement | Behaviour | Independent path |
+|-----------|-------------|-----------|------------------|
+| Vulkan API | SDK headers and each selected device must support Vulkan 1.2; `synchronization2` is core from the declared 1.3 threshold or uses `VK_KHR_synchronization2` below it | Configure fails if the SDK headers are below the declared API floor or omit the extension below the core threshold; the graph checks the selected adapter's API, extension and feature bit | None for the 1.2 API floor or synchronization2; both are required by the renderer |
+| Vulkan SDK | The configured SDK package version is checked against `VIXEN_VULKAN_SDK_VERSION` | A different final revision is accepted when the API and tool capability checks pass; other package-release mismatches fail with the expected and found versions | Provision the declared SDK version |
+| glslang | The version reported by the provisioned SDK's `glslangValidator` is a graph input | Configure records the compiler version; missing or unreportable glslang fails because the default shader-compilation path has no twin | Disable compile-time GLSL only in a build that explicitly supplies the shipped SPIR-V assets |
+| SPIR-V target | Ray-query shaders require SPIR-V 1.4 | Configure reports a fallback when glslang's target is below 1.4; the graph then resolves `RayQueryLighting` to its capability-independent implementation | `CapabilityIndependent` ray-query twin |
+
+The minimum API, synchronization2 promotion threshold and SPIR-V target floor are declared once in `vulkan-sdk-settings.env`. The
+configure check reads those values, and the generated `VulkanCapabilityConfig.h` feeds the same
+floors into `VersionRequirementCapability`. The SDK, glslang and SPIR-V target versions are graph
+inputs; Vulkan API version is supplied from `VkPhysicalDeviceProperties` for each device.
+
 ## Pipeline Capability Requirements
 
 ### Compute Pipeline

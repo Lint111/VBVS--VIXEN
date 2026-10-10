@@ -17,12 +17,30 @@ $WindowsSdkVersion = '10.0.26100.0'
 $GitVersion = '2.55.0.5'
 $PythonVersion = '3.13.15'
 $NinjaInstall = Join-Path $ToolRoot "ninja\$NinjaVersion"
-$CMakeSource = Join-Path $VixenRoot 'cmake\ProvisionVulkan.cmake'
-$VulkanVersionMatch = [regex]::Match((Get-Content -Raw $CMakeSource), 'set\(VIXEN_VULKAN_SDK_VERSION\s+"([^"]+)"')
-if (-not $VulkanVersionMatch.Success) {
-    throw "Could not read VIXEN_VULKAN_SDK_VERSION from $CMakeSource"
+$VulkanSettings = Join-Path $VixenRoot 'cmake\vulkan-sdk-settings.env'
+if (-not (Test-Path $VulkanSettings)) {
+    throw "Could not read the shared Vulkan settings file: $VulkanSettings"
 }
-$VulkanVersion = $VulkanVersionMatch.Groups[1].Value
+$VulkanSettingsText = Get-Content -Raw $VulkanSettings
+$WindowsDefaultMatch = [regex]::Match($VulkanSettingsText, '(?m)^VIXEN_VULKAN_SDK_VERSION_WINDOWS_DEFAULT=([0-9.]+)$')
+if (-not $WindowsDefaultMatch.Success) {
+    throw "Could not read the Windows Vulkan SDK default from $VulkanSettings"
+}
+$VulkanDefaultVersion = $WindowsDefaultMatch.Groups[1].Value
+$MinimumApiMatch = [regex]::Match($VulkanSettingsText, '(?m)^VIXEN_VULKAN_MIN_API_VERSION=([0-9.]+)$')
+$Synchronization2CoreMatch = [regex]::Match($VulkanSettingsText, '(?m)^VIXEN_VULKAN_SYNCHRONIZATION2_CORE_VERSION=([0-9.]+)$')
+$MinimumSpirvMatch = [regex]::Match($VulkanSettingsText, '(?m)^VIXEN_VULKAN_MIN_SPIRV_TARGET_VERSION=([0-9.]+)$')
+if (-not $MinimumApiMatch.Success -or -not $Synchronization2CoreMatch.Success -or -not $MinimumSpirvMatch.Success) {
+    throw "Could not read Vulkan API/SPIR-V capability floors from $VulkanSettings"
+}
+$MinimumVulkanApiVersion = $MinimumApiMatch.Groups[1].Value
+$Synchronization2CoreVersion = $Synchronization2CoreMatch.Groups[1].Value
+$MinimumSpirvTargetVersion = $MinimumSpirvMatch.Groups[1].Value
+$VulkanVersion = if ($env:VIXEN_VULKAN_SDK_VERSION) {
+    $env:VIXEN_VULKAN_SDK_VERSION.Trim()
+} else {
+    $VulkanDefaultVersion
+}
 
 New-Item -ItemType Directory -Path $DownloadRoot, $LogRoot -Force | Out-Null
 $LogPath = Join-Path $LogRoot ("provision-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -145,9 +163,15 @@ function Get-GitStatus {
 
 function Get-VulkanSdkRoot {
     $candidateRoots = @()
-    if ($env:VULKAN_SDK) { $candidateRoots += $env:VULKAN_SDK }
     $candidateRoots += "${env:SystemDrive}\VulkanSDK\$VulkanVersion"
     $candidateRoots += (Join-Path $env:ProgramFiles "VulkanSDK\$VulkanVersion")
+    foreach ($parent in @("${env:SystemDrive}\VulkanSDK", (Join-Path $env:ProgramFiles 'VulkanSDK'))) {
+        if (Test-Path $parent) {
+            $candidateRoots += Get-ChildItem -LiteralPath $parent -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.FullName }
+        }
+    }
+    if ($env:VULKAN_SDK) { $candidateRoots += $env:VULKAN_SDK }
     foreach ($candidate in ($candidateRoots | Select-Object -Unique)) {
         if ((Test-Path (Join-Path $candidate 'Include\vulkan\vulkan.h')) -and
             (Test-Path (Join-Path $candidate 'Bin\glslc.exe'))) {
@@ -155,6 +179,31 @@ function Get-VulkanSdkRoot {
         }
     }
     return $null
+}
+
+function Get-VulkanSdkVersion([string]$Root) {
+    if (-not $Root) { return '' }
+    $trimChars = [char[]]@('\', '/')
+    $leaf = Split-Path -Leaf $Root.TrimEnd($trimChars)
+    if ($leaf -match '^\d+\.\d+\.\d+\.\d+$') { return $leaf }
+    foreach ($metadataName in @('version.txt', 'version')) {
+        $metadataPath = Join-Path $Root $metadataName
+        if (-not (Test-Path $metadataPath)) { continue }
+        $metadataText = Get-Content -Raw $metadataPath
+        $versionMatch = [regex]::Match($metadataText, '\b(\d+\.\d+\.\d+\.\d+)\b')
+        if ($versionMatch.Success) { return $versionMatch.Groups[1].Value }
+    }
+    return ''
+}
+
+function Test-VulkanSdkReleaseCompatible([string]$Actual, [string]$Expected) {
+    if (-not $Actual -or -not $Expected) { return $false }
+    $actualParts = $Actual.Split('.')
+    $expectedParts = $Expected.Split('.')
+    if ($actualParts.Count -ne 4 -or $expectedParts.Count -ne 4) { return $false }
+    return ($actualParts[0] -eq $expectedParts[0] -and
+            $actualParts[1] -eq $expectedParts[1] -and
+            $actualParts[2] -eq $expectedParts[2])
 }
 
 function Get-Inventory {
@@ -172,6 +221,19 @@ function Get-Inventory {
         $line = & $cmake --version 2>$null | Select-Object -First 1
         if ($line -match '^cmake version (.+)$') { $Matches[1] } else { '' }
     } else { '' }
+    $vulkanActual = if ($vulkanRoot) { Get-VulkanSdkVersion $vulkanRoot } else { '' }
+    $vulkanPresent = $vulkanRoot -and (Test-VulkanSdkReleaseCompatible $vulkanActual $VulkanVersion)
+    $vulkanStatus = if ($vulkanPresent) { 'present' } else { 'missing' }
+    $vulkanActualDetail = if ($vulkanActual) { $vulkanActual } else { 'unknown version' }
+    if ($vulkanRoot -and $vulkanActual -ne $VulkanVersion) {
+        if ($vulkanPresent) {
+            $vulkanActualDetail = "$vulkanActual at $vulkanRoot (patch variation accepted; expected $VulkanVersion)"
+        } else {
+            $vulkanActualDetail = "$vulkanActualDetail at $vulkanRoot (expected $VulkanVersion)"
+        }
+    } elseif ($vulkanRoot) {
+        $vulkanActualDetail = "$vulkanActual at $vulkanRoot"
+    }
 
     return @(
         [pscustomobject]@{ Tool='Git for Windows'; Version=$GitVersion; Method='winget Git.Git'; Status=$(if (Test-Version $gitActual $GitVersion) {'present'} else {'missing'}); Actual=$gitActual; Path=$(if ($git) {$git.Path} else {''}) },
@@ -179,7 +241,7 @@ function Get-Inventory {
         [pscustomobject]@{ Tool='Ninja'; Version=$NinjaVersion; Method='winget Ninja-build.Ninja'; Status=$(if (Test-Version $ninjaActual $NinjaVersion) {'present'} else {'missing'}); Actual=$ninjaActual; Path=$ninja },
         [pscustomobject]@{ Tool='CMake'; Version=$CMakeVersion; Method='winget Kitware.CMake'; Status=$(if (Test-Version $cmakeActual $CMakeVersion) {'present'} else {'missing'}); Actual=$cmakeActual; Path=$cmake },
         [pscustomobject]@{ Tool='Visual Studio 2022 Build Tools + Windows SDK'; Version="$VisualStudioPackageVersion / $WindowsSdkVersion"; Method='winget Microsoft.VisualStudio.2022.BuildTools'; Status=$(if ($vsPath) {'present'} else {'missing'}); Actual=$(if ($vsPath) {$vsPath} else {''}); Path=$vsPath },
-        [pscustomobject]@{ Tool='Vulkan SDK'; Version=$VulkanVersion; Method='LunarG official installer'; Status=$(if ($vulkanRoot) {'present'} else {'missing'}); Actual=$(if ($vulkanRoot) {$vulkanRoot} else {''}); Path=$vulkanRoot }
+        [pscustomobject]@{ Tool='Vulkan SDK'; Version=$VulkanVersion; Method='LunarG official installer'; Status=$vulkanStatus; Actual=$(if ($vulkanRoot) {$vulkanActualDetail} else {''}); Path=$vulkanRoot }
     )
 }
 
@@ -264,7 +326,8 @@ function Install-VisualStudio($Inventory) {
 
 function Install-Vulkan($Inventory) {
     $vulkanRow = $Inventory | Where-Object Tool -eq 'Vulkan SDK'
-    if ($vulkanRow.Status -eq 'present') { Write-Step "Vulkan SDK $VulkanVersion is present; skipping."; return $true }
+    if ($vulkanRow.Status -eq 'present') { Write-Step "Vulkan SDK $($vulkanRow.Actual) is compatible with expected $VulkanVersion; skipping."; return $true }
+    if ($vulkanRow.Path) { Write-Step "Replacing incompatible Vulkan SDK $($vulkanRow.Actual) with declared version $VulkanVersion." }
     if (-not (Require-Administrator "Vulkan SDK $VulkanVersion")) { return $false }
 
     $versions = Invoke-RestMethod 'https://vulkan.lunarg.com/sdk/versions/windows.json'
@@ -308,7 +371,9 @@ function Install-Vulkan($Inventory) {
 $exitCode = 0
 try {
     Write-Step "Starting Windows-native provisioning from $VixenRoot"
-    Write-Step "Pinned versions: VS $VisualStudioPackageVersion with SDK $WindowsSdkVersion; CMake $CMakeVersion; Ninja $NinjaVersion; Git $GitVersion; Python $PythonVersion; Vulkan SDK $VulkanVersion (read from ProvisionVulkan.cmake)."
+    Write-Step "Declared Vulkan setting: VIXEN_VULKAN_SDK_VERSION=$VulkanVersion (Windows default $VulkanDefaultVersion; source $VulkanSettings)."
+    Write-Step "Capability floors: Vulkan API $MinimumVulkanApiVersion (synchronization2 is core from $Synchronization2CoreVersion or uses VK_KHR_synchronization2 below it); SPIR-V target $MinimumSpirvTargetVersion (ray-query has a capability-independent twin)."
+    Write-Step "Pinned tools: VS $VisualStudioPackageVersion with SDK $WindowsSdkVersion; CMake $CMakeVersion; Ninja $NinjaVersion; Git $GitVersion; Python $PythonVersion."
     $inventory = Get-Inventory
     Write-Inventory $inventory
 
