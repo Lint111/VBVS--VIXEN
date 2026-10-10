@@ -283,7 +283,7 @@ private:
     std::vector<std::pair<size_t, DispatchBarrier>> barrierQueue_;
 
     // Sprint 6.1: Group-based dispatch support
-    // Maps group ID -> vector of dispatch passes for that group
+    // Execute-time partition of the accumulation slot by its existing group ID
     // Empty map means no GROUP_INPUTS connected (fall back to taskQueue_)
     // Using std::map (not unordered_map) for deterministic group execution order
     std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;

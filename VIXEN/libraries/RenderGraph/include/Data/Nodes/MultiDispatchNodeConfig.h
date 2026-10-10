@@ -137,10 +137,9 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
      * Collects DispatchPass elements and partitions them by group ID.
      * Each group gets its own dispatch execution with accumulated data.
      *
-     * **Semantics:** Compile-time-only. Data is read and partitioned during
-     * CompileImpl and cached in groupedDispatches_ map. This matches the
-     * lifecycle of other compile-time resources (command buffers, etc.).
-     * Use QueueDispatch() API for per-frame dynamic dispatch queuing.
+     * **Semantics:** Execute-time accumulation. Current producer outputs are
+     * gathered and partitioned at Execute, matching the slot's declared lifetime.
+     * QueueDispatch() remains the per-frame direct queuing face.
      *
      * Usage with GroupKeyModifier:
      * @code

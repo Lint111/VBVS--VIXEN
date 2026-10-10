@@ -34,6 +34,10 @@
 #include <cstring>
 #include <chrono>
 #include <vector>
+#include <array>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 namespace {
 
@@ -398,6 +402,7 @@ protected:
     VkCommandPool    commandPool_     = VK_NULL_HANDLE;
     uint32_t         queueFamily_     = 0;
     bool             realGpuConfirmed_ = false;
+    bool             rayTracingPipelineSupported_ = false;
     VkDeviceSize     scratchAlignment_ = 1;  // minAccelerationStructureScratchOffsetAlignment
 
     // Extension function pointers (loaded via vkGetDeviceProcAddr).
@@ -468,9 +473,15 @@ protected:
             GTEST_SKIP() << msg;
         }
 
+        const bool hasRayTracing = std::any_of(availableExts.begin(), availableExts.end(),
+            [](const auto& extension) {
+                return std::strcmp(extension.extensionName, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0;
+            });
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
         // --- Capability gate: required features ---
         VkPhysicalDeviceRayQueryFeaturesKHR rqFeatures{};
         rqFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+        rqFeatures.pNext = hasRayTracing ? &rtFeatures : nullptr;
         VkPhysicalDeviceAccelerationStructureFeaturesKHR asFeatures{};
         asFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
         asFeatures.pNext = &rqFeatures;
@@ -500,7 +511,11 @@ protected:
         vkGetPhysicalDeviceProperties2(physicalDevice_, &props2);
         scratchAlignment_ = std::max<VkDeviceSize>(asProps.minAccelerationStructureScratchOffsetAlignment, 1);
 
-        CreateLogicalDevice(kRequiredExtensions, 6);
+        rayTracingPipelineSupported_ = hasRayTracing && rtFeatures.rayTracingPipeline &&
+            features2.features.shaderStorageImageWriteWithoutFormat;
+        std::vector<const char*> enabledExtensions(std::begin(kRequiredExtensions), std::end(kRequiredExtensions));
+        if (rayTracingPipelineSupported_) enabledExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        CreateLogicalDevice(enabledExtensions.data(), static_cast<uint32_t>(enabledExtensions.size()));
         LoadExtensionFunctions();
         CreateCommandPool();
     }
@@ -534,6 +549,9 @@ protected:
         VkPhysicalDeviceRayQueryFeaturesKHR rqFeatures{};
         rqFeatures.sType   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
         rqFeatures.rayQuery = VK_TRUE;
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+        rtFeatures.rayTracingPipeline = rayTracingPipelineSupported_;
+        rqFeatures.pNext = rayTracingPipelineSupported_ ? &rtFeatures : nullptr;
 
         VkPhysicalDeviceAccelerationStructureFeaturesKHR asFeatures{};
         asFeatures.sType                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
@@ -548,6 +566,7 @@ protected:
         VkPhysicalDeviceFeatures2 features2{};
         features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features2.pNext = &vk12Features;
+        features2.features.shaderStorageImageWriteWithoutFormat = rayTracingPipelineSupported_;
 
         VkDeviceCreateInfo dInfo{};
         dInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1471,4 +1490,226 @@ TEST_F(RayQueryFeasibilityTest, Microbench_RtQueryVsBruteForce) {
     vkFreeMemory(device_, aabbMem, nullptr);
     vkDestroyBuffer(device_, gridBuf, nullptr);
     vkFreeMemory(device_, gridMem, nullptr);
+}
+// R486 native witness: shipped ray-generation/miss shaders, real procedural BLAS/TLAS,
+// odd full extent, hits and misses, and all submitted tiles timed independently.
+TEST_F(RayQueryFeasibilityTest, ProductionRayGenerationTilesMatchFullLaunchBytes) {
+    if (!rayTracingPipelineSupported_) GTEST_SKIP() << "Native ray-tracing pipeline unavailable";
+    constexpr uint32_t width = 500, height = 500, edge = 56, frames = 500;
+    VkPhysicalDeviceProperties gpuProps{};
+    vkGetPhysicalDeviceProperties(physicalDevice_, &gpuProps);
+    std::printf("[R486_RT_DEVICE] name=%s driver=%u width=%u height=%u frames=%u\n",
+        gpuProps.deviceName, gpuProps.driverVersion, width, height, frames);
+    const auto createPipeline = reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(vkGetDeviceProcAddr(device_, "vkCreateRayTracingPipelinesKHR"));
+    const auto groupHandles = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device_, "vkGetRayTracingShaderGroupHandlesKHR"));
+    const auto trace = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(vkGetDeviceProcAddr(device_, "vkCmdTraceRaysKHR"));
+    ASSERT_NE(createPipeline, nullptr); ASSERT_NE(groupHandles, nullptr); ASSERT_NE(trace, nullptr);
+    const std::vector<Aabb> boxes{{-1.f, -1.f, 1.f, 1.f, 1.f, 3.f}};
+    VkBuffer aabbBuffer{}; VkDeviceMemory aabbMemory{};
+    CreateBuffer(sizeof(Aabb), VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, true, kHostVisible, aabbBuffer, aabbMemory); RQ_GUARD();
+    void* mapped = nullptr;
+    ASSERT_EQ(vkMapMemory(device_, aabbMemory, 0, sizeof(Aabb), 0, &mapped), VK_SUCCESS);
+    std::memcpy(mapped, boxes.data(), sizeof(Aabb)); vkUnmapMemory(device_, aabbMemory);
+    AsResult structures; BuildAccelerationStructures(boxes, aabbBuffer, structures); RQ_GUARD();
+    VkImage image{}; VkDeviceMemory imageMemory{}; VkImageView view{};
+    VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imageInfo.imageType = VK_IMAGE_TYPE_2D; imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    imageInfo.extent = {width, height, 1}; imageInfo.mipLevels = 1; imageInfo.arrayLayers = 1;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT; imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    ASSERT_EQ(vkCreateImage(device_, &imageInfo, nullptr, &image), VK_SUCCESS);
+    VkMemoryRequirements imageRequirements{}; vkGetImageMemoryRequirements(device_, image, &imageRequirements);
+    VkMemoryAllocateInfo imageAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    imageAlloc.allocationSize = imageRequirements.size;
+    imageAlloc.memoryTypeIndex = FindMemoryType(imageRequirements.memoryTypeBits, kDeviceLocal);
+    ASSERT_NE(imageAlloc.memoryTypeIndex, UINT32_MAX);
+    ASSERT_EQ(vkAllocateMemory(device_, &imageAlloc, nullptr, &imageMemory), VK_SUCCESS);
+    ASSERT_EQ(vkBindImageMemory(device_, image, imageMemory, 0), VK_SUCCESS);
+    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    viewInfo.image = image; viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; viewInfo.format = imageInfo.format;
+    viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    ASSERT_EQ(vkCreateImageView(device_, &viewInfo, nullptr, &view), VK_SUCCESS);
+    VkBuffer output{}; VkDeviceMemory outputMemory{};
+    constexpr VkDeviceSize bytes = VkDeviceSize(width) * height * 4;
+    CreateBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, false, kHostVisible, output, outputMemory); RQ_GUARD();
+    auto setup = BeginOneShotCommands();
+    VkImageMemoryBarrier initial{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    initial.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; initial.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    initial.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT; initial.image = image;
+    initial.srcQueueFamilyIndex = initial.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    initial.subresourceRange = viewInfo.subresourceRange;
+    vkCmdPipelineBarrier(setup, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+        0, 0, nullptr, 0, nullptr, 1, &initial);
+    EndAndSubmit(setup);
+    VkBuffer config{}; VkDeviceMemory configMemory{};
+    CreateBuffer(192, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, false, kHostVisible, config, configMemory); RQ_GUARD();
+    ASSERT_EQ(vkMapMemory(device_, configMemory, 0, 192, 0, &mapped), VK_SUCCESS);
+    std::memset(mapped, 0, 192); vkUnmapMemory(device_, configMemory);
+    std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
+    bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr};
+    bindings[1] = {1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr};
+    bindings[2] = {5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr};
+    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size()); layoutInfo.pBindings = bindings.data();
+    VkDescriptorSetLayout descriptorLayout{};
+    ASSERT_EQ(vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &descriptorLayout), VK_SUCCESS);
+    // Existing camera ABI (64 B), then reflected contract's two aligned uvec3 members.
+    VkPushConstantRange pushRange{VK_SHADER_STAGE_RAYGEN_BIT_KHR, 0, 96};
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    pipelineLayoutInfo.setLayoutCount = 1; pipelineLayoutInfo.pSetLayouts = &descriptorLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 1; pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+    VkPipelineLayout pipelineLayout{};
+    ASSERT_EQ(vkCreatePipelineLayout(device_, &pipelineLayoutInfo, nullptr, &pipelineLayout), VK_SUCCESS);
+    std::array<VkDescriptorPoolSize, 3> poolSizes{{{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}, {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
+    VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    poolInfo.maxSets = 1; poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size()); poolInfo.pPoolSizes = poolSizes.data();
+    VkDescriptorPool pool{}; ASSERT_EQ(vkCreateDescriptorPool(device_, &poolInfo, nullptr, &pool), VK_SUCCESS);
+    VkDescriptorSetAllocateInfo setInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    setInfo.descriptorPool = pool; setInfo.descriptorSetCount = 1; setInfo.pSetLayouts = &descriptorLayout;
+    VkDescriptorSet descriptorSet{}; ASSERT_EQ(vkAllocateDescriptorSets(device_, &setInfo, &descriptorSet), VK_SUCCESS);
+    VkDescriptorImageInfo imageDescriptor{VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSetAccelerationStructureKHR asWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
+    asWrite.accelerationStructureCount = 1; asWrite.pAccelerationStructures = &structures.tlas;
+    VkDescriptorBufferInfo configDescriptor{config, 0, 192};
+    std::array<VkWriteDescriptorSet, 3> writes{};
+    for (uint32_t i = 0; i < writes.size(); ++i) {
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = descriptorSet;
+        writes[i].dstBinding = bindings[i].binding; writes[i].descriptorCount = 1; writes[i].descriptorType = bindings[i].descriptorType;
+    }
+    writes[0].pImageInfo = &imageDescriptor; writes[1].pNext = &asWrite; writes[2].pBufferInfo = &configDescriptor;
+    vkUpdateDescriptorSets(device_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+    const auto shaderRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "shaders";
+    const auto readShader = [&](const char* name) {
+        std::ifstream file(shaderRoot / name); return std::string(std::istreambuf_iterator<char>(file), {});
+    };
+    const std::array<std::string, 4> sources{readShader("VoxelRT.rgen"), readShader("VoxelRT.rmiss"),
+        "#version 460\n#extension GL_EXT_ray_tracing : require\nlayout(location=0) rayPayloadInEXT vec3 hitColor; void main(){hitColor=vec3(0.9,0.2,0.1);}",
+        "#version 460\n#extension GL_EXT_ray_tracing : require\nvoid main(){vec3 a=(vec3(-1,-1,1)-gl_ObjectRayOriginEXT)/gl_ObjectRayDirectionEXT; vec3 b=(vec3(1,1,3)-gl_ObjectRayOriginEXT)/gl_ObjectRayDirectionEXT; vec3 lo=min(a,b),hi=max(a,b); float nearT=max(max(lo.x,lo.y),lo.z),farT=min(min(hi.x,hi.y),hi.z); if(farT>=nearT && nearT>=gl_RayTminEXT && nearT<=gl_RayTmaxEXT)reportIntersectionEXT(nearT,0);}"};
+    const std::array<ShaderManagement::ShaderStage, 4> compilerStages{ShaderManagement::ShaderStage::RayGen,
+        ShaderManagement::ShaderStage::Miss, ShaderManagement::ShaderStage::ClosestHit, ShaderManagement::ShaderStage::Intersection};
+    const std::array<VkShaderStageFlagBits, 4> stages{VK_SHADER_STAGE_RAYGEN_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR,
+        VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, VK_SHADER_STAGE_INTERSECTION_BIT_KHR};
+    std::array<VkShaderModule, 4> modules{}; std::array<VkPipelineShaderStageCreateInfo, 4> stageInfos{};
+    ShaderManagement::ShaderCompiler compiler; ShaderManagement::CompilationOptions options; options.targetSpirvVersion = 150;
+    for (uint32_t i = 0; i < 4; ++i) {
+        auto compiled = compiler.Compile(compilerStages[i], sources[i], "main", options);
+        ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
+        VkShaderModuleCreateInfo module{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        module.codeSize = compiled.spirv.size() * sizeof(uint32_t); module.pCode = compiled.spirv.data();
+        ASSERT_EQ(vkCreateShaderModule(device_, &module, nullptr, &modules[i]), VK_SUCCESS);
+        stageInfos[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stageInfos[i].stage = stages[i]; stageInfos[i].module = modules[i]; stageInfos[i].pName = "main";
+    }
+    std::array<VkRayTracingShaderGroupCreateInfoKHR, 3> groups{};
+    for (auto& group : groups) {
+        group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        group.generalShader = group.closestHitShader = group.anyHitShader = group.intersectionShader = VK_SHADER_UNUSED_KHR;
+    }
+    groups[0].type = groups[1].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+    groups[0].generalShader = 0; groups[1].generalShader = 1;
+    groups[2].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+    groups[2].closestHitShader = 2; groups[2].intersectionShader = 3;
+    VkRayTracingPipelineCreateInfoKHR pipelineInfo{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
+    pipelineInfo.stageCount = 4; pipelineInfo.pStages = stageInfos.data(); pipelineInfo.groupCount = 3;
+    pipelineInfo.pGroups = groups.data(); pipelineInfo.maxPipelineRayRecursionDepth = 1; pipelineInfo.layout = pipelineLayout;
+    VkPipeline pipeline{};
+    ASSERT_EQ(createPipeline(device_, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline), VK_SUCCESS);
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+    VkPhysicalDeviceProperties2 extendedProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    extendedProperties.pNext = &properties; vkGetPhysicalDeviceProperties2(physicalDevice_, &extendedProperties);
+    const uint32_t handleSize = properties.shaderGroupHandleSize;
+    const uint32_t spacing = properties.shaderGroupBaseAlignment;
+    const uint32_t stride = (handleSize + properties.shaderGroupHandleAlignment - 1) / properties.shaderGroupHandleAlignment * properties.shaderGroupHandleAlignment;
+    std::vector<uint8_t> handles(handleSize * 3u);
+    ASSERT_EQ(groupHandles(device_, pipeline, 0, 3, handles.size(), handles.data()), VK_SUCCESS);
+    VkBuffer sbt{}; VkDeviceMemory sbtMemory{};
+    CreateBuffer(VkDeviceSize(spacing) * 4u, VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, true, kHostVisible, sbt, sbtMemory); RQ_GUARD();
+    const VkDeviceAddress rawAddress = GetBufferDeviceAddress(sbt);
+    const VkDeviceAddress alignedAddress = (rawAddress + spacing - 1) / spacing * spacing;
+    ASSERT_EQ(vkMapMemory(device_, sbtMemory, 0, VK_WHOLE_SIZE, 0, &mapped), VK_SUCCESS);
+    for (uint32_t i = 0; i < 3; ++i) std::memcpy(static_cast<uint8_t*>(mapped) + alignedAddress - rawAddress + i * spacing,
+        handles.data() + i * handleSize, handleSize);
+    vkUnmapMemory(device_, sbtMemory);
+    const VkStridedDeviceAddressRegionKHR raygen{alignedAddress, stride, stride};
+    const VkStridedDeviceAddressRegionKHR miss{alignedAddress + spacing, stride, stride};
+    const VkStridedDeviceAddressRegionKHR hit{alignedAddress + 2u * spacing, stride, stride};
+    const VkStridedDeviceAddressRegionKHR callable{};
+    VkQueryPoolCreateInfo queryInfo{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP; queryInfo.queryCount = 2;
+    VkQueryPool queries{}; ASSERT_EQ(vkCreateQueryPool(device_, &queryInfo, nullptr, &queries), VK_SUCCESS);
+    std::array<uint8_t, 96> push{};
+    const std::array<float, 16> camera{0,0,-3,0, 0,0,1,60, 0,1,0,float(width)/height, 1,0,0,0};
+    std::memcpy(push.data(), camera.data(), 64);
+    const std::array<uint32_t, 3> extent{width,height,1}; std::memcpy(push.data()+80, extent.data(), 12);
+    std::vector<double> timings; std::vector<double> aggregate;
+    const auto dispatch = [&](uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+        const std::array<uint32_t, 3> origin{x,y,0}; std::memcpy(push.data()+64, origin.data(), 12);
+        auto command = BeginOneShotCommands();
+        vkCmdResetQueryPool(command, queries, 0, 2);
+        vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queries, 0);
+        VkMemoryBarrier dependency{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        dependency.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR | VK_ACCESS_SHADER_WRITE_BIT;
+        dependency.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR |
+            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+            0, 1, &dependency, 0, nullptr, 0, nullptr);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+        vkCmdPushConstants(command, pipelineLayout, pushRange.stageFlags, 0, push.size(), push.data());
+        trace(command, &raygen, &miss, &hit, &callable, w, h, 1);
+        vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries, 1);
+        EndAndSubmit(command);
+        std::array<uint64_t,4> ticks{};
+        if (vkGetQueryPoolResults(device_, queries, 0, 2, sizeof(ticks), ticks.data(), 16,
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT) != VK_SUCCESS ||
+            !ticks[1] || !ticks[3] || !ticks[0] || ticks[2] <= ticks[0]) return -1.0;
+        return double(ticks[2] - ticks[0]) * gpuProps.limits.timestampPeriod / 1e6;
+    };
+    const auto readback = [&] {
+        auto command = BeginOneShotCommands();
+        VkImageMemoryBarrier dependency{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        dependency.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; dependency.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        dependency.oldLayout = dependency.newLayout = VK_IMAGE_LAYOUT_GENERAL; dependency.image = image;
+        dependency.srcQueueFamilyIndex = dependency.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dependency.subresourceRange = viewInfo.subresourceRange;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &dependency);
+        VkBufferImageCopy region{}; region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; region.imageExtent = imageInfo.extent;
+        vkCmdCopyImageToBuffer(command, image, VK_IMAGE_LAYOUT_GENERAL, output, 1, &region);
+        EndAndSubmit(command);
+        std::vector<uint8_t> result(static_cast<size_t>(bytes)); void* data = nullptr;
+        if (vkMapMemory(device_, outputMemory, 0, bytes, 0, &data) == VK_SUCCESS) {
+            std::memcpy(result.data(), data, result.size()); vkUnmapMemory(device_, outputMemory);
+        }
+        return result;
+    };
+    const double referenceTime = dispatch(0,0,width,height); ASSERT_GT(referenceTime, 0);
+    const auto reference = readback();
+    ASSERT_NE(std::memcmp(reference.data(), reference.data() + (height / 2u * width + width / 2u) * 4u, 3), 0)
+        << "The real BLAS/TLAS must exercise both sky misses and procedural hits";
+    for (uint32_t frame = 0; frame < frames; ++frame) {
+        double frameTime = 0;
+        for (uint32_t y = 0; y < height; y += edge) for (uint32_t x = 0; x < width; x += edge) {
+            const double elapsed = dispatch(x,y,std::min(edge,width-x),std::min(edge,height-y));
+            ASSERT_GT(elapsed, 0); timings.push_back(elapsed); frameTime += elapsed;
+        }
+        aggregate.push_back(frameTime);
+    }
+    EXPECT_EQ(readback(), reference); // all one million RGBA bytes, including clipped edge tiles
+    std::sort(timings.begin(), timings.end()); std::sort(aggregate.begin(), aggregate.end());
+    const double p99 = timings[static_cast<size_t>(std::ceil(timings.size() * .99)) - 1];
+    std::printf("[R486_RT_TILES] samples=%zu full_ms=%.6f p99_ms=%.6f max_ms=%.6f aggregate_max_ms=%.6f bytes=%llu identical=1\n",
+        timings.size(), referenceTime, p99, timings.back(), aggregate.back(), static_cast<unsigned long long>(bytes));
+    EXPECT_LE(timings.back(), 2.0); EXPECT_LE(aggregate.back(), 6.0);
+    vkDestroyQueryPool(device_, queries, nullptr); vkDestroyPipeline(device_, pipeline, nullptr);
+    for (auto module : modules) vkDestroyShaderModule(device_, module, nullptr);
+    vkDestroyDescriptorPool(device_, pool, nullptr); vkDestroyPipelineLayout(device_, pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device_, descriptorLayout, nullptr); vkDestroyImageView(device_, view, nullptr);
+    vkDestroyImage(device_, image, nullptr); vkFreeMemory(device_, imageMemory, nullptr);
+    for (const auto& allocation : std::array<std::pair<VkBuffer,VkDeviceMemory>,4>{{{sbt,sbtMemory},{output,outputMemory},{aabbBuffer,aabbMemory},{config,configMemory}}}) {
+        vkDestroyBuffer(device_, allocation.first, nullptr); vkFreeMemory(device_, allocation.second, nullptr);
+    }
+    DestroyAs(structures);
 }

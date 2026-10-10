@@ -8,6 +8,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include <memory>
 #include "GPUTimestampQuery.h"
+#include "Core/SubmitChannel.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -99,6 +100,9 @@ private:
     std::vector<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>> tileQueries_;
     std::vector<uint32_t> tileCounts_;
     std::vector<uint64_t> tileBudgets_;
+    std::vector<std::vector<uint64_t>> tilePixelCounts_;
+    std::vector<std::vector<SubmitRecord::Batch>> submissionBatches_;
+    double pixelCostUpperBoundNs_ = 0;
     uint32_t tileOriginOffset_ = 0;
     uint32_t fullLaunchExtentOffset_ = 0;
 

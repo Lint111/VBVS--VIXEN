@@ -266,52 +266,6 @@ void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
         frameTimingData_.MarkDirty(i);
     }
 
-    // Sprint 6.1: Read GROUP_INPUTS and partition by group ID
-    // GROUP_INPUTS is optional - if not connected, groupedDispatches_ stays empty
-    // and we fall back to QueueDispatch() API
-    groupedDispatches_.clear();
-    const auto& groupInputs = ctx.In(MultiDispatchNodeConfig::GROUP_INPUTS);
-
-    if (!groupInputs.empty()) {
-        NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Partitioning " +
-            std::to_string(groupInputs.size()) + " dispatch passes by group ID");
-
-        groupedDispatches_.clear();
-
-        // Validate all passes before partitioning
-        for (const auto& pass : groupInputs) {
-            if (!pass.IsValid()) {
-                throw std::runtime_error("[MultiDispatchNode::CompileImpl] Invalid pass in GROUP_INPUTS: '" +
-                    pass.debugName + "' (pipeline=" + std::to_string(reinterpret_cast<uint64_t>(pass.pipeline)) +
-                    ", layout=" + std::to_string(reinterpret_cast<uint64_t>(pass.layout)) +
-                    ", workGroups=" + std::to_string(pass.workGroupCount.x) + "x" +
-                    std::to_string(pass.workGroupCount.y) + "x" + std::to_string(pass.workGroupCount.z) + ")");
-            }
-        }
-
-        // Partition by group ID
-        for (const auto& pass : groupInputs) {
-            if (pass.groupId.has_value()) {
-                uint32_t groupId = pass.groupId.value();
-                groupedDispatches_[groupId].push_back(pass);
-
-                NODE_LOG_DEBUG("[MultiDispatchNode] Group " + std::to_string(groupId) +
-                    ": Added dispatch '" + pass.debugName + "'");
-            } else {
-                // No group ID - add to group 0 as default
-                groupedDispatches_[0].push_back(pass);
-
-                NODE_LOG_DEBUG("[MultiDispatchNode] Group 0 (default): Added dispatch '" +
-                    pass.debugName + "'");
-            }
-        }
-
-        NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Created " +
-            std::to_string(groupedDispatches_.size()) + " dispatch groups");
-    } else {
-        NODE_LOG_DEBUG(std::string("[MultiDispatchNode::CompileImpl] No GROUP_INPUTS connected, ") +
-            "using QueueDispatch() API");
-    }
 }
 
 // ============================================================================
@@ -319,6 +273,14 @@ void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
 // ============================================================================
 
 void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
+    // The accumulation slot declares Execute lifetime and gathers current producer
+    // outputs. It cannot be captured at Compile, before those outputs exist.
+    groupedDispatches_.clear();
+    for (const auto& pass : ctx.In(MultiDispatchNodeConfig::GROUP_INPUTS)) {
+        if (!pass.IsValid())
+            throw std::runtime_error("MultiDispatchNode: invalid current GROUP_INPUTS pass " + pass.debugName);
+        groupedDispatches_[pass.groupId.value_or(0u)].push_back(pass);
+    }
     // Get current indices
     uint32_t imageIndex = ctx.In(MultiDispatchNodeConfig::IMAGE_INDEX);
     uint32_t currentFrameIndex = ctx.In(MultiDispatchNodeConfig::CURRENT_FRAME_INDEX);

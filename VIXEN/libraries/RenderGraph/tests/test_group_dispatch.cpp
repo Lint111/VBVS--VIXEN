@@ -268,7 +268,7 @@ TEST(MultiDispatchNodeConfig, SlotCountIncludesGroupInputs) {
     // own comment for why all 5 are Optional (this test's own GROUP_INPUTS-only assembly
     // below never wires them, and stays byte-identical: record-only, no submit).
     EXPECT_EQ(MultiDispatchNodeCounts::INPUTS, 11u);
-    EXPECT_EQ(MultiDispatchNodeCounts::OUTPUTS, 2u);
+    EXPECT_EQ(MultiDispatchNodeCounts::OUTPUTS, 3u);
 }
 
 // ============================================================================
