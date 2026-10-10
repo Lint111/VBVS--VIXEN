@@ -345,4 +345,104 @@ TEST_F(GraphTaskLoweringTest, RenderFrameUsesLoweredPlanAndHonorsEpochAbort) {
     EXPECT_EQ(second->GetState(), NodeState::Compiled);
 }
 
+TEST_F(GraphTaskLoweringTest, CompletedFramesHonorConfiguredBudgetAndKeepTheirCount) {
+    for (const char* loweredValue : {"0", "1"}) {
+        ScopedEnvironment lowered("VIXEN_GRAPH_LOWERED", loweredValue);
+        NodeTypeRegistry registry;
+        ASSERT_TRUE(registry.RegisterNodeType(
+            std::make_unique<LoweringNodeType>("Cpu", GraphExecutionKind::Cpu)));
+        RenderGraph graph(&registry);
+        const auto handle = graph.AddNode("Cpu", "PacedWork");
+        auto* node = dynamic_cast<LoweringNode*>(graph.GetInstance(handle));
+        ASSERT_NE(node, nullptr);
+        unsigned calls = 0;
+        node->SetWork([&calls] { ++calls; });
+        TimelineCapacityTracker::Config config;
+        config.gpuTimeBudgetNs = 8'000'000;
+        graph.ConfigureCapacityTracking(config);
+        ASSERT_NO_THROW(graph.Compile());
+        const auto start = std::chrono::steady_clock::now();
+        for (unsigned i = 0; i < 3; ++i) EXPECT_EQ(graph.RenderFrame(), VK_SUCCESS);
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        EXPECT_GE(elapsed, std::chrono::nanoseconds(config.gpuTimeBudgetNs * 3));
+        EXPECT_EQ(calls, 3u);
+
+        // An over-budget frame must not consume the following frame's pacing deadline.
+        node->SetWork([&calls, &config] {
+            ++calls;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(config.gpuTimeBudgetNs * 2));
+        });
+        EXPECT_EQ(graph.RenderFrame(), VK_SUCCESS);
+        node->SetWork([&calls] { ++calls; });
+        const auto nextStart = std::chrono::steady_clock::now();
+        EXPECT_EQ(graph.RenderFrame(), VK_SUCCESS);
+        EXPECT_GE(std::chrono::steady_clock::now() - nextStart,
+                  std::chrono::nanoseconds(config.gpuTimeBudgetNs));
+        EXPECT_EQ(calls, 5u);
+    }
+}
+
+struct NativeSubmitCall {
+    uint32_t waits, commands, signals;
+    VkFence fence;
+    VkCommandBuffer command;
+};
+std::vector<NativeSubmitCall> nativeSubmitCalls;
+int failNativeSubmit = -1;
+VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
+    VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence fence) {
+    EXPECT_EQ(count, 1u);
+    const auto& si = infos[0];
+    nativeSubmitCalls.push_back({si.waitSemaphoreInfoCount, si.commandBufferInfoCount,
+        si.signalSemaphoreInfoCount, fence,
+        si.commandBufferInfoCount ? si.pCommandBufferInfos[0].commandBuffer : VK_NULL_HANDLE});
+    return static_cast<int>(nativeSubmitCalls.size()) == failNativeSubmit
+        ? VK_ERROR_DEVICE_LOST : VK_SUCCESS;
+}
+
+TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
+    SubmitRecord record;
+    record.waits.resize(2);
+    record.signals.resize(3);
+    record.fence = reinterpret_cast<VkFence>(uintptr_t(7));
+    for (uintptr_t i = 1; i <= 3; ++i) {
+        VkCommandBufferSubmitInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        info.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
+        record.commandBuffers.push_back(info);
+    }
+    nativeSubmitCalls.clear();
+    failNativeSubmit = -1;
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_SUCCESS);
+    ASSERT_EQ(nativeSubmitCalls.size(), 3u);
+    for (size_t i = 0; i < nativeSubmitCalls.size(); ++i) {
+        EXPECT_EQ(nativeSubmitCalls[i].commands, 1u);
+        EXPECT_EQ(nativeSubmitCalls[i].command, record.commandBuffers[i].commandBuffer);
+        EXPECT_EQ(nativeSubmitCalls[i].waits, i == 0 ? 2u : 0u);
+        EXPECT_EQ(nativeSubmitCalls[i].signals, i == 2 ? 3u : 0u);
+        EXPECT_EQ(nativeSubmitCalls[i].fence, i == 2 ? record.fence : VK_NULL_HANDLE);
+    }
+    nativeSubmitCalls.clear();
+    failNativeSubmit = 2;
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_ERROR_DEVICE_LOST);
+    EXPECT_EQ(nativeSubmitCalls.size(), 2u);
+    failNativeSubmit = -1;
+}
+
+TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
+    VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    VkSubmitInfo2 info{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    info.signalSemaphoreInfoCount = 1;
+    info.pSignalSemaphoreInfos = &signal;
+    const auto fence = reinterpret_cast<VkFence>(uintptr_t(7));
+    const auto record = SubmitRecord::FromSubmitInfo2(info, fence);
+    nativeSubmitCalls.clear();
+    failNativeSubmit = -1;
+    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE), VK_SUCCESS);
+    ASSERT_EQ(nativeSubmitCalls.size(), 1u);
+    EXPECT_EQ(nativeSubmitCalls[0].commands, 0u);
+    EXPECT_EQ(nativeSubmitCalls[0].waits, 0u);
+    EXPECT_EQ(nativeSubmitCalls[0].signals, 1u);
+    EXPECT_EQ(nativeSubmitCalls[0].fence, fence);
+}
+
 } // namespace

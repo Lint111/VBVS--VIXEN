@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include "GPUTimestampQuery.h"
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
@@ -91,7 +93,9 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage);
+    std::vector<VkCommandBuffer> RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage);
+
+    void CollectTileTiming(uint32_t frameIndex);
 
     // Extracted helper methods for RecordComputeCommands
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
@@ -113,6 +117,12 @@ private:
 
     // Per-swapchain-image command buffers with state tracking
     StatefulContainer<VkCommandBuffer> commandBuffers;
+    std::array<std::vector<VkCommandBuffer>, 4> tileCommandBuffers_;
+    std::array<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>, 4> tileQueries_;
+    std::array<uint32_t, 4> tileCounts_{};
+    std::array<uint64_t, 4> tileBudgets_{};
+    bool canTile_ = false;
+
 
     // Previous frame inputs (for dirty detection)
     VkPipeline lastPipeline = VK_NULL_HANDLE;

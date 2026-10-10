@@ -395,33 +395,10 @@ VkExtent2D VulkanSwapChain::QueryCurrentSurfaceExtent(VkPhysicalDevice gpu) cons
 
 void VulkanSwapChain::ManagePresentMode()
 {
-    // Prioritize IMMEDIATE for maximum uncapped FPS
-    // Then MAILBOX for low-latency triple buffering
-    // Fallback to FIFO which is guaranteed to be supported
+    // FIFO is guaranteed by Vulkan and presents at the display's cadence. An
+    // uncapped IMMEDIATE/MAILBOX producer can saturate the shared compositor engine.
     scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-
-    std::string modesStr = "[ManagePresentMode] Available present modes: ";
-    for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
-        modesStr += std::to_string(scPrivateVars.presentModes[i]) + " ";
-    }
-    LOG_INFO(modesStr);
-
-    for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
-        if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) {
-            scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-            LOG_INFO("[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)");
-            break;
-        }
-
-        if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
-            scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-            LOG_INFO("[ManagePresentMode] Selected MAILBOX mode");
-        }
-    }
-
-    if (scPrivateVars.swapChainPresentMode == VK_PRESENT_MODE_FIFO_KHR) {
-        LOG_INFO("[ManagePresentMode] Using FIFO mode (V-Sync enabled)");
-    }
+    LOG_INFO("[ManagePresentMode] Using FIFO mode (display-paced presentation)");
 
     // Determine the number of images. minImageCount+1 can fall BELOW minImageCount only if the
     // capabilities were never populated, but the max clamp below can drop it under the minimum on a

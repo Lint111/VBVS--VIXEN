@@ -411,6 +411,27 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::Reflect(const CompiledProgr
     }
 }
 
+bool SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
+    const std::vector<uint32_t>& spirvCode) {
+    if (spirvCode.empty()) return false;
+    SpvReflectShaderModule module{};
+    if (spvReflectCreateShaderModule(spirvCode.size() * sizeof(uint32_t),
+            spirvCode.data(), &module) != SPV_REFLECT_RESULT_SUCCESS) return false;
+    bool compatible = module.shader_stage == SPV_REFLECT_SHADER_STAGE_COMPUTE_BIT;
+    std::vector<const SpvReflectInterfaceVariable*> pending;
+    for (uint32_t i = 0; i < module.input_variable_count; ++i)
+        pending.push_back(module.input_variables[i]);
+    while (!pending.empty()) {
+        const auto* input = pending.back();
+        pending.pop_back();
+        if (input->built_in == SpvBuiltInNumWorkgroups) compatible = false;
+        for (uint32_t i = 0; i < input->member_count; ++i)
+            pending.push_back(&input->members[i]);
+    }
+    spvReflectDestroyShaderModule(&module);
+    return compatible;
+}
+
 std::unique_ptr<SpirvReflectionData> SpirvReflector::ReflectStage(
     const std::vector<uint32_t>& spirvCode,
     ShaderStage stage

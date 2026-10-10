@@ -257,6 +257,23 @@ void FrameSyncNode::HandleFrameEnd() {
     frameCompletionValues_[currentFrameIndex] = completionValue;
     // Preserve monotonicity if the graph schedule changes during recompile.
     frameBase_ = completionValue;
+
+    // Retire this frame before the host's next PreTick can write parameters.
+    // Keep the allocation ring, but bound outstanding graph work to one frame.
+    // The existing marker covers all submits, including nodes after the binary fence owner.
+    VkSemaphoreWaitInfo wait{};
+    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+    wait.semaphoreCount = 1;
+    wait.pSemaphores = &timelineSemaphore_;
+    wait.pValues = &completionValue;
+    const VkResult waitResult = vkWaitSemaphores(vulkanDevice->device, &wait, UINT64_MAX);
+    if (waitResult != VK_SUCCESS) {
+        frameCompletionSubmitFailure_ = waitResult;
+        NODE_LOG_ERROR("FrameSyncNode: failed to retire frame completion timeline: " +
+                       std::to_string(waitResult));
+        if (waitResult == VK_ERROR_DEVICE_LOST)
+            GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::FrameEnd vkWaitSemaphores");
+    }
 }
 
 void FrameSyncNode::TypedCleanupImpl(TypedCleanupContext& ctx) {

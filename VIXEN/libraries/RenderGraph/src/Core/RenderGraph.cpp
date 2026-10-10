@@ -911,15 +911,8 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
                 }
             }
         } else {
-            VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-            si.waitSemaphoreInfoCount = static_cast<uint32_t>(rec.waits.size());
-            si.pWaitSemaphoreInfos = rec.waits.empty() ? nullptr : rec.waits.data();
-            si.commandBufferInfoCount = static_cast<uint32_t>(rec.commandBuffers.size());
-            si.pCommandBufferInfos = rec.commandBuffers.empty() ? nullptr : rec.commandBuffers.data();
-            si.signalSemaphoreInfoCount = static_cast<uint32_t>(rec.signals.size());
-            si.pSignalSemaphoreInfos = rec.signals.empty() ? nullptr : rec.signals.data();
             if (device && device->fpQueueSubmit2) {
-                const VkResult r = device->fpQueueSubmit2(device->queue, 1, &si, rec.fence);
+                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue);
                 if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
             }
         }
@@ -1268,6 +1261,15 @@ VkResult RenderGraph::RenderFrame() {
     // tells the trigger to route to recovery rather than treat the frame as a one-off error.
     if (deviceLost_) {
         return VK_ERROR_DEVICE_LOST;
+    }
+
+    // Offscreen, capture, and test graphs share the same existing frame budget as
+    // interactive graphs. Anchor each deadline to this frame, so an overrun never
+    // creates a burst of catch-up submissions. Error/aborted frames remain prompt.
+    if (frameResult == VK_SUCCESS && !frameAborted_) {
+        const auto frameBudget = std::chrono::nanoseconds(
+            capacityTracker_.GetConfig().gpuTimeBudgetNs);
+        std::this_thread::sleep_until(frameExecuteStart + frameBudget);
     }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw

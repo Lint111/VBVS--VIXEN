@@ -41,6 +41,11 @@ public:
      */
     std::unique_ptr<SpirvReflectionData> Reflect(const CompiledProgram& program);
 
+    // Dispatch-base preserves global/workgroup IDs, but changes NumWorkgroups.
+    // Unknown/invalid modules are conservatively ineligible for subdivision.
+    static bool CanPreserveWorkgroupBuiltinsWhenTiled(const std::vector<uint32_t>& spirvCode);
+
+
     /**
      * @brief Reflect single shader stage
      *

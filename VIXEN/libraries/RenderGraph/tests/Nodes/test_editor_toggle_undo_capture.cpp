@@ -78,6 +78,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -393,4 +394,35 @@ TEST(EditorToggleUndoCapture, BackButtonReachesReturnInRunningEditor) {
     EXPECT_EQ(*afterBack, kFlowStateIdEditing)
         << "back-button did not pop the FSM back to Editing (afterBack=" << *afterBack << ") -- "
            "the running editor's back-button->Return wiring is broken";
+}
+
+// R477: validate measured submission durations against the budget carried by the
+// live graph. No pinned timing constant; missing/zero samples cannot pass this gate.
+TEST(EditorToggleUndoCapture, GpuSubmissionsRespectDeclaredBudget) {
+    std::ifstream log(LogPath());
+    ASSERT_TRUE(log.is_open()) << LogPath();
+    const auto field = [](const std::string& line, const char* key) -> std::optional<double> {
+        const auto at = line.find(std::string(key) + "=");
+        if (at == std::string::npos) return std::nullopt;
+        std::istringstream input(line.substr(at + std::string(key).size() + 1));
+        double value;
+        if (!(input >> value) || !std::isfinite(value)) return std::nullopt;
+        return value;
+    };
+    size_t samples = 0;
+    std::string line;
+    while (std::getline(log, line)) {
+        EXPECT_EQ(line.find("[GPUYIELD_UNBOUNDED]"), std::string::npos) << line;
+        if (line.find("[GPUYIELD]") == std::string::npos) continue;
+        const auto maximum = field(line, "max_submission_ms");
+        const auto budget = field(line, "budget_ms");
+        const auto submissions = field(line, "submissions");
+        ASSERT_TRUE(maximum && budget && submissions) << line;
+        ASSERT_GT(*maximum, 0.0) << line;
+        ASSERT_GT(*budget, 0.0) << line;
+        EXPECT_GT(*submissions, 1.0) << line;
+        EXPECT_LE(*maximum, *budget) << line;
+        ++samples;
+    }
+    EXPECT_GT(samples, 0u) << "live timestamp-query samples are required";
 }

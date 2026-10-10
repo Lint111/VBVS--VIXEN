@@ -69,13 +69,40 @@ struct SubmitRecord {
     /// record so the deferred drain can rebuild a VkSubmitInfo2 pointing at THIS record's vectors.
     /// (pNext chains are NOT copied — the frame-path submits converted in P1 use none; a site that
     /// grows a pNext must extend this.)
+    // Each primary command buffer is a separate queue submission. Consume waits
+    // once, and publish signals/fence only after the final buffer. Queue order and
+    // existing entry/exit barriers retain the original graph dependency contract.
+    VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue) const {
+        const std::size_t count = commandBuffers.empty() ? 1 : commandBuffers.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+            if (i == 0) {
+                si.waitSemaphoreInfoCount = static_cast<uint32_t>(waits.size());
+                si.pWaitSemaphoreInfos = waits.empty() ? nullptr : waits.data();
+            }
+            if (!commandBuffers.empty()) {
+                si.commandBufferInfoCount = 1;
+                si.pCommandBufferInfos = &commandBuffers[i];
+            }
+            const bool last = i + 1 == count;
+            if (last) {
+                si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+                si.pSignalSemaphoreInfos = signals.empty() ? nullptr : signals.data();
+            }
+            const VkResult result = submitFn(queue, 1, &si, last ? fence : VK_NULL_HANDLE);
+            if (result != VK_SUCCESS) return result;
+        }
+        return VK_SUCCESS;
+    }
+
     static SubmitRecord FromSubmitInfo2(const VkSubmitInfo2& si, VkFence fence) {
         SubmitRecord r;
         r.fence = fence;
-        r.waits.assign(si.pWaitSemaphoreInfos, si.pWaitSemaphoreInfos + si.waitSemaphoreInfoCount);
-        r.commandBuffers.assign(si.pCommandBufferInfos,
+        if (si.waitSemaphoreInfoCount)
+            r.waits.assign(si.pWaitSemaphoreInfos, si.pWaitSemaphoreInfos + si.waitSemaphoreInfoCount);
+        if (si.commandBufferInfoCount) r.commandBuffers.assign(si.pCommandBufferInfos,
                                 si.pCommandBufferInfos + si.commandBufferInfoCount);
-        r.signals.assign(si.pSignalSemaphoreInfos,
+        if (si.signalSemaphoreInfoCount) r.signals.assign(si.pSignalSemaphoreInfos,
                          si.pSignalSemaphoreInfos + si.signalSemaphoreInfoCount);
         return r;
     }
