@@ -126,6 +126,19 @@ namespace Push {
 
 } // namespace Push
 
+struct PushBlock {
+    uint32_t outputWidth;
+    uint32_t outputHeight;
+    uint32_t cellCount;
+    float transmittanceEpsilon;
+};
+
+static_assert(offsetof(PushBlock, outputWidth) == Push::outputWidth::OFFSET, "PushBlock.outputWidth is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, outputHeight) == Push::outputHeight::OFFSET, "PushBlock.outputHeight is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, cellCount) == Push::cellCount::OFFSET, "PushBlock.cellCount is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, transmittanceEpsilon) == Push::transmittanceEpsilon::OFFSET, "PushBlock.transmittanceEpsilon is not at its SDI OFFSET");
+static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
+
 // ============================================================================
 // Member table (bindings + push members) for the semantic connect walk
 // ============================================================================

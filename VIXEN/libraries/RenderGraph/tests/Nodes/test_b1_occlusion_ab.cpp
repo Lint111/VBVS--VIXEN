@@ -36,6 +36,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Headers.h"  // MUST be first: defines GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
 
@@ -94,32 +95,16 @@ using Vixen::RenderGraph::Mirror::HiZTileCount;
 
 namespace {
 
-// Byte-identical to BodyInstanceRayMarch.comp's PushConstants block (see
-// test_body_instance_occlusion_reject.cpp's identical copy for the layout
-// derivation and the M2/accum-frame history that grew it to 96 bytes).
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;       // DEGREES
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float   raySizeCoef;
-    float   raySizeBias;
-    int32_t instanceCount;
-    int32_t _pad0;
-    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);
-    uint32_t   accumFrameCount = 1u;
-    uint32_t   _pad1 = 0u;
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
-// VIXEN_B2_PROXY_PREPASS appends proxyAabbCount at byte 96. Pad the test-side
-// block to the next 16-byte boundary while keeping the shader-visible prefix
-// byte-identical to the production push gatherer.
+// VIXEN_B2_PROXY_PREPASS appends proxyAabbCount at byte 96; the generated
+// PushBlock is 16-byte aligned, so the wrapper rounds to 112 without padding.
 struct PushConstantsB2 {
     PushConstants base;
     uint32_t proxyAabbCount;
-    uint32_t _pad[3]{};
 };
+static_assert(ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::OFFSET == sizeof(PushConstants),
+              "proxyAabbCount must follow the 96-byte base block");
 static_assert(sizeof(PushConstantsB2) == 112, "B2 PushConstants must be 112 bytes");
 
 // Byte-identical to HiZDownsample.comp's push_constant block.
@@ -1378,6 +1363,8 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     // race-free replacement for an earlier wide multi-pixel attempt.
     constexpr uint32_t kW = 2, kH = 1;
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = camDir; pc.fov = fovDeg;
     pc.cameraUp = camUpBasis;       pc.aspect = 1.0f;
@@ -1418,6 +1405,8 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         const glm::vec3 dirRight = glm::normalize(glm::cross(targetDir, worldUp));
         const glm::vec3 dirUp    = glm::normalize(glm::cross(dirRight, targetDir));
         PushConstants singlePc{};
+        singlePc.accumFrameCount = 1u;
+        singlePc.debugTargetPixel = glm::ivec2(-1, -1);
         singlePc.cameraPos = eye; singlePc.time = 0.0f;
         singlePc.cameraDir = targetDir; singlePc.fov = 45.0f;  // dead-center UV ignores fov entirely
         singlePc.cameraUp = dirUp;       singlePc.aspect = 1.0f;

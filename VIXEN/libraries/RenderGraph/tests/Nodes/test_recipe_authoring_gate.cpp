@@ -38,6 +38,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
@@ -81,23 +82,7 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
-// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
-// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
-// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
-// PushConstants for the established fix pattern this mirrors).
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float raySizeCoef; float raySizeBias; int32_t instanceCount;
-    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
-    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
-    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
-    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -154,6 +139,8 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
     const glm::vec3 right = glm::normalize(glm::cross(dir, up0));
     const glm::vec3 up    = glm::normalize(glm::cross(right, dir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye;   pc.time = 0.0f;
     pc.cameraDir = dir;   pc.fov  = 45.0f;
     pc.cameraUp  = up;    pc.aspect = float(w) / float(h);

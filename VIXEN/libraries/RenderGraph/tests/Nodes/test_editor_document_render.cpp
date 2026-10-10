@@ -33,6 +33,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
@@ -90,22 +91,7 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// SceneBindings.glsl's shared PushConstants payload ends at byte 92; std430
-// rounds its push-constant block to the 16-byte base alignment, so the Vulkan
-// range and this C++ mirror occupy 96 bytes.
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float raySizeCoef; float raySizeBias; int32_t instanceCount;
-    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
-                    // packs debugTargetPixel at offset 76 without this explicit filler.
-    glm::ivec2 debugTargetPixel;
-    uint32_t   accumFrameCount;
-    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -156,6 +142,8 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t
     const glm::vec3 right  = glm::normalize(glm::cross(dir, worldUp));
     const glm::vec3 up     = glm::normalize(glm::cross(right, dir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye;  pc.time = 0.0f;
     pc.cameraDir = dir;  pc.fov  = 45.0f;
     pc.cameraUp  = up;   pc.aspect = static_cast<float>(w) / static_cast<float>(h);

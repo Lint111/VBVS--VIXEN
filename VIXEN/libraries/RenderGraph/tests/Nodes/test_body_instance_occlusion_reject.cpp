@@ -23,6 +23,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
@@ -57,26 +58,7 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Byte-identical to BodyInstanceRayMarch.comp's PushConstants block (see
-// test_body_instance_raymarch_render.cpp's own copy for the layout derivation).
-//
-// The shader payload ends at byte 92, and std430 rounds the push-constant block
-// to its 16-byte alignment. Keep this mirror and its Vulkan range at 96 bytes.
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;       // DEGREES
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float   raySizeCoef;
-    float   raySizeBias;
-    int32_t instanceCount;
-    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
-                    // packs debugTargetPixel at offset 76 without this explicit filler.
-    glm::ivec2 debugTargetPixel;
-    uint32_t   accumFrameCount;
-    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -690,6 +672,8 @@ TEST_F(BodyInstanceOcclusionRejectTest, OccludedInstanceHasZeroTraversalIteratio
     const glm::vec3 right = glm::normalize(glm::cross(lineDir, worldUp));
     const glm::vec3 up    = glm::normalize(glm::cross(right, lineDir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = lineDir; pc.fov = 45.0f;
     pc.cameraUp = up;       pc.aspect = 1.0f;
@@ -778,6 +762,8 @@ TEST_F(BodyInstanceOcclusionRejectTest, NonOccludedInstancesStillTraverse) {
     const glm::vec3 right = glm::normalize(glm::cross(lineDir, worldUp));
     const glm::vec3 up    = glm::normalize(glm::cross(right, lineDir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = lineDir; pc.fov = 45.0f;
     pc.cameraUp = up;       pc.aspect = 1.0f;

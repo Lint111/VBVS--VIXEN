@@ -252,6 +252,37 @@ const char* AccessConstName(SpirvResourceAccess a) {
         default:                             return "ReadWrite";
     }
 }
+
+// Empty when the member type has no direct C++ spelling; the caller then emits
+// a raw byte array of the member's size.
+std::string PushMemberCppType(const SpirvTypeInfo& t) {
+    using B = SpirvTypeInfo::BaseType;
+    const uint32_t lanes = t.baseType == B::Vector  ? t.vecSize
+                         : t.baseType == B::Matrix  ? t.columns * t.rows
+                                                    : 1;
+    if (lanes == 0 || t.sizeInBytes != 4 * lanes) return "";
+    switch (t.baseType) {
+        case B::Float: return "float";
+        case B::Int:   return "int32_t";
+        case B::UInt:  return "uint32_t";
+        case B::Vector: {
+            const char* prefix = t.componentType == B::Float ? ""
+                               : t.componentType == B::Int   ? "i"
+                               : t.componentType == B::UInt  ? "u"
+                                                             : nullptr;
+            if (!prefix) return "";
+            return std::string("glm::") + prefix + "vec" + std::to_string(t.vecSize);
+        }
+        case B::Matrix: {
+            if (t.componentType != B::Float) return "";
+            std::string m = "glm::mat" + std::to_string(t.columns);
+            if (t.columns != t.rows) m += "x" + std::to_string(t.rows);
+            return m;
+        }
+        default:
+            return "";
+    }
+}
 } // namespace
 
 std::string SpirvInterfaceGenerator::GenerateMergedToString(
@@ -418,6 +449,74 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
             code << Indent(1) << "};\n\n";
         }
         code << "} // namespace Push\n\n";
+
+        // Whole push block. Explicit pads come from the merged offsets; a
+        // feature-gated member keeps its bytes as a pad when absent so later
+        // members stay at their OFFSET. static_asserts pin each member's offset.
+        bool anyGated = false;
+        for (const auto& m : merged.pushMembers) {
+            anyGated = anyGated || !m.requiredFeatures.empty();
+        }
+        auto ifdefCondition = [&](const std::vector<std::string>& features) {
+            for (size_t i = 0; i < features.size(); ++i) {
+                code << (i ? " && " : "") << "defined(" << features[i] << ")";
+            }
+        };
+
+        code << (anyGated ? "struct alignas(16) PushBlock {\n" : "struct PushBlock {\n");
+        uint32_t cursor = 0;
+        for (size_t idx = 0; idx < merged.pushMembers.size(); ++idx) {
+            const auto& m = merged.pushMembers[idx];
+            const uint32_t offset = m.member.offset;
+            const uint32_t size = m.member.type.sizeInBytes;
+            const std::string name = SanitizeName(m.member.name);
+            if (offset > cursor) {
+                code << Indent(1) << "uint8_t _pad" << cursor << "[" << (offset - cursor) << "];\n";
+            }
+            const std::string cppType = PushMemberCppType(m.member.type);
+            const std::string field = cppType.empty()
+                ? "uint8_t " + name + "[" + std::to_string(size) + "]"
+                : cppType + " " + name;
+            const bool gated = !m.requiredFeatures.empty();
+            if (gated) {
+                code << "#if ";
+                ifdefCondition(m.requiredFeatures);
+                code << "\n";
+            }
+            code << Indent(1) << field << ";\n";
+            if (gated) {
+                if (idx + 1 < merged.pushMembers.size()) {
+                    code << "#else\n";
+                    code << Indent(1) << "uint8_t _absent" << offset << "[" << size << "];\n";
+                }
+                code << "#endif\n";
+            }
+            cursor = offset + size;
+        }
+        if (!anyGated && merged.pushSize > cursor) {
+            code << Indent(1) << "uint8_t _tail[" << (merged.pushSize - cursor) << "];\n";
+        }
+        code << "};\n\n";
+
+        for (const auto& m : merged.pushMembers) {
+            const std::string name = SanitizeName(m.member.name);
+            const bool gated = !m.requiredFeatures.empty();
+            if (gated) {
+                code << "#if ";
+                ifdefCondition(m.requiredFeatures);
+                code << "\n";
+            }
+            code << "static_assert(offsetof(PushBlock, " << name << ") == Push::"
+                 << name << "::OFFSET, \"PushBlock." << name
+                 << " is not at its SDI OFFSET\");\n";
+            if (gated) code << "#endif\n";
+        }
+        if (anyGated) {
+            code << "static_assert(sizeof(PushBlock) <= Push::SIZE, \"PushBlock is larger than Push::SIZE\");\n";
+        } else {
+            code << "static_assert(sizeof(PushBlock) == Push::SIZE, \"PushBlock size differs from Push::SIZE\");\n";
+        }
+        code << "\n";
     }
 
     // Flat member table + runtime presence filter — the face the semantic

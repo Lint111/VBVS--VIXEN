@@ -275,6 +275,16 @@ namespace Push {
 
 } // namespace Push
 
+struct PushBlock {
+    uint32_t imgWidth;
+    uint32_t imgHeight;
+    uint8_t _tail[8];
+};
+
+static_assert(offsetof(PushBlock, imgWidth) == Push::imgWidth::OFFSET, "PushBlock.imgWidth is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, imgHeight) == Push::imgHeight::OFFSET, "PushBlock.imgHeight is not at its SDI OFFSET");
+static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
+
 // ============================================================================
 // Member table (bindings + push members) for the semantic connect walk
 // ============================================================================

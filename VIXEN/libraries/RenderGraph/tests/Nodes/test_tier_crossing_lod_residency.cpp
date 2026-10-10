@@ -33,6 +33,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
@@ -79,27 +80,7 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Byte-identical to BodyInstanceRayMarch.comp's PushConstants block.
-//
-// SceneBindings.glsl's shared PushConstants block occupies 96 bytes: its final
-// accumFrameCount field ends at byte 92, then std430 rounds the block to its
-// 16-byte alignment. Keep this mirror/range in lockstep with
-// test_body_instance_raymarch_render.cpp.
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;       // DEGREES
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float   raySizeCoef;
-    float   raySizeBias;
-    int32_t instanceCount;
-    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
-                    // packs debugTargetPixel at offset 76 without this explicit filler.
-    glm::ivec2 debugTargetPixel;
-    uint32_t   accumFrameCount;
-    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -959,6 +940,8 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         const glm::vec3 right(1.0f, 0.0f, 0.0f);
 
         PushConstants pc{};
+        pc.accumFrameCount = 1u;
+        pc.debugTargetPixel = glm::ivec2(-1, -1);
         pc.cameraPos = eye; pc.time = 0.0f;
         pc.cameraDir = dir; pc.fov = 45.0f;
         pc.cameraUp = up;   pc.aspect = 1.0f;
@@ -1106,6 +1089,8 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     constexpr float kHugeRaySizeCoef = 10.0f;
 
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = dir; pc.fov = 45.0f;
     pc.cameraUp = up;   pc.aspect = 1.0f;
@@ -1265,6 +1250,8 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
         40.0f + static_cast<float>((resolved->localPosition.z - 1.0) * tierSpanMeters));
 
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = glm::vec3(0.0f, 0.0f, -1.0f); pc.fov = 45.0f;
     pc.cameraUp = glm::vec3(0.0f, 1.0f, 0.0f); pc.aspect = 1.0f;
