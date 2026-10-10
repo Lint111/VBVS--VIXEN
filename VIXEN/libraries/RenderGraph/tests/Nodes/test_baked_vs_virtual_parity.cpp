@@ -92,6 +92,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
@@ -173,23 +174,7 @@ Vixen::SVO::SdfBakeResult CountedBake(const Vixen::SVO::Recipe::SdfInstruction* 
     return Vixen::SVO::BakeRecipeInstructionsToSdfWorld(prog, count, center, n, bandVoxels, brickDepth, params);
 }
 
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float raySizeCoef; float raySizeBias; int32_t instanceCount;
-    int32_t _pad0;         glm::ivec2 debugTargetPixel;
-    uint32_t accumFrameCount;  // Sampled Lighting Inc2 M2 (bytes 88-91) — unused by this
-                               // geometry-only parity harness (no accumulation config bound,
-                               // so the shader's accumulationConfig.enabled==0 passthrough
-                               // stays byte-identical regardless of this field's value).
-    uint32_t _pad1;            // std430 push-constant block rounds up to a 16-byte multiple
-                               // (leading vec3 forces 16-byte block alignment) -- SPIR-V
-                               // reflection reports 96 bytes total, not 92; this trailing pad
-                               // matches that so sizeof(pc) == the real VkPushConstantRange.
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // R464's test-only mirror for the procedural SDF marcher. The production editor path is
 // recipe-space sphere tracing, so there is no ESVO voxel/brick scale to report. gridDim and
@@ -340,6 +325,8 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t
     const glm::vec3 right  = glm::normalize(glm::cross(dir, worldUp));
     const glm::vec3 up     = glm::normalize(glm::cross(right, dir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye;  pc.time = 0.0f;
     pc.cameraDir = dir;  pc.fov  = 45.0f;
     pc.cameraUp  = up;   pc.aspect = static_cast<float>(w) / static_cast<float>(h);

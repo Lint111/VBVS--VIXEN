@@ -226,6 +226,17 @@ namespace Push {
 
 } // namespace Push
 
+struct PushBlock {
+    uint8_t prevViewProj[64];
+    glm::vec4 prevCamPos;
+    glm::uvec4 dims;
+};
+
+static_assert(offsetof(PushBlock, prevViewProj) == Push::prevViewProj::OFFSET, "PushBlock.prevViewProj is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, prevCamPos) == Push::prevCamPos::OFFSET, "PushBlock.prevCamPos is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, dims) == Push::dims::OFFSET, "PushBlock.dims is not at its SDI OFFSET");
+static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
+
 // ============================================================================
 // Member table (bindings + push members) for the semantic connect walk
 // ============================================================================

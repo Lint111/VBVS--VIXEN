@@ -31,6 +31,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Core/NodeContext.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
@@ -89,30 +90,7 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Mirrors test_body_instance_raymarch_render.cpp's own PushConstants mirror exactly
-// (omits the shader's trailing ivec2 debugTargetPixel — TEMP DEBUG field, unused by
-// every hand-built-descriptor-layout test in this file family; the push constant
-// RANGE below still covers bytes 0-75, which is all any of these tests' shader paths
-// statically read).
-// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
-// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
-// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
-// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
-// PushConstants for the established fix pattern this mirrors).
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;       // DEGREES
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float   raySizeCoef;
-    float   raySizeBias;
-    int32_t instanceCount;
-    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
-    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
-    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
-    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (matches shader std430 push block)");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // Host-side mirror of Generated/LightingConfig.g.h (Sampled Lighting Inc0 M1) — a single
 // directional light, matching the field layout test_lightingconfig_sdi_parity.cpp proves.
@@ -1415,6 +1393,8 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
         right = glm::normalize(right);
         up = glm::normalize(glm::cross(right, dir));
         PushConstants pc{};
+        pc.accumFrameCount = 1u;
+        pc.debugTargetPixel = glm::ivec2(-1, -1);
         pc.cameraPos = eye; pc.time = 0.0f;
         pc.cameraDir = dir; pc.fov = 1.0f;  // narrow FOV: dead-center pixel maps ~exactly to the surface point
         pc.cameraUp = up; pc.aspect = 1.0f;
@@ -1539,6 +1519,8 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
         glm::vec3 right = glm::normalize(glm::cross(direction, worldUp));
         const glm::vec3 up = glm::normalize(glm::cross(right, direction));
         PushConstants pc{};
+        pc.accumFrameCount = 1u;
+        pc.debugTargetPixel = glm::ivec2(-1, -1);
         pc.cameraPos = eye; pc.time = 0.0f;
         pc.cameraDir = direction; pc.fov = 1.0f;
         pc.cameraUp = up; pc.aspect = 1.0f;
@@ -1588,6 +1570,8 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightPickReturnsTheLitBodyInstance) {
     const glm::vec3 up = glm::normalize(glm::cross(right, direction));
 
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos = eye; pc.time = 0.0f;
     pc.cameraDir = direction; pc.fov = 1.0f;
     pc.cameraUp = up; pc.aspect = 1.0f;

@@ -114,6 +114,17 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
             break;
     }
 
+    if (info.baseType == SpirvTypeInfo::BaseType::Vector ||
+        info.baseType == SpirvTypeInfo::BaseType::Matrix) {
+        if (typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_INT) {
+            info.componentType = typeDesc->traits.numeric.scalar.signedness
+                ? SpirvTypeInfo::BaseType::Int
+                : SpirvTypeInfo::BaseType::UInt;
+        } else {
+            info.componentType = SpirvTypeInfo::BaseType::Float;
+        }
+    }
+
     // Size information
     info.sizeInBytes = typeDesc->traits.numeric.scalar.width / 8;
     if (info.baseType == SpirvTypeInfo::BaseType::Vector) {

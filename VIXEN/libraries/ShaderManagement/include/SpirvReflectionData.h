@@ -39,6 +39,7 @@ struct SpirvTypeInfo {
     uint32_t columns = 1;          // Matrix column count
     uint32_t rows = 1;             // Matrix row count
     uint32_t arraySize = 0;        // Array size (0 = not an array)
+    BaseType componentType = BaseType::Void;  // Element kind for Vector/Matrix (Float, Int, UInt)
     std::string structName;        // Struct type name (if baseType == Struct)
 
     // Size in bytes (for buffer layout)

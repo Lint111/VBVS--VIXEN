@@ -32,6 +32,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
@@ -100,37 +101,7 @@ static void UnsetTestEnv(const char* name) {
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Push-constant block — byte-identical to BodyInstanceRayMarch.comp PushConstants.
-// Layout (GLSL std430 push-constant rules: each vec3 is 16-byte aligned but 12-byte
-// sized, so the trailing scalar fills the 4-byte pad after each vec3):
-//   0  cameraPos(12)  + time(4)        -> 16
-//   16 cameraDir(12)  + fov(4)         -> 32
-//   32 cameraUp(12)   + aspect(4)      -> 48
-//   48 cameraRight(12)+ debugMode(4)   -> 64
-//   64 raySizeCoef(4) raySizeBias(4) instanceCount(4) -> 76
-// glm::vec3 is 12 bytes (4-byte aligned), so the C++ struct lays out identically (76 B).
-// The shader header's "60 B" note undercounts the per-vec3 16-byte alignment padding.
-// NOTE: the shader's getRayDir() applies radians(pc.fov*0.5), so pc.fov is DEGREES.
-// ---------------------------------------------------------------------------
-struct PushConstants {
-    glm::vec3 cameraPos;   float time;
-    glm::vec3 cameraDir;   float fov;       // DEGREES
-    glm::vec3 cameraUp;    float aspect;
-    glm::vec3 cameraRight; int32_t debugMode;
-    float   raySizeCoef;
-    float   raySizeBias;
-    int32_t instanceCount;
-    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment; explicit pad matches the
-                     // shader's real [76,80) gap (offset 76 is not 8-aligned) instead of
-                     // relying on glm::ivec2's own (looser) natural C++ alignment.
-    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
-    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
-    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
-                            // (leading vec3 forces 16-byte block alignment) -- SPIR-V
-                            // reflection reports 96 bytes total, not 92.
-};
-static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -1048,6 +1019,8 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
     const glm::vec3 right  = glm::normalize(glm::cross(dir, worldUp));
     const glm::vec3 up     = glm::normalize(glm::cross(right, dir));
     PushConstants pc{};
+    pc.accumFrameCount = 1u;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
     pc.cameraPos   = eye;   pc.time   = 0.0f;
     pc.cameraDir   = dir;   pc.fov    = 45.0f;
     pc.cameraUp    = up;    pc.aspect = static_cast<float>(w) / static_cast<float>(h);
