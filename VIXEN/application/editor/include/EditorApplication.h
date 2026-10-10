@@ -22,6 +22,7 @@
 #include "AppFlowChannel.h"
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
+#include "RuntimeCachePaths.h"
 #include "GaiaLayerViewDataProvider.h"  // Inc-B: Gaia-backed IViewDataProvider (was LayerControllerViewDataProvider)
 #include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
 #include "EditorLayersViewBridge.h"  // Inc-A2: gaia/robin_hood ODR isolation seam -- see its file header
@@ -197,7 +198,7 @@ private:
 
     std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT
     std::vector<long> captureFrames_;               // parsed once from VIXEN_EDITOR_CAPTURE_FRAMES
-    std::string captureDir_ = "temp";               // overridable via VIXEN_EDITOR_CAPTURE_DIR
+    std::string captureDir_ = Vixen::ProcessTemporaryDirectory("editor").string();
     bool scriptParsed_ = false;                     // guards the one-time env parse in Update()
 
     std::unique_ptr<AppFlowChannel> appFlowChannel_;

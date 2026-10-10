@@ -194,7 +194,7 @@ static constexpr uint32_t VOXEL_SCENE_CACHE_MAGIC = 0x56534341; // "VSCA"
 // length can never drive a multi-terabyte resize().
 static constexpr size_t VOXEL_SCENE_MAX_VECTOR_ELEMS = 1u << 30;  // 1 Gi elements
 
-bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool VoxelSceneCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     const auto entries = Snapshot();  // count written == rows written, holding nothing
 
     if (entries.empty()) {
@@ -257,7 +257,7 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
     return writer.Ok();
 }
 
-bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* devicePtr) try {
+bool VoxelSceneCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* devicePtr) try {
     if (!std::filesystem::exists(path)) {
         LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Cache file not found: " + path.string());
         return true; // Not an error - just no cached data

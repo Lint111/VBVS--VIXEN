@@ -87,8 +87,8 @@ public:
     std::shared_ptr<DescriptorSetLayoutWrapper> GetOrCreate(const DescriptorSetLayoutCreateParams& ci);
 
     // Serialization (not implemented for descriptor layouts)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override;
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "DescriptorSetLayoutCacher"; }
 
 protected:

@@ -174,8 +174,8 @@ public:
     std::string_view name() const noexcept override { return "VoxelAABBCacher"; }
 
     // Serialization (stub - AABBs are cheap to regenerate from cached scene data)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override;
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
 
 protected:
     // ===== TypedCacher implementation =====

@@ -224,7 +224,7 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
              + std::to_string(wrapper.width) + "x" + std::to_string(wrapper.height) + ")");
 }
 
-bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool TextureCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Serialize texture metadata and cached pixel data
 
     std::ofstream file(path, std::ios::binary);
@@ -286,7 +286,7 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
     return true;
 }
 
-bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool TextureCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Deserialize texture metadata and cached pixel data
     // Vulkan resources are recreated on-demand
 

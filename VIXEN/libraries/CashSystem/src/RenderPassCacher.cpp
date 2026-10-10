@@ -169,7 +169,7 @@ std::uint64_t RenderPassCacher::ComputeKey(const RenderPassCreateParams& ci) con
     return hasher.Finalize();
 }
 
-bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool RenderPassCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     const auto entries = Snapshot();  // count written == rows written, holding nothing
     LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " render pass configs to " + path.string());
 
@@ -199,7 +199,7 @@ bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const 
     return true;
 }
 
-bool RenderPassCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool RenderPassCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     LOG_INFO("DeserializeFromFile: Deserializing render pass configs from " + path.string());
 
     if (!std::filesystem::exists(path)) {

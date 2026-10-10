@@ -103,13 +103,13 @@ void PipelineLayoutCacher::Cleanup() {
     LOG_INFO("Cleanup complete");
 }
 
-bool PipelineLayoutCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool PipelineLayoutCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Not implemented - layouts are derived from descriptor layouts
     (void)path;
     return true;
 }
 
-bool PipelineLayoutCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool PipelineLayoutCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Not implemented - layouts are derived from descriptor layouts
     (void)path;
     (void)device;

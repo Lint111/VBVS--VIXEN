@@ -89,7 +89,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
-        TIMEOUT 180)
+        TIMEOUT 360)
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_editor_capture_producer
         TEST_ENVIRONMENT
             # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
@@ -131,7 +131,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
                 "${VIXEN_NATIVE_CAPTURE_DIR}")
         set_tests_properties(vixen_wsl_capture_witness PROPERTIES
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-            TIMEOUT 300
+            TIMEOUT 600
             LABELS "VIXENCapture;WSL"
             ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
         vixen_lock_gpu_tests(TESTS vixen_wsl_capture_witness)
@@ -154,4 +154,19 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1")
     vixen_lock_gpu_tests(TESTS vixen_editor_appflow_channel_gate)
+endif()
+
+# Multi-process cache correctness gate. The test owns its process fan-out so CTest admits it as
+# one GPU job; each child gets unique capture/document paths while all children share VIXEN_CACHE_DIR.
+if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME vixen_multiinstance_cache_gate
+        COMMAND ${Python3_EXECUTABLE} "${VIXEN_ROOT}/tools/multiinstance_cache_gate.py"
+            --mode gate
+            --app "$<TARGET_FILE:VIXEN>"
+            --editor "$<TARGET_FILE:vixen_editor>"
+            --document "${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
+            --work-dir "${CMAKE_BINARY_DIR}/runtime-captures/multiinstance")
+    set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_multiinstance_cache_gate)
 endif()

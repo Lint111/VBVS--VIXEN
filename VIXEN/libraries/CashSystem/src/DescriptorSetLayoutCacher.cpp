@@ -96,12 +96,12 @@ void DescriptorSetLayoutCacher::Cleanup() {
     Clear();  // Use base class Clear()
 }
 
-bool DescriptorSetLayoutCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool DescriptorSetLayoutCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Descriptor layouts are created from reflection data, no need to serialize
     return false;
 }
 
-bool DescriptorSetLayoutCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool DescriptorSetLayoutCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Descriptor layouts are created from reflection data, no need to deserialize
     return false;
 }

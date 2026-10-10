@@ -81,8 +81,8 @@ public:
     std::shared_ptr<RenderPassWrapper> GetOrCreate(const RenderPassCreateParams& ci);
 
     // Serialization (render passes are not serializable - driver/GPU specific)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override;
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "RenderPassCacher"; }
 
 protected:

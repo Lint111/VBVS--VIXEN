@@ -127,6 +127,21 @@ TEST_F(ShaderCacheManagerTest, OverwriteExistingCache) {
     EXPECT_EQ(retrieved.value(), spirv2);
 }
 
+TEST_F(ShaderCacheManagerTest, TruncatedCacheMissesAndCanBeRebuilt) {
+    const auto spirv = CompileTestShader();
+    ASSERT_FALSE(spirv.empty());
+    ASSERT_TRUE(cacheManager->Store("torn_shader", spirv));
+
+    const auto path = testCacheDir / "torn_shader.spv";
+    std::filesystem::resize_file(path, 7);
+    EXPECT_FALSE(cacheManager->Lookup("torn_shader").has_value());
+
+    ASSERT_TRUE(cacheManager->Store("torn_shader", spirv));
+    const auto rebuilt = cacheManager->Lookup("torn_shader");
+    ASSERT_TRUE(rebuilt.has_value());
+    EXPECT_EQ(*rebuilt, spirv);
+}
+
 // ===== Cache Key Tests =====
 
 TEST_F(ShaderCacheManagerTest, DifferentKeysStoreSeparately) {

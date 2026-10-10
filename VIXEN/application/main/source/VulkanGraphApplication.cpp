@@ -12,6 +12,7 @@
 #include <iostream>    // E11-T1: std::cout for the [PolicyStencilTiles] teardown readback print
 #include <unordered_map>  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES groupId->name lookup
 #include "Core/FrameSyncSchedule.h"  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES
+#include "RuntimeCachePaths.h"
 #include "ShaderLogger.h"  // Baked-perf-pipeline M2b: ShaderLogger::GetTelemetry() cache hit/miss counters
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -206,7 +207,7 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Creating EngineContext (registry + bus + graph + calibration)");
     Vixen::RenderGraph::EngineConfig engineCfg;
     engineCfg.logger = mainLogger.get();
-    engineCfg.calibrationDir = "calibration";
+    engineCfg.calibrationDir = Vixen::RuntimeCacheDirectory() / "calibration";
     // M3: nodes self-register into a global manifest (RenderGraphNodes is whole-archived);
     // RegisterAllNodes replays the manifest into this EngineContext's fresh registry. No
     // hand-maintained list — adding a node needs only its own VIXEN_REGISTER_NODE line.
@@ -3721,11 +3722,14 @@ void VulkanGraphApplication::DeInitialize() {
         try {
             std::string logs = mainLogger->ExtractLogs();
             // Write logs into the binaries folder so logs are colocated with the build artifacts.
-            std::ofstream logFile("binaries\\vulkan_app_log.txt");
+            const auto logPath = Vixen::ProcessTemporaryDirectory("main") / "vulkan_app_log.txt";
+            std::error_code logPathError;
+            std::filesystem::create_directories(logPath.parent_path(), logPathError);
+            std::ofstream logFile(logPath);
             if (logFile.is_open()) {
                 logFile << logs;
                 logFile.close();
-                mainLogger->Info("Logs written to binaries\\vulkan_app_log.txt");
+                mainLogger->Info("Logs written to " + logPath.string());
             }
         } catch (...) {
             // Best-effort: don't throw during cleanup

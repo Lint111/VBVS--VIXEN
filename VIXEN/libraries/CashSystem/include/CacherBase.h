@@ -1,6 +1,9 @@
 #pragma once
 
+#include "CacheCodec.h"
+
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string_view>
 #include <filesystem>
@@ -42,11 +45,48 @@ public:
     // Called by MainCacher during device cleanup or application shutdown
     virtual void Cleanup() = 0;
 
-    // Persist in-memory cache to disk at path
-    virtual bool SerializeToFile(const std::filesystem::path& path) const = 0;
+    // Persist the existing cacher payload inside a versioned, checksummed envelope, then publish
+    // it with a same-directory atomic replacement. A true no-op payload serializer remains a
+    // successful no-op and does not create a cache file.
+    bool SerializeToFile(const std::filesystem::path& path) const {
+        std::string error;
+        const bool saved = SerializeCacheFileAtomically(
+            path,
+            cacheDeviceIdentity_,
+            name(),
+            [this](const std::filesystem::path& payloadPath) {
+                return SerializePayloadToFile(payloadPath);
+            },
+            &error);
+        if (!saved) {
+            std::cerr << "[CacheCodec] Failed to save " << name() << " at " << path.string()
+                      << ": " << error << '\n';
+        }
+        return saved;
+    }
 
-    // Load cache from disk; recreate live objects where possible. "device" is opaque here
-    virtual bool DeserializeFromFile(const std::filesystem::path& path, void* device) = 0;
+    // Validate the complete envelope before handing its bytes to the cacher-specific parser.
+    // A rejected payload is cleared so partially parsed entries can never be used.
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) {
+        std::string error;
+        const auto status = DeserializeCacheFile(
+            path,
+            cacheDeviceIdentity_,
+            name(),
+            [this, device](const std::filesystem::path& payloadPath) {
+                return DeserializePayloadFromFile(payloadPath, device);
+            },
+            &error);
+        if (status == CacheFileStatus::Rejected || status == CacheFileStatus::IoError) {
+            std::cerr << "[CacheCodec] Rejected " << name() << " at " << path.string()
+                      << ": " << error << " (will rebuild)\n";
+            Clear();
+        }
+        return status == CacheFileStatus::Loaded;
+    }
+
+    // Set by DeviceRegistry for device-scoped cachers. Global cachers retain identity zero.
+    void SetCacheDeviceIdentity(std::uint64_t identity) noexcept { cacheDeviceIdentity_ = identity; }
 
     // Return human readable name for diagnostics
     virtual std::string_view name() const noexcept = 0;
@@ -58,7 +98,15 @@ public:
     MainCacher* GetMainCacher() const noexcept { return mainCacher_; }
 
 protected:
+    // Cacher-specific byte format. These methods only see unique temporary payload paths; callers
+    // persist through SerializeToFile/DeserializeFromFile above.
+    virtual bool SerializePayloadToFile(const std::filesystem::path& path) const = 0;
+    virtual bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) = 0;
+
     MainCacher* mainCacher_ = nullptr;  // non-owning
+
+private:
+    std::uint64_t cacheDeviceIdentity_ = 0;
 };
 
 } // namespace CashSystem

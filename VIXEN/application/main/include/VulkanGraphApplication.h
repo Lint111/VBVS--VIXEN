@@ -3,6 +3,7 @@
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
 #include "Core/EngineContext.h"  // AR#7: instantiable engine aggregate
+#include "RuntimeCachePaths.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
 #include "Core/CalibrationStore.h"  // Sprint 6.3: Persistence
@@ -525,7 +526,7 @@ private:
     bool hudScriptParsed_ = false;         // guards the one-time env parse in PreTick()
     std::vector<std::pair<long, char>> hudScript_;  // (frame, 'A'|'B') parsed from VIXEN_HUD_SCRIPT
     std::vector<long> hudCaptureFrames_;   // parsed from VIXEN_HUD_CAPTURE_FRAMES
-    std::string hudCaptureDir_ = "temp";   // overridable via VIXEN_HUD_CAPTURE_DIR
+    std::string hudCaptureDir_ = Vixen::ProcessTemporaryDirectory("main").string();
 
     // Captures main_swapchain including the HUD composite for the base app's Update() harness.
     bool CaptureHudFrameToPng(const std::string& path, std::string& err);

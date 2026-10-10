@@ -6,10 +6,13 @@
 
 #include <gtest/gtest.h>
 #include <CacheCodec.h>
+#include <RenderPassCacher.h>
 
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <atomic>
+#include <thread>
 #include <vector>
 #ifdef _WIN32
 #include <process.h>
@@ -137,6 +140,98 @@ TEST(CacheCodec, TruncatedStreamFailsAtTheRightRead) {
     EXPECT_FALSE(r.ReadVector(v, 1024));
     EXPECT_FALSE(r.Ok());
 
+    std::filesystem::remove(path);
+}
+
+TEST(CacheCodec, CacherRejectsAnEmptyTornCacheBeforeParsing) {
+    const auto path = TempPath("torn_render_pass.cache");
+    {
+        std::ofstream out(path, std::ios::binary);
+    }
+
+    CashSystem::RenderPassCacher cacher;
+    EXPECT_FALSE(cacher.DeserializeFromFile(path, nullptr));
+
+    std::filesystem::remove(path);
+}
+
+TEST(CacheEnvelope, RejectsWrongIdentityTypeAndChecksum) {
+    const auto path = TempPath("envelope_validation.cache");
+    const std::vector<char> payload{'p', 'a', 'y', 'l', 'o', 'a', 'd'};
+    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payload));
+
+    std::vector<char> loaded;
+    EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", loaded),
+              CashSystem::CacheFileStatus::Loaded);
+    EXPECT_EQ(loaded, payload);
+    EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x9999, "test-cacher", loaded),
+              CashSystem::CacheFileStatus::Rejected);
+    EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "other-cacher", loaded),
+              CashSystem::CacheFileStatus::Rejected);
+
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.is_open());
+        file.seekp(static_cast<std::streamoff>(sizeof(CashSystem::CacheEnvelopeHeader)));
+        const char changed = 'P';
+        file.write(&changed, 1);
+    }
+    EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", loaded),
+              CashSystem::CacheFileStatus::Rejected);
+
+    std::filesystem::remove(path);
+}
+
+TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
+    const auto path = TempPath("concurrent_writers.cache");
+    const std::vector<char> payloadA(64 * 1024, 'A');
+    const std::vector<char> payloadB(64 * 1024, 'B');
+    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA));
+
+    std::atomic<bool> writing{true};
+    std::atomic<bool> invalidRead{false};
+    std::thread reader([&] {
+        while (writing.load(std::memory_order_acquire)) {
+            std::vector<char> payload;
+            const auto status = CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", payload);
+            if (status != CashSystem::CacheFileStatus::Loaded ||
+                (payload != payloadA && payload != payloadB)) {
+                invalidRead.store(true, std::memory_order_release);
+                return;
+            }
+        }
+    });
+    std::thread writerA([&] {
+        for (int i = 0; i < 20; ++i) {
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA)) {
+                invalidRead.store(true, std::memory_order_release);
+            }
+        }
+    });
+    std::thread writerB([&] {
+        for (int i = 0; i < 20; ++i) {
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadB)) {
+                invalidRead.store(true, std::memory_order_release);
+            }
+        }
+    });
+    writerA.join();
+    writerB.join();
+    writing.store(false, std::memory_order_release);
+    reader.join();
+
+    std::vector<char> finalPayload;
+    EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", finalPayload),
+              CashSystem::CacheFileStatus::Loaded);
+    EXPECT_TRUE(finalPayload == payloadA || finalPayload == payloadB);
+    EXPECT_FALSE(invalidRead.load(std::memory_order_acquire));
+
+    const auto parent = path.parent_path();
+    const auto prefix = path.filename().string() + ".tmp.";
+    for (const auto& entry : std::filesystem::directory_iterator(parent)) {
+        EXPECT_FALSE(entry.path().filename().string().starts_with(prefix))
+            << "temporary cache file remained: " << entry.path();
+    }
     std::filesystem::remove(path);
 }
 

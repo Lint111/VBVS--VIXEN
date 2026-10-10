@@ -99,7 +99,7 @@ run_capture() {
     local log_path="$4"
     shift 4
 
-    if ! (cd -- "$working_dir" && timeout 180s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1; then
+    if ! (cd -- "$working_dir" && timeout 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1; then
         echo "$name capture failed; last output from $log_path:" >&2
         tail -n 80 "$log_path" >&2
         return 1

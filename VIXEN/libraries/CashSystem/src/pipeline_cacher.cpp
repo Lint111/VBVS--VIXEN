@@ -384,7 +384,7 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
     }
 }
 
-bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     if (!GetDevice()) {
         LOG_ERROR("Cannot serialize: no device available");
         return false;
@@ -470,7 +470,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     return true;
 }
 
-bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool PipelineCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Not an error if cache file doesn't exist yet
     if (!std::filesystem::exists(path)) {
         LOG_INFO("No cache file found at " + path.string() + " (first run)");

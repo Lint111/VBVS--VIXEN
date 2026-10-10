@@ -109,8 +109,8 @@ public:
     VkPipelineCache GetPipelineCache() const { return m_globalCache.load(std::memory_order_acquire); }
 
     // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override;
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "ComputePipelineCacher"; }
 
 protected:

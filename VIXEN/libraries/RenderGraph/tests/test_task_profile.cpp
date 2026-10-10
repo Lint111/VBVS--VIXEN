@@ -20,6 +20,7 @@
 #include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "Core/TaskProfiles/ResolutionTaskProfile.h"
 #include "Core/TaskProfileRegistry.h"
+#include "RuntimeCachePaths.h"
 
 using namespace Vixen::RenderGraph;
 
@@ -660,7 +661,8 @@ protected:
 
     void SetUp() override {
         // Create temp directory for tests
-        testDir = std::filesystem::temp_directory_path() / "vixen_calibration_test";
+        testDir = std::filesystem::temp_directory_path() /
+            ("vixen_calibration_test_" + std::to_string(Vixen::CurrentProcessId()));
         std::filesystem::create_directories(testDir);
 
         store = std::make_unique<CalibrationStore>(testDir);
@@ -721,6 +723,32 @@ TEST_F(CalibrationStoreTest, SaveAndLoad) {
     ASSERT_NE(loaded, nullptr);
     EXPECT_EQ(loaded->GetWorkUnits(), 2);
     EXPECT_TRUE(loaded->IsCalibrated());
+}
+
+TEST_F(CalibrationStoreTest, RejectsTamperedCalibrationJson) {
+    registry.RegisterTask(std::make_unique<SimpleTaskProfile>("task1", "test"));
+    const auto saveResult = store->Save(registry);
+    ASSERT_TRUE(saveResult.success) << saveResult.message;
+
+    const auto path = store->GetFilePath();
+    std::ifstream in(path);
+    ASSERT_TRUE(in.is_open());
+    nlohmann::json saved;
+    in >> saved;
+    in.close();
+
+    // Keep the old checksum while changing the device id: the loader must reject the record
+    // before its profile payload can alter the live registry.
+    saved["gpuDeviceId"] = 9999;
+    std::ofstream out(path, std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out << saved.dump(2);
+    out.close();
+
+    const auto loadResult = store->Load(registry);
+    EXPECT_FALSE(loadResult.success);
+    EXPECT_NE(loadResult.message.find("checksum mismatch"), std::string::npos);
+    EXPECT_EQ(registry.GetTaskCount(), 1u);
 }
 
 TEST_F(CalibrationStoreTest, LoadNonExistent) {
@@ -812,7 +840,8 @@ protected:
     TaskProfileRegistry registry;
 
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "vixen_event_calibration_test";
+        testDir = std::filesystem::temp_directory_path() /
+            ("vixen_event_calibration_test_" + std::to_string(Vixen::CurrentProcessId()));
         std::filesystem::create_directories(testDir);
 
         messageBus = std::make_unique<Vixen::EventBus::MessageBus>();

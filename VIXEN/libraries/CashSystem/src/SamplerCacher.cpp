@@ -125,7 +125,7 @@ std::uint64_t SamplerCacher::ComputeKey(const SamplerCreateParams& ci) const {
     return hasher.Finalize();
 }
 
-bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool SamplerCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     const auto entries = Snapshot();  // count written == rows written, holding nothing
     LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " sampler configs to " + path.string());
 
@@ -160,7 +160,7 @@ bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
     return true;
 }
 
-bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool SamplerCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     try {
         if (!std::filesystem::exists(path)) {
             LOG_INFO("DeserializeFromFile: Cache file doesn't exist: " + path.string());

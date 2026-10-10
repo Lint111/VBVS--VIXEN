@@ -15,7 +15,7 @@ The RTX hardware ray tracing pipeline has had several critical issues fixed. The
 // TraceRaysNode.h:93
 static constexpr uint32_t framesInFlight_ = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 ```
-**Files:** [TraceRaysNode.h](libraries/RenderGraph/include/Nodes/TraceRaysNode.h#L93)
+**Files:** [TraceRaysNode.h](../../../../libraries/RenderGraph/include/Nodes/TraceRaysNode.h#L93)
 
 ### 2. Push Constant Stage Flags Mismatch
 **Problem:** `vkCmdPushConstants` used `VK_SHADER_STAGE_RAYGEN_BIT_KHR` only, but pipeline layout declared all RT stages
@@ -30,9 +30,9 @@ uint32_t pushConstantSize = 0;
 pipelineData_->pushConstantStages
 ```
 **Files:** 
-- [RayTracingPipelineNodeConfig.h](libraries/RenderGraph/include/Data/Nodes/RayTracingPipelineNodeConfig.h#L68-L70)
-- [RayTracingPipelineNode.cpp](libraries/RenderGraph/src/Nodes/RayTracingPipelineNode.cpp#L391-L394)
-- [TraceRaysNode.cpp](libraries/RenderGraph/src/Nodes/TraceRaysNode.cpp#L197-L207)
+- [RayTracingPipelineNodeConfig.h](../../../../libraries/RenderGraph/include/Data/Nodes/RayTracingPipelineNodeConfig.h#L68-L70)
+- [RayTracingPipelineNode.cpp](../../../../libraries/RenderGraph/src/Nodes/RayTracingPipelineNode.cpp#L391-L394)
+- [TraceRaysNode.cpp](../../../../libraries/RenderGraph/src/Nodes/TraceRaysNode.cpp#L197-L207)
 
 ### 3. Storage Image Format Mismatch
 **Problem:** Shader declared `layout(binding = 0, rgba8)` but swapchain uses `VK_FORMAT_B8G8R8A8_UNORM`
@@ -41,7 +41,7 @@ pipelineData_->pushConstantStages
 // VoxelRT.rgen:13
 layout(binding = 0) uniform writeonly image2D outputImage;
 ```
-**Also enabled:** `shaderStorageImageWriteWithoutFormat` feature in [VulkanDevice.cpp](libraries/VulkanResources/src/VulkanDevice.cpp#L104-L105)
+**Also enabled:** `shaderStorageImageWriteWithoutFormat` feature in [VulkanDevice.cpp](../../../../libraries/VulkanResources/src/VulkanDevice.cpp#L104-L105)
 
 ### 4. Intersection Shader AABB Lookup (Voxel Topology Fix)
 **Problem:** Intersection shader tested against hardcoded unit cube instead of actual AABB bounds
@@ -56,9 +56,9 @@ layout(binding = 2, set = 0, scalar) readonly buffer AABBBuffer {
 AABB aabb = aabbBuffer.aabbs[gl_PrimitiveID];
 ```
 **Files:**
-- [VoxelRT.rint](shaders/VoxelRT.rint#L20-L23)
-- [VoxelAABBConverterNodeConfig.h](libraries/RenderGraph/include/Data/Nodes/VoxelAABBConverterNodeConfig.h#L98-L101) - Added `AABB_BUFFER` output
-- [VoxelAABBConverterNode.cpp](libraries/RenderGraph/src/Nodes/VoxelAABBConverterNode.cpp#L95-L96) - Outputs raw buffer
+- [VoxelRT.rint](../../../../shaders/VoxelRT.rint#L20-L23)
+- [VoxelAABBConverterNodeConfig.h](../../../../libraries/RenderGraph/include/Data/Nodes/VoxelAABBConverterNodeConfig.h#L98-L101) - Added `AABB_BUFFER` output
+- [VoxelAABBConverterNode.cpp](../../../../libraries/RenderGraph/src/Nodes/VoxelAABBConverterNode.cpp#L95-L96) - Outputs raw buffer
 - [BenchmarkGraphFactory.cpp](libraries/Profiler/src/BenchmarkGraphFactory.cpp#L2164-L2169) - Wires buffer to descriptor
 
 ### 5. SDI Regeneration
@@ -68,7 +68,7 @@ AABB aabb = aabbBuffer.aabbs[gl_PrimitiveID];
 ./build/bin/Debug/sdi_tool.exe batch shaders/VoxelRT_batch.json --output-dir ./generated/sdi
 ```
 **Files:**
-- [VoxelRT_batch.json](shaders/VoxelRT_batch.json) - Batch config for RT shaders
+- [VoxelRT_batch.json](../../../../shaders/VoxelRT_batch.json) - Batch config for RT shaders
 - [VoxelRTNames.h](generated/sdi/VoxelRTNames.h) - Now includes `VoxelRT::aabbBuffer::BINDING`
 
 ---

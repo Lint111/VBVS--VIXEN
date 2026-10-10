@@ -424,9 +424,9 @@ All phases complete:
 
 ## References
 
-- [System-Decoupling-Analysis-Phase2.md](System-Decoupling-Analysis-Phase2.md) - Full decoupling analysis
-- [RenderGraph-System-Architecture-Analysis.md](RenderGraph-System-Architecture-Analysis.md) - Original architecture analysis
-- [TaskQueue.md](../../Libraries/RenderGraph/TaskQueue.md) - Sprint 6.2 TaskQueue API
+- [System-Decoupling-Analysis-Phase2.md](../../../05-Progress/features/System-Decoupling-Analysis-Phase2.md) - Full decoupling analysis
+- [RenderGraph-System-Architecture-Analysis.md](../../../05-Progress/features/RenderGraph-System-Architecture-Analysis.md) - Original architecture analysis
+- [TaskQueue.md](../../../Libraries/RenderGraph/TaskQueue.md) - Sprint 6.2 TaskQueue API
 - [Design Element #38](https://app.hacknplan.com/p/230809/kanban?elementId=38) - HacknPlan design element
 - [Sprint 6.2 Summary](Sprint6.2-TaskQueue-System.md) - Previous sprint completion
 

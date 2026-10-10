@@ -119,6 +119,13 @@ target_include_directories(SVO
 # Dependencies
 # ------------------------------------------------------------------------------
 
+# BakeArtifactCache is header-only and uses Core's atomic runtime-cache writer.
+if(TARGET Core::Core)
+    target_link_libraries(SVO PUBLIC Core::Core)
+else()
+    message(FATAL_ERROR "Core::Core target not found - ensure libraries/Core is built before SVO")
+endif()
+
 # GLM for math (fetched by dependencies/CMakeLists.txt)
 if(TARGET glm)
     target_link_libraries(SVO PUBLIC glm)

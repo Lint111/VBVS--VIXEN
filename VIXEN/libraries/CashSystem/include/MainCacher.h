@@ -23,6 +23,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <fstream>
+#include <sstream>
 #include <future>
 #include <optional>
 
@@ -200,6 +201,7 @@ public:
 
             // Initialize with device
             typedCacher->Initialize(deviceRegistry.GetDevice());
+            typedCacher->SetCacheDeviceIdentity(deviceRegistry.GetDeviceIdentifier().GetHash());
 
             // Store in device registry
             std::lock_guard deviceLock(m_deviceRegistriesMutex);
@@ -626,21 +628,23 @@ private:
     bool SaveGlobalCaches(const std::filesystem::path& directory) const {
         LOG_INFO("[MainCacher] Saving global caches to " + directory.string());
 
-        // Save manifest
+        // Save the manifest atomically with the same envelope checks as cacher payloads.
         auto manifestPath = directory / "manifest.txt";
-        std::ofstream manifest(manifestPath);
-        if (!manifest) {
-            LOG_ERROR("[MainCacher] Failed to create global cacher manifest");
-            return false;
-        }
-
+        std::ostringstream manifest;
         std::shared_lock lock(m_globalRegistryMutex);
         for (const auto& [typeIndex, cacher] : m_globalCachers) {
             if (cacher) {
                 manifest << cacher->name() << "\n";
             }
         }
-        manifest.close();
+        const auto manifestText = manifest.str();
+        const std::vector<char> manifestBytes(manifestText.begin(), manifestText.end());
+        std::string manifestError;
+        if (!WriteCacheEnvelopeBytesAtomically(
+                manifestPath, 0, "global-cacher-registry", manifestBytes, &manifestError)) {
+            LOG_ERROR("[MainCacher] Failed to atomically save global cacher manifest: " + manifestError);
+            return false;
+        }
         LOG_INFO("[MainCacher] Saved global cacher manifest with " + std::to_string(m_globalCachers.size()) + " entries");
 
         std::vector<std::function<bool()>> tasks;

@@ -32,7 +32,7 @@ AccumulationSortConfig(5)  // What does this mean?
 - Unrealistic to stack multiple sort modifiers
 - No way to express custom sorting logic
 
-**File:** [AccumulationSortConfig.h:38-62](../../libraries/RenderGraph/include/Connection/Modifiers/AccumulationSortConfig.h#L38-L62)
+**File:** [AccumulationSortConfig.h:38-62](../../../libraries/RenderGraph/include/Connection/Modifiers/AccumulationSortConfig.h#L38-L62)
 
 ---
 
@@ -355,12 +355,12 @@ batch.Connect(passGenerator, PassGenConfig::DISPATCH_PASS,
 ## References
 
 **Current Implementation:**
-- [AccumulationSortConfig.h](../../libraries/RenderGraph/include/Connection/Modifiers/AccumulationSortConfig.h)
-- [AccumulationConnectionRule](../../libraries/RenderGraph/include/Connection/Rules/AccumulationConnectionRule.h)
+- [AccumulationSortConfig.h](../../../libraries/RenderGraph/include/Connection/Modifiers/AccumulationSortConfig.h)
+- [AccumulationConnectionRule](../../../libraries/RenderGraph/include/Connection/Rules/AccumulationConnectionRule.h)
 
 **Related Modifiers:**
-- [GroupKeyModifier.h](../../libraries/RenderGraph/include/Connection/Modifiers/GroupKeyModifier.h) - Sprint 6.1
-- [FieldExtractionModifier.h](../../libraries/RenderGraph/include/Connection/Modifiers/FieldExtractionModifier.h)
+- [GroupKeyModifier.h](../../../libraries/RenderGraph/include/Connection/Modifiers/GroupKeyModifier.h) - Sprint 6.1
+- [FieldExtractionModifier.h](../../../libraries/RenderGraph/include/Connection/Modifiers/FieldExtractionModifier.h)
 
 **Design Patterns:**
 - [variadic-modifier-api.md](variadic-modifier-api.md) - Sprint 6.0.1

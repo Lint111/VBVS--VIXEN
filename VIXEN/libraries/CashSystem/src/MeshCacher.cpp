@@ -182,7 +182,7 @@ std::uint64_t MeshCacher::ComputeKey(const MeshCreateParams& ci) const {
     return std::hash<std::string>{}(keyString);
 }
 
-bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool MeshCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     const auto entries = Snapshot();  // count written == rows written, holding nothing
     LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " mesh entries to " + path.string());
 
@@ -234,7 +234,7 @@ bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
     return true;
 }
 
-bool MeshCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool MeshCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     LOG_INFO("DeserializeFromFile: Deserializing from " + path.string());
 
     if (!std::filesystem::exists(path)) {
