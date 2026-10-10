@@ -63,6 +63,14 @@ add_library(SVO STATIC
 # ------------------------------------------------------------------------------
 
 target_compile_features(SVO PUBLIC cxx_std_23)
+# Kernel-owned generated headers retain their golden gate, while diagnostics in
+# them follow the same system-header policy as other imported providers.
+target_include_directories(SVO SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/Recipe/generated")
+if(MSVC)
+    # BodyInstanceGpu is over-aligned. stable_sort's temporary storage must honor
+    # that alignment rather than MSVC's historical max_align_t compatibility ABI.
+    target_compile_definitions(SVO PUBLIC _ENABLE_EXTENDED_ALIGNED_STORAGE)
+endif()
 
 # Enable SSE/AVX optimizations on x64
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)

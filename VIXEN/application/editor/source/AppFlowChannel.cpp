@@ -74,7 +74,7 @@ std::string NewToken() {
 
 bool ConstantTimeEqual(const std::string& left, const std::string& right) {
     size_t difference = left.size() ^ right.size();
-    const size_t count = std::max(left.size(), right.size());
+    const size_t count = (std::max)(left.size(), right.size());
     for (size_t i = 0; i < count; ++i) {
         const unsigned char a = i < left.size() ? static_cast<unsigned char>(left[i]) : 0;
         const unsigned char b = i < right.size() ? static_cast<unsigned char>(right[i]) : 0;

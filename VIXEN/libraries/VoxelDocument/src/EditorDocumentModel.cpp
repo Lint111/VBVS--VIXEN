@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "Recipe/generated/RecipeContainer.g.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
+#include <RecipeSimd.g.hpp>
 
 namespace Vixen::Editor {
 

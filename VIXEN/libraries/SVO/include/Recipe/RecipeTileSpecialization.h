@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
+#include <RecipeSimd.g.hpp>
 
 #include <algorithm>
 #include <array>

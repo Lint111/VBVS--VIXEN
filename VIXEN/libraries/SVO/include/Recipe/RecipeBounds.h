@@ -4,7 +4,7 @@
 #include <span>
 #include <glm/glm.hpp>
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
+#include <RecipeSimd.g.hpp>
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode
 
 namespace Vixen::SVO::Recipe {
