@@ -38,9 +38,11 @@ public:
         // The full-tile observation already includes command latency. Extra
         // fixed allowance protects clipped commands and batch packing; subtracting
         // it again for subdivision makes a latency spike create more submissions.
+        const double throughputEdge = std::sqrt(budgetNs * 0.95 / unitNs_);
+        // A latency floor must not hide an over-budget full-tile observation.
         const double edge = fixedNs_ < budgetNs * 0.95
-            ? std::sqrt(budgetNs * 0.95 / unitNs_)
-            : std::sqrt(double(anchorUnits_));
+            ? throughputEdge
+            : std::min(throughputEdge, std::sqrt(double(anchorUnits_)));
         return std::max(1u, static_cast<uint32_t>(std::min(double(maximum), edge)));
     }
 private:

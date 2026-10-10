@@ -540,7 +540,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
     }
 
-    tileQuery.ResetQueries(cmdBuffer, 0);
+    tileQuery.ResetQueryRange(cmdBuffer, 0, 0, 4);
     tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
 
@@ -626,6 +626,9 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
                 cmdBuffer = recordedBuffers[tileIndex];
                 if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
                     throw std::runtime_error("ComputeDispatchNode: failed to begin tile commands");
+                // Each retired command owns four queries. Resetting the entire
+                // capacity in chunk zero makes instrumentation grow with tile count.
+                tileQuery.ResetQueryRange(cmdBuffer, 0, tileIndex * 4, 4);
                 tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                          tileIndex * 4);
                 BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
