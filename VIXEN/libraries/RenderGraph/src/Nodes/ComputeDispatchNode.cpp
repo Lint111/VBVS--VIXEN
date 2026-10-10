@@ -456,7 +456,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             " total_gpu_ms=" + std::to_string(totalMs) +
             " max_submission_ms=" + std::to_string(maximumMs) +
             " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
-            " device_class=" + GpuDeviceClassName(vulkanDevice->gpuProperties.deviceType));
+            " device_class=" + GpuDeviceClassName(*vulkanDevice));
     }
 
 }

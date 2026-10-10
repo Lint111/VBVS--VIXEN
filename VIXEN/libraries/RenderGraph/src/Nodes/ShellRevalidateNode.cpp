@@ -396,7 +396,7 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" + std::to_string(chunks) +
         " total_gpu_ms=" + std::to_string(totalMs) + " max_submission_ms=" + std::to_string(maximumMs) + " budget_ms=2.000000" +
-        " device_class=" + GpuDeviceClassName(vulkanDevice_->gpuProperties.deviceType));
+        " device_class=" + GpuDeviceClassName(*vulkanDevice_));
     ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, layers % 2 == 0 ? shellFlagsBuffer_ : previousFlagsBuffer_);
 }
 

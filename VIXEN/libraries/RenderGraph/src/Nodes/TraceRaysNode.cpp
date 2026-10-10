@@ -553,7 +553,7 @@ void TraceRaysNode::CollectTileTiming(uint32_t frame) {
         " chunks=" + std::to_string(tileCounts_[frame]) + " total_gpu_ms=" + std::to_string(total) +
         " max_submission_ms=" + std::to_string(maximum) +
         " budget_ms=" + std::to_string(tileBudgets_[frame] / 1.0e6) +
-        " device_class=" + GpuDeviceClassName(vulkanDevice_->gpuProperties.deviceType));
+        " device_class=" + GpuDeviceClassName(*vulkanDevice_));
 }
 
 void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {

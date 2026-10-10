@@ -444,8 +444,8 @@ TEST(EditorToggleUndoCapture, GpuSubmissionsRespectDeclaredBudget) {
     }
     EXPECT_GT(samples, 0u) << "live timestamp-query samples are required";
     if (nativeSamples == 0) {
-        std::printf("[GPUYIELD_GATE] device=translated samples=%zu over_budget=%zu "
-                    "(timing not asserted on a non-native device, R503)\n",
+        std::printf("[GPUYIELD_GATE] device=non-native samples=%zu over_budget=%zu "
+                    "(timing not asserted off integrated/discrete native drivers, R503)\n",
                     samples, translatedOverBudget);
     }
 }
