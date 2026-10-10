@@ -1,0 +1,38 @@
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": null,
+  "frame_maxima": null,
+  "host_calls": {},
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 32,
+      "mean_ms": 0.002575,
+      "p99_ms": 0.0074,
+      "max_ms": 0.0074
+    },
+    "submit_call_ms": {
+      "samples": 32,
+      "mean_ms": 0.303028125,
+      "p99_ms": 0.5486,
+      "max_ms": 0.5486
+    },
+    "fence_wait_ms": {
+      "samples": 32,
+      "mean_ms": 469.272640625,
+      "p99_ms": 1179.91,
+      "max_ms": 1179.91
+    },
+    "service_ms": {
+      "samples": 32,
+      "mean_ms": 469.575890625,
+      "p99_ms": 1180.12,
+      "max_ms": 1180.12
+    },
+    "cadence_ms": {
+      "samples": 32,
+      "mean_ms": 492.71269374999997,
+      "p99_ms": 1195.39,
+      "max_ms": 1195.39
+    }
+  }
+}
