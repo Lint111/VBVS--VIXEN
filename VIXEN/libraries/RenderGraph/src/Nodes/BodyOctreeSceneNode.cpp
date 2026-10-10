@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
+#include "ConfiguredOptionalPath.h"
 #include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
 #include "MipBake.h"  // Lazy-Procedural-Delta-Baseline Inc0 M1: ConcatenateSdfWithMips
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
@@ -1828,23 +1829,11 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     }
 
     // The graph's RayQueryLighting composite is the single selection authority.
-    // Auto falls back to the permanent composed-DDA twin when the capability is
-    // absent; force is intentionally loud so an owner cannot mistake a fallback
-    // for an engaged RT run.
-    const auto rayQueryPath = device->GetCapabilityGraph().ResolveOptionalPath("RayQueryLighting");
-    if (rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
-        if (rtLightingMode == RtLightingMode::Force) {
-            throw std::runtime_error(
-                "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
-        }
-        static bool warnedOnce = false;
-        if (!warnedOnce) {
-            warnedOnce = true;
-            NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting unavailable -- "
-                              "using the permanent composed-DDA shadow twin");
-        }
-        return;
-    }
+    // Personalized builds discard the unsupported BLAS/TLAS implementation body;
+    // full builds select it at runtime from the live device graph.
+    Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
+        device->GetCapabilityGraph(), true,
+        [&] {
 
     // Rebuild only when the source geometry or instance transform/order epoch has
     // changed. Counts remain diagnostic, not the lifecycle key.
@@ -2151,6 +2140,19 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     NODE_LOG_INFO("[BodyOctreeSceneNode] RayQueryLighting: TLAS built (" +
                    std::to_string(vkInstances.size()) + " instances over " +
                    std::to_string(rtQueryBlas_.size()) + " BLAS)");
+        },
+        [&] {
+            if (rtLightingMode == RtLightingMode::Force) {
+                throw std::runtime_error(
+                    "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+            }
+            static bool warnedOnce = false;
+            if (!warnedOnce) {
+                warnedOnce = true;
+                NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting unavailable -- "
+                                  "using the permanent composed-DDA shadow twin");
+            }
+        });
 }
 
 void BodyOctreeSceneNode::DestroyRtQueryTlas() {

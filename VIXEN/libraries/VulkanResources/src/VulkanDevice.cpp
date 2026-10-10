@@ -12,28 +12,6 @@
 
 using namespace Vixen::Vulkan::Resources;
 
-namespace {
-
-std::vector<std::string> EnumerateSupportedDeviceExtensions(VkPhysicalDevice physicalDevice) {
-    uint32_t count = 0;
-    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, nullptr) != VK_SUCCESS ||
-        count == 0u) {
-        return {};
-    }
-    std::vector<VkExtensionProperties> properties(count);
-    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count, properties.data()) != VK_SUCCESS) {
-        return {};
-    }
-    std::vector<std::string> extensions;
-    extensions.reserve(count);
-    for (const auto& property : properties) {
-        extensions.emplace_back(property.extensionName);
-    }
-    return extensions;
-}
-
-} // namespace
-
 VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
     gpu = physicalDevice;
 }
@@ -67,15 +45,12 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = queuePriorities;
 
-    // Centralise non-concrete capability checks through the capability graph: register the
-    // standard capability nodes and populate the physical device's supported features, so the
-    // feature-enablement decisions below are gated via capabilityGraph_.IsCapabilityAvailable()
-    // (same convention as device extensions) rather than ad-hoc inline queries.
+    // Centralise extension, feature, API and identity observations through CapabilityGraph so
+    // configure-time and runtime decisions use the same graph nodes and feature query.
     capabilityGraph_.BuildStandardCapabilities();
     if (gpu && *gpu != VK_NULL_HANDLE) {
-        capabilityGraph_.SetAvailableDeviceExtensions(EnumerateSupportedDeviceExtensions(*gpu));
+        capabilityGraph_.ObservePhysicalDevice(*gpu);
     }
-    capabilityGraph_.SetAvailableDeviceFeatures(QueryAvailableDeviceFeatures());  // AR#8: per-graph, was static
 
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
     deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -649,76 +624,9 @@ RTXCapabilities VulkanDevice::CheckRTXSupport() const {
 }
 
 std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
-    // Query the physical device for the non-concrete features tracked by the capability graph
-    // and return the names it reports as supported. Feed into
-    // CapabilityGraph::SetAvailableDeviceFeatures() so feature enablement is gated centrally.
-    // Add further VkPhysicalDeviceVulkan1x / extension feature structs to the pNext chain (and
-    // a matching name push_back) as more non-concrete features are adopted.
-    std::vector<std::string> supported;
-
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(*gpu, &properties);
-
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2{};
-    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
-    VkPhysicalDeviceFeatures2 features2{};
-    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    const bool apiSupportsVulkan12 = properties.apiVersion >= VK_API_VERSION_1_2;
-    const bool apiSupportsSynchronization2Core = properties.apiVersion >= VK_API_VERSION_1_3;
-    const bool extensionSupportsSynchronization2 =
-        !apiSupportsSynchronization2Core && capabilityGraph_.IsDeviceExtensionAvailable(
-            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-    if (apiSupportsVulkan12) {
-        features2.pNext = &vulkan12;
-        if (apiSupportsSynchronization2Core) {
-            vulkan12.pNext = &vulkan13;
-        } else if (extensionSupportsSynchronization2) {
-            vulkan12.pNext = &synchronization2;
-        }
-    }
-
-    VkPhysicalDeviceSubgroupProperties subgroup{};
-    subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-
-    // Subgroup properties are returned through VkPhysicalDeviceProperties2, not the features
-    // chain. Publish only the compute operations the shader variants may rely on; consumers then
-    // consult CapabilityGraph rather than re-querying Vulkan.
-    VkPhysicalDeviceProperties2 properties2{};
-    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-    properties2.pNext = &subgroup;
-    vkGetPhysicalDeviceProperties2(*gpu, &properties2);
-
-    vkGetPhysicalDeviceFeatures2(*gpu, &features2);
-
-    if (apiSupportsVulkan12 && vulkan12.timelineSemaphore) {
-        supported.emplace_back("timelineSemaphore");
-    }
-    if (apiSupportsVulkan12 && vulkan12.hostQueryReset) {
-        supported.emplace_back("hostQueryReset");
-    }
-    if ((apiSupportsSynchronization2Core && vulkan13.synchronization2) ||
-        (extensionSupportsSynchronization2 && synchronization2.synchronization2)) {
-        supported.emplace_back("synchronization2");
-    }
-    if (features2.features.fragmentStoresAndAtomics) {
-        supported.emplace_back("fragmentStoresAndAtomics");
-    }
-    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0) {
-        supported.emplace_back("subgroupComputeBallot");
-    }
-    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0) {
-        supported.emplace_back("subgroupComputeArithmetic");
-    }
-    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0) {
-        supported.emplace_back("subgroupComputeShuffle");
-    }
-
-    return supported;
+    return gpu && *gpu != VK_NULL_HANDLE
+        ? capabilityGraph_.QuerySupportedDeviceFeatures(*gpu)
+        : std::vector<std::string>{};
 }
 
 // ============================================================================
