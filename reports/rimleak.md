@@ -1,72 +1,87 @@
-# R464 — black crescent and white strip at the editor bowl rim
+# R464 Run 2 — pixel-footprint refinement for the editor rim
 
 ## LANDABLE NOW
 
-**Result:** fixed the editor's black rim crescent by giving procedural SDF rays enough iterations to reach the surface and requiring a tighter surface distance before declaring a hit. The captured white strip is produced by the configured cel-lighting band on a valid cylinder-wall normal; the sampled normal is finite and agrees with the analytic inward cylinder normal. No color clamp or image baseline change was made.
+**Result:** The editor crescent remains fixed without the run 1 global 1024-step / `5e-6` march. The tracer now uses a pixel-footprint trigger, a verified crossing bracket with one bisection and secant refinement, and a budget scaled to each ray's bound interval. Both analytic masks have zero disagreements, all guarded and unguarded hit/RGBA oracles agree, and the captured white strip remains a valid cel-lit cylinder normal.
 
-**Base:** `c0e23a1040357cdf20a337e2d9cbf4170759e70a` (`origin/wave/authoring-convergence`).
+**Status:** The mean-step gate is met: both scenes are below the original and substantially below run 1. Timestamped procedural dispatch is within a small margin of the original, but is still about 0.6% slower than run 1 in both scenes. Since the brief also asks for frame time well below run 1, that part of the cost gate remains a **STOP**; see below. The timestamps use the available non-conformant dzn test Vulkan implementation, so they are not a production-GPU claim.
 
-### Reproduction and fixture geometry
+**Base:** VIXEN lane tip before this run's changes `c0f76cb0f771cf58eb0592c22c7af9ff96f04ff2`, with current `origin/wave/authoring-convergence` already merged. Run 1 report tip: `bbe71c53`.
 
-The matched Release frame-5 capture is a 500×500 editor view. The fixture's actual recipe is `Box(1,1,1)`, `Sphere(0.6)` joined with `SmoothUnion(0.15)`, then `MathSub(Cylinder(halfHeight=1.5,radius=0.35))`. The sphere lies fully inside the box, so the visible opening is the vertical cylinder bore; it is not a spherical bowl. The bore extends beyond the slab's top and bottom faces.
+### Convergence strategy
 
-An analytic ray/box-minus-cylinder oracle classifies every opening pixel. Of the 7,820 pixels inside the projected bore outline, 4,858 first hit the inner cylinder wall and 2,962 really pass through the bore. Across all 250,000 pixels, the final analytic mask has zero hit/miss mismatches. The center pixel `(249,249)` is a true through-ray; the entire black disc is therefore not a defect. The ring of pixels that should see the inner wall is not supposed to be black.
+`VIXEN/shaders/TraceWorld.glsl` passes the existing vertical pixel-angle coefficient (`pc.raySizeCoef`) into procedural tracing. `SdfRecipes.glsl` sets `hitEpsilon = max(5e-6, t * pixelAngle * 0.25)`. This cone threshold starts refinement; it does not accept a hit. The tracer samples a one-pixel-forward probe span, fits a quadratic candidate for grazing crossings, and accepts only when an actual field sample establishes a positive-to-nonpositive bracket. A single bisection tightens that bracket before the secant estimate, after which the field gradient is evaluated at the refined point. If no bracket is found, conservative distance/grid marching continues.
 
-The source test records each ray's outcome, iteration count, exit reason, final SDF and finite-difference gradient, hit normal, ray interval, last step, and grid dimension. The editor fixture reports `gridDim=0`, so voxel/brick levels are not applicable. A separate gridded fixture (`gridDim=16`) checks occupancy culling against its unguarded render oracle.
+The loop budget is derived from the ray's clipped interval: `clamp(32 + ceil((tFar - tNear) * 160), 32, 2048)`. It is not a fixed 1024-step allowance. The editor capture's maximum was 474 steps; the heavier `twist_sphere` fixture reached 1004. No over-relaxed stepping was introduced.
 
-### Ray traces
+This design follows the established conservative-distance-step and pixel-cone ideas in Hart's sphere-tracing work; the bracketed root refinement here is an adaptation for this recipe marcher, not an implementation copied from that paper. The deformed-SDF context is also relevant to Seyb et al.'s nonlinear sphere-tracing work. [Hart, *Sphere Tracing*](https://graphics.stanford.edu/courses/cs348b-20-spring-content/uploads/hart.pdf), [Seyb et al., *Non-linear sphere tracing for rendering deformed signed distance fields*](https://cs.dartmouth.edu/~wjarosz/publications/seyb19nonlinear.html).
 
-Termination codes: `1` = within hit epsilon, `2` = marched beyond the ray's far bound, `3` = exhausted `MAX_STEPS`. Gradient values below are the unnormalized central-difference gradient; normals are separately normalized.
+### Analytic mask and guard results
 
-| Pixel / sample | Before | After | Interpretation |
-|---|---|---|---|
-| Left crescent `(210,260)` | miss, 128 steps, termination 3, `sdf=0.00149658322`, gradient `(0.00191387534,0,-0.00058054924)`, `gridDim=0`, voxel/brick N/A | hit, 312 steps, termination 1, `sdf=4.88758087e-6`, gradient `(0.0019223392,0,-0.000551849604)`, normal `(0.961178541,0,-0.275927365)`, `N·L=0.714243412`, `gridDim=0`, voxel/brick N/A | A real rim surface; previously stopped above it. |
-| Right crescent `(289,260)` | miss, 128 steps, termination 3, `sdf=0.00149661303`, gradient `(-0.00191387534,0,-0.00058054924)`, `gridDim=0`, voxel/brick N/A | hit, 312 steps, termination 1, `sdf=4.88758087e-6`, gradient `(-0.0019223392,0,-0.000551849604)`, normal `(-0.961178541,0,-0.275927365)`, `N·L=0`, `gridDim=0`, voxel/brick N/A | The opposite rim surface; ambient-only output is gray. |
-| Bore center `(249,249)` | miss, 13 steps, termination 2, `sdf=0.625681281`, gradient `(0,-0.00200009346,0)`, `gridDim=0`, voxel/brick N/A | miss, 13 steps, termination 2, `sdf=0.625681281`, gradient `(0,-0.00200009346,0)`, `gridDim=0`, voxel/brick N/A | Correct true escape through the long cutter. |
-| Bore wall `(243,228)` | hit, 41 steps, termination 1, `sdf=0.0009547472`, gradient `(0.000383943319,0,0.00196278095)`, normal `(0.191973552,0,0.981400132)`, `N·L=0`, `gridDim=0`, voxel/brick N/A | hit, 77 steps, termination 1, `sdf=4.29153442e-6`, gradient `(0.000383257866,0,0.00196292996)`, normal `(0.191629395,0,0.981467366)`, `N·L=0`, `gridDim=0`, voxel/brick N/A | Correct visible inner wall; the stricter epsilon improves the surface hit. |
-| Bore/rim wall `(241,184)` | hit, 6 steps, termination 1, `sdf=0.000956565142`, gradient `(0.000343352556,0,0.00197029114)`, normal `(0.171677604,0,0.985153198)`, `N·L=0`, `gridDim=0`, voxel/brick N/A | hit, 30 steps, termination 1, `sdf=4.14252281e-6`, gradient `(0.000342726707,0,0.00197038054)`, normal `(0.171366319,0,0.985207379)`, `N·L=0`, `gridDim=0`, voxel/brick N/A | Correct cylinder-wall hit. |
-| White strip `(206,255)` | hit, 104 steps, termination 1, `sdf=0.000997424126`, gradient `(0.00187602639,0,-0.000693112612)`, normal `(0.938027263,0,-0.346561521)`, `N·L=0.741657674`, `gridDim=0`, voxel/brick N/A | hit, 297 steps, termination 1, `sdf=4.88758087e-6`, gradient `(0.00188443065,0,-0.000669926405)`, normal `(0.94222939,0,-0.334968209)`, `N·L=0.737390399`, `gridDim=0`, voxel/brick N/A | Finite, analytic cylinder normal with a valid positive lighting response. |
+| Fixture | Pixels | Analytic surfaces | True escapes | Mask disagreements | Guard hit-bit / RGBA differences |
+|---|---:|---:|---:|---:|---:|
+| Editor box-with-cylinder-bore | 250,000 | 4,858 cylinder-wall pixels in the opening | 2,962 | **0** | **0 / 0** |
+| Gridded slab/sphere | 250,000 | 3,588 cavity-wall pixels in the opening | 11,158 | **0** | **0 / 0** |
 
-The baseline frame had 196 analytic mask disagreements (80 misses and 116 false hits). After the fix it has zero. The unguarded and guarded editor recipe have identical hit bits and RGBA for every pixel; this particular recipe does not dispatch an occupancy grid. In the separate `gridDim=16` slab/sphere fixture, guarded and unguarded hit bits and RGBA are also identical per pixel, with zero analytic mismatches. Its internal hit-record fields are not bitwise identical in 23,490 pixels: maximum `hitT` difference is `4.29e-6`, position difference `4.17e-6`, and normal difference `0.0009953`. The property compares the visible hit/miss and RGBA contract exactly and reports these small internal guarded-path differences rather than hiding them.
+The editor opening has 7,820 pixels. Its center ray is a genuine through-ray; only those analytically escaping rays remain background. The editor recipe has no occupancy grid (`gridDim=0`). The separate gridded fixture uses `gridDim=16` and provides the occupancy oracle.
 
-### Cause and fix
+Guarded and unguarded RGBA are identical in both fixtures. In the slab/sphere fixture, guarded and unguarded internal hit records differ in 8,218 pixels because occupancy skips can stop at a different point on the same surface; maximum `hitT` delta is `9.68e-5`, position delta `9.38e-5`, and normal component delta `0.08335` at `(402,359)`. These diagnostic differences do not change the exact hit-bit or RGBA contract.
 
-The editor recipe takes a long, grazing path near the bore rim. The former `MAX_STEPS=128` ended those rays while their SDF remained about `1.5e-3` from the surface; the `1e-3` hit epsilon was also broad enough to accept visibly offset points elsewhere. These misses produced exact background pixels `(4,4,12)`, not dark shading. This is a march budget / convergence tolerance issue, not a thin-wall voxel skip: the target recipe has no occupancy grid (`gridDim=0`).
+The lighting path was not changed. In this scene, white material, ambient `0.3`, and one white directional source with a cel band capped at `1.0` give a linear bound of `1.3`. The white-strip sample's normal is finite and has `N·L=0.737367`, consistent with the valid top cel band. Captures are RGBA8, so they establish the displayed peak of 255 but are not an HDR-buffer readback; the `1.3` ceiling is derived from the unchanged lighting equation and its configured maxima.
 
-`VIXEN/shaders/SdfRecipes.glsl` now uses `MAX_STEPS=1024` and `EPS=5e-6`; the existing distance-based conservative step calculation is unchanged. The focused editor oracle records a maximum of 867 steps, so the new cap covers this frame. Instrumentation is compiled only under `VIXEN_RIMLEAK_TRACE` and adds no production tracing writes.
+### Cost table
 
-The sampled white strip does not indicate a degenerate CSG-seam normal. Its measured gradient is nonzero and its normalized normal matches the expected inward-facing cylinder normal. Default lighting is white directional light with normalized direction `(1,1,-1)`, ambient `0.3`, cel direct-light band up to `1.0`, and white material. Per channel, ambient contributes at most `0.3` and the single direct light at most `1.0`; the linear upper bound is therefore `1.3`. The sample's `N·L=0.737390399` is in the top cel band. With the direct-to-RGBA8 display path and no HDR exposure override, this can reach display white (`255`) without exceeding the analytic lighting bound. The sampled dark straight boundary has `N·L=0` and is consistent with the cylinder's terminator/cel boundary. This rules out a bad normal at the inspected strip and boundary samples; it is not a claim that every possible hard-shadow edge was globally analyzed.
+GPU time is the median of three Vulkan timestamp-query samples around the procedural dispatch. Step distributions include every image pixel, including zero-step rays. Editor frames are 500×500; the heavier `twist_sphere` scene is 400×400. Active-ray counts are stable across all three versions: 142,524 / 250,000 editor pixels and 58,844 / 160,000 heavy-scene pixels.
 
-### Before / after images
+| Scene | Version | Dispatch ms | Mean steps | p50 | p99 | Max |
+|---|---|---:|---:|---:|---:|---:|
+| Editor frame 5 | Original (128, 1e-3) | 77.940200 | 4.422840 | 4 | 39 | 128 |
+| Editor frame 5 | Run 1 (1024, 5e-6) | 78.158520 | 6.125764 | 4 | 70 | 867 |
+| Editor frame 5 | Run 2 (cone, dynamic budget) | 78.751680 | 4.337028 | 4 | 37 | 474 |
+| Heavy `twist_sphere` | Original (128, 1e-3) | 48.743160 | 2.366450 | 0 | 23 | 128 |
+| Heavy `twist_sphere` | Run 1 (1024, 5e-6) | 49.231760 | 3.002594 | 0 | 33 | 1004 |
+| Heavy `twist_sphere` | Run 2 (cone, dynamic budget) | 49.505360 | 2.248256 | 0 | 18 | 1004 |
 
-The screenshots are the matched Release frame-5 capture, opened and inspected. The left crescent pixel `(210,260)` changes from background `(4,4,12)` to lit surface `(255,255,255)`. The opposite crescent pixel `(289,260)` changes from background to ambient gray `(77,77,77)`. The center escape remains background; the inside wall remains visible and gray. The white strip remains white and is consistent with its measured normal and lighting.
+Run 2 lowers mean steps by 1.9% / 5.0% versus the original and by 29.2% / 25.1% versus run 1 (editor / heavy). The editor p99 and max are also below run 1; the heavy-scene max remains 1004, equal to run 1. Dispatch timing is 1.04% / 1.56% above the original and 0.76% / 0.56% above run 1. The localized probe and fallback samples explain why fewer march iterations did not translate into lower measured dispatch time.
 
-| Before | After |
+The available runner set `VK_ICD_FILENAMES` to the dzn Vulkan ICD, which reports that it is not a conformant implementation and is for testing use only. This same test backend was used for all three measured versions. Treat the sub-2% differences as a small-margin test result, not a hardware performance claim.
+
+### Before and after captures
+
+The final native capture helper completed successfully for editor frames 5, 45, 75, and 105 and HUD frames 5, 45, and 75. The frame-5 images below were opened and visually inspected. The rim crescent is now surface-lit; the dark bore center remains a true escape, and the white strip remains the valid cel band described above.
+
+| Before | Run 2 after |
 |---|---|
-| ![Before editor capture frame 5](rimleak-visual/captures/before/editor/editor_capture_5.png) | ![After editor capture frame 5](rimleak-visual/captures/after/editor/editor_capture_5.png) |
+| ![Before editor capture frame 5](rimleak-visual/captures/before/editor/editor_capture_5.png) | ![Run 2 editor capture frame 5](rimleak-visual/captures/run2-after/editor/editor_capture_5.png) |
 
-Frame-5 comparison: 298 differing pixels, maximum channel delta 251, bounding box `x=102..397, y=97..377`; both images peak at channel value `255` (106 pure-white pixels before and after), within the 1.3 linear lighting bound and the RGBA8 display range. Frame 45 has 117 differing pixels. HUD frames 5, 45, and 75 are byte-identical. The standalone native capture helper later stalled after its fixed 180-second app timeout during undo/recompile; it had already emitted editor frames 5 and 45. Frames 75 and 105 were not produced by that standalone run. The RenderGraph offscreen editor capture producer and all R6 gates passed in CTest.
+Capture comparison: frame 5 has 299 differing pixels (maximum channel delta 251; bounding box `x=102..397, y=97..377`). Frames 45 and 105 each have 118 differing pixels. Frame 75 has 299. HUD frames 5, 45, and 75 are byte-identical. Both before and after captures peak at RGBA8 channel value 255.
 
 ### Witnesses
 
-- **22 content/codegen checks:** all passed: `accumulationconfig_check`, `appflow_check`, `callables_check`, `lightingconfig_check`, `lighttreebuffer_check`, `miningbeambuffer_check`, `octreeconfig_check`, `prevcameraconfig_check`, `probegridconfig_check`, `recipe_opcode_mirror_check`, `recipe_simd_check`, `recipeparams_check`, `reservoirconfig_check`, `reservoirrecord_check`, `sdf_core_kernels_check`, `shadowconfig_check`, `view_editor_layers_check`, `view_hud_blob_check`, `view_hud_check`, `view_hud_markup_check`, `view_hud_writer_check`, and `view_noun_enum_check`. `no_new_mutex_check` also passed.
-- **Release build:** full solution build passed after the clean-build staging fix.
-- **R464 focused properties:** 2/2 passed, including the 500×500 editor analytic mask and the gridded occupancy oracle.
-- **RenderGraph suite:** 1,346 selected, 0 failed, 11 skipped. This includes R6 editor state/toggle/undo/redo/save/back checks and the offscreen capture producer. Log: [`rendergraph-suite.log`](rimleak-visual/logs/rendergraph-suite.log).
-- **SVO suite:** 761 passed, 1 failed, and 8 skipped among 770 active tests; one additional test is disabled. The sole failure is the explicitly allowed pre-existing `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes` opcode-94 capability mismatch (`M4d_Output_IsPassthrough`, T-1449), matching the same-base result in [`carvefix.md`](carvefix.md). Required occupancy exactness (`RecipeOccupancy.GeneratedReductionMatchesOracleAndMeasuresCellWork`) and rvcompact identity (`DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels`) passed. Log: [`svo-suite.log`](rimleak-visual/logs/svo-suite.log).
-- **No-op rebuild:** passed; no compilation commands ran after the successful build.
-- **Kernel:** unchanged; kernel suite not applicable.
+- **Release build:** final quarter-trigger / one-pixel-probe source built successfully through the global queue.
+- **All 22 checks:** `accumulationconfig_check`, `appflow_check`, `callables_check`, `lightingconfig_check`, `lighttreebuffer_check`, `miningbeambuffer_check`, `octreeconfig_check`, `prevcameraconfig_check`, `probegridconfig_check`, `recipe_opcode_mirror_check`, `recipe_simd_check`, `recipeparams_check`, `reservoirconfig_check`, `reservoirrecord_check`, `sdf_core_kernels_check`, `shadowconfig_check`, `view_editor_layers_check`, `view_hud_blob_check`, `view_hud_check`, `view_hud_markup_check`, `view_hud_writer_check`, and `view_noun_enum_check`: all passed. `no_new_mutex_check` passed.
+- **Focused analytic oracles:** editor and gridded slab/sphere tests passed on the final source, with zero mask disagreements and zero guard-on/off hit-bit or RGBA differences.
+- **RenderGraph:** 1,346 selected, 0 failed; 260.06 seconds. This includes the unchanged R6 and editor gates.
+- **SVO:** 761 passed, 1 failed, 8 skipped, and 1 disabled. The only failure is `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, reporting `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` (opcode 94 / T-1449). It matches the accepted same-base failure in run 1 and [`carvefix.md`](carvefix.md). The occupancy reduction test (`RecipeOccupancy.GeneratedReductionMatchesOracleAndMeasuresCellWork`) and rvcompact test (`DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels`) both passed.
+- **Codegen:** all 22 VIXEN checks passed. The assigned kernel worktree's CodegenTool restore/build and opcode-mirror `--check` also passed; there were no kernel source changes. VIXEN has no `tools/check-content-codegen.sh`, so that wrapper check is unavailable here.
+- **No-op rebuild:** passed on the final source; all targets were already built.
+- **R463/R465 editor responsiveness:** reviewed; this change leaves editor interaction gates and rendering cadence untouched. Timestamp instrumentation is confined to the RenderGraph test harness.
 
-### Recovery findings and STOPs
+### STOPs
 
-- Initial clean Release build command: `bash /home/liory/.local/bin/with-test-lock.sh --agent rimleak --resource build --label rimleak:build-release-base -- cmake --build VIXEN/build --parallel 4`. It failed with exit 2 before semantic edits because `vixen_stage_assets` touched a stamp before creating its parent directory. The first-red log is `/home/liory/.local/state/undertow/undertow-box-logs/1791568872-build-rimleak:build-release-base.log`. Added the missing `cmake -E make_directory` in `VIXEN/cmake/VixenAssets.cmake`, reconfigured and rebuilt cleanly; full Release build then passed. This provisioning repair is included and independently verified.
-- One queued build attempt used `bash /home/liory/.local/bin/with-test-lock.sh --agent rimleak --resource build --label rimleak:build-balanced-hit-tolerance -- cmake --build VIXEN/build --target test_baked_vs_virtual_parity --parallel 4` and failed before admission with exit 2 because the global history summarizer's `.pending` file was absent (`awk: fatal: cannot open file ...undertow-box-history-summary.log.pending`). Queue status was available; retrying the same target as `rimleak:build-balanced-hit-tolerance-retry` passed. This is a queue recovery finding, not a product red.
-- The after-capture command was `bash /home/liory/.local/bin/with-test-lock.sh --agent rimleak --resource test --label rimleak:capture-after -- env DISPLAY=:0 VIXEN_CACHE_DIR=/home/liory/projects/VBVS--VIXEN/.claude-worktrees/rimleak/VIXEN/.tmp/cache-rimleak-after bash tools/run-vixen-windowed-captures.sh VIXEN/build/binaries VIXEN VIXEN/build/binaries vixen_editor /home/liory/projects/VBVS--VIXEN/.claude-worktrees/rimleak/reports/rimleak-visual/captures/after`. It exited 75 with `STALL_KILLED` after 185 seconds. The helper's fixed timeout prevented later frames as described above. Required frame-5 image evidence, frame-45 output, and the full CTest capture/R6 gates are available. No baseline image was re-recorded.
-- **STOPs:** none. No new abstraction or accuracy/performance tradeoff was required; the existing distance-based step sequence was retained. No kernel edit was needed.
+- **Performance timing portion:** measured dispatch time is within 1.6% of the original but is not below run 1, so the brief's full “well below run 1” timing condition is not demonstrated. Mean steps are below the original and 25–29% below run 1, but the extra local field probes offset that work reduction in timestamp measurements. Further probe-cost reduction or a conformant GPU timing witness is needed before claiming the strict timing gate is cleared.
+- No accuracy, analytic-mask, background-escape, lighting-bound, guard-parity, R6, or editor-gate STOP remains.
 
-### SPT DISPOSITION
+### Recovery notes
 
-Committed `.spt-proposals/rimleak.jsonl` with the consolidation issue proposals listed below. Each entry identifies an incidental facade/tooling gap exercised by this lane, including the clean-build staging setup and the ray-trace probe wiring needed to get useful per-pixel evidence.
+- `codegraph explore` was run before source searches; the VIXEN worktree had no CodeGraph index, so source inspection continued with the assigned files.
+- The VIXEN `tools/check-content-codegen.sh` path is absent (exit 127). The documented per-target CMake checks and the kernel CodegenTool opcode-mirror check were run and passed instead.
+- A queued build admission earlier encountered a missing history summarizer `.pending` file. The targeted command passed on queue retry; the issue is recorded in the SPT inbox. This was queue bookkeeping, not a product failure.
+- The final native capture command exited 0 and wrote all requested final frames. No baseline image was re-recorded.
+
+### SPT disposition
+
+The committed `.spt-proposals/rimleak.jsonl` inbox contains the lane's consolidation proposals.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
@@ -75,3 +90,6 @@ Committed `.spt-proposals/rimleak.jsonl` with the consolidation issue proposals 
 - proposed: Recover missing pending history files before queue admission
 - proposed: Keep native capture witnesses alive through shader recompiles
 - proposed: Provide a reusable SDF ray trace probe contract
+- proposed: Route the content-codegen check to the active repository
+- proposed: Keep long CTest progress streams from closing queued witnesses
+- proposed: Default the configured VIXEN FetchContent cache for queued builds

@@ -210,6 +210,42 @@ struct SdfTraceCpu {
 };
 static_assert(sizeof(SdfTraceCpu) == 64, "SdfTraceCpu must match the test-only 16-word shader record");
 
+struct SdfStepDistribution {
+    double mean = 0.0;
+    uint32_t p50 = 0;
+    uint32_t p99 = 0;
+    uint32_t maximum = 0;
+    size_t activePixels = 0;
+};
+
+SdfStepDistribution SummarizeSdfSteps(const std::vector<SdfTraceCpu>& traces) {
+    SdfStepDistribution result;
+    if (traces.empty()) return result;
+    std::vector<uint32_t> sorted;
+    sorted.reserve(traces.size());
+    uint64_t total = 0;
+    for (const SdfTraceCpu& trace : traces) {
+        sorted.push_back(trace.steps);
+        total += trace.steps;
+        result.maximum = std::max(result.maximum, trace.steps);
+        if (trace.steps != 0u) ++result.activePixels;
+    }
+    std::sort(sorted.begin(), sorted.end());
+    result.mean = static_cast<double>(total) / static_cast<double>(sorted.size());
+    result.p50 = sorted[((sorted.size() - 1u) * 50u) / 100u];
+    result.p99 = sorted[((sorted.size() - 1u) * 99u) / 100u];
+    return result;
+}
+
+void PrintRimleakCost(const char* scene, const char* version,
+                      const std::vector<SdfTraceCpu>& traces, double gpuMs) {
+    const SdfStepDistribution stats = SummarizeSdfSteps(traces);
+    std::printf("[RIMLEAK_COST] scene=%s version=%s gpu_ms=%.6f pixels=%zu active=%zu "
+                "mean_steps=%.6f p50=%u p99=%u max=%u\n",
+                scene, version, gpuMs, traces.size(), stats.activePixels,
+                stats.mean, stats.p50, stats.p99, stats.maximum);
+}
+
 std::string InjectRimleakTraceSupport(std::string source) {
     constexpr const char* kSceneBindingsDirective = "\n#include \"SceneBindings.glsl\"";
     constexpr const char* kDeclaration = R"glsl(
@@ -748,6 +784,8 @@ protected:
     VkQueue          queue_          = VK_NULL_HANDLE;
     VkCommandPool    commandPool_    = VK_NULL_HANDLE;
     uint32_t         queueFamily_    = 0;
+    uint32_t         timestampValidBits_ = 0;
+    double           timestampPeriodNs_ = 0.0;
     bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
@@ -814,9 +852,17 @@ protected:
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCnt, qfs.data());
         bool found = false;
         for (uint32_t i = 0; i < qfCnt; ++i) {
-            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { queueFamily_ = i; found = true; break; }
+            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                queueFamily_ = i;
+                timestampValidBits_ = qfs[i].timestampValidBits;
+                found = true;
+                break;
+            }
         }
         ASSERT_TRUE(found);
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physicalDevice_, &properties);
+        timestampPeriodNs_ = properties.limits.timestampPeriod;
         float prio = 1.0f;
         VkDeviceQueueCreateInfo qi{}; qi.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         qi.queueFamilyIndex = queueFamily_; qi.queueCount = 1; qi.pQueuePriorities = &prio;
@@ -922,7 +968,8 @@ protected:
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
                       std::vector<HitRecordCpu>* outHitRecords = nullptr,
-                      std::vector<SdfTraceCpu>* outSdfTraces = nullptr) {
+                      std::vector<SdfTraceCpu>* outSdfTraces = nullptr,
+                      double* outGpuMs = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         VkBuffer traceBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE;
@@ -1094,6 +1141,18 @@ protected:
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
+        VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
+        if (outGpuMs != nullptr) {
+            ASSERT_GT(timestampValidBits_, 0u)
+                << "selected Vulkan compute queue does not expose timestamp queries";
+            VkQueryPoolCreateInfo queryInfo{};
+            queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryInfo.queryCount = 2;
+            ASSERT_EQ(vkCreateQueryPool(logicalDevice_, &queryInfo, nullptr,
+                                        &timestampQueryPool), VK_SUCCESS);
+        }
+
         VkCommandBufferAllocateInfo cbai{}; cbai.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         cbai.commandPool=commandPool_; cbai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; cbai.commandBufferCount=1;
         VkCommandBuffer cmd=VK_NULL_HANDLE; ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_,&cbai,&cmd), VK_SUCCESS);
@@ -1115,7 +1174,15 @@ protected:
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+        if (timestampQueryPool != VK_NULL_HANDLE) {
+            vkCmdResetQueryPool(cmd, timestampQueryPool, 0, 2);
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                timestampQueryPool, 0);
+        }
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
+        if (timestampQueryPool != VK_NULL_HANDLE)
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                timestampQueryPool, 1);
 
         // KI-032 fix: barrier the HitRecord SSBO (shader write -> host read) before the host
         // reads it below -- same pattern test_recipe_pool_render.cpp's identical fix uses.
@@ -1160,6 +1227,17 @@ protected:
         ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
         const auto t1 = std::chrono::steady_clock::now();
         ms = double(std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count());
+        if (timestampQueryPool != VK_NULL_HANDLE) {
+            uint64_t timestamps[2]{};
+            ASSERT_EQ(vkGetQueryPoolResults(logicalDevice_, timestampQueryPool, 0, 2,
+                        sizeof(timestamps), timestamps, sizeof(uint64_t),
+                        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), VK_SUCCESS);
+            const uint64_t validMask = timestampValidBits_ >= 64u
+                ? std::numeric_limits<uint64_t>::max()
+                : ((uint64_t(1) << timestampValidBits_) - 1u);
+            const uint64_t elapsedTicks = (timestamps[1] - timestamps[0]) & validMask;
+            *outGpuMs = static_cast<double>(elapsedTicks) * timestampPeriodNs_ / 1.0e6;
+        }
 
         void* mapped=nullptr; ASSERT_EQ(vkMapMemory(logicalDevice_,rbMem,0,rbSz,0,&mapped), VK_SUCCESS);
         rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
@@ -1229,6 +1307,8 @@ protected:
         vkDestroyBuffer(logicalDevice_,dummyAccum,nullptr);      vkFreeMemory(logicalDevice_,dAccumMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyPrevCam,nullptr);    vkFreeMemory(logicalDevice_,dPrevCamMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummySkipMask,nullptr);   vkFreeMemory(logicalDevice_,dSkipMaskMem,nullptr);
+        if (timestampQueryPool != VK_NULL_HANDLE)
+            vkDestroyQueryPool(logicalDevice_, timestampQueryPool, nullptr);
     }
 
     // Coverage mask + count. KI-032 fix: a pixel counts as "hit" using HitRecordBuffer's
@@ -1329,7 +1409,8 @@ protected:
     void RenderVirtual(const ParityRecipe& r, std::vector<uint8_t>& rgba, uint32_t kW, uint32_t kH,
                        const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords,
                        bool useOccupancyGrid = true,
-                       std::vector<SdfTraceCpu>* outSdfTraces = nullptr) {
+                       std::vector<SdfTraceCpu>* outSdfTraces = nullptr,
+                       double* outGpuMs = nullptr) {
         using C = BodyOctreeSceneNodeConfig;
 
         Vixen::SVO::RecipeRegistry registry;
@@ -1419,7 +1500,7 @@ protected:
             buf(C::OCTREE_SDF_BUFFER_Slot::index),
             buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
             buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index), buf(C::OCTREE_OCCUPANCYGRID_BUFFER_Slot::index),
-            pc, kW, kH, rgba, ms, &hitRecords, outSdfTraces));
+            pc, kW, kH, rgba, ms, &hitRecords, outSdfTraces, outGpuMs));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -1564,8 +1645,9 @@ TEST_F(BakedVsVirtualParityTest, RimleakSlabSphereMatchesAnalyticAndOccupancyOra
         cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
         cameraDistance * std::sin(kCameraPitch),
         cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
-    const PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
-                                         cameraBounds.center, kW, kH, 1);
+    PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
+                                  cameraBounds.center, kW, kH, 1);
+    pc.raySizeCoef = 2.0f * std::tan(glm::radians(pc.fov * 0.5f) / float(kH));
     std::vector<uint8_t> guardedRgba, unguardedRgba;
     std::vector<HitRecordCpu> guardedHits, unguardedHits;
     std::vector<SdfTraceCpu> traces, unguardedTraces;
@@ -1783,6 +1865,10 @@ TEST_F(BakedVsVirtualParityTest, RimleakSlabSphereMatchesAnalyticAndOccupancyOra
 
 TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle) {
     constexpr uint32_t kW = 500, kH = 500;
+    const char* benchmarkMode = std::getenv("VIXEN_RIMLEAK_BENCHMARK");
+    const bool benchmark = benchmarkMode != nullptr &&
+        (std::strcmp(benchmarkMode, "baseline") == 0 ||
+         std::strcmp(benchmarkMode, "after") == 0);
     const glm::vec3 halfExtents(1.0f);
     constexpr float kSphereRadius = 0.6f;
     constexpr float kSmoothUnionRadius = 0.15f;
@@ -1826,14 +1912,18 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
         cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
         cameraDistance * std::sin(kCameraPitch),
         cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
-    const PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
-                                         cameraBounds.center, kW, kH, 1);
+    PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
+                                  cameraBounds.center, kW, kH, 1);
+    // Match RaySizeCoefNode's vertical pixel cone: 2*tan(halfFov/screenHeight).
+    pc.raySizeCoef = 2.0f * std::tan(glm::radians(pc.fov * 0.5f) / float(kH));
 
     std::vector<uint8_t> guardedRgba, unguardedRgba;
     std::vector<HitRecordCpu> guardedHits, unguardedHits;
     std::vector<SdfTraceCpu> traces, unguardedTraces;
+    double editorGpuMs = -1.0;
     ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, guardedRgba, kW, kH, pc, guardedHits,
-                                          /*useOccupancyGrid=*/true, &traces));
+                                          /*useOccupancyGrid=*/true, &traces,
+                                          benchmark ? &editorGpuMs : nullptr));
     ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, unguardedRgba, kW, kH, pc, unguardedHits,
                                           /*useOccupancyGrid=*/false, &unguardedTraces));
 
@@ -2017,6 +2107,34 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
         << "occupancy-guarded and guard-disabled rendered RGBA must agree on every pixel";
     EXPECT_EQ(hitRecordFieldDifferences, 0u)
         << "guarded and unguarded observable hit fields must agree; this sample has no grid";
+
+    if (benchmark) {
+        PrintRimleakCost("editor-frame5", "run2-cone", traces, editorGpuMs);
+
+        const auto corpus = BuildCorpus();
+        const ParityRecipe* heavyRecipe = nullptr;
+        for (const ParityRecipe& candidate : corpus) {
+            if (candidate.name == "twist_sphere") {
+                heavyRecipe = &candidate;
+                break;
+            }
+        }
+        ASSERT_NE(heavyRecipe, nullptr);
+        constexpr uint32_t kHeavyW = 400, kHeavyH = 400;
+        const float heavyDistance = 2.2f * kWorldGridSize;
+        PushConstants heavyPc = MakeCamera(
+            heavyRecipe->worldTarget + glm::vec3(0.0f, 0.0f, heavyDistance),
+            heavyRecipe->worldTarget, kHeavyW, kHeavyH, 1);
+        heavyPc.raySizeCoef = 2.0f * std::tan(glm::radians(heavyPc.fov * 0.5f) /
+                                              float(kHeavyH));
+        std::vector<uint8_t> heavyRgba;
+        std::vector<HitRecordCpu> heavyHits;
+        std::vector<SdfTraceCpu> heavyTraces;
+        double heavyGpuMs = -1.0;
+        ASSERT_NO_FATAL_FAILURE(RenderVirtual(*heavyRecipe, heavyRgba, kHeavyW, kHeavyH,
+            heavyPc, heavyHits, true, &heavyTraces, &heavyGpuMs));
+        PrintRimleakCost("heavy-twist-sphere", "run2-cone", heavyTraces, heavyGpuMs);
+    }
 }
 
 TEST(ParityCorpusTest, ReadParamSnapshotsFollowProgramCoordinateSpaces) {

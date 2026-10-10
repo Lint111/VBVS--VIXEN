@@ -138,8 +138,18 @@ float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, flo
     return occupancyGrid[idx];
 }
 
+vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
+    const float h = 1e-3;
+    vec2 e = vec2(h, 0.0);
+    return vec3(
+        evalRecipeField(recipeId, p + e.xyy, params) - evalRecipeField(recipeId, p - e.xyy, params),
+        evalRecipeField(recipeId, p + e.yxy, params) - evalRecipeField(recipeId, p - e.yxy, params),
+        evalRecipeField(recipeId, p + e.yyx, params) - evalRecipeField(recipeId, p - e.yyx, params));
+}
+
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
-                         vec3 ro, vec3 rd, float conservativeStepScale, float params[6],
+                         vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
+                         float params[6],
                          out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -174,8 +184,14 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     getRecipeOccupancyGrid(recipeId, gridOffset, gridDim, gridAabbMin, gridCellSize);
 
     float t = tNear;
-    const int   MAX_STEPS = 1024;
-    const float EPS       = 5e-6;
+    const float EPS_MIN = 5e-6;
+    const float CONE_EPSILON_SCALE = 0.25;
+    const float CONE_PROBE_SCALE = 1.0;
+    float raySpan = max(tFar - tNear, 0.0);
+    // Scale the cap with the actual ray/bound interval. Ordinary editor rays stay well
+    // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
+    int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
+    float lastRefinementT = -1e30;
 #ifdef VIXEN_RIMLEAK_TRACE
     float traceLastD = 1e30;
     float traceLastT = tNear;
@@ -183,7 +199,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     float traceLastGridBound = 0.0;
     float traceLastStep = 0.0;
 #endif
-    for (int i = 0; i < MAX_STEPS; ++i) {
+    for (int i = 0; i < stepBudget; ++i) {
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p, params);
@@ -192,21 +208,107 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         traceLastT = t;
         traceLastP = p;
 #endif
-        if (d < EPS) {
-            // Central-difference gradient — mirrors sdfGradient's h/EPS coincidence above.
-            const float h = 1e-3;
-            vec2 e = vec2(h, 0.0);
-            float gx = evalRecipeField(recipeId, p + e.xyy, params) - evalRecipeField(recipeId, p - e.xyy, params);
-            float gy = evalRecipeField(recipeId, p + e.yxy, params) - evalRecipeField(recipeId, p - e.yxy, params);
-            float gz = evalRecipeField(recipeId, p + e.yyx, params) - evalRecipeField(recipeId, p - e.yyx, params);
-            hitNormal = normalize(vec3(gx, gy, gz));
+        float hitEpsilon = max(EPS_MIN, max(t, 0.0) * max(pixelAngle, 0.0) *
+                                          CONE_EPSILON_SCALE);
+        if (d <= EPS_MIN) {
+            vec3 gradient = recipeFieldGradient(recipeId, p, params);
+            hitNormal = normalize(gradient);
             hitT      = t;
 #ifdef VIXEN_RIMLEAK_TRACE
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u, recipeId,
-                                  gridDim, t, d, p, vec3(gx, gy, gz), traceLastGridBound,
+                                  gridDim, t, d, p, gradient, traceLastGridBound,
                                   tNear, tFar, traceLastStep);
 #endif
             return true;
+        }
+        if (d <= hitEpsilon) {
+            // The cone starts refinement but does not certify a hit. Fit the field along
+            // the ray over one pixel footprint; for a grazing ray, the quadratic gives
+            // a useful forward root estimate where a first-order Newton step is ill-conditioned.
+            float probeSpan = max(max(t, 0.0) * max(pixelAngle, 0.0) *
+                                  CONE_PROBE_SCALE, 1e-3);
+            if (t - lastRefinementT >= probeSpan) {
+                lastRefinementT = t;
+                float loT = t;
+                float loD = d;
+                float hiT = t;
+                float hiD = d;
+                bool bracketFound = false;
+                float beforeT = t - probeSpan;
+                float afterT = t + probeSpan;
+                if (beforeT >= tNear && afterT <= tFar) {
+                    float beforeD = evalRecipeField(recipeId, ro + rd * beforeT, params);
+                    float afterD = evalRecipeField(recipeId, ro + rd * afterT, params);
+                    float raySlope = (afterD - beforeD) / (2.0 * probeSpan);
+                    float rayCurvature = (afterD - 2.0 * d + beforeD) /
+                                         (probeSpan * probeSpan);
+                    if (rayCurvature > 1e-8 && raySlope < 0.0) {
+                        float discriminant = raySlope * raySlope -
+                                             2.0 * rayCurvature * d;
+                        if (discriminant >= 0.0) {
+                            float rootOffset = (-raySlope - sqrt(discriminant)) /
+                                               rayCurvature;
+                            if (rootOffset > 0.0 && rootOffset <= 2.0 * probeSpan) {
+                                hiT = t + rootOffset;
+                                hiD = evalRecipeField(recipeId, ro + rd * hiT, params);
+                                if (hiD <= 0.0) {
+                                    bracketFound = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!bracketFound) {
+                    // Domain modifiers can depart from the quadratic model. Scan a bounded
+                    // two-pixel interval for a real sign change before falling back to the
+                    // conservative march; this catches a narrow grazing chord without
+                    // turning a nearby escape ray into a hit.
+                    for (int scan = 1; scan <= 4; ++scan) {
+                        float sampleT = t + probeSpan * (0.5 * float(scan));
+                        if (sampleT > tFar) break;
+                        float sampleD = evalRecipeField(recipeId, ro + rd * sampleT, params);
+                        if (sampleD <= 0.0) {
+                            hiT = sampleT;
+                            hiD = sampleD;
+                            bracketFound = true;
+                            break;
+                        }
+                        loT = sampleT;
+                        loD = sampleD;
+                    }
+                }
+                if (bracketFound) {
+                    // Tighten the verified sign bracket before the final secant estimate;
+                    // recipe gradients can change quickly at a CSG rim, so a coarse bracket
+                    // would make guarded and unguarded paths report different normals.
+                    for (int refine = 0; refine < 1; ++refine) {
+                        float midT = 0.5 * (loT + hiT);
+                        float midD = evalRecipeField(recipeId, ro + rd * midT, params);
+                        if (midD > 0.0) {
+                            loT = midT;
+                            loD = midD;
+                        } else {
+                            hiT = midT;
+                            hiD = midD;
+                        }
+                    }
+                    float rootFraction = clamp(loD / (loD - hiD), 0.0, 1.0);
+                    t = mix(loT, hiT, rootFraction);
+                    p = ro + rd * t;
+                    vec3 gradient = recipeFieldGradient(recipeId, p, params);
+                    hitNormal = normalize(gradient);
+                    hitT = t;
+#ifdef VIXEN_RIMLEAK_TRACE
+                    traceLastT = t;
+                    traceLastD = evalRecipeField(recipeId, p, params);
+                    traceLastP = p;
+                    rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u,
+                        recipeId, gridDim, t, traceLastD, p, gradient, traceLastGridBound,
+                        tNear, tFar, traceLastStep);
+#endif
+                    return true;
+                }
+            }
         }
         // Task 13 empty-space skip: the coarse grid's stored value at p is a conservative
         // LOWER bound on the true field magnitude anywhere in that cell (RecipeOccupancy.h's
@@ -244,12 +346,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         t += step;
         if (t > tFar) {
 #ifdef VIXEN_RIMLEAK_TRACE
-            const float h = 1e-3;
-            vec2 e = vec2(h, 0.0);
-            vec3 gradient = vec3(
-                evalRecipeField(recipeId, traceLastP + e.xyy, params) - evalRecipeField(recipeId, traceLastP - e.xyy, params),
-                evalRecipeField(recipeId, traceLastP + e.yxy, params) - evalRecipeField(recipeId, traceLastP - e.yxy, params),
-                evalRecipeField(recipeId, traceLastP + e.yyx, params) - evalRecipeField(recipeId, traceLastP - e.yyx, params));
+            vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
                                   gridDim, traceLastT, traceLastD, traceLastP, gradient,
                                   traceLastGridBound, tNear, tFar, traceLastStep);
@@ -258,12 +355,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         }
     }
 #ifdef VIXEN_RIMLEAK_TRACE
-    const float h = 1e-3;
-    vec2 e = vec2(h, 0.0);
-    vec3 gradient = vec3(
-        evalRecipeField(recipeId, traceLastP + e.xyy, params) - evalRecipeField(recipeId, traceLastP - e.xyy, params),
-        evalRecipeField(recipeId, traceLastP + e.yxy, params) - evalRecipeField(recipeId, traceLastP - e.yxy, params),
-        evalRecipeField(recipeId, traceLastP + e.yyx, params) - evalRecipeField(recipeId, traceLastP - e.yyx, params));
+    vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
     rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 3u, recipeId, gridDim,
                           traceLastT, traceLastD, traceLastP, gradient, traceLastGridBound,
                           tNear, tFar, traceLastStep);
