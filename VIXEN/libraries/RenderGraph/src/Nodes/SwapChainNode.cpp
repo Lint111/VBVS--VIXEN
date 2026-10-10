@@ -4,6 +4,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
 #include "VulkanDevice.h"
+#include "ConfiguredOptionalPath.h"
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "Message.h"
@@ -638,18 +639,20 @@ void SwapChainNode::CreatePerImageSyncResources() {
 
     // Per-IMAGE present fences (VK_EXT_swapchain_maintenance1). Left empty if unavailable;
     // SwapChainNode/PresentNode skip fence logic when the array is empty.
-    if (GetDevice()->GetCapabilityGraph().ResolveOptionalPath("SwapchainMaintenance1") ==
-        Vixen::CapabilityPath::CapabilityEnabled) {
-        presentFences.resize(imageCount);
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // start signaled (no wait on first use)
-        for (uint32_t i = 0; i < imageCount; ++i) {
-            if (vkCreateFence(device, &fenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
-                throw std::runtime_error("SwapChainNode: failed to create present fence for image " + std::to_string(i));
+    Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::SwapchainMaintenance1>(
+        GetDevice()->GetCapabilityGraph(), true,
+        [&] {
+            presentFences.resize(imageCount);
+            VkFenceCreateInfo fenceInfo{};
+            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // start signaled (no wait on first use)
+            for (uint32_t i = 0; i < imageCount; ++i) {
+                if (vkCreateFence(device, &fenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("SwapChainNode: failed to create present fence for image " + std::to_string(i));
+                }
             }
-        }
-    }
+        },
+        [] {});
 
     // Per-image in-flight fence tracking: one non-owning slot per image, reset to VK_NULL_HANDLE
     // (image not yet used). Sized here so it always matches the actual swapchain image count.

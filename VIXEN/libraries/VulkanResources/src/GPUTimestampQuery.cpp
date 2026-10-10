@@ -1,5 +1,6 @@
 #include "GPUTimestampQuery.h"
 #include "VulkanDevice.h"
+#include "ConfiguredOptionalPath.h"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
@@ -105,10 +106,10 @@ void GPUTimestampQuery::CreateQueryPools() {
         // the hostQueryReset feature (core Vulkan 1.2, enabled in VulkanDevice when supported). When
         // the GPU lacks it, we skip this and rely on the GPU-side vkCmdResetQueryPool path only — the
         // pre-existing behaviour, so this is a strict improvement.
-        if (device_->GetCapabilityGraph().ResolveOptionalPath("DeviceFeature:hostQueryReset") ==
-            Vixen::CapabilityPath::CapabilityEnabled) {
-            vkResetQueryPool(device_->device, frame.timestampPool, 0, maxTimestamps_);
-        }
+        WithConfiguredOptionalPath<BuildCapabilityId::HostQueryReset>(
+            device_->GetCapabilityGraph(), true,
+            [&] { vkResetQueryPool(device_->device, frame.timestampPool, 0, maxTimestamps_); },
+            [] {});
     }
 }
 
