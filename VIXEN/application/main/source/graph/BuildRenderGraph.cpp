@@ -41,7 +41,8 @@
 #include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
 #include "merged/SpatialReuseShade-SDI.g.h"
 #include "merged/ExposureTonemap-SDI.g.h"
-#include "merged/ExposureMeter-SDI.h"
+#include "merged/ExposureMeter-SDI.g.h"
+#include "merged/ExposureReduce-SDI.g.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.g.h"
 #include "merged/ShadowRayTrace-SDI.g.h"
@@ -600,8 +601,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Runs AFTER DirectLightingNode's own dispatch (RIS + temporal reservoir reuse only,
     // no image writes — see DirectLighting.comp's own file header for why M5 split it
     // again), reading back DirectLighting.comp's post-temporal reservoir writes for the
-    // spatial-reuse neighbor search, then shading + owning outputImage/historyImage/
-    // worldPosHistoryImage (moved here from DirectLightingNode). Own shaderLib/gatherer/
+    // spatial-reuse neighbor search, then shading and writing the scene radiance plus distinct
+    // current history images. Own shaderLib/gatherer/
     // pushConstantGatherer/descSet/pipeline quintet — same "second compiled shader needs
     // its own instances" rationale as directLighting*'s own quintet (see that block's
     // comment above).
@@ -620,12 +621,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle exposureNode{};
     NodeHandle exposureMeterShaderLib{};
     NodeHandle exposureMeterNode{};
+    NodeHandle exposureReduceShaderLib{};
+    NodeHandle exposureReduceNode{};
     NodeHandle exposureMeterBuffer{};
     if (hdrExposureEnabled) {
         exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
         exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
         exposureMeterShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_meter_shader_lib");
         exposureMeterNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_meter");
+        exposureReduceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_reduce_shader_lib");
+        exposureReduceNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_reduce");
         exposureMeterBuffer = renderGraph->AddNode<StorageBufferNodeType>("exposure_meter_buffer");
     }
 
@@ -1449,6 +1454,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
+    const VkExtent2D renderExtent = RenderTargetNode::ComputeFollowExtent({width, height}, renderScale);
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
@@ -1501,8 +1507,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     if (hdrExposureEnabled) {
+        const uint32_t exposureTilesX = (renderExtent.width + 15u) / 16u;
+        const uint32_t exposureTilesY = (renderExtent.height + 15u) / 16u;
+        const uint64_t exposureMeterBytes = 8ull + 8ull * exposureTilesX * exposureTilesY;
         static_cast<StorageBufferNode*>(renderGraph->GetInstance(exposureMeterBuffer))
-            ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 4u);
+            ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+                           static_cast<uint32_t>(exposureMeterBytes));
     }
 
     // Sampled Lighting Inc3 M4: reservoir ping-pong SSBOs sized to sizeof(Vixen::Gpu::
@@ -1651,12 +1661,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         modeFinalStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
-    // Raster-proxy B1 M4: occlusion-probe parameters. Depth/tile extents are fixed at
-    // graph build from the same width*renderScale derivation the lighting dispatch dims
-    // use (a live window resize rebuilds the graph; renderScale is process-fixed).
+    // Raster-proxy B1 M4: occlusion-probe parameters. Depth/tile extents use the same
+    // canonical ceil-rounded render extent as the lighting dispatches (a live window resize
+    // rebuilds the graph; renderScale is process-fixed).
     if (b1OcclusionCullEnabled) {
-        const uint32_t b1SrcW = static_cast<uint32_t>(width * renderScale);
-        const uint32_t b1SrcH = static_cast<uint32_t>(height * renderScale);
+        const uint32_t b1SrcW = renderExtent.width;
+        const uint32_t b1SrcH = renderExtent.height;
         const uint32_t b1TilesX = (b1SrcW + 15u) / 16u;   // HiZDownsampleMirror::HiZTileCount
         const uint32_t b1TilesY = (b1SrcH + 15u) / 16u;
         b1SrcWidth_  = b1SrcW;
@@ -2417,6 +2427,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .EnableCaching(&shaderCacheManager_);
             return builder;
         });
+    auto exposureReduceFamily = makeLightingFamily("ExposureReduce.comp", "ExposureReduce");
+    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureReduceShaderLib))
+        ->RegisterShaderBuilder([this, exposureReduceFamily](int vulkanVer, int spirvVer) {
+            auto builder = exposureReduceFamily->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
 
     // W1a: the ProbeUpdate split's three compiled programs, each family-registered
     // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
@@ -2761,9 +2785,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (found via a byte-identity gate diff — a tight 32x32 mismatched block at the render
     // target's right/bottom edge, exactly one 8px workgroup row/column wide at 500x500).
     uint32_t directLightingDispatchX =
-        (static_cast<uint32_t>(width * renderScale) + 7) / 8;
+        (renderExtent.width + 7) / 8;
     uint32_t directLightingDispatchY =
-        (static_cast<uint32_t>(height * renderScale) + 7) / 8;
+        (renderExtent.height + 7) / 8;
     auto* directLighting = static_cast<ComputeStageNode*>(renderGraph->GetInstance(directLightingNode));
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, directLightingDispatchX);
@@ -2785,8 +2809,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Dispatches unconditionally — the march always produces records, the
     // shade pass always consumes bits; there is no off-path.
     {
-        const uint32_t wavePixelsX = static_cast<uint32_t>(width * renderScale);
-        const uint32_t wavePixelsY = static_cast<uint32_t>(height * renderScale);
+        const uint32_t wavePixelsX = renderExtent.width;
+        const uint32_t wavePixelsY = renderExtent.height;
         const uint32_t linearWaveDispatchX =
             (wavePixelsX * wavePixelsY + 63u) / 64u;
         const uint32_t waveDispatchX = linearWaveDispatchX;
@@ -8776,6 +8800,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     sceneProviders.Provide("sceneRadianceHistory", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
     if (hdrExposureEnabled) {
         sceneProviders.Provide("result", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
@@ -9032,6 +9058,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     sceneProviders.Provide("worldPosHistoryImage", worldPosHistoryNode,
                            WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
                            SlotRole::Execute);
+    sceneProviders.Provide("worldPosHistoryOutput", worldPosHistoryNode,
+                           WorldPosHistoryNodeConfig::CURRENT_WORLDPOS_IMAGE_VIEW,
+                           SlotRole::Execute);
     sceneProviders.Provide("ReservoirConfigSSBO", reservoirConfigNode,
                            ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
@@ -9144,9 +9173,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // registry DirectLighting uses — its six pass-specific members extend the
     // registry here; everything shared resolves to the identical providers.
     //
-    // Provenance preserved: historyImage + worldPosHistoryImage are owned
-    // (read AND write) by this pass since the M5 split — Execute-only,
-    // self-contained read/write-in-one-dispatch. Reservoir A/B are READ here
+    // Provenance preserved: previous-frame history images are read by this pass, while the paired
+    // current-frame images are its write-only outputs — Execute-only, with no in-dispatch image
+    // aliasing. Reservoir A/B are READ here
     // (DirectLighting is the sole writer; the cross-dispatch hazard is
     // declared via the array-hazard gatherer pair, not the descriptor). The
     // probe atlases/grid config are READ (probe_apply writes since W1a; hazard
@@ -9224,9 +9253,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     (void)meterSynth;
     auto* meterStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureMeterNode));
     meterStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 15u) / 16u);
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 15u) / 16u);
     meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    const auto reduceSynth = SynthesizeComputeStage<ShaderInterface::ExposureReduce::Metadata,
+                                                     ShaderInterface::ExposureReduce::MEMBERS>(
+        renderGraph, batch, "exposure_reduce", exposureReduceShaderLib, exposureReduceNode,
+        lightingCommon, sceneProviders, {});
+    (void)reduceSynth;
+    auto* reduceStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureReduceNode));
+    reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
+    reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     const auto exposureSynth = SynthesizeComputeStage<ShaderInterface::ExposureTonemap::Metadata,
                                                        ShaderInterface::ExposureTonemap::MEMBERS>(
         renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
@@ -9971,6 +10010,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (the composite is its own gated tail — no standalone resolve stage).
     if (hdrExposureEnabled) {
         batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      exposureMeterNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
+             .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
+             .Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);

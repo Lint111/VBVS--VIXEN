@@ -492,7 +492,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 20;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -521,7 +521,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 22;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -761,6 +761,34 @@ namespace Set0 {
         using DataType = MiningBeamInstanceTransformBuffer;
     };
 
+    /**
+     * @brief sceneRadianceHistoryOutput
+     * Type: STORAGE_IMAGE
+     */
+    struct Binding48 {
+        static constexpr const char* NAME = "sceneRadianceHistoryOutput";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 48;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    /**
+     * @brief worldPosHistoryOutput
+     * Type: STORAGE_IMAGE
+     */
+    struct Binding49 {
+        static constexpr const char* NAME = "worldPosHistoryOutput";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 49;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -789,6 +817,8 @@ using BodyInstanceBuffer = Set0::Binding39;
 using MiningBeamBufferSSBO = Set0::Binding44;
 using MiningBeamBodyInstanceBuffer = Set0::Binding45;
 using MiningBeamInstanceTransformBuffer = Set0::Binding46;
+using sceneRadianceHistoryOutput = Set0::Binding48;
+using worldPosHistoryOutput = Set0::Binding49;
 } // namespace Bind
 
 namespace Push {
@@ -940,9 +970,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitRecordBuffer", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
     {"AccumulationConfigSSBO", false, 0, 19, 0, Access::ReadOnly, 0, nullptr},
-    {"sceneRadianceHistory", false, 0, 20, 0, Access::ReadWrite, 0, nullptr},
+    {"sceneRadianceHistory", false, 0, 20, 0, Access::ReadOnly, 0, nullptr},
     {"PrevCameraConfigSSBO", false, 0, 21, 0, Access::ReadOnly, 0, nullptr},
-    {"worldPosHistoryImage", false, 0, 22, 0, Access::ReadWrite, 0, nullptr},
+    {"worldPosHistoryImage", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
     {"ReservoirConfigSSBO", false, 0, 23, 0, Access::ReadOnly, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
     {"SpatialReservoirDebugBuffer", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
@@ -958,6 +988,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"MiningBeamBufferSSBO", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"MiningBeamBodyInstanceBuffer", false, 0, 45, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding45},
     {"MiningBeamInstanceTransformBuffer", false, 0, 46, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding46},
+    {"sceneRadianceHistoryOutput", false, 0, 48, 0, Access::WriteOnly, 0, nullptr},
+    {"worldPosHistoryOutput", false, 0, 49, 0, Access::WriteOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -993,7 +1025,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 38;
+    static constexpr uint32_t NUM_MEMBERS = 40;
     static constexpr uint32_t NUM_FEATURES = 3;
 };
 

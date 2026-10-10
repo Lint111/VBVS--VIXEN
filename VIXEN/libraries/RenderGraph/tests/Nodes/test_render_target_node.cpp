@@ -217,6 +217,16 @@ TEST(RenderTargetNodeFollowExtent, RoundsUpFractionalPixels) {
     EXPECT_EQ(result.height, 2u);  // 3 * 0.5 = 1.5 -> ceil -> 2
 }
 
+TEST(RenderTargetNodeFollowExtent, OddDimensionsAtFractionalScalesUseCanonicalCeilExtent) {
+    const VkExtent2D firstTarget = RenderTargetNode::ComputeFollowExtent({101, 55}, 0.55f);
+    EXPECT_EQ(firstTarget.width, 56u);
+    EXPECT_EQ(firstTarget.height, 31u);
+
+    const VkExtent2D secondTarget = RenderTargetNode::ComputeFollowExtent({1279, 719}, 0.73f);
+    EXPECT_EQ(secondTarget.width, 934u);
+    EXPECT_EQ(secondTarget.height, 525u);
+}
+
 TEST(RenderTargetNodeFollowExtent, ScaleClampedAboveOne) {
     VkExtent2D result = RenderTargetNode::ComputeFollowExtent({100, 100}, 2.0f);
     EXPECT_EQ(result.width,  100u);

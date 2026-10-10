@@ -2,7 +2,7 @@
 // Feature-Tagged Merged SDI (Semantic Shader Wiring S0)
 // ============================================================================
 //
-// Program: ExposureTonemap
+// Program: ExposureMeter
 // Feature axis: (none — single-variant interface)
 //
 // Merged across compiled feature variants: every member carries the
@@ -22,7 +22,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace ExposureTonemap {
+namespace ExposureMeter {
 
 // Per-binding access mode, from SPIR-V decorations (storage kinds)
 // or the descriptor kind's inherent read-only nature. Feeds the
@@ -33,11 +33,11 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ExposureMeterResult
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x7a82e00a809949e8 (for runtime discovery)
+ * Layout VixenHash: 0x31b43a45539be2e0 (for runtime discovery)
  */
 struct ExposureMeterResult {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7a82e00a809949e8ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x31b43a45539be2e0ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -46,25 +46,17 @@ struct ExposureMeterResult {
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
-
-};
-
-/**
- * @brief LightingConfigSSBO
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
- */
-struct LightingConfigSSBO {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "LightingConfig";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 208;
-        static constexpr uint32_t BINDING = 0;
+    struct pc_1 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 4;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 1;
+    };
+    struct pc_2 {
+        static constexpr const char* TYPE = "TileExposure";
+        static constexpr uint32_t OFFSET = 8;
+        static constexpr uint32_t SIZE = 8;
+        static constexpr uint32_t BINDING = 2;
     };
 
 };
@@ -86,47 +78,18 @@ namespace Set0 {
     };
 
     /**
-     * @brief outputImage
-     * Type: STORAGE_IMAGE
+     * @brief result
+     * Type: STORAGE_BUFFER
      */
     struct Binding1 {
-        static constexpr const char* NAME = "outputImage";
+        static constexpr const char* NAME = "result";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 1;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::WriteOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
-    /**
-     * @brief meter
-     * Type: STORAGE_BUFFER
-     */
-    struct Binding2 {
-        static constexpr const char* NAME = "meter";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ExposureMeterResult;
-    };
-
-    /**
-     * @brief LightingConfigSSBO
-     * Type: STORAGE_BUFFER
-     */
-    struct Binding16 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 16;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = LightingConfigSSBO;
     };
 
 } // namespace Set0
@@ -134,9 +97,7 @@ namespace Set0 {
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
 using sceneRadianceHistoryOutput = Set0::Binding0;
-using outputImage = Set0::Binding1;
-using meter = Set0::Binding2;
-using LightingConfigSSBO = Set0::Binding16;
+using result = Set0::Binding1;
 } // namespace Bind
 
 // ============================================================================
@@ -157,9 +118,7 @@ struct MemberInfo {
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceHistoryOutput", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
-    {"outputImage", false, 0, 1, 0, Access::WriteOnly, 0, nullptr},
-    {"meter", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
+    {"result", false, 0, 1, 0, Access::ReadWrite, 0, nullptr},
 };
 
 /**
@@ -180,10 +139,10 @@ inline std::vector<MemberInfo> Members(
 }
 
 struct Metadata {
-    static constexpr const char* PROGRAM_NAME = "ExposureTonemap";
-    static constexpr uint32_t NUM_MEMBERS = 4;
+    static constexpr const char* PROGRAM_NAME = "ExposureMeter";
+    static constexpr uint32_t NUM_MEMBERS = 2;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 
-} // namespace ExposureTonemap
+} // namespace ExposureMeter
 } // namespace ShaderInterface

@@ -1,51 +1,82 @@
 #version 460
 
-// Slice 2: deterministic exposure meter. One invocation owns one 16x16 tile;
-// the fixed row-major tree below avoids atomics and subgroup-order dependence.
+// Slice 2: deterministic exposure meter. Each workgroup owns one 16x16 tile;
+// ExposureReduce.comp combines all tile sums after this dispatch completes.
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistory;
-layout(std430, binding = 1) buffer ExposureMeterResult { float ev100; } result;
+layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistoryOutput;
+
+struct TileExposure {
+    float logLuminanceSum;
+    uint validPixelCount;
+};
+
+layout(std430, binding = 1) buffer ExposureMeterResult {
+    float ev100;
+    uint reserved;
+    TileExposure tileStats[];
+} result;
 
 shared float tile[256];
+shared uint validPixel[256];
+shared uint tilePixelCount;
+shared uint cutoffIndex;
 
 // The brightest 5% of a tile is a solar/cosmic outlier regime, not a useful
-// adaptation target. Keep the cutoff fixed and sort in invocation 0 so the
-// result is deterministic across vendors and independent of subgroup order.
-const uint kMeterPercentileIndex = 243u; // ceil(0.95 * 256) - 1
+// adaptation target. A shared-memory bitonic sort keeps the cutoff deterministic
+// without serializing all comparisons onto invocation 0.
+const float kInvalidPixelSortValue = 3.402823466e+38;
 
 void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = imageSize(sceneRadianceHistory);
+    ivec2 size = imageSize(sceneRadianceHistoryOutput);
     uint i = gl_LocalInvocationIndex;
+    bool inBounds = all(lessThan(p, size));
     float l = 0.0;
-    if (all(lessThan(p, size))) {
-        vec3 c = max(imageLoad(sceneRadianceHistory, p).rgb, vec3(0.0));
+    if (inBounds) {
+        vec3 c = max(imageLoad(sceneRadianceHistoryOutput, p).rgb, vec3(0.0));
         float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
         if (!isnan(lum) && !isinf(lum) && lum > 1.0e-6) l = log2(lum);
     }
-    tile[i] = l;
+    tile[i] = inBounds ? l : kInvalidPixelSortValue;
+    validPixel[i] = inBounds ? 1u : 0u;
     barrier();
     if (i == 0u) {
-        // Deterministic insertion sort is small (256 values) and avoids relying
-        // on subgroup ordering or floating-point atomics.
-        for (uint n = 1u; n < 256u; ++n) {
-            float value = tile[n];
-            uint j = n;
-            while (j > 0u && tile[j - 1u] > value) {
-                tile[j] = tile[j - 1u];
-                --j;
-            }
-            tile[j] = value;
-        }
+        tilePixelCount = 0u;
+        for (uint n = 0u; n < 256u; ++n) tilePixelCount += validPixel[n];
+        // ceil(0.95 * validCount) - 1, with at least one in-bounds pixel per group.
+        cutoffIndex = (tilePixelCount * 95u + 99u) / 100u - 1u;
     }
     barrier();
-    tile[i] = min(tile[i], tile[kMeterPercentileIndex]);
+
+    for (uint sequenceSize = 2u; sequenceSize <= 256u; sequenceSize <<= 1u) {
+        for (uint compareDistance = sequenceSize >> 1u;
+             compareDistance > 0u;
+             compareDistance >>= 1u) {
+            uint partner = i ^ compareDistance;
+            if (partner > i) {
+                float a = tile[i];
+                float b = tile[partner];
+                bool ascending = (i & sequenceSize) == 0u;
+                bool shouldSwap = ascending ? a > b : a < b;
+                if (shouldSwap) {
+                    tile[i] = b;
+                    tile[partner] = a;
+                }
+            }
+            barrier();
+        }
+    }
+
+    barrier();
+    tile[i] = i < tilePixelCount ? min(tile[i], tile[cutoffIndex]) : 0.0;
     barrier();
     for (uint stride = 128u; stride != 0u; stride >>= 1u) {
         if (i < stride) tile[i] += tile[i + stride];
         barrier();
     }
     if (i == 0u) {
-        result.ev100 = -tile[0] / 256.0;
+        uint tileIndex = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+        result.tileStats[tileIndex].logLuminanceSum = tile[0];
+        result.tileStats[tileIndex].validPixelCount = tilePixelCount;
     }
 }

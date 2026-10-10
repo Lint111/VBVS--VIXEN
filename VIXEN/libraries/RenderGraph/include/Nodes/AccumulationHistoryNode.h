@@ -20,20 +20,12 @@ public:
 };
 
 /**
- * @brief Allocates the temporal-accumulation history image (Sampled Lighting Inc2 M1): a SINGLE
- * persistent 2D STORAGE image, sized to the render target's extent, format-matched to outputImage
- * (VK_FORMAT_R8G8B8A8_UNORM -- RenderTargetNode's own default; confirmed from
- * RenderTargetNode.cpp, NOT rgba16f).
+ * @brief Allocates two temporal-accumulation history images, sized to the render target's extent,
+ * format-matched to the scene-linear HDR intermediate (VK_FORMAT_R16G16B16A16_SFLOAT).
  *
- * Why a dedicated node, not the RenderTargetNode ring or a PickIdTargetNode-style per-frame-in-
- * flight ring: history must survive ACROSS frames by definition (this frame's accumulate step
- * reads what LAST frame wrote) -- KI-009 documents that RenderTargetNode's own ring rotates every
- * frame, so wiring history onto it would read a stale/wrong ring slot depending on frame parity.
- * A ring sized to frames-in-flight has the identical problem one level removed: it doesn't buy
- * anything a single persistent image doesn't already give, and adds needless index-tracking. So
- * this node allocates exactly ONE image+memory+view that lives for the graph's lifetime (until a
- * genuine resize), the same "one persistent resource" shape StorageBufferNode's own HitRecord SSBO
- * uses (also read-and-written by the SAME dispatch, also extent-tracking, also not a ring).
+ * The node owns a pair of persistent images and publishes one as previous history and the other
+ * as the current output. Their roles flip once per graph execution, so a dispatch never reads and
+ * writes the same image. This is a two-image history pair, not a frame-in-flight ring.
  *
  * Usage = STORAGE only (no TRANSFER_SRC/DST needed -- no clear-on-resize copy; see below for why
  * uninitialized content on (re)creation is safe).
@@ -44,16 +36,14 @@ public:
  * identical mechanics to PickIdTargetNode::TransitionAllToGeneral, just for one image instead of a
  * ring. Storage images remain in GENERAL across dispatches, so no per-frame barrier is required.
  *
- * M1 scope was allocate + transition + wire to a shader binding (20) that declared but did NOT
- * yet read/write it -- pure plumbing, zero visual delta. M2 (BodyInstanceRayMarch.comp's
- * accumulate seam) is the first milestone that actually samples/writes it: on frame 1 of a run
- * (or the frame right after a reset-on-motion reset, alpha>=1.0) the shader skips the
- * historyImage read entirely and writes pure outColor, so this image's genuinely-uninitialized
- * first content (or stale content after a resize recreate) is never actually read -- see the
- * accumulate seam's alpha>=1.0 guard in the shader.
+ * On frame 1 of a run (or the frame right after a reset-on-motion reset, alpha>=1.0), the shader
+ * skips history reads and writes pure outColor. The accumulation config also resets the frame
+ * counter after graph recompile, so freshly recreated images are populated before later frames
+ * read from them. Reprojection reads only the immutable previous image and writes only the
+ * separate current image.
  *
  * Lifecycle: persists across graph recompile (same extent); released only on FinalTeardown. A
- * genuine resize recreates the image at the new extent with fresh uninitialized content;
+ * genuine resize recreates both images at the new extent with fresh uninitialized content;
  * AccumulationConfigNode::CompileImpl (which runs on every recompile, including a resize) forces
  * its frame counter to restart on the next Execute specifically to cover this case -- a resize
  * changes CameraData::aspect, not cameraPos/cameraDir, so the counter's own motion-epsilon check
@@ -73,13 +63,15 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void CreateImage(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool commandPool);
-    void TransitionToGeneral(VkCommandPool commandPool);
-    void DestroyImage();
+    void CreateImage(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool commandPool,
+                    uint32_t imageIndex);
+    void TransitionToGeneral(VkCommandPool commandPool, VkImage image);
+    void DestroyImages();
 
-    VkImage        image_  = VK_NULL_HANDLE;
-    VkDeviceMemory memory_ = VK_NULL_HANDLE;
-    VkImageView    view_   = VK_NULL_HANDLE;
+    VkImage        images_[2]  = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkDeviceMemory memories_[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkImageView    views_[2]   = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    uint32_t nextWriteImageIndex_ = 1;
 
     uint32_t width_  = 0;
     uint32_t height_ = 0;

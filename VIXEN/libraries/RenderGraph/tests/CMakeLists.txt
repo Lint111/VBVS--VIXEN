@@ -111,6 +111,13 @@ set_target_properties(test_exposure_meter_mirror PROPERTIES FOLDER "Tests/Render
 add_test(NAME test_exposure_meter_mirror COMMAND test_exposure_meter_mirror)
 vixen_set_suite_properties(RenderGraph TESTS test_exposure_meter_mirror)
 
+# Reprojects from immutable previous-frame history while writing a separate current image.
+add_executable(test_spatial_reuse_history_mirror Nodes/test_spatial_reuse_history_mirror.cpp)
+target_compile_features(test_spatial_reuse_history_mirror PRIVATE cxx_std_17)
+set_target_properties(test_spatial_reuse_history_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+add_test(NAME test_spatial_reuse_history_mirror COMMAND test_spatial_reuse_history_mirror)
+vixen_set_suite_properties(RenderGraph TESTS test_spatial_reuse_history_mirror)
+
 # ===========================================================================
 # Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
 # shaders/Sampling.glsl #includes and compiles cleanly through the real
