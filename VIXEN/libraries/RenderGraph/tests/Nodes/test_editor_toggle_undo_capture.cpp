@@ -420,7 +420,8 @@ TEST(EditorToggleUndoCapture, GpuSubmissionsRespectDeclaredBudget) {
         ASSERT_TRUE(maximum && budget && submissions) << line;
         ASSERT_GT(*maximum, 0.0) << line;
         ASSERT_GT(*budget, 0.0) << line;
-        EXPECT_GT(*submissions, 1.0) << line;
+        // A calibrated pass may fit in one bounded submission (R494).
+        EXPECT_GE(*submissions, 1.0) << line;
         EXPECT_LE(*maximum, *budget) << line;
         ++samples;
     }
