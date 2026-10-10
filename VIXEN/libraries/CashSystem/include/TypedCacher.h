@@ -173,13 +173,13 @@ public:
         Clear();
     }
 
-    bool SerializeToFile(const std::filesystem::path& path) const override {
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override {
         // default stub: derived classes should override if they need real serialization
         (void)path;
         return true;
     }
 
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override {
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override {
         (void)path; (void)device;
         return true;
     }
@@ -561,4 +561,3 @@ protected:
 };
 
 } // namespace CashSystem
-

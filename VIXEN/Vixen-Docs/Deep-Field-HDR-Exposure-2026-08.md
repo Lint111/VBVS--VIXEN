@@ -16,7 +16,7 @@ and blit.  The final `rgba8` image remains the image-gate witness; it is no long
 radiance accumulator.  This is necessary because the current composite has already
 measured a second contribution needing roughly `0.251` before it can change an 8-bit
 witness at `T=0.015625`; that is incompatible with derived solar/scattering lighting
-([Known-Issues.md:1688-1691](../04-Development/Known-Issues.md)).
+([Known-Issues.md:1688-1691](04-Development/Known-Issues.md)).
 
 This is a proposal. “Current” facts below are pinned to engine commit `231e272e`.
 

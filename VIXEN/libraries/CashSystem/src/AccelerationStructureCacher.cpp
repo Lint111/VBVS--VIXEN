@@ -235,12 +235,12 @@ void AccelerationStructureCacher::Cleanup() {
 // AABB data is cached by VoxelAABBCacher separately.
 // ============================================================================
 
-bool AccelerationStructureCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool AccelerationStructureCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     (void)path;
     return true;
 }
 
-bool AccelerationStructureCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool AccelerationStructureCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     (void)path;
     (void)device;
     return true;

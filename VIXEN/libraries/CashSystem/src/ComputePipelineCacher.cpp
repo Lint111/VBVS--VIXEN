@@ -310,7 +310,7 @@ void ComputePipelineCacher::LogPipelineExecutableStatistics(const std::string& s
 // SERIALIZATION (Stub implementations)
 // ============================================================================
 
-bool ComputePipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool ComputePipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Compute pipelines are device-specific and expensive to serialize
     // Better approach: serialize shader keys + layout keys, recompile on load
     // Pipeline cache (VkPipelineCache) can be serialized separately for warm starts
@@ -322,7 +322,7 @@ bool ComputePipelineCacher::SerializeToFile(const std::filesystem::path& path) c
     return true;  // Return success (nothing to serialize currently)
 }
 
-bool ComputePipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool ComputePipelineCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Compute pipelines are recreated on demand from shader modules
     // Pipeline cache (VkPipelineCache) deserialization provides warm startup
 

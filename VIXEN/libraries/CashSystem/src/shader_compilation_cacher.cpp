@@ -51,7 +51,7 @@ std::uint64_t ShaderCompilationCacher::ComputeKey(const ShaderCompilationParams&
     return hasher.Finalize();
 }
 
-bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool ShaderCompilationCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Serialize device-independent SPIR-V bytecode and metadata
 
     std::ofstream file(path, std::ios::binary);
@@ -121,7 +121,7 @@ bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path)
     return true;
 }
 
-bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool ShaderCompilationCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Deserialize device-independent SPIR-V bytecode and metadata
     // Compiled SPIR-V can be used directly without recompilation
 

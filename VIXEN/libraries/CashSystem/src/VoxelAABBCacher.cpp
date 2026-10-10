@@ -98,12 +98,12 @@ void VoxelAABBCacher::Cleanup() {
 // (avoiding repeated AABB extraction for same scene).
 // ============================================================================
 
-bool VoxelAABBCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool VoxelAABBCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     (void)path;
     return true;  // Intentional no-op
 }
 
-bool VoxelAABBCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool VoxelAABBCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     (void)path;
     (void)device;
     return true;  // Intentional no-op

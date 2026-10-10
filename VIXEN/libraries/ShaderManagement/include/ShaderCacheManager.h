@@ -98,7 +98,7 @@ public:
 
     /**
      * @brief Validate cache integrity (check file corruption)
-     * @return Number of corrupted entries removed
+     * @return Number of corrupted entries rejected by validation
      */
     uint32_t ValidateCache();
 

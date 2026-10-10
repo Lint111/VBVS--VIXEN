@@ -65,7 +65,7 @@ target_link_libraries(ShaderManagement PUBLIC EventBus)
 target_link_libraries(ShaderManagement PUBLIC KernelDispatch)
 
 # Link to Logger for ILoggable support
-target_link_libraries(ShaderManagement PUBLIC Logger)
+target_link_libraries(ShaderManagement PUBLIC Logger Core::Core)
 
 # Find dependencies
 # Find Vulkan (optional in trimmed build mode)

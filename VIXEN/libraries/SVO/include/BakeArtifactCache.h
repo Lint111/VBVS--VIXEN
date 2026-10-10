@@ -26,13 +26,34 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <array>
+#include <limits>
 #include <optional>
+#include <sstream>
 #include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
 
 namespace Vixen::SVO {
+
+inline constexpr std::array<char, 8> kBakeArtifactMagic{'V', 'X', 'B', 'A', 'K', 'E', '0', '1'};
+inline constexpr std::uint32_t kBakeArtifactEnvelopeVersion = 1;
+inline constexpr std::uint64_t kMaxBakeArtifactBytes = 1024ULL * 1024ULL * 1024ULL;
+
+struct BakeArtifactFileHeader {
+    char magic[8]{};
+    std::uint32_t version = kBakeArtifactEnvelopeVersion;
+    std::uint32_t reserved = 0;
+    std::uint64_t keyHash = 0;
+    std::uint64_t payloadSize = 0;
+    std::uint64_t payloadChecksum = 0;
+};
+static_assert(sizeof(BakeArtifactFileHeader) == 40);
+
+inline std::uint64_t BakeArtifactKeyHash(const std::string& key) noexcept {
+    return Vixen::Checksum64(key.data(), key.size());
+}
 
 // ===========================================================================
 // Key derivation — FNV-1a 64-bit over a caller-assembled byte stream.
@@ -111,23 +132,35 @@ struct BakeArtifactBundle {
 
 namespace detail {
 
-inline void writeBytesVec(std::ofstream& f, const std::vector<uint8_t>& v) {
+inline std::uint64_t remainingBytes(std::istream& f) {
+    const auto current = f.tellg();
+    if (current < 0) return 0;
+    f.seekg(0, std::ios::end);
+    const auto end = f.tellg();
+    f.seekg(current, std::ios::beg);
+    if (!f || end < current) return 0;
+    return static_cast<std::uint64_t>(end - current);
+}
+
+inline void writeBytesVec(std::ostream& f, const std::vector<uint8_t>& v) {
     const uint64_t size = v.size();
     f.write(reinterpret_cast<const char*>(&size), sizeof(size));
     if (!v.empty()) f.write(reinterpret_cast<const char*>(v.data()), static_cast<std::streamsize>(v.size()));
 }
 
-inline bool readBytesVec(std::ifstream& f, std::vector<uint8_t>& v) {
+inline bool readBytesVec(std::istream& f, std::vector<uint8_t>& v) {
     uint64_t size = 0;
     f.read(reinterpret_cast<char*>(&size), sizeof(size));
     if (!f) return false;
+    if (size > kMaxBakeArtifactBytes || size > std::numeric_limits<std::size_t>::max() ||
+        size > remainingBytes(f)) return false;
     v.resize(static_cast<size_t>(size));
     if (size > 0) f.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(size));
     return static_cast<bool>(f);
 }
 
 template <class T>
-void writePodVec(std::ofstream& f, const std::vector<T>& v) {
+void writePodVec(std::ostream& f, const std::vector<T>& v) {
     static_assert(std::is_trivially_copyable_v<T>, "writePodVec requires a POD element type");
     const uint64_t size = v.size();
     f.write(reinterpret_cast<const char*>(&size), sizeof(size));
@@ -135,13 +168,16 @@ void writePodVec(std::ofstream& f, const std::vector<T>& v) {
 }
 
 template <class T>
-bool readPodVec(std::ifstream& f, std::vector<T>& v) {
+bool readPodVec(std::istream& f, std::vector<T>& v) {
     static_assert(std::is_trivially_copyable_v<T>, "readPodVec requires a POD element type");
     uint64_t size = 0;
     f.read(reinterpret_cast<char*>(&size), sizeof(size));
     if (!f) return false;
+    if (size > std::numeric_limits<std::size_t>::max() / sizeof(T)) return false;
+    const auto byteSize = size * sizeof(T);
+    if (byteSize > remainingBytes(f) || byteSize > kMaxBakeArtifactBytes) return false;
     v.resize(static_cast<size_t>(size));
-    if (size > 0) f.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(size * sizeof(T)));
+    if (size > 0) f.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(byteSize));
     return static_cast<bool>(f);
 }
 
@@ -168,42 +204,37 @@ inline bool StoreBakeArtifact(
         const std::string& hexKey,
         const BakeArtifactBundle& bundle,
         const std::filesystem::path& cacheDir = DefaultBakeArtifactCacheDir()) {
-    std::error_code ec;
-    std::filesystem::create_directories(cacheDir, ec);
-    if (ec) return false;
-
     const std::filesystem::path path = BakeArtifactCacheFilePath(hexKey, cacheDir);
-    // Write to a temp file then rename -- avoids a reader ever observing a
-    // partially-written cache file (e.g. if the process is killed mid-write).
-    const std::filesystem::path tmpPath = path.string() + ".tmp";
-    std::ofstream f(tmpPath, std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-
+    std::ostringstream payloadStream(std::ios::binary | std::ios::out);
     const ConcatenatedOctrees& cat = bundle.cat;
-    detail::writeBytesVec(f, cat.nodes);
-    detail::writeBytesVec(f, cat.bricks);
-    detail::writeBytesVec(f, cat.materials);
-    detail::writeBytesVec(f, cat.channelPool);
-    detail::writeBytesVec(f, cat.brickGridLookup);
-    detail::writeBytesVec(f, cat.mipPool);
-    detail::writePodVec(f, cat.tierRefTable);
-    detail::writePodVec(f, cat.configs);
-    detail::writePodVec(f, cat.nodeCounts);
-    detail::writePodVec(f, cat.brickCounts);
-    detail::writePodVec(f, cat.tierRefCounts);
-    detail::writePodVec(f, cat.occupiedVoxelCounts);
-    f.write(reinterpret_cast<const char*>(&cat.count), sizeof(cat.count));
-    detail::writePodVec(f, bundle.lightTreeCut);
+    detail::writeBytesVec(payloadStream, cat.nodes);
+    detail::writeBytesVec(payloadStream, cat.bricks);
+    detail::writeBytesVec(payloadStream, cat.materials);
+    detail::writeBytesVec(payloadStream, cat.channelPool);
+    detail::writeBytesVec(payloadStream, cat.brickGridLookup);
+    detail::writeBytesVec(payloadStream, cat.mipPool);
+    detail::writePodVec(payloadStream, cat.tierRefTable);
+    detail::writePodVec(payloadStream, cat.configs);
+    detail::writePodVec(payloadStream, cat.nodeCounts);
+    detail::writePodVec(payloadStream, cat.brickCounts);
+    detail::writePodVec(payloadStream, cat.tierRefCounts);
+    detail::writePodVec(payloadStream, cat.occupiedVoxelCounts);
+    payloadStream.write(reinterpret_cast<const char*>(&cat.count), sizeof(cat.count));
+    detail::writePodVec(payloadStream, bundle.lightTreeCut);
+    if (!payloadStream) return false;
 
-    const bool ok = static_cast<bool>(f);
-    f.close();
-    if (!ok) {
-        std::error_code rmEc;
-        std::filesystem::remove(tmpPath, rmEc);
-        return false;
-    }
-    std::filesystem::rename(tmpPath, path, ec);
-    return !ec;
+    const auto payload = payloadStream.str();
+    if (payload.size() > kMaxBakeArtifactBytes) return false;
+    BakeArtifactFileHeader header{};
+    std::memcpy(header.magic, kBakeArtifactMagic.data(), kBakeArtifactMagic.size());
+    header.keyHash = BakeArtifactKeyHash(hexKey);
+    header.payloadSize = payload.size();
+    header.payloadChecksum = Vixen::Checksum64(payload.data(), payload.size());
+    return Vixen::AtomicWriteFile(path, [&](std::ostream& out) {
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        if (!payload.empty()) out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        return static_cast<bool>(out);
+    });
 }
 
 // Load a previously-stored bundle for `hexKey`. Returns std::nullopt on any
@@ -215,31 +246,48 @@ inline std::optional<BakeArtifactBundle> LoadBakeArtifact(
         const std::string& hexKey,
         const std::filesystem::path& cacheDir = DefaultBakeArtifactCacheDir()) {
     const std::filesystem::path path = BakeArtifactCacheFilePath(hexKey, cacheDir);
+    std::error_code sizeError;
+    const auto fileSize = std::filesystem::file_size(path, sizeError);
+    if (sizeError || fileSize < sizeof(BakeArtifactFileHeader) ||
+        fileSize > sizeof(BakeArtifactFileHeader) + kMaxBakeArtifactBytes) return std::nullopt;
+
     std::ifstream f(path, std::ios::binary);
     if (!f) return std::nullopt;
+    BakeArtifactFileHeader header{};
+    f.read(reinterpret_cast<char*>(&header), sizeof(header));
+    if (!f || std::memcmp(header.magic, kBakeArtifactMagic.data(), kBakeArtifactMagic.size()) != 0 ||
+        header.version != kBakeArtifactEnvelopeVersion || header.keyHash != BakeArtifactKeyHash(hexKey) ||
+        header.payloadSize != fileSize - sizeof(header) || header.payloadSize > kMaxBakeArtifactBytes) {
+        return std::nullopt;
+    }
+
+    std::string payload(static_cast<std::size_t>(header.payloadSize), '\0');
+    if (!payload.empty()) f.read(payload.data(), static_cast<std::streamsize>(payload.size()));
+    if (!f || Vixen::Checksum64(payload.data(), payload.size()) != header.payloadChecksum) return std::nullopt;
+    std::istringstream payloadStream(std::move(payload), std::ios::binary | std::ios::in);
 
     BakeArtifactBundle bundle;
     ConcatenatedOctrees& cat = bundle.cat;
     bool ok = true;
-    ok = ok && detail::readBytesVec(f, cat.nodes);
-    ok = ok && detail::readBytesVec(f, cat.bricks);
-    ok = ok && detail::readBytesVec(f, cat.materials);
-    ok = ok && detail::readBytesVec(f, cat.channelPool);
-    ok = ok && detail::readBytesVec(f, cat.brickGridLookup);
-    ok = ok && detail::readBytesVec(f, cat.mipPool);
-    ok = ok && detail::readPodVec(f, cat.tierRefTable);
-    ok = ok && detail::readPodVec(f, cat.configs);
-    ok = ok && detail::readPodVec(f, cat.nodeCounts);
-    ok = ok && detail::readPodVec(f, cat.brickCounts);
-    ok = ok && detail::readPodVec(f, cat.tierRefCounts);
-    ok = ok && detail::readPodVec(f, cat.occupiedVoxelCounts);
+    ok = ok && detail::readBytesVec(payloadStream, cat.nodes);
+    ok = ok && detail::readBytesVec(payloadStream, cat.bricks);
+    ok = ok && detail::readBytesVec(payloadStream, cat.materials);
+    ok = ok && detail::readBytesVec(payloadStream, cat.channelPool);
+    ok = ok && detail::readBytesVec(payloadStream, cat.brickGridLookup);
+    ok = ok && detail::readBytesVec(payloadStream, cat.mipPool);
+    ok = ok && detail::readPodVec(payloadStream, cat.tierRefTable);
+    ok = ok && detail::readPodVec(payloadStream, cat.configs);
+    ok = ok && detail::readPodVec(payloadStream, cat.nodeCounts);
+    ok = ok && detail::readPodVec(payloadStream, cat.brickCounts);
+    ok = ok && detail::readPodVec(payloadStream, cat.tierRefCounts);
+    ok = ok && detail::readPodVec(payloadStream, cat.occupiedVoxelCounts);
     if (ok) {
-        f.read(reinterpret_cast<char*>(&cat.count), sizeof(cat.count));
-        ok = static_cast<bool>(f);
+        payloadStream.read(reinterpret_cast<char*>(&cat.count), sizeof(cat.count));
+        ok = static_cast<bool>(payloadStream);
     }
-    ok = ok && detail::readPodVec(f, bundle.lightTreeCut);
+    ok = ok && detail::readPodVec(payloadStream, bundle.lightTreeCut);
 
-    if (!ok) return std::nullopt;
+    if (!ok || payloadStream.peek() != std::char_traits<char>::eof()) return std::nullopt;
     return bundle;
 }
 

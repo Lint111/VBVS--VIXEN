@@ -152,7 +152,7 @@ void DescriptorCacher::CalculateLayoutHash(const ShaderManagement::DescriptorLay
     hash = ComputeLayoutHash_Helper(spec);
 }
 
-bool DescriptorCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool DescriptorCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     // Descriptor layouts are device-independent metadata
     // Serialize layout specifications that can be recreated on any device
 
@@ -208,7 +208,7 @@ bool DescriptorCacher::SerializeToFile(const std::filesystem::path& path) const 
     return true;
 }
 
-bool DescriptorCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool DescriptorCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     // Descriptor layouts must be recreated with device-specific Vulkan handles
     // This deserialization loads layout metadata to inform recreation
 
