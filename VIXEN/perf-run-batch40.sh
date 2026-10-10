@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
-LOCKDIR=/home/liory/Github/undertow/tools
+# Repo-local queue forwarder (tools/with-test-lock.sh), resolved to an absolute path before the
+# script cd's to /mnt/c. It finds the Undertow queue itself.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCKDIR="$REPO_ROOT/tools"
 PERF=/mnt/c/GitHub/undertow-winbuild/perf/batch40-gates
 SMI_LOG=$PERF/nvidia-smi-poll.log
 : > "$SMI_LOG"
