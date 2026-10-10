@@ -7,8 +7,8 @@ description: Use before dispatching a VIXEN build (build.bat, cmake --build) on 
 
 ## Overview
 
-VIXEN builds on Windows go through `build.bat` at the repo root
-(`/mnt/c/cpp/VBVS--VIXEN/build.bat`), which drives three layered pieces of tooling under
+VIXEN builds on Windows go through `build.bat` at the active worktree's root, which drives
+three layered pieces of tooling under
 `VIXEN/scripts/build/` — a machine-wide **lock** (only one build runs at a time), a
 **parallelism cap** (a running build doesn't peg every core), and a **FIFO queue with
 notification** (an agent can register intent to build, go do other work, and check back only
@@ -31,7 +31,11 @@ e.g. iterating on one library or test binary without paying to rebuild+relink th
 graph:
 
 ```bash
-cmd.exe /c "C:\cpp\VBVS--VIXEN\build.bat build vixen-ninja VixenApp"
+repo_win="$(wslpath -w "$(git rev-parse --show-toplevel)")"
+cd /mnt/c
+native_powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' provision; exit \$LASTEXITCODE"
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' build vixen-ninja VixenApp; exit \$LASTEXITCODE"
 ```
 
 This threads through as `cmake --build --preset <preset> --target <name> -- -k 0 -j <N>` —
@@ -195,7 +199,7 @@ you don't have to be present or responsive when your turn comes.**
 ```powershell
 powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register `
     -AgentId "<your-agent-id>" -Source "<your-worktree-name>" -BuildTarget "<target-or-omit>" `
-    -BuildScript "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat" `
+    -BuildScript "<absolute Windows path to this worktree's build.bat, derived with wslpath -w>" `
     -BuildAction all -BuildPreset vixen-ninja -Note "<why you're building>"
 ```
 
@@ -268,19 +272,22 @@ clone/worktree. The failure mode is upstream of that: if you invoke it from a WS
 `cmd.exe /c "build.bat build vixen-ninja"` (a bare relative name, no explicit path) while your
 bash `cwd` is inside a worktree, `cmd.exe`'s OWN starting directory is not guaranteed to be your
 bash `cwd` — cross-shell invocation can silently resolve `build.bat` against a DIFFERENT
-`build.bat` on `PATH`/a stale default directory (observed: it resolved to the main checkout's
-`C:\cpp\VBVS--VIXEN\build.bat` while running from a worktree at
+`build.bat` on `PATH`/a stale default directory (observed: it resolved to the primary checkout's
+build.bat while running from a worktree at
 `.claude\worktrees\<name>\`). The build then runs, acquires the lock, and reports success/failure
 — all against the WRONG tree, with no error, because `build.bat` has no way to know it was asked
 to build somewhere other than intended. This burned a full build-lock turn (and a second one
 finding the fix "already applied" on the wrong checkout) on 2026-07-11 during Sampled-Lighting
 Inc3 M1.
 
-**Always call `build.bat` with its full Windows absolute path** when driving it from WSL bash,
-even though the script itself is path-agnostic:
+**Always call `build.bat` with the active worktree's full Windows path** when driving it from WSL bash.
 
 ```bash
-cmd.exe /c "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat build vixen-ninja" > log 2>&1
+repo_win="$(wslpath -w "$(git rev-parse --show-toplevel)")"
+cd /mnt/c
+native_powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' provision; exit \$LASTEXITCODE"
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' build vixen-ninja; exit \$LASTEXITCODE"
 ```
 
 not:

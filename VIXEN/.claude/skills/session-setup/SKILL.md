@@ -63,8 +63,14 @@ Present consolidated context to the user:
 
 ### Quick Commands
 ```bash
-# Build
-cmake --build build --config Debug --parallel 16
+# Windows-native setup (run from the repository root in WSL)
+repo_win="$(wslpath -w "$(git rev-parse --show-toplevel)")"
+cd /mnt/c
+native_powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' provision; exit \$LASTEXITCODE"
+
+# Configure and build with the native preset
+"$native_powershell" -NoProfile -ExecutionPolicy Bypass -Command "& '$repo_win\\build.bat' all vixen-ninja; exit \$LASTEXITCODE"
 
 # Run related tests
 ./build/libraries/Component/tests/Debug/test_*.exe --gtest_brief=1

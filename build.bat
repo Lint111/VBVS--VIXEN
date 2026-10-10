@@ -20,7 +20,8 @@ REM                     cannot cache MSVC precompiled headers — see
 REM                     CMakeLists.txt's USE_CCACHE block.
 REM
 REM Usage:
-REM   build.bat [configure^|build^|all] [preset-name] [target-name]
+REM   build.bat [provision^|configure^|build^|all] [preset-name] [target-name]
+REM     provision   detect/install the pinned Windows-native toolchain
 REM     configure   run only the CMake configure/generate for the preset
 REM     build       run only the build for the preset (configure first)
 REM     all         configure then build (DEFAULT)
@@ -71,6 +72,35 @@ if not exist "%SRC_DIR%\CMakePresets.json" (
     exit /b 1
 )
 
+REM Provision before checking for CMake or Visual Studio; this command must work on a
+REM machine that has neither installed. It is the single Windows-native setup entry point.
+if /i "%ACTION%"=="provision" goto :do_provision
+
+REM Bring pinned tool paths into this process without changing the machine environment.
+REM The provisioner owns these ignored cache files and records only verified versions.
+for %%T in (git python ninja) do (
+    set "TOOL_BIN_FILE=%SRC_DIR%\.win-native-toolchain\%%T-bin.txt"
+    set "TOOL_BIN_DIR="
+    if exist "!TOOL_BIN_FILE!" (
+        set /p "TOOL_BIN_DIR="<"!TOOL_BIN_FILE!"
+        if exist "!TOOL_BIN_DIR!" set "PATH=!TOOL_BIN_DIR!;!PATH!"
+    )
+)
+set "CMAKE_PIN_FILE=%SRC_DIR%\.win-native-toolchain\cmake-exe.txt"
+set "CMAKE_EXE="
+if exist "%CMAKE_PIN_FILE%" set /p "CMAKE_EXE="<"%CMAKE_PIN_FILE%"
+if defined CMAKE_EXE if not exist "%CMAKE_EXE%" set "CMAKE_EXE="
+set "VULKAN_ROOT_FILE=%SRC_DIR%\.win-native-toolchain\vulkan-sdk-root.txt"
+if exist "%VULKAN_ROOT_FILE%" set /p "VULKAN_SDK="<"%VULKAN_ROOT_FILE%"
+
+REM The native preset's build directories mirror CMakePresets.json. Passing the binary path
+REM explicitly lets CMake/Ninja run while cmd.exe stays on a drvfs cwd, even when this
+REM worktree itself is reached through the WSL UNC share.
+set "BUILD_DIR="
+if /i "%PRESET%"=="vixen-ninja" set "BUILD_DIR=%SRC_DIR%\..\build\ninja"
+if /i "%PRESET%"=="vixen-wsl" set "BUILD_DIR=%SRC_DIR%\..\build\wsl"
+if /i "%PRESET%"=="vixen-wsl-debug" set "BUILD_DIR=%SRC_DIR%\..\build\wsl-debug"
+
 REM --- discover vcvars64.bat via vswhere ---
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
@@ -94,10 +124,9 @@ if not exist "%VCVARS%" (
 call "%VCVARS%" >nul
 if errorlevel 1 (echo [build] ERROR: vcvars64.bat failed. & exit /b 1)
 
-REM --- discover cmake (PATH first, then a well-known install) ---
-set "CMAKE_EXE="
-for /f "usebackq tokens=*" %%c in (`where cmake 2^>nul`) do (set "CMAKE_EXE=%%c" & goto :cmake_found)
-if exist "%ProgramFiles%\CMake\bin\cmake.exe" set "CMAKE_EXE=%ProgramFiles%\CMake\bin\cmake.exe"
+REM --- discover cmake (verified provisioner pin, then PATH, then standard install) ---
+if not defined CMAKE_EXE for /f "usebackq tokens=*" %%c in (`where cmake 2^>nul`) do (set "CMAKE_EXE=%%c" & goto :cmake_found)
+if not defined CMAKE_EXE if exist "%ProgramFiles%\CMake\bin\cmake.exe" set "CMAKE_EXE=%ProgramFiles%\CMake\bin\cmake.exe"
 :cmake_found
 if "%CMAKE_EXE%"=="" (
     echo [build] ERROR: cmake not found on PATH or under "%ProgramFiles%\CMake\bin".
@@ -128,13 +157,15 @@ echo [build] buildId  : %VIXEN_BUILD_ID% ^(distinguishes this build's log/status
 echo [build] ccache   : %CCACHE_DIR% ^(max %CCACHE_MAXSIZE%^; preferred - caches MSVC PCH^)
 echo [build] sccache  : %SCCACHE_DIR% ^(max %SCCACHE_CACHE_SIZE%^; fallback only^)
 
-cd /d "%SRC_DIR%"
-
 if /i "%ACTION%"=="configure" goto :do_configure
 if /i "%ACTION%"=="build"     goto :do_build
 if /i "%ACTION%"=="all"       goto :do_all
-echo [build] ERROR: unknown action "%ACTION%" ^(expected configure^|build^|all^).
+echo [build] ERROR: unknown action "%ACTION%" ^(expected provision^|configure^|build^|all^).
 exit /b 1
+
+:do_provision
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SRC_DIR%\cmake\provision-windows-native.ps1"
+exit /b %errorlevel%
 
 :do_configure
 call :run_configure_locked
@@ -170,7 +201,7 @@ REM ---------------------------------------------------------------------------
 if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
 set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_configure_locked.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_configure_locked.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -SourceDir "%SRC_DIR%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
 exit /b %errorlevel%
 
 REM ---------------------------------------------------------------------------
@@ -196,5 +227,7 @@ set "TICKET_ARG="
 if not "%VIXEN_QUEUE_TICKET_ID%"=="" set "TICKET_ARG=-QueueTicketId \"%VIXEN_QUEUE_TICKET_ID%\""
 set "BUILDID_ARG="
 if not "%VIXEN_BUILD_ID%"=="" set "BUILDID_ARG=-BuildId \"%VIXEN_BUILD_ID%\""
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG%
+set "BUILD_DIR_ARG="
+if not "%BUILD_DIR%"=="" set "BUILD_DIR_ARG=-BuildDir \"%BUILD_DIR%\""
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" %BUILD_DIR_ARG% -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG%
 exit /b %errorlevel%
