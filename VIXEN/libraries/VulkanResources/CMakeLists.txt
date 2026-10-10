@@ -32,6 +32,7 @@ set(VULKANRESOURCES_HEADERS
     include/CommandBufferUtility.h
     include/GPUTimestampQuery.h
     include/CapabilityGraph.h
+    include/ConfiguredOptionalPath.h
     include/VulkanGlobalNames.h
     include/TextureHandling/Loading/TextureLoader.h
     include/TextureHandling/Loading/GLITextureLoader.h
@@ -66,10 +67,10 @@ target_compile_features(VulkanResources PUBLIC cxx_std_23)
 target_include_directories(VulkanResources
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         # Headers.h and other shared headers now come from Core::Core (linked below), not the
         # application layer (AR#3/#4 build-layering severance).
     PRIVATE
-        "${CMAKE_BINARY_DIR}/generated"
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 

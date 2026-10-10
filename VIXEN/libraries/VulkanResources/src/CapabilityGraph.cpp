@@ -1,13 +1,23 @@
 #include "CapabilityGraph.h"
 #include "VulkanCapabilityConfig.h"
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+#include "CapabilityGraphBuildConfig.h"
+#endif
 #include <algorithm>
 #include <charconv>
 #include <limits>
 #include <cstring>
+#include <cctype>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <type_traits>
 
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#endif
 
 namespace Vixen {
 
@@ -15,6 +25,41 @@ namespace {
 
 bool Contains(const std::vector<std::string>& haystack, const std::string& needle) {
     return std::find(haystack.begin(), haystack.end(), needle) != haystack.end();
+}
+
+std::string EscapeCppString(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const char ch : value) {
+        switch (ch) {
+        case '\\': escaped += "\\\\"; break;
+        case '"': escaped += "\\\""; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default: escaped += ch; break;
+        }
+    }
+    return escaped;
+}
+
+std::string CppIdentifier(const std::string& value) {
+    std::string identifier;
+    identifier.reserve(value.size());
+    for (const unsigned char ch : value) {
+        identifier += std::isalnum(ch) ? static_cast<char>(ch) : '_';
+    }
+    return identifier;
+}
+
+template<size_t N>
+void EmitByteArray(std::ostream& output, const std::array<uint8_t, N>& bytes) {
+    output << "{{";
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        if (i != 0) output << ", ";
+        output << "0x" << std::hex << static_cast<unsigned int>(bytes[i]) << std::dec;
+    }
+    output << "}}";
 }
 
 // Instance-level availability is global to the loader/ICD set (no VkInstance handle required), so a
@@ -140,6 +185,336 @@ bool BackgroundGpuCapability::CheckAvailability() const {
 void CapabilityGraph::RegisterCapability(std::shared_ptr<CapabilityNode> capability) {
     capability->SetOwningGraph(this);  // AR#8: node consults this graph's availability sets
     capabilities_[capability->GetName()] = capability;
+}
+
+void CapabilityGraph::RegisterBuildFact(const std::string& name, CapabilityBuildFact value,
+                                        CapabilityBindingTime bindingTime) {
+    RegisterCapability(std::make_shared<BuildFactCapability>(name, std::move(value), bindingTime));
+}
+
+void CapabilityGraph::SetAllBindingTimes(CapabilityBindingTime bindingTime) noexcept {
+    for (auto& [name, capability] : capabilities_) {
+        (void)name;
+        capability->SetBindingTime(bindingTime);
+    }
+}
+
+std::vector<std::string> CapabilityGraph::QuerySupportedDeviceFeatures(
+    VkPhysicalDevice physicalDevice) const {
+    if (physicalDevice == VK_NULL_HANDLE) return {};
+
+    std::vector<std::string> supported;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+    VkPhysicalDeviceVulkan12Features vulkan12{};
+    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    VkPhysicalDeviceVulkan13Features vulkan13{};
+    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2{};
+    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    const bool apiSupportsVulkan12 = properties.apiVersion >= VK_API_VERSION_1_2;
+    const bool apiSupportsSynchronization2Core = properties.apiVersion >= VK_API_VERSION_1_3;
+    const bool extensionSupportsSynchronization2 =
+        !apiSupportsSynchronization2Core && IsDeviceExtensionAvailable(
+            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    if (apiSupportsVulkan12) {
+        features2.pNext = &vulkan12;
+        if (apiSupportsSynchronization2Core) {
+            vulkan12.pNext = &vulkan13;
+        } else if (extensionSupportsSynchronization2) {
+            vulkan12.pNext = &synchronization2;
+        }
+    }
+
+    VkPhysicalDeviceSubgroupProperties subgroup{};
+    subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    VkPhysicalDeviceProperties2 properties2{};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &subgroup;
+    vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+
+    if (apiSupportsVulkan12 && vulkan12.timelineSemaphore) {
+        supported.emplace_back("timelineSemaphore");
+    }
+    if (apiSupportsVulkan12 && vulkan12.hostQueryReset) {
+        supported.emplace_back("hostQueryReset");
+    }
+    if ((apiSupportsSynchronization2Core && vulkan13.synchronization2) ||
+        (extensionSupportsSynchronization2 && synchronization2.synchronization2)) {
+        supported.emplace_back("synchronization2");
+    }
+    if (features2.features.fragmentStoresAndAtomics) {
+        supported.emplace_back("fragmentStoresAndAtomics");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0) {
+        supported.emplace_back("subgroupComputeBallot");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0) {
+        supported.emplace_back("subgroupComputeArithmetic");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0) {
+        supported.emplace_back("subgroupComputeShuffle");
+    }
+    return supported;
+}
+
+void CapabilityGraph::ObservePhysicalDevice(VkPhysicalDevice physicalDevice) {
+    if (physicalDevice == VK_NULL_HANDLE) {
+        return;
+    }
+
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+    SetVersion(CapabilityVersionSource::VulkanApi,
+               CapabilityVersionValue::FromVulkanApi(properties.apiVersion));
+
+    uint32_t extensionCount = 0;
+    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("CapabilityGraph could not enumerate device extension count");
+    }
+    std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+    if (extensionCount != 0 && vkEnumerateDeviceExtensionProperties(
+            physicalDevice, nullptr, &extensionCount, extensionProperties.data()) != VK_SUCCESS) {
+        throw std::runtime_error("CapabilityGraph could not enumerate device extensions");
+    }
+    std::vector<std::string> extensions;
+    extensions.reserve(extensionProperties.size());
+    for (const auto& extension : extensionProperties) {
+        extensions.emplace_back(extension.extensionName);
+    }
+    SetAvailableDeviceExtensions(std::move(extensions));
+    SetAvailableDeviceFeatures(QuerySupportedDeviceFeatures(physicalDevice));
+
+    VkPhysicalDeviceDriverProperties driverProperties{};
+    driverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceIDProperties idProperties{};
+    idProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+    idProperties.pNext = &driverProperties;
+    VkPhysicalDeviceProperties2 properties2{};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &idProperties;
+    vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
+
+    DeviceDriverIdentityBuildFact identity{};
+    identity.deviceName = properties2.properties.deviceName;
+    identity.driverName = driverProperties.driverName;
+    identity.driverInfo = driverProperties.driverInfo;
+    identity.vendorId = properties2.properties.vendorID;
+    identity.deviceId = properties2.properties.deviceID;
+    identity.driverVersion = properties2.properties.driverVersion;
+    identity.driverId = static_cast<uint32_t>(driverProperties.driverID);
+    std::copy(std::begin(idProperties.deviceUUID), std::end(idProperties.deviceUUID),
+              identity.deviceUuid.begin());
+    std::copy(std::begin(idProperties.driverUUID), std::end(idProperties.driverUUID),
+              identity.driverUuid.begin());
+    RegisterBuildFact("BuildFact:ObservedDeviceDriverIdentity", std::move(identity));
+
+    uint32_t queueCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueProperties(queueCount);
+    if (queueCount != 0) {
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, queueProperties.data());
+    }
+    bool graphicsFamilyRecorded = false;
+    for (uint32_t i = 0; i < queueCount; ++i) {
+        const auto& queue = queueProperties[i];
+        RegisterBuildFact("BuildFact:QueueFamily:" + std::to_string(i),
+                          QueueFamilyBuildFact{"family", i, queue.queueFlags, queue.queueCount});
+        if (!graphicsFamilyRecorded && (queue.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+            RegisterBuildFact("BuildFact:QueueFamily:graphics",
+                              QueueFamilyBuildFact{"graphics", i, queue.queueFlags, queue.queueCount});
+            graphicsFamilyRecorded = true;
+        }
+    }
+    InvalidateAll();
+}
+
+void CapabilityGraph::GenerateBuildConfigHeader(const std::string& path, bool personalized) const {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("CapabilityGraph could not write generated build config: " + path);
+    }
+
+    std::vector<std::pair<std::string, std::shared_ptr<CapabilityNode>>> nodes;
+    nodes.reserve(capabilities_.size());
+    for (const auto& entry : capabilities_) nodes.push_back(entry);
+    std::sort(nodes.begin(), nodes.end(), [](const auto& left, const auto& right) {
+        return left.first < right.first;
+    });
+
+    const PlatformBuildFact* platform = nullptr;
+    const ProductVariantBuildFact* productVariant = nullptr;
+    const DeviceDriverIdentityBuildFact* identity = nullptr;
+    std::vector<QueueFamilyBuildFact> queues;
+    for (const auto& [name, node] : nodes) {
+        const auto factNode = std::dynamic_pointer_cast<BuildFactCapability>(node);
+        if (!factNode) continue;
+        std::visit([&](const auto& fact) {
+            using T = std::decay_t<decltype(fact)>;
+            if constexpr (std::is_same_v<T, PlatformBuildFact>) platform = &fact;
+            else if constexpr (std::is_same_v<T, ProductVariantBuildFact>) productVariant = &fact;
+            else if constexpr (std::is_same_v<T, DeviceDriverIdentityBuildFact>) {
+                if (name == "BuildFact:ObservedDeviceDriverIdentity") identity = &fact;
+            } else if constexpr (std::is_same_v<T, QueueFamilyBuildFact>) {
+                if (name.rfind("BuildFact:QueueFamily:", 0) == 0) queues.push_back(fact);
+            }
+        }, factNode->GetValue());
+    }
+    std::sort(queues.begin(), queues.end(), [](const auto& left, const auto& right) {
+        const bool leftIsGraphics = left.role == "graphics";
+        const bool rightIsGraphics = right.role == "graphics";
+        if (leftIsGraphics != rightIsGraphics) return leftIsGraphics;
+        return left.index < right.index;
+    });
+
+    output << "#pragma once\n#include <vulkan/vulkan.h>\n#include <array>\n#include <cstdint>\n#include <string_view>\n\n"
+              "namespace Vixen::BuildCapabilities {\n"
+           << "inline constexpr bool kPersonalizedMode = " << (personalized ? "true" : "false") << ";\n"
+           << "inline constexpr bool kFullMode = " << (personalized ? "false" : "true") << ";\n"
+           << "inline constexpr std::string_view kPlatform = \""
+           << (platform ? EscapeCppString(platform->systemName) : "") << "\";\n"
+           << "inline constexpr std::string_view kArchitecture = \""
+           << (platform ? EscapeCppString(platform->architecture) : "") << "\";\n"
+           << "inline constexpr std::string_view kCompilerId = \""
+           << (platform ? EscapeCppString(platform->compilerId) : "") << "\";\n"
+           << "inline constexpr std::string_view kCompilerVersion = \""
+           << (platform ? EscapeCppString(platform->compilerVersion) : "") << "\";\n"
+           << "inline constexpr std::string_view kProductVariant = \""
+           << (productVariant ? EscapeCppString(productVariant->variant) : "") << "\";\n"
+           << "struct QueueFamilyValue { std::string_view role; uint32_t index; uint32_t flags; uint32_t queueCount; };\n"
+           << "inline constexpr std::array<QueueFamilyValue, " << queues.size() << "> kQueueFamilies{{\n";
+    for (const auto& queue : queues) {
+        output << "    {\"" << EscapeCppString(queue.role) << "\", " << queue.index << "u, "
+               << queue.flags << "u, " << queue.queueCount << "u},\n";
+    }
+    output << "}};\n";
+
+    const auto graphics = std::find_if(queues.begin(), queues.end(), [](const auto& queue) {
+        return queue.role == "graphics";
+    });
+    output << "inline constexpr uint32_t kGraphicsQueueFamily = "
+           << (graphics == queues.end() ? "UINT32_MAX" : std::to_string(graphics->index) + "u") << ";\n"
+           << "inline constexpr bool kHasDeviceIdentity = " << (identity ? "true" : "false") << ";\n"
+           << "inline constexpr std::string_view kDeviceName = \""
+           << (identity ? EscapeCppString(identity->deviceName) : "") << "\";\n"
+           << "inline constexpr std::string_view kDriverName = \""
+           << (identity ? EscapeCppString(identity->driverName) : "") << "\";\n"
+           << "inline constexpr std::string_view kDriverInfo = \""
+           << (identity ? EscapeCppString(identity->driverInfo) : "") << "\";\n"
+           << "inline constexpr uint32_t kVendorId = " << (identity ? identity->vendorId : 0u) << "u;\n"
+           << "inline constexpr uint32_t kDeviceId = " << (identity ? identity->deviceId : 0u) << "u;\n"
+           << "inline constexpr uint32_t kDriverVersion = " << (identity ? identity->driverVersion : 0u) << "u;\n"
+           << "inline constexpr uint32_t kDriverId = " << (identity ? identity->driverId : 0u) << "u;\n"
+           << "inline constexpr std::array<uint8_t, VK_UUID_SIZE> kDeviceUuid = ";
+    if (identity) EmitByteArray(output, identity->deviceUuid);
+    else output << "{}";
+    output << ";\ninline constexpr std::array<uint8_t, VK_UUID_SIZE> kDriverUuid = ";
+    if (identity) EmitByteArray(output, identity->driverUuid);
+    else output << "{}";
+    output << ";\n";
+
+    for (const auto& [name, node] : nodes) {
+        const bool available = personalized && node->GetBindingTime() == CapabilityBindingTime::BuildTime &&
+                               node->IsAvailable();
+        const bool buildTime = personalized &&
+                               node->GetBindingTime() == CapabilityBindingTime::BuildTime;
+        output << "inline constexpr bool kBuildTime_" << CppIdentifier(name) << " = "
+               << (buildTime ? "true" : "false") << ";\n"
+               << "inline constexpr bool kCapability_" << CppIdentifier(name) << " = "
+               << (available ? "true" : "false") << ";\n";
+    }
+    output << "} // namespace Vixen::BuildCapabilities\n";
+    if (!output) {
+        throw std::runtime_error("CapabilityGraph failed while writing generated build config: " + path);
+    }
+}
+
+bool CapabilityGraph::MatchesConfiguredDeviceIdentity(
+    const DeviceDriverIdentityBuildFact& actual, std::string* mismatchReason) {
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+    if constexpr (!BuildCapabilities::kPersonalizedMode || !BuildCapabilities::kHasDeviceIdentity) {
+        return true;
+    } else {
+        const bool matches =
+            actual.vendorId == BuildCapabilities::kVendorId &&
+            actual.deviceId == BuildCapabilities::kDeviceId &&
+            actual.driverVersion == BuildCapabilities::kDriverVersion &&
+            actual.driverId == BuildCapabilities::kDriverId &&
+            std::equal(actual.deviceUuid.begin(), actual.deviceUuid.end(),
+                       BuildCapabilities::kDeviceUuid.begin()) &&
+            std::equal(actual.driverUuid.begin(), actual.driverUuid.end(),
+                       BuildCapabilities::kDriverUuid.begin());
+        if (!matches && mismatchReason) {
+            std::ostringstream reason;
+            reason << "expected " << BuildCapabilities::kDeviceName << " / driver "
+                   << BuildCapabilities::kDriverName << " " << BuildCapabilities::kDriverVersion
+                   << ", detected " << actual.deviceName << " / driver "
+                   << actual.driverName << " " << actual.driverVersion;
+            *mismatchReason = reason.str();
+        }
+        return matches;
+    }
+#else
+    (void)actual;
+    if (mismatchReason) *mismatchReason = "configured identity is unavailable in the configure probe";
+    return false;
+#endif
+}
+
+bool CapabilityGraph::MatchesConfiguredPhysicalDevice(VkPhysicalDevice physicalDevice,
+                                                       std::string* mismatchReason) {
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+    if constexpr (!BuildCapabilities::kPersonalizedMode || !BuildCapabilities::kHasDeviceIdentity) {
+        return true;
+    } else {
+        if (physicalDevice == VK_NULL_HANDLE) {
+            if (mismatchReason) *mismatchReason = "no Vulkan physical device was selected";
+            return false;
+        }
+        VkPhysicalDeviceDriverProperties driverProperties{};
+        driverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+        VkPhysicalDeviceIDProperties idProperties{};
+        idProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+        idProperties.pNext = &driverProperties;
+        VkPhysicalDeviceProperties2 properties2{};
+        properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties2.pNext = &idProperties;
+        vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
+
+        DeviceDriverIdentityBuildFact actual{};
+        actual.deviceName = properties2.properties.deviceName;
+        actual.driverName = driverProperties.driverName;
+        actual.driverInfo = driverProperties.driverInfo;
+        actual.vendorId = properties2.properties.vendorID;
+        actual.deviceId = properties2.properties.deviceID;
+        actual.driverVersion = properties2.properties.driverVersion;
+        actual.driverId = static_cast<uint32_t>(driverProperties.driverID);
+        std::copy(std::begin(idProperties.deviceUUID), std::end(idProperties.deviceUUID),
+                  actual.deviceUuid.begin());
+        std::copy(std::begin(idProperties.driverUUID), std::end(idProperties.driverUUID),
+                  actual.driverUuid.begin());
+        return MatchesConfiguredDeviceIdentity(actual, mismatchReason);
+    }
+#else
+    (void)physicalDevice;
+    if (mismatchReason) *mismatchReason = "configured identity is unavailable in the configure probe";
+    return false;
+#endif
+}
+
+bool CapabilityGraph::IsConfiguredGraphicsQueueFamily(uint32_t queueFamily) noexcept {
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+    return !BuildCapabilities::kPersonalizedMode ||
+           queueFamily == BuildCapabilities::kGraphicsQueueFamily;
+#else
+    (void)queueFamily;
+    return true;
+#endif
 }
 
 std::shared_ptr<CapabilityNode> CapabilityGraph::GetCapability(const std::string& name) const {
@@ -452,6 +827,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
     // platform needs to present (VK_KHR_surface + the platform surface, e.g. win32/xlib/wayland).
     // This replaces the hardcoded VK_KHR_WIN32_SURFACE / VK_USE_PLATFORM_WIN32_KHR logic.
     std::vector<std::shared_ptr<CapabilityNode>> platformSurfaceExts;
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
     {
         glfwInit();  // idempotent; required before glfwGetRequiredInstanceExtensions
         uint32_t glfwExtCount = 0;
@@ -465,6 +841,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
                 std::string("InstanceExt:") + glfwExts[i], glfwExts[i]));
         }
     }
+#endif
 
     auto debugUtils = CreateCapability<InstanceExtensionCapability>(
         "InstanceExt:VK_EXT_debug_utils", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -566,6 +943,37 @@ void CapabilityGraph::BuildStandardCapabilities() {
     // instance and primary device are known; registration is deliberately
     // behavior-free until a later consumer opts in.
     RegisterCapability(std::make_shared<BackgroundGpuCapability>());
+
+#ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+    RegisterBuildFact("BuildFact:ConfiguredPlatform",
+        PlatformBuildFact{std::string(BuildCapabilities::kPlatform),
+                          std::string(BuildCapabilities::kArchitecture),
+                          std::string(BuildCapabilities::kCompilerId),
+                          std::string(BuildCapabilities::kCompilerVersion)});
+    RegisterBuildFact("BuildFact:ConfiguredProductVariant",
+        ProductVariantBuildFact{std::string(BuildCapabilities::kProductVariant)});
+    for (const auto& queue : BuildCapabilities::kQueueFamilies) {
+        RegisterBuildFact("BuildFact:ConfiguredQueueFamily:" + std::string(queue.role),
+                          QueueFamilyBuildFact{std::string(queue.role), queue.index,
+                                               queue.flags, queue.queueCount});
+    }
+    if constexpr (BuildCapabilities::kHasDeviceIdentity) {
+        DeviceDriverIdentityBuildFact expected{};
+        expected.deviceName = BuildCapabilities::kDeviceName;
+        expected.driverName = BuildCapabilities::kDriverName;
+        expected.driverInfo = BuildCapabilities::kDriverInfo;
+        expected.vendorId = BuildCapabilities::kVendorId;
+        expected.deviceId = BuildCapabilities::kDeviceId;
+        expected.driverVersion = BuildCapabilities::kDriverVersion;
+        expected.driverId = BuildCapabilities::kDriverId;
+        expected.deviceUuid = BuildCapabilities::kDeviceUuid;
+        expected.driverUuid = BuildCapabilities::kDriverUuid;
+        RegisterBuildFact("BuildFact:ConfiguredDeviceDriverIdentity", std::move(expected));
+    }
+    SetAllBindingTimes(BuildCapabilities::kPersonalizedMode
+                           ? CapabilityBindingTime::BuildTime
+                           : CapabilityBindingTime::Runtime);
+#endif
 }
 
 } // namespace Vixen

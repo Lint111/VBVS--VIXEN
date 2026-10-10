@@ -10,6 +10,7 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
+#include "ConfiguredOptionalPath.h"
 #include "KernelDispatch/TaskExecutor.h"
 #include <array>
 #include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
@@ -2149,24 +2150,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
             Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice =
                 deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
-            const auto rayQueryPath = vulkanDevice
-                ? vulkanDevice->GetCapabilityGraph().ResolveOptionalPath(
-                    "RayQueryLighting", rtLightingMode != RtLightingMode::Off)
-                : Vixen::CapabilityPath::CapabilityIndependent;
-            const bool hasRayQuery = rayQueryPath == Vixen::CapabilityPath::CapabilityEnabled;
-            if (rtLightingMode == RtLightingMode::Force &&
-                rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
-                throw std::runtime_error(
-                    "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+            const auto useRayQuery = [&] {
+                composedUsesRtQuery = true;
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: "
+                                     "RT-traversal (CapabilityGraph: RayQueryLighting available)");
+                }
+                resolvedFeatures.push_back(kFeatureRtQueryTraversal.define);
+            };
+            const auto useGridDda = [&] {
+                if (rtLightingMode == RtLightingMode::Force) {
+                    throw std::runtime_error(
+                        "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+                }
+                composedUsesRtQuery = false;
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: "
+                                     "grid-DDA (software traversal substitute -- rayQuery unavailable)");
+                }
+                resolvedFeatures.push_back(kFeatureBrickmapTraversal.define);
+            };
+            if (vulkanDevice) {
+                Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
+                    vulkanDevice->GetCapabilityGraph(), rtLightingMode != RtLightingMode::Off,
+                    useRayQuery, useGridDda);
+            } else {
+                useGridDda();
             }
-            composedUsesRtQuery = hasRayQuery;
-            if (mainLogger && mainLogger->IsEnabled()) {
-                mainLogger->Info(std::string("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: ") +
-                                  (hasRayQuery ? "RT-traversal (CapabilityGraph: RayQueryLighting available)"
-                                               : "grid-DDA (software traversal substitute -- rayQuery unavailable)"));
-            }
-            resolvedFeatures.push_back(
-                hasRayQuery ? kFeatureRtQueryTraversal.define : kFeatureBrickmapTraversal.define);
             // Also push the composed identity define itself -- gates the far-field
             // (footprint > brick) tier in SceneBindings.glsl/RayQueryTraversal.glsl,
             // which is additive to whichever near-field backend define was just
@@ -2178,7 +2188,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // disabled by default for this node) -- matches the [FarFieldCount]
             // precedent (VoxelGridNode.cpp) so a boot log always answers "which
             // #ifdef branch is live" without re-deriving it from device caps.
-            std::cout << "[ComposedBackend] " << (hasRayQuery ? "RTQUERY" : "BRICKMAP") << std::endl;
+            std::cout << "[ComposedBackend] " << (composedUsesRtQuery ? "RTQUERY" : "BRICKMAP") << std::endl;
         }
         auto builder = marchFamily->MakeBuilder(resolvedFeatures);
         // W-RTQUERY Slice A: GL_EXT_ray_query needs SPIR-V 1.4+ (rayQueryEXT opaque type +
@@ -2341,18 +2351,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                          std::vector<std::string> features) {
         auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
         auto* vulkanDevice = deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
-        const auto rayQueryPath = vulkanDevice
-            ? vulkanDevice->GetCapabilityGraph().ResolveOptionalPath(
-                "RayQueryLighting", rtLightingMode != RtLightingMode::Off)
-            : Vixen::CapabilityPath::CapabilityIndependent;
-        const bool useRayQuery = rayQueryPath == Vixen::CapabilityPath::CapabilityEnabled;
-        if (rtLightingMode == RtLightingMode::Force &&
-            rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
-            throw std::runtime_error(
-                "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
-        }
-        if (useRayQuery) {
+        bool useRayQuery = false;
+        const auto useRayQueryPath = [&] {
+            useRayQuery = true;
             features.push_back(kFeatureRayQueryLighting.define);
+        };
+        const auto useIndependentPath = [&] {
+            if (rtLightingMode == RtLightingMode::Force) {
+                throw std::runtime_error(
+                    "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+            }
+        };
+        if (vulkanDevice) {
+            Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
+                vulkanDevice->GetCapabilityGraph(), rtLightingMode != RtLightingMode::Off,
+                useRayQueryPath, useIndependentPath);
+        } else {
+            useIndependentPath();
         }
         return std::pair<std::vector<std::string>, bool>{std::move(features), useRayQuery};
     };
