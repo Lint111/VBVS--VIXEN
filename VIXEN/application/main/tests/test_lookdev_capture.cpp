@@ -75,7 +75,7 @@ public:
     }
 
     void BuildRenderGraph() override {
-        const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes();
+        const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(scenarios_.front().lighting);
         for (const auto& recipe : recipes) {
             const auto result = RegisterProceduralRecipe(recipe.recipeId, recipe.entry);
             if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -106,10 +106,12 @@ public:
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
 
         lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
-                             scenarios_.front().lighting.ambient, {1.0f, 1.0f});
+                             scenarios_.front().lighting.ambient,
+                             Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                 scenarios_.front().lighting.exposureCompensationEV);
-        SetBodyInstances(Vixen::App::Lookdev::BodyInstances(recipes));
+        SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
+            recipes, scenarios_.front().lighting));
     }
 
     bool Render() override {
@@ -130,7 +132,8 @@ public:
             camera_->SetYawForTest(next.yawRadians);
             camera_->SetPitchForTest(kPitchRadians);
             lighting_->SetLights(Vixen::App::Lookdev::Lights(next.lighting),
-                                 next.lighting.ambient, {1.0f, 1.0f});
+                                 next.lighting.ambient,
+                                 Vixen::App::Lookdev::CelSpillPurposeScales(next.lighting));
             lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                     next.lighting.exposureCompensationEV);
         }
