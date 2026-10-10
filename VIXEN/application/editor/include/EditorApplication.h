@@ -19,6 +19,8 @@
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
+#include "AppFlowChannel.h"
+#include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
 #include "GaiaLayerViewDataProvider.h"  // Inc-B: Gaia-backed IViewDataProvider (was LayerControllerViewDataProvider)
 #include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
@@ -27,9 +29,12 @@
 
 #include <memory>
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
+#include <optional>
 
 // Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
 // transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
@@ -98,6 +103,11 @@ public:
     bool CaptureFrameToPng(const std::string& path, std::string& err);
 
 private:
+    std::optional<std::string> HandleAppFlowRequest(const std::string& request);
+    void PumpAppFlowChannel();
+    void RecordAppFlowEvent(const std::string& type);
+    void StartPendingReadbacks();
+
     // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
     void RegisterAppFlowHandlers();
 
@@ -189,6 +199,25 @@ private:
     std::vector<long> captureFrames_;               // parsed once from VIXEN_EDITOR_CAPTURE_FRAMES
     std::string captureDir_ = "temp";               // overridable via VIXEN_EDITOR_CAPTURE_DIR
     bool scriptParsed_ = false;                     // guards the one-time env parse in Update()
+
+    std::unique_ptr<AppFlowChannel> appFlowChannel_;
+    bool channelPaused_ = false;
+    uint32_t channelStepBudget_ = 0;
+    uint64_t channelEventSequence_ = 0;
+    std::vector<std::string> channelEvents_;
+    std::unordered_map<std::string, uint64_t> channelActionFrames_;
+    uint32_t channelObservedMask_ = 0;
+    uint64_t channelPresentedFrame_ = 0;
+    struct PendingReadback {
+        std::string spec;
+        uint64_t frame = 0;
+        std::chrono::steady_clock::time_point requestedAt{};
+        bool enqueued = false;
+    };
+    std::unique_ptr<AppFlowReadbackRing> appFlowReadback_;
+    std::unordered_map<std::string, PendingReadback> channelReadbacks_;
+    std::unordered_map<std::string, std::string> channelReadbackResults_;
+    std::unordered_map<std::string, std::string> channelDeferredDispatchResults_;
 
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };

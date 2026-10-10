@@ -5,6 +5,7 @@
 # 'VK2-borrowed' = acquires VulkanDevice::SubmitMutex() without owning a lock; 'CENSUS' = the
 # LockCensus.h wrapper itself; 'UNCLASSIFIED' = declared here but not yet classified (WARN).
 # Counts may only go down; a removal commit must re-sync its row (--fix), an addition must be classified.
+VIXEN/application/editor/source/AppFlowReadback.cpp	0	VK2-borrowed
 VIXEN/application/main/source/graph/BuildRenderGraph.cpp	1	APP1
 VIXEN/libraries/CashSystem/include/MainCacher.h	2	C3,C4
 VIXEN/libraries/CashSystem/include/RecipeContentCacher.h	1	C5

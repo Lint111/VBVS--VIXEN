@@ -13,14 +13,21 @@
 #include "Nodes/UIRenderNode.h"               // AFTER the Recipe/gaia includes above
 #include "Nodes/UISelectionProviderNode.h"
 #include "Nodes/DeviceNode.h"                 // CaptureFrameToPng's live device lookup
+#include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/CameraNode.h"
+#include "Nodes/SwapChainNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
 #include "Debug/RenderTargetReadback.h"       // shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
 #include "AppFlowBlobFile.h"                   // T1.2: external AppFlow watch/reload
 #include "GaiaLayerViewDataProvider.h"        // Inc-B: view->model seam, Gaia-backed provider
+#include "VixenHash.h"
 #include <Logger.h>
+#include <magic_enum.hpp>
+#include <nlohmann/json.hpp>
+#include <RmlUi/Core.h>
+#include <stb_image_write.h>
 
 #include <cstdlib>
 #include <algorithm>
@@ -30,7 +37,13 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <limits>
+#include <memory>
+#include <stdexcept>
 #include <sstream>
+#include <string_view>
+#include <thread>
+#include <type_traits>
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL builds)
 #include <GLFW/glfw3.h>
@@ -169,6 +182,104 @@ std::array<float, 6> ParameterRangeMaxima(const Vixen::Editor::EditorDocumentMod
         if (slot < maxima.size()) maxima[slot] = document.ParameterMax(i);
     }
     return maxima;
+}
+
+template <typename Enum>
+nlohmann::json EnumRecord(Enum value) {
+    using Underlying = std::underlying_type_t<Enum>;
+    return {{"id", static_cast<Underlying>(value)}, {"name", std::string(magic_enum::enum_name(value))}};
+}
+
+const char* ParamTypeName(Vixen::AppFlow::Generated::FlowParamType type) {
+    using Vixen::AppFlow::Generated::FlowParamType;
+    switch (type) {
+        case FlowParamType::String: return "string";
+        case FlowParamType::Int: return "integer";
+        case FlowParamType::Float: return "number";
+        case FlowParamType::EntityRef: return "entityRef";
+    }
+    return "unknown";
+}
+
+std::string RequestKey(const nlohmann::json& id) {
+    return id.is_string() ? id.get<std::string>() : id.dump();
+}
+
+Vixen::AppFlow::Generated::FlowActionId ParseActionId(const nlohmann::json& value) {
+    using Vixen::AppFlow::Generated::FlowActionId;
+    if (value.is_number_unsigned() || value.is_number_integer()) {
+        const auto raw = value.get<int64_t>();
+        if (raw < 0 || raw > std::numeric_limits<uint16_t>::max()) {
+            throw std::runtime_error("actionId is outside the generated action range");
+        }
+        const auto id = static_cast<FlowActionId>(raw);
+        for (const auto& decl : Vixen::AppFlow::Generated::kActionDecls) {
+            if (decl.id == id) return id;
+        }
+        throw std::runtime_error("actionId is not declared by the generated AppFlow schema");
+    }
+    if (value.is_string()) {
+        const auto parsed = magic_enum::enum_cast<FlowActionId>(value.get<std::string>());
+        if (parsed) {
+            for (const auto& decl : Vixen::AppFlow::Generated::kActionDecls) {
+                if (decl.id == *parsed) return *parsed;
+            }
+        }
+    }
+    throw std::runtime_error("actionId must name a generated action id");
+}
+
+std::string ParamValueAsString(const nlohmann::json& value,
+                               Vixen::AppFlow::Generated::FlowParamType type) {
+    using Vixen::AppFlow::Generated::FlowParamType;
+    switch (type) {
+        case FlowParamType::String:
+            if (!value.is_string()) throw std::runtime_error("expected a string parameter");
+            return value.get<std::string>();
+        case FlowParamType::Int:
+            if (!value.is_number_integer() || value.is_boolean()) {
+                throw std::runtime_error("expected an integer parameter");
+            }
+            return value.dump();
+        case FlowParamType::Float:
+            if (!value.is_number() || value.is_boolean()) {
+                throw std::runtime_error("expected a number parameter");
+            }
+            return value.dump();
+        case FlowParamType::EntityRef:
+            if (!value.is_object()) throw std::runtime_error("expected a typed entity reference object");
+            if (!value.contains("type") || !value.at("type").is_string() ||
+                !value.contains("id") || !(value.at("id").is_string() || value.at("id").is_number_integer())) {
+                throw std::runtime_error("entityRef requires string type and string/integer id fields");
+            }
+            return value.dump();
+    }
+    throw std::runtime_error("unsupported generated parameter type");
+}
+
+std::string Base64Encode(const uint8_t* bytes, size_t size) {
+    static constexpr char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string encoded;
+    encoded.reserve(((size + 2) / 3) * 4);
+    for (size_t i = 0; i < size; i += 3) {
+        const uint32_t a = bytes[i];
+        const uint32_t b = i + 1 < size ? bytes[i + 1] : 0;
+        const uint32_t c = i + 2 < size ? bytes[i + 2] : 0;
+        const uint32_t value = (a << 16) | (b << 8) | c;
+        encoded.push_back(alphabet[(value >> 18) & 63]);
+        encoded.push_back(alphabet[(value >> 12) & 63]);
+        encoded.push_back(i + 1 < size ? alphabet[(value >> 6) & 63] : '=');
+        encoded.push_back(i + 2 < size ? alphabet[value & 63] : '=');
+    }
+    return encoded;
+}
+
+void AppendPngBytes(void* context, void* data, int size) {
+    if (!context || !data || size <= 0) return;
+    auto* output = static_cast<std::vector<uint8_t>*>(context);
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    output->insert(output->end(), bytes, bytes + size);
 }
 
 void ApplyEditorPreviewBounds(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
@@ -864,6 +975,7 @@ bool EditorApplication::ReopenSavedDocument() {
 
 void EditorApplication::PreTick() {
     TraceEditorLatency("frame", "begin", updateTick_);
+    if (channelPaused_ && channelStepBudget_ == 0) return;
     // graph.Run() consolidation: the scripted-action injector runs in PreTick() (before Update())
     // instead of at the top of Update(). Behavior-identical: PreTick() is called by
     // VulkanApplicationBase::Tick() immediately before Update(), and updateTick_ only advances at
@@ -1014,6 +1126,9 @@ void EditorApplication::PreTick() {
 }
 
 void EditorApplication::Update() {
+    PumpAppFlowChannel();
+    StartPendingReadbacks();
+    if (channelPaused_ && channelStepBudget_ == 0) return;
     VulkanGraphApplication::Update();
 
     // Inc-2b M3 (carried over from the M2 validator): the base VulkanGraphApplication::Update's
@@ -1083,6 +1198,10 @@ void EditorApplication::Update() {
     // same-frame echo (inside the ToggleLayer handler) already covers the self case; this call is
     // what makes a non-input Gaia write reach the view at all.
     ReconcileLayersView();
+    if (doc_.EnabledMask() != channelObservedMask_) {
+        channelObservedMask_ = doc_.EnabledMask();
+        RecordAppFlowEvent("view.reconcile");
+    }
 
     // Re-flatten + re-upload on the next tick after a toggle (dirty-flag pattern — no
     // MarkNeedsRecompile; SetRecipePool inside ApplyDocumentToScene already sets the
@@ -1119,6 +1238,7 @@ void EditorApplication::Update() {
     // Scripted ACTIONS (toggle/undo/redo) at frame 0 are unaffected by that -- they mutate the
     // mask/ActionStack regardless of what's on screen yet.
     ++updateTick_;
+    if (channelPaused_ && channelStepBudget_ > 0) --channelStepBudget_;
     } catch (const std::exception& e) {
         lastEditorError_ = std::string("Update failed: ") + e.what();
         logger_->Error("[EditorApplication] Update: " + lastEditorError_);
@@ -1143,4 +1263,561 @@ void EditorApplication::PostTick() {
         TraceEditorLatency("readback", "end", updateTick_ - 1);
     }
     VulkanGraphApplication::PostTick();
+    ++channelPresentedFrame_;
+    if (appFlowChannel_) {
+        appFlowChannel_->SetPresentedFrame(channelPresentedFrame_);
+        StartPendingReadbacks();
+        PumpAppFlowChannel();
+    }
+}
+
+void EditorApplication::PumpAppFlowChannel() {
+    if (!appFlowChannel_) {
+        appFlowChannel_ = std::make_unique<AppFlowChannel>();
+        std::string error;
+        if (!appFlowChannel_->Start(error)) {
+            logger_->Error("[AppFlow/channel] start failed: " + error);
+            appFlowChannel_.reset();
+            return;
+        }
+        channelObservedMask_ = doc_.EnabledMask();
+        logger_->Info("[AppFlow/channel] descriptor=" + appFlowChannel_->DescriptorPath());
+    }
+    appFlowChannel_->Poll([this](const std::string& request) {
+        return HandleAppFlowRequest(request);
+    });
+}
+
+void EditorApplication::StartPendingReadbacks() {
+    if (channelReadbacks_.empty()) return;
+    using namespace Vixen::RenderGraph;
+    using Vixen::Vulkan::Resources::IRenderTarget;
+
+    auto* graph = GetRenderGraph();
+    auto* deviceNode = graph
+        ? static_cast<DeviceNode*>(graph->GetInstanceByName("main_device")) : nullptr;
+    auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+    if (!graph || !device) {
+        for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
+            channelReadbackResults_[it->first] = nlohmann::json{{"error", "render graph/device is unavailable"}}.dump();
+            it = channelReadbacks_.erase(it);
+        }
+        return;
+    }
+
+    auto* target = static_cast<IRenderTarget*>(nullptr);
+    if (auto* swapInstance = graph->GetInstanceByName("main_swapchain")) {
+        target = static_cast<SwapChainNode*>(swapInstance)->GetSwapchainPublic();
+    }
+    if (!target) {
+        auto* renderTargetInstance = graph->GetInstanceByName("compute_render_target");
+        if (renderTargetInstance) {
+            Resource* output = renderTargetInstance->GetOutput(0, 0);
+            if (output) target = output->GetHandle<IRenderTarget*>();
+        }
+    }
+    if (!target) {
+        for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
+            channelReadbackResults_[it->first] = nlohmann::json{{"error", "native render target is unavailable"}}.dump();
+            it = channelReadbacks_.erase(it);
+        }
+        return;
+    }
+
+    const VkExtent2D extent = target->GetExtent();
+    const auto asU32 = [](const nlohmann::json& value, const char* name) -> uint32_t {
+        if ((!value.is_number_unsigned() && !value.is_number_integer()) || value.is_boolean()) {
+            throw std::runtime_error(std::string(name) + " must be an integer");
+        }
+        const int64_t raw = value.get<int64_t>();
+        if (raw < 0 || static_cast<uint64_t>(raw) > std::numeric_limits<uint32_t>::max()) {
+            throw std::runtime_error(std::string(name) + " is outside the valid pixel range");
+        }
+        return static_cast<uint32_t>(raw);
+    };
+    const auto clampRect = [&](double minX, double minY, double maxX, double maxY,
+                               uint32_t& x, uint32_t& y, uint32_t& width, uint32_t& height) {
+        const int64_t left = std::clamp<int64_t>(static_cast<int64_t>(std::floor(minX)), 0, extent.width);
+        const int64_t top = std::clamp<int64_t>(static_cast<int64_t>(std::floor(minY)), 0, extent.height);
+        const int64_t right = std::clamp<int64_t>(static_cast<int64_t>(std::ceil(maxX)), 0, extent.width);
+        const int64_t bottom = std::clamp<int64_t>(static_cast<int64_t>(std::ceil(maxY)), 0, extent.height);
+        if (right <= left || bottom <= top) throw std::runtime_error("selection has no visible pixels in the native frame");
+        x = static_cast<uint32_t>(left); y = static_cast<uint32_t>(top);
+        width = static_cast<uint32_t>(right - left); height = static_cast<uint32_t>(bottom - top);
+    };
+
+    for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
+        PendingReadback& pending = it->second;
+        if (pending.enqueued || pending.frame > channelPresentedFrame_) { ++it; continue; }
+        const std::string key = it->first;
+        try {
+            if (pending.frame < channelPresentedFrame_) {
+                throw std::runtime_error("selected frame passed before its readback was staged");
+            }
+            const nlohmann::json spec = nlohmann::json::parse(pending.spec);
+            const nlohmann::json selection = spec.contains("selection")
+                ? spec.at("selection") : spec;
+            const std::string format = spec.value("format", std::string("png"));
+            if (format != "png" && format != "raw") throw std::runtime_error("format must be png or raw");
+            if (!selection.is_object() || !selection.contains("type") || !selection.at("type").is_string()) {
+                throw std::runtime_error("selection requires a type");
+            }
+            const std::string type = selection.at("type").get<std::string>();
+            uint32_t x = 0, y = 0, width = extent.width, height = extent.height;
+            if (type == "fullFrame") {
+                // Native target extent is the full-frame contract.
+            } else if (type == "screenRect") {
+                x = asU32(selection.at("x"), "x");
+                y = asU32(selection.at("y"), "y");
+                width = asU32(selection.at("width"), "width");
+                height = asU32(selection.at("height"), "height");
+            } else if (type == "selector") {
+                if (!selection.contains("selector") || !selection.at("selector").is_string()) {
+                    throw std::runtime_error("selector selection requires a selector string");
+                }
+                auto* uiNode = GetUiRenderNode();
+                Rml::Context* context = uiNode ? uiNode->GetUiContext() : nullptr;
+                if (!context) throw std::runtime_error("UI context is unavailable in this session");
+                std::string selector = selection.at("selector").get<std::string>();
+                if (!selector.empty() && selector.front() == '#') selector.erase(selector.begin());
+                Rml::Element* root = context->GetRootElement();
+                Rml::Element* element = root ? root->GetElementById(selector) : nullptr;
+                if (!element) throw std::runtime_error("UI selector did not resolve to an element id");
+                const auto offset = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+                const auto size = element->GetBox().GetSize(Rml::BoxArea::Border);
+                clampRect(offset.x, offset.y, offset.x + size.x, offset.y + size.y, x, y, width, height);
+            } else if (type == "sceneInstance") {
+                if (!selection.contains("reference") || !selection.at("reference").is_object()) {
+                    throw std::runtime_error("sceneInstance requires a typed reference object");
+                }
+                const auto& reference = selection.at("reference");
+                if (reference.value("type", std::string{}) != "bodyInstance" || !reference.contains("index")) {
+                    throw std::runtime_error("scene instance reference must use type bodyInstance and an index");
+                }
+                const uint32_t index = asU32(reference.at("index"), "reference.index");
+                auto* scene = static_cast<BodyOctreeSceneNode*>(graph->GetInstanceByName("body_octree_scene"));
+                auto* camera = static_cast<CameraNode*>(graph->GetInstanceByName("raymarch_camera"));
+                if (!scene || !camera || index >= scene->GetInstances().size()) {
+                    throw std::runtime_error("scene instance or camera reference is unavailable");
+                }
+                Vixen::SVO::RecipeRegistry::RecipeEntry recipe;
+                Vixen::Editor::DocumentDiagnostic diagnostic;
+                if (!doc_.FlattenToRecipeEntry(recipe, doc_.CaptureBakeSnapshot(), diagnostic)) {
+                    throw std::runtime_error("could not derive scene instance bounds: " + diagnostic.message);
+                }
+                ApplyEditorPreviewBounds(recipe, doc_);
+                const glm::mat4 localToWorld = Vixen::SVO::ToMat4(scene->GetInstances()[index].transform.localToWorld);
+                const glm::mat4 viewProjection = camera->GetCurrentViewProj();
+                double minX = std::numeric_limits<double>::infinity();
+                double minY = std::numeric_limits<double>::infinity();
+                double maxX = -std::numeric_limits<double>::infinity();
+                double maxY = -std::numeric_limits<double>::infinity();
+                const glm::vec3 center = recipe.boundCenter;
+                const glm::vec3 radius(recipe.boundRadius);
+                for (uint32_t corner = 0; corner < 8; ++corner) {
+                    const glm::vec3 local = center + glm::vec3(
+                        (corner & 1u) ? radius.x : -radius.x,
+                        (corner & 2u) ? radius.y : -radius.y,
+                        (corner & 4u) ? radius.z : -radius.z);
+                    const glm::vec4 clip = viewProjection * localToWorld * glm::vec4(local, 1.0f);
+                    if (clip.w <= 1e-5f) continue;
+                    const double ndcX = clip.x / clip.w;
+                    const double ndcY = clip.y / clip.w;
+                    const double pixelX = (ndcX * 0.5 + 0.5) * extent.width;
+                    const double pixelY = (0.5 - ndcY * 0.5) * extent.height;
+                    minX = std::min(minX, pixelX); maxX = std::max(maxX, pixelX);
+                    minY = std::min(minY, pixelY); maxY = std::max(maxY, pixelY);
+                }
+                if (!std::isfinite(minX) || !std::isfinite(minY)) {
+                    throw std::runtime_error("scene instance bounds are behind the camera");
+                }
+                clampRect(minX, minY, maxX, maxY, x, y, width, height);
+            } else {
+                throw std::runtime_error("selection type must be fullFrame, screenRect, selector, or sceneInstance");
+            }
+
+            if (!appFlowReadback_) appFlowReadback_ = std::make_unique<AppFlowReadbackRing>();
+            std::string error;
+            if (!appFlowReadback_->Enqueue(key, pending.frame, device, device->queue,
+                    device->graphicsQueueIndex, target, x, y, width, height, error)) {
+                throw std::runtime_error(error);
+            }
+            pending.enqueued = true;
+        } catch (const std::exception& exception) {
+            channelReadbackResults_[key] = nlohmann::json{{"error", exception.what()}}.dump();
+            it = channelReadbacks_.erase(it);
+            continue;
+        }
+        ++it;
+    }
+
+    if (!appFlowReadback_) return;
+    for (auto& completed : appFlowReadback_->Poll()) {
+        auto pendingIt = channelReadbacks_.find(completed.key);
+        if (pendingIt == channelReadbacks_.end()) continue;
+        nlohmann::json response;
+        if (!completed.error.empty()) {
+            response = {{"error", completed.error}};
+        } else {
+            const auto responseStarted = std::chrono::steady_clock::now();
+            const nlohmann::json spec = nlohmann::json::parse(pendingIt->second.spec);
+            const std::string format = spec.value("format", std::string("png"));
+            std::vector<uint8_t> pixels = completed.pixels;
+            const bool bgra = completed.format == VK_FORMAT_B8G8R8A8_UNORM ||
+                              completed.format == VK_FORMAT_B8G8R8A8_SRGB;
+            std::string encodedFormat = format;
+            if (format == "png") {
+                if (bgra) {
+                    for (size_t p = 0; p + 3 < pixels.size(); p += 4) std::swap(pixels[p], pixels[p + 2]);
+                }
+                std::vector<uint8_t> png;
+                const int pngOk = stbi_write_png_to_func(
+                    &AppendPngBytes, &png, static_cast<int>(completed.width),
+                    static_cast<int>(completed.height), 4, pixels.data(),
+                    static_cast<int>(completed.width * 4));
+                if (!pngOk || png.empty()) {
+                    response = {{"error", "PNG encoding failed"}};
+                } else {
+                    encodedFormat = "png";
+                    response = {
+                        {"format", encodedFormat}, {"mimeType", "image/png"},
+                        {"pixelsBase64", Base64Encode(png.data(), png.size())},
+                        {"hash", Vixen::Hash::ComputeHash64(completed.pixels)},
+                        {"pixelFormat", bgra ? "BGRA8" : "RGBA8"},
+                        {"frame", completed.frame}, {"x", completed.x}, {"y", completed.y},
+                        {"width", completed.width}, {"height", completed.height},
+                        {"nativeWidth", extent.width}, {"nativeHeight", extent.height},
+                        {"transferBytes", completed.transferBytes},
+                        {"fullImageTransferFallback", completed.fullImageTransferFallback},
+                        {"submitCpuUs", completed.enqueueCpuUs},
+                        {"readbackRoundTripUs", std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now() - pendingIt->second.requestedAt).count()}
+                    };
+                }
+            } else {
+                response = {
+                    {"format", "raw"}, {"mimeType", bgra ? "application/x-bgra8" : "application/x-rgba8"},
+                    {"pixelsBase64", Base64Encode(completed.pixels.data(), completed.pixels.size())},
+                    {"hash", Vixen::Hash::ComputeHash64(completed.pixels)},
+                    {"pixelFormat", bgra ? "BGRA8" : "RGBA8"},
+                    {"frame", completed.frame}, {"x", completed.x}, {"y", completed.y},
+                    {"width", completed.width}, {"height", completed.height},
+                    {"nativeWidth", extent.width}, {"nativeHeight", extent.height},
+                    {"transferBytes", completed.transferBytes},
+                    {"fullImageTransferFallback", completed.fullImageTransferFallback},
+                    {"submitCpuUs", completed.enqueueCpuUs},
+                    {"readbackRoundTripUs", std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - pendingIt->second.requestedAt).count()}
+                };
+            }
+            if (!response.contains("error")) {
+                const uint64_t encodeHashCpuUs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - responseStarted).count());
+                response["mapCropCpuUs"] = completed.completionCpuUs;
+                response["encodeHashCpuUs"] = encodeHashCpuUs;
+                response["frameTimeImpactUs"] = completed.enqueueCpuUs + completed.completionCpuUs + encodeHashCpuUs;
+            }
+        }
+        channelReadbackResults_[completed.key] = response.dump();
+        channelReadbacks_.erase(pendingIt);
+    }
+}
+
+void EditorApplication::RecordAppFlowEvent(const std::string& type) {
+    if (!appFlowChannel_) return;
+    using namespace Vixen::AppFlow;
+    using namespace Vixen::AppFlow::Generated;
+    nlohmann::json event{
+        {"sequence", ++channelEventSequence_},
+        {"type", type},
+        {"frame", channelPresentedFrame_},
+        {"flowState", EnumRecord(rt_.Current())},
+        {"undoDepth", rt_.Stack().UndoDepth()},
+        {"redoDepth", rt_.Stack().RedoDepth()},
+        {"layerMask", doc_.EnabledMask()}
+    };
+    channelEvents_.push_back(event.dump());
+    if (channelEvents_.size() > 256) channelEvents_.erase(channelEvents_.begin());
+}
+
+std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::string& rawRequest) {
+    using namespace Vixen::AppFlow;
+    using namespace Vixen::AppFlow::Generated;
+
+    const nlohmann::json request = nlohmann::json::parse(rawRequest);
+    if (!request.is_object() || !request.contains("method") || !request.at("method").is_string()) {
+        throw std::runtime_error("request requires a method string");
+    }
+    const std::string method = request.at("method").get<std::string>();
+    const nlohmann::json params = request.value("params", nlohmann::json::object());
+    if (!params.is_object()) throw std::runtime_error("params must be an object");
+
+    if (method == "appflow.list") {
+        nlohmann::json actions = nlohmann::json::array();
+        for (const auto& declaration : kActionDecls) {
+            nlohmann::json paramList = nlohmann::json::array();
+            for (uint32_t i = 0; i < declaration.paramCount; ++i) {
+                paramList.push_back({{"name", declaration.params[i].name},
+                                     {"type", ParamTypeName(declaration.params[i].type)}});
+            }
+            actions.push_back({{"id", static_cast<uint16_t>(declaration.id)},
+                               {"name", std::string(magic_enum::enum_name(declaration.id))},
+                               {"params", std::move(paramList)}});
+        }
+        nlohmann::json selectors = nlohmann::json::array();
+        for (const auto& trigger : kElementTriggers) {
+            selectors.push_back({{"id", trigger.id}, {"pattern", trigger.elementPattern},
+                                 {"actionId", static_cast<uint16_t>(trigger.action)},
+                                 {"param", trigger.paramName}, {"on", trigger.on}});
+        }
+        nlohmann::json keys = nlohmann::json::array();
+        for (const auto& key : kKeyDefaults) {
+            keys.push_back({{"id", key.id}, {"actionId", static_cast<uint16_t>(key.action)},
+                            {"key", std::string(magic_enum::enum_name(key.chord.key))},
+                            {"mods", static_cast<uint8_t>(key.chord.mods)},
+                            {"scope", EnumRecord(key.scope)}, {"state", EnumRecord(key.state)}});
+        }
+        nlohmann::json transitions = nlohmann::json::array();
+        for (const auto& edge : kTransitions) {
+            transitions.push_back({{"id", edge.id}, {"from", EnumRecord(edge.from)},
+                                   {"to", EnumRecord(edge.to)},
+                                   {"guard", std::string(magic_enum::enum_name(edge.guard))}});
+        }
+        nlohmann::json nouns = nlohmann::json::array();
+        for (const auto noun : magic_enum::enum_values<ViewNounId>()) nouns.push_back(EnumRecord(noun));
+        nlohmann::json dataTargets = nlohmann::json::array();
+        for (const auto& target : kDataTargets) {
+            dataTargets.push_back({{"actionId", static_cast<uint16_t>(target.action)},
+                                   {"viewNoun", EnumRecord(target.viewNoun)}});
+        }
+        nlohmann::json states = nlohmann::json::array();
+        for (const auto state : kStateIds) states.push_back(EnumRecord(state));
+        return nlohmann::json{
+            {"schema", {"shapeHash", kAppFlowShapeHash}},
+            {"actions", std::move(actions)},
+            {"selectors", std::move(selectors)},
+            {"chords", std::move(keys)},
+            {"transitions", std::move(transitions)},
+            {"viewNouns", std::move(nouns)},
+            {"dataTargets", std::move(dataTargets)},
+            {"flow", {{"states", std::move(states)}, {"initial", EnumRecord(kInitialState)},
+                       {"current", EnumRecord(rt_.Current())}}},
+            {"undo", {{"depth", rt_.Stack().UndoDepth()}, {"redoDepth", rt_.Stack().RedoDepth()}}},
+            {"frame", channelPresentedFrame_}
+        }.dump();
+    }
+
+    if (method == "appflow.dispatch") {
+        const nlohmann::json actionRequestId = request.value("id", nlohmann::json(nullptr));
+        const std::string actionKey = RequestKey(actionRequestId);
+        if (const auto deferred = channelDeferredDispatchResults_.find(actionKey);
+            deferred != channelDeferredDispatchResults_.end()) {
+            const auto pixels = channelReadbackResults_.find(actionKey);
+            if (pixels == channelReadbackResults_.end()) return std::nullopt;
+            const std::string deferredJson = deferred->second;
+            const nlohmann::json image = nlohmann::json::parse(pixels->second);
+            channelReadbackResults_.erase(pixels);
+            channelDeferredDispatchResults_.erase(deferred);
+            if (image.contains("error")) throw std::runtime_error(image.at("error").get<std::string>());
+            nlohmann::json response = nlohmann::json::parse(deferredJson);
+            response["readback"] = image;
+            return response.dump();
+        }
+        if (params.contains("readback")) {
+            const auto& visual = params.at("readback");
+            if (!visual.is_object() || !visual.contains("selection") || !visual.at("selection").is_object()) {
+                throw std::runtime_error("dispatch readback requires a selection object");
+            }
+        }
+        const bool hasId = params.contains("actionId");
+        const bool hasSelector = params.contains("selector");
+        const bool hasChord = params.contains("chord");
+        if (static_cast<int>(hasId) + static_cast<int>(hasSelector) + static_cast<int>(hasChord) != 1) {
+            throw std::runtime_error("dispatch requires exactly one of actionId, selector, or chord");
+        }
+        DispatchResult result = DispatchResult::RejectedByState;
+        FlowActionId actionId{};
+        if (hasId) {
+            actionId = ParseActionId(params.at("actionId"));
+            const AppFlowActionDecl* declaration = nullptr;
+            for (const auto& candidate : kActionDecls) if (candidate.id == actionId) declaration = &candidate;
+            if (!declaration) throw std::runtime_error("actionId is not in the generated catalog");
+            const nlohmann::json supplied = params.value("params", nlohmann::json::object());
+            if (!supplied.is_object()) throw std::runtime_error("action params must be an object");
+            if (supplied.size() != declaration->paramCount) {
+                throw std::runtime_error("action params do not match the generated schema");
+            }
+            AppFlowRuntime::Params typedParams;
+            for (uint32_t i = 0; i < declaration->paramCount; ++i) {
+                const auto& schema = declaration->params[i];
+                if (!supplied.contains(schema.name)) {
+                    throw std::runtime_error(std::string("missing generated parameter: ") + schema.name);
+                }
+                typedParams.emplace_back(schema.name, ParamValueAsString(supplied.at(schema.name), schema.type));
+            }
+            result = rt_.DispatchById(actionId, typedParams);
+        } else if (hasSelector) {
+            if (!params.at("selector").is_string()) throw std::runtime_error("selector must be a string");
+            result = rt_.DispatchBySelector(params.at("selector").get<std::string>());
+        } else {
+            const auto& chord = params.at("chord");
+            if (!chord.is_object() || !chord.contains("key") || !chord.at("key").is_string()) {
+                throw std::runtime_error("chord requires a generated key name");
+            }
+            const auto key = magic_enum::enum_cast<KeyId>(chord.at("key").get<std::string>());
+            if (!key || *key == KeyId::None) throw std::runtime_error("unknown generated chord key");
+            KeyMod mods = KeyMod::None;
+            if (chord.contains("mods")) {
+                if (!chord.at("mods").is_array()) throw std::runtime_error("chord mods must be an array");
+                for (const auto& modValue : chord.at("mods")) {
+                    if (!modValue.is_string()) throw std::runtime_error("each chord mod must be a string");
+                    const auto mod = magic_enum::enum_cast<KeyMod>(modValue.get<std::string>());
+                    if (!mod) throw std::runtime_error("unknown generated chord modifier");
+                    mods = static_cast<KeyMod>(static_cast<uint8_t>(mods) | static_cast<uint8_t>(*mod));
+                }
+            }
+            result = rt_.DispatchByKey({*key, mods});
+        }
+        channelActionFrames_[actionKey] = channelPresentedFrame_ + 1;
+        RecordAppFlowEvent("dispatch");
+        const nlohmann::json response{
+            {"dispatchResult", {{"code", static_cast<int>(result)},
+                                 {"name", std::string(magic_enum::enum_name(result))}}},
+            {"actionId", actionRequestId},
+            {"frame", channelPresentedFrame_ + 1},
+            {"flowState", EnumRecord(rt_.Current())},
+            {"undoDepth", rt_.Stack().UndoDepth()},
+            {"redoDepth", rt_.Stack().RedoDepth()}
+        };
+        if (params.contains("readback")) {
+            const auto& visual = params.at("readback");
+            channelReadbacks_[actionKey] = PendingReadback{
+                visual.dump(), channelPresentedFrame_ + 1, std::chrono::steady_clock::now(), false};
+            channelDeferredDispatchResults_[actionKey] = response.dump();
+            return std::nullopt;
+        }
+        return response.dump();
+    }
+
+    if (method == "appflow.read") {
+        if (params.contains("noun")) {
+            ViewNounId noun{};
+            const auto& input = params.at("noun");
+            if (input.is_string()) {
+                const auto parsed = magic_enum::enum_cast<ViewNounId>(input.get<std::string>());
+                if (!parsed) throw std::runtime_error("noun name is not generated");
+                noun = *parsed;
+            } else if (input.is_number_integer()) {
+                const auto numeric = input.get<int64_t>();
+                bool found = false;
+                for (const auto candidate : magic_enum::enum_values<ViewNounId>()) {
+                    if (static_cast<uint32_t>(candidate) == numeric) { noun = candidate; found = true; break; }
+                }
+                if (!found) throw std::runtime_error("noun id is not generated");
+            } else {
+                throw std::runtime_error("noun must be a generated name or integer id");
+            }
+            for (const auto& target : kDataTargets) {
+                if (target.viewNoun != noun) continue;
+                uint32_t value = 0;
+                if (!rt_.ReadData(target.action, value)) throw std::runtime_error("view noun is not readable in this editor session");
+                return nlohmann::json{{"noun", EnumRecord(noun)}, {"value", value}, {"frame", channelPresentedFrame_}}.dump();
+            }
+            throw std::runtime_error("generated view noun has no readable Data action in this session");
+        }
+
+        nlohmann::json views = nlohmann::json::array();
+        for (const auto& target : kDataTargets) {
+            uint32_t value = 0;
+            if (rt_.ReadData(target.action, value)) {
+                views.push_back({{"noun", EnumRecord(target.viewNoun)}, {"value", value}});
+            }
+        }
+        return nlohmann::json{
+            {"flowState", EnumRecord(rt_.Current())},
+            {"undoDepth", rt_.Stack().UndoDepth()},
+            {"redoDepth", rt_.Stack().RedoDepth()},
+            {"views", std::move(views)},
+            {"frame", channelPresentedFrame_}
+        }.dump();
+    }
+
+    if (method == "appflow.subscribe") {
+        const uint64_t after = params.value("after", uint64_t{0});
+        nlohmann::json events = nlohmann::json::array();
+        for (const auto& encoded : channelEvents_) {
+            const auto event = nlohmann::json::parse(encoded);
+            if (event.at("sequence").get<uint64_t>() > after) events.push_back(event);
+        }
+        return nlohmann::json{{"events", std::move(events)}, {"latestSequence", channelEventSequence_}}.dump();
+    }
+
+    if (method == "appflow.await_frame") {
+        uint64_t frame = 0;
+        if (params.contains("actionId")) {
+            const std::string actionKey = RequestKey(params.at("actionId"));
+            const auto found = channelActionFrames_.find(actionKey);
+            if (found == channelActionFrames_.end()) throw std::runtime_error("unknown actionId; dispatch it first");
+            frame = found->second;
+        } else if (params.contains("afterFrame") && params.at("afterFrame").is_number_integer()) {
+            frame = params.at("afterFrame").get<uint64_t>() + 1;
+        } else {
+            throw std::runtime_error("await_frame requires actionId or afterFrame");
+        }
+        if (channelPresentedFrame_ < frame) return std::nullopt;
+        return nlohmann::json{{"presented", true}, {"frame", channelPresentedFrame_}, {"targetFrame", frame}}.dump();
+    }
+
+    if (method == "appflow.pause") {
+        channelPaused_ = true;
+        channelStepBudget_ = 0;
+        return nlohmann::json{{"paused", true}, {"frame", channelPresentedFrame_}}.dump();
+    }
+    if (method == "appflow.run") {
+        channelPaused_ = false;
+        channelStepBudget_ = 0;
+        return nlohmann::json{{"paused", false}, {"frame", channelPresentedFrame_}}.dump();
+    }
+    if (method == "appflow.step") {
+        const uint32_t count = params.value("ticks", uint32_t{1});
+        if (count == 0 || count > 10000) throw std::runtime_error("ticks must be between 1 and 10000");
+        channelPaused_ = true;
+        channelStepBudget_ = count;
+        return nlohmann::json{{"paused", true}, {"ticks", count},
+                              {"targetFrame", channelPresentedFrame_ + count}}.dump();
+    }
+    if (method == "appflow.readback") {
+        const std::string requestKey = RequestKey(request.value("id", nlohmann::json(nullptr)));
+        if (const auto ready = channelReadbackResults_.find(requestKey);
+            ready != channelReadbackResults_.end()) {
+            const std::string response = ready->second;
+            channelReadbackResults_.erase(ready);
+            const nlohmann::json decoded = nlohmann::json::parse(response);
+            if (decoded.contains("error")) throw std::runtime_error(decoded.at("error").get<std::string>());
+            return response;
+        }
+        if (channelReadbacks_.contains(requestKey)) return std::nullopt;
+        if (!params.contains("selection") || !params.at("selection").is_object()) {
+            throw std::runtime_error("readback requires a typed selection object");
+        }
+        uint64_t targetFrame = channelPresentedFrame_ + 1;
+        if (params.contains("actionId")) {
+            const std::string actionKey = RequestKey(params.at("actionId"));
+            const auto actionFrame = channelActionFrames_.find(actionKey);
+            if (actionFrame == channelActionFrames_.end()) throw std::runtime_error("unknown actionId for readback");
+            targetFrame = actionFrame->second;
+        } else if (params.contains("frame")) {
+            if (!params.at("frame").is_number_integer()) throw std::runtime_error("frame must be an integer");
+            targetFrame = params.at("frame").get<uint64_t>();
+        }
+        if (targetFrame < channelPresentedFrame_) {
+            throw std::runtime_error("requested frame has already passed; attach readback to dispatch or request the next frame");
+        }
+        channelReadbacks_[requestKey] = PendingReadback{
+            params.dump(), targetFrame, std::chrono::steady_clock::now(), false};
+        return std::nullopt;
+    }
+
+    throw std::runtime_error("unknown AppFlow method: " + method);
 }
