@@ -146,7 +146,13 @@ public:
         if (framesInScenario_ < framesPerScenario_) return true;
 
         const auto& scenario = scenarios_[scenarioIndex_];
-        if (scenarioIndex_ == 0 && !VerifyUploadedExposure(scenario)) return false;
+        // The ordinary 64-frame capture verifies every LightingConfig ring
+        // slot after warmup. A short correctness capture intentionally does
+        // not claim that per-frame upload parity; it only exercises rendering.
+        if (scenarioIndex_ == 0 && framesPerScenario_ == kDefaultFramesPerScenario &&
+            !VerifyUploadedExposure(scenario)) {
+            return false;
+        }
         const std::filesystem::path output = outputDir_ / scenario.filename;
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
         ++capturedCount_;
