@@ -46,6 +46,8 @@
 
 #include "ShellOctreeGpu.h"
 #include "ShellDerive.h"
+#include "MipBake.h"
+#include "EmitterPower.h"
 #include "SdfBake.h"
 #include "SdfRecipes.h"
 #include "TestVkValidation.h"
@@ -57,6 +59,7 @@
 #include <cstring>
 #include <fstream>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -707,6 +710,77 @@ TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
         EXPECT_EQ(node->PublishedShellGeneration(), newGeneration);
         EXPECT_EQ(node->ShellPool().compact.channelPool, stableBytes);
     }
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+TEST_F(ShellRevalidateNodeTest, AsyncProducerPublishesEmitterPowerWithItsGeneration) {
+    using namespace Vixen::SVO;
+    using C = BodyOctreeSceneNodeConfig;
+
+    constexpr int n = 32;
+    const glm::vec3 center{16.0f, 16.0f, 16.0f};
+    const auto emission = [](const glm::vec3& p) {
+        return p.x > p.y ? 1.5f + 0.01f * p.z : 0.0f;
+    };
+    RecipeParams params{12.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult baked = BakeRecipeToSdfWorldWithEmission(
+        RECIPE_SPHERE, center, params, n, 2.0f, emission);
+    auto body = std::make_shared<SdfBodyOctree>(BuildSdfBodyOctree(baked, 3));
+
+    CashSystem::MainCacher mainCacher;
+    NodeTypeRegistry registry;
+    RenderGraph asyncGraph(&registry, nullptr, nullptr, &mainCacher);
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("async_emitter_generation_test");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&asyncGraph);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes; SetHandleVal<uint32_t>(frameRes, 0u);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index, 0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index, 0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    BodyInstanceGpu instance{};
+    SetInstanceTranslationScale(instance, glm::vec3(0.0f), 1.0f);
+    instance.material.providerKind = PROVIDER_STORED;
+    instance.material.octreeIndex = 0u;
+    node->SetInstances({instance});
+    node->SetRecipePoolProducer([body] {
+        const std::vector<const SdfBodyOctree*> sources{body.get()};
+        // ConcatenateSdfWithMips runs inside RunAsync and bakes the emitter
+        // power lane alongside the mip stream for this generation.
+        return ConcatenateSdfWithMips(sources);
+    });
+
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ASSERT_FALSE(node->HasPublishedShellGeneration());
+    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
+        SetHandleVal<uint32_t>(frameRes, frame % 2u);
+        ASSERT_NO_THROW(node->Execute());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "emissive shell generation timed out";
+
+    const ConcatenatedOctrees& generation = node->ShellPool().compact;
+    ASSERT_EQ(generation.count, 1u);
+    ASSERT_TRUE(emitterPowerPoolBakedOf(generation.configs[0]));
+    const std::vector<float> rootPowers = EmitterRootPowers(generation);
+    ASSERT_EQ(rootPowers.size(), 1u);
+    ASSERT_GT(rootPowers[0], 0.0f);
+
+    const EmitterTable& emitterTable = node->GetEmitterTable();
+    ASSERT_EQ(emitterTable.sparse.size(), 1u);
+    EXPECT_EQ(emitterTable.totals.sparseEntryCount, 1u);
+    EXPECT_NEAR(emitterTable.sparse[0].phi,
+                kEmitterPi * rootPowers[0] * kEmitterWorldGridSize * kEmitterWorldGridSize,
+                1e-4f * emitterTable.sparse[0].phi);
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

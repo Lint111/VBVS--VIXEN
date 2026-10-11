@@ -448,7 +448,10 @@ void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes
 const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
     if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
         emitterTableMipSize_ != concatenated_.mipPool.size()) {
-        const std::vector<float> rootPower = Vixen::SVO::EmitterRootPowers(concatenated_);
+        const std::vector<float> rootPower = published_ &&
+                publishedEmitterRootPowers_.size() == concatenated_.configs.size()
+            ? publishedEmitterRootPowers_
+            : Vixen::SVO::EmitterRootPowers(concatenated_);
         emitterTable_ = Vixen::SVO::BuildEmitterTable(instances_, emitterShapes_, rootPower);
         emitterTableDirty_ = false;
         emitterTableMipData_ = concatenated_.mipPool.data();
@@ -1408,6 +1411,7 @@ void BodyOctreeSceneNode::Rematerialize(
     uint64_t executeFrame,
     Vixen::SVO::ConcatenatedOctrees pool,
     Vixen::SVO::ShellPool shell,
+    std::vector<float> emitterRootPowers,
     const ShellGenerationMetrics& metrics) {
     const auto publishStart = std::chrono::steady_clock::now();
     VulkanDevice* device = GetDevice();
@@ -1418,6 +1422,8 @@ void BodyOctreeSceneNode::Rematerialize(
     RetireOctreeBuffers(executeFrame);
     concatenated_ = std::move(pool);
     shellCache_ = std::move(shell);
+    publishedEmitterRootPowers_ = std::move(emitterRootPowers);
+    emitterTableDirty_ = true;
     octreesBuilt_ = true;
 
     // CreateOctreeBuffers allocates fresh handles and a config buffer for this exact
@@ -1469,7 +1475,11 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
     task.execute = [payload, poolProducer = std::move(poolProducer), dilation,
                     bakeNormals, workers]() mutable {
         const auto workerStart = std::chrono::steady_clock::now();
+        // RecipePoolProducer runs here on the async worker. RecipeBaker's
+        // ConcatenateSdfWithMips path performs the mip and emitter-power-lane
+        // bakes before this complete pool is attached to the generation.
         Vixen::SVO::ConcatenatedOctrees pool = poolProducer();
+        std::vector<float> emitterRootPowers = Vixen::SVO::EmitterRootPowers(pool);
         const auto deriveStart = std::chrono::steady_clock::now();
         Vixen::SVO::ShellPool shell = BodyOctreeSceneNode::DeriveShellCache(
             pool, dilation, bakeNormals, workers);
@@ -1494,6 +1504,7 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
 
         payload->pool = std::move(pool);
         payload->shell = std::move(shell);
+        payload->emitterRootPowers = std::move(emitterRootPowers);
     };
 
     std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
@@ -1538,7 +1549,8 @@ bool BodyOctreeSceneNode::PollShellGeneration(uint64_t executeFrame) {
     }
 
     Rematerialize(executeFrame, std::move(job.payload->pool),
-                  std::move(job.payload->shell), job.payload->metrics);
+                  std::move(job.payload->shell),
+                  std::move(job.payload->emitterRootPowers), job.payload->metrics);
     return true;
 }
 

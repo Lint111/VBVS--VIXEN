@@ -339,6 +339,7 @@ private:
     void Rematerialize(uint64_t executeFrame,
                        Vixen::SVO::ConcatenatedOctrees pool,
                        Vixen::SVO::ShellPool shell,
+                       std::vector<float> emitterRootPowers,
                        const ShellGenerationMetrics& metrics);  // publish a completed producer generation
                                                 // (unload(g)+load(g+1); old buffers retire by frame age)
     // OOC R1 (out-of-core residency, design §4.3 rules 1-3): the anti-stutter retire/reclaim
@@ -380,6 +381,7 @@ private:
     struct ShellGenerationPayload {
         Vixen::SVO::ConcatenatedOctrees pool;
         Vixen::SVO::ShellPool shell;
+        std::vector<float> emitterRootPowers;
         ShellGenerationMetrics metrics;
     };
     struct ShellGenerationJob {
@@ -486,6 +488,7 @@ private:
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
     Vixen::SVO::RecipeEmitterShapes emitterShapes_;
     Vixen::SVO::EmitterTable        emitterTable_;
+    std::vector<float>              publishedEmitterRootPowers_;
     bool                            emitterTableDirty_ = true;
     const uint8_t*                  emitterTableMipData_ = nullptr;
     size_t                          emitterTableMipSize_ = 0;
