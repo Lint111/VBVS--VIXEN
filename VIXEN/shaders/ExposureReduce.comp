@@ -21,7 +21,7 @@ shared uint validPixelCount[256];
 
 void main() {
 #ifdef VIXEN_HDR_EXPOSURE_FIXED
-    if (gl_LocalInvocationIndex == 0u) result.ev100 = 0.0;
+    if (gl_LocalInvocationIndex == 0u) result.ev100 = 4.66783;
 #else
     uint lane = gl_LocalInvocationIndex;
     uvec2 extent = uvec2(imageSize(sceneRadianceHistoryOutput));
