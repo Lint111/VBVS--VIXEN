@@ -1449,13 +1449,10 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
     if (!materializationRequested_ || shellGenerationJob_) return;
 
     auto* graph = GetOwningGraph();
-    if (!graph) {
-        NODE_LOG_ERROR("[BodyOctreeSceneNode] Cannot schedule shell generation without an owning graph");
-        return;
-    }
-    auto& executor = graph->GetMainCacher().GetTaskExecutor();
-    const uint32_t workers = executor.Profile().WorkerCount(
-        Vixen::KernelDispatch::TaskLane::FrameCompute, 2u);
+    const uint32_t workers = graph
+        ? graph->GetMainCacher().GetTaskExecutor().Profile().WorkerCount(
+              Vixen::KernelDispatch::TaskLane::FrameCompute, 2u)
+        : 1u;
     const uint64_t requestId = materializationRequestId_;
 
     auto poolProducer = std::move(requestedPoolProducer_);
@@ -1470,9 +1467,7 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
     const uint64_t owner = static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(this));
     const Vixen::KernelDispatch::TaskId taskId{owner == 0 ? 1u : owner,
                                                 static_cast<uint32_t>(requestId)};
-    Vixen::KernelDispatch::VirtualTask task;
-    task.id = taskId;
-    task.execute = [payload, poolProducer = std::move(poolProducer), dilation,
+    auto produce = [payload, poolProducer = std::move(poolProducer), dilation,
                     bakeNormals, workers]() mutable {
         const auto workerStart = std::chrono::steady_clock::now();
         // RecipePoolProducer runs here on the async worker. RecipeBaker's
@@ -1506,6 +1501,29 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
         payload->shell = std::move(shell);
         payload->emitterRootPowers = std::move(emitterRootPowers);
     };
+
+    if (!graph) {
+        // Graph-free callers (including standalone render fixtures) have no
+        // executor. Keep their historical synchronous materialization behavior,
+        // then send the completed payload through the normal publication path.
+        produce();
+        std::promise<Vixen::KernelDispatch::AsyncRunResult> completed;
+        auto completion = completed.get_future();
+        completed.set_value(Vixen::KernelDispatch::AsyncRunResult{true, {}});
+
+        ShellGenerationJob job;
+        job.requestId = requestId;
+        job.payload = std::move(payload);
+        job.completion = std::move(completion);
+        shellGenerationJob_ = std::move(job);
+        materializationRequested_ = false;
+        return;
+    }
+
+    auto& executor = graph->GetMainCacher().GetTaskExecutor();
+    Vixen::KernelDispatch::VirtualTask task;
+    task.id = taskId;
+    task.execute = std::move(produce);
 
     std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
     tasks.push_back(std::move(task));
