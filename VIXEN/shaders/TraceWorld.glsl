@@ -706,7 +706,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            hitColor, hitNormal, hitT,
                                            hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg);
-#elif defined(VIXEN_BRICKMAP_TRAVERSAL)
+#elif defined(VIXEN_COMPOSED_DDA_FALLBACK)
         // W-BRICKMAP Slice 2 round 3: coarse-grid DDA backend, FORMAT_STORED_SDF
         // only (RETARGETED -- round 2 had this inverted; brickGridLookup is only
         // populated for STORED_SDF octrees, see traverseCoarseGridInstanced's
@@ -1092,7 +1092,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         bool instHit = traverseOctreeInstancedAnyHit(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            instTmin, instTmax);
-#elif defined(VIXEN_BRICKMAP_TRAVERSAL)
+#elif defined(VIXEN_COMPOSED_DDA_FALLBACK)
         // Round 3: retargeted to FORMAT_STORED_SDF -- see the closest-hit call site above.
         g_instanceSdfStepScale = conservativeSdfStepScale;
         bool instHit = (configs[oi].formatId == FORMAT_STORED_SDF)

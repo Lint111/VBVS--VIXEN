@@ -2089,21 +2089,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchShaderFeatures.push_back(kFeatureShellNormals.define);
     }
-    if (envFlagEnabled("VIXEN_BRICKMAP_TRAVERSAL")) {  // W-BRICKMAP Slice 2 A/B gate
-        marchShaderFeatures.push_back(kFeatureBrickmapTraversal.define);
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] VIXEN_BRICKMAP_TRAVERSAL: coarse-grid DDA backend ENGAGED (FORMAT_STORED_SDF instances route through traverseCoarseGridInstancedSdf)");
-        }
-    }
     if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
         marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
     }
     // W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
     // backend alongside ESVO/DDA -- see kFeatureRtQueryTraversal's header comment).
-    // Own env var, independent of VIXEN_BRICKMAP_TRAVERSAL; TraceWorld.glsl gives RTQUERY
-    // precedence when both are set. Kept as its own if-block (not folded into the
-    // VIXEN_BRICKMAP_TRAVERSAL block above) so this hunk stays a minimal, independently
-    // reviewable addition.
+    // Developer A/B override for the ray-query tier. Normal composed traversal
+    // selects this feature only through the CapabilityGraph below.
     if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL")) {
         marchShaderFeatures.push_back(kFeatureRtQueryTraversal.define);
         if (mainLogger && mainLogger->IsEnabled()) {
@@ -2113,39 +2105,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // W-COMPOSED: the role ruling made code -- RT-traversal / DDA-leaf / ESVO-data
     // are complementary tiers of ONE traversal (docs/plans/2026-08-04-wavefront-
     // recipe-shading.md, "USER RULING: composed traversal"), not rival backends.
-    // VIXEN_COMPOSED_TRAVERSAL picks the near-field search phase by CAPABILITY --
-    // RT when the device has RTXCapabilities.rayQuery, DDA (the software
-    // traversal substitute) otherwise -- pushing EITHER kFeatureRtQueryTraversal
-    // OR kFeatureBrickmapTraversal, never both, so TraceWorld.glsl's existing
+    // R505: composed traversal is the default. The near-field search phase is
+    // selected by CAPABILITY -- RT when the device has RTXCapabilities.rayQuery,
+    // DDA (the software traversal substitute) otherwise -- pushing EITHER
+    // kFeatureRtQueryTraversal OR kFeatureComposedDdaFallback, never both, so
+    // TraceWorld.glsl's existing
     // #ifdef/#elif chain (no new GLSL branching) picks the same backend the SDI
     // wiring below wires bindings for. The capability is only known once the
     // device exists (DeviceNode::CompileImpl, which runs before this shader
     // library's own CompileImpl per graph dependency order) -- deferred into the
     // RegisterShaderBuilder lambda below instead of decided here, where the
-    // VulkanDevice doesn't exist yet. The three single-backend env vars above are
-    // untouched by this block; composed is a fourth, additive axis.
-    // The orbital-structure admission is the current far-field scene-demand seam. Keep this
-    // predicate at graph construction, upstream of BodyOctreeSceneNode's TLAS owner, so the
-    // composed identity is selected for the same scene that can produce far-field mip samples.
+    // VulkanDevice doesn't exist yet. VIXEN_COMPOSED_TRAVERSAL is retained as an
+    // explicit A/B override; the unset default is ON.
+    // Scene demand still controls whether the graph contains far-field structures;
+    // it no longer gates the composed traversal backend.
     const bool sceneRequestsFarFieldTraversal =
         envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
     bool composedTraversalOverride = false;
     const bool hasComposedTraversalOverride =
         envFlagIsSet("VIXEN_COMPOSED_TRAVERSAL", composedTraversalOverride);
     const bool composedTraversalRequested = hasComposedTraversalOverride
-        ? composedTraversalOverride : sceneRequestsFarFieldTraversal;
+        ? composedTraversalOverride : true;
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info(std::string("[BuildRenderGraph] composed traversal predicate: ") +
-                         (sceneRequestsFarFieldTraversal ? "ON (far-field/orbital scene demand)"
-                                                         : "OFF (no far-field/orbital scene demand)") +
+        mainLogger->Info(std::string("[BuildRenderGraph] composed traversal request: ") +
+                         (composedTraversalRequested ? "ON" : "OFF") +
                          (hasComposedTraversalOverride
-                              ? (composedTraversalOverride ? "; VIXEN_COMPOSED_TRAVERSAL=1 override"
-                                                           : "; VIXEN_COMPOSED_TRAVERSAL=0 override")
-                              : "; no override"));
+                              ? (composedTraversalOverride
+                                     ? "; VIXEN_COMPOSED_TRAVERSAL=1 A/B override"
+                                     : "; VIXEN_COMPOSED_TRAVERSAL=0 A/B override")
+                              : "; default-on") +
+                         (sceneRequestsFarFieldTraversal
+                              ? "; far-field/orbital scene demand"
+                              : "; no far-field/orbital scene demand"));
     }
     if (hasComposedTraversalOverride && mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL override resolved -- near-field backend "
-                          "(RT vs DDA) resolved by device capability at shader-compile time");
+        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL A/B override resolved; "
+                         "when enabled, the near-field backend is selected by device capability");
     }
 
     computeShaderLibNode->RegisterShaderBuilder(
@@ -2184,7 +2179,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: "
                                      "grid-DDA (software traversal substitute -- rayQuery unavailable)");
                 }
-                resolvedFeatures.push_back(kFeatureBrickmapTraversal.define);
+                resolvedFeatures.push_back(kFeatureComposedDdaFallback.define);
             };
             if (vulkanDevice) {
                 Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
@@ -2204,7 +2199,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // disabled by default for this node) -- matches the [FarFieldCount]
             // precedent (VoxelGridNode.cpp) so a boot log always answers "which
             // #ifdef branch is live" without re-deriving it from device caps.
-            std::cout << "[ComposedBackend] " << (composedUsesRtQuery ? "RTQUERY" : "BRICKMAP") << std::endl;
+            std::cout << "[ComposedBackend] " << (composedUsesRtQuery ? "RTQUERY" : "DDA") << std::endl;
         }
         auto builder = marchFamily->MakeBuilder(resolvedFeatures);
         // W-RTQUERY Slice A: GL_EXT_ray_query needs SPIR-V 1.4+ (rayQueryEXT opaque type +
@@ -7247,10 +7242,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // this branch just points instances at them (providerKind=0/PROVIDER_STORED,
             // formatId==FORMAT_STORED_SDF), reusing VIXEN_STORED_SDF_DEMO's placeStored geometry
             // convention verbatim (kSdfN=64 grid, renderScale=0.75, same transform math).
-            // Gated on its OWN env var (VIXEN_BRICKMAP_SCENE), separate from
-            // VIXEN_BRICKMAP_TRAVERSAL (the shader-backend toggle) -- an A/B run needs
-            // the SAME scene on both OFF and ON boots, varying only the traversal
-            // backend; run_brickmap_ab.bat sets both for every boot.
+            // Gated on its own scene env var (VIXEN_BRICKMAP_SCENE), separate from
+            // the VIXEN_COMPOSED_TRAVERSAL A/B override -- an A/B run needs the SAME
+            // scene on both composed and ESVO-forced runs, varying only traversal.
             // BATCH-18/POST-CLOSURE CORRECTION: kHalf below used to be 32*renderScale (a
             // "grid-[0,64] scales directly by renderScale" mental model) -- that is NOT what
             // the actual transform composes (BodyOctreeSceneNode::EnsureRtQueryTlasBuilt /

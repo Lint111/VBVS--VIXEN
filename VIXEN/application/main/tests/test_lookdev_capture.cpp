@@ -41,8 +41,21 @@ public:
 
 namespace {
 
-constexpr uint32_t kFramesPerScenario = 64; // Two full 32-frame reservoir-history caps.
+constexpr uint32_t kDefaultFramesPerScenario = 64; // Two full 32-frame reservoir-history caps.
 constexpr float kPitchRadians = 0.45f;
+
+uint32_t CaptureFramesPerScenario() {
+    const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_FRAMES");
+    if (!requested || *requested == '\0') return kDefaultFramesPerScenario;
+
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(requested, &end, 10);
+    if (end == requested || *end != '\0' || value == 0 ||
+        value > kDefaultFramesPerScenario) {
+        return kDefaultFramesPerScenario;
+    }
+    return static_cast<uint32_t>(value);
+}
 
 struct CaptureScenario {
     Vixen::App::Lookdev::LightingPreset lighting;
@@ -69,8 +82,10 @@ std::vector<CaptureScenario> BuildScenarios() {
 class LookdevCaptureApplication final : public VulkanGraphApplication {
 public:
     LookdevCaptureApplication(std::filesystem::path outputDir,
-                              std::vector<CaptureScenario> scenarios)
-        : outputDir_(std::move(outputDir)), scenarios_(std::move(scenarios)) {
+                              std::vector<CaptureScenario> scenarios,
+                              uint32_t framesPerScenario)
+        : outputDir_(std::move(outputDir)), scenarios_(std::move(scenarios)),
+          framesPerScenario_(framesPerScenario) {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
@@ -98,8 +113,8 @@ public:
         }
 
         // The ordinary look-dev capture below is procedural-only, so it cannot
-        // exercise VIXEN_BRICKMAP_TRAVERSAL. When the existing stored-SDF scene
-        // is requested, keep its six FORMAT_STORED_SDF instances and orbit that
+        // prove the composed DDA fallback. When the existing stored-SDF scene is
+        // requested, keep its six FORMAT_STORED_SDF instances and orbit that
         // scene with the same four yaw angles and lighting presets.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
         const float orbitCenterX = storedSdfScene ? 64.0f : 5.0f;
@@ -128,10 +143,16 @@ public:
     bool Render() override {
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
         ++framesInScenario_;
-        if (framesInScenario_ < kFramesPerScenario) return true;
+        if (framesInScenario_ < framesPerScenario_) return true;
 
         const auto& scenario = scenarios_[scenarioIndex_];
-        if (scenarioIndex_ == 0 && !VerifyUploadedExposure(scenario)) return false;
+        // The ordinary 64-frame capture verifies every LightingConfig ring
+        // slot after warmup. A short correctness capture intentionally does
+        // not claim that per-frame upload parity; it only exercises rendering.
+        if (scenarioIndex_ == 0 && framesPerScenario_ == kDefaultFramesPerScenario &&
+            !VerifyUploadedExposure(scenario)) {
+            return false;
+        }
         const std::filesystem::path output = outputDir_ / scenario.filename;
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
         ++capturedCount_;
@@ -200,6 +221,7 @@ private:
 
     std::filesystem::path outputDir_;
     std::vector<CaptureScenario> scenarios_;
+    uint32_t framesPerScenario_ = kDefaultFramesPerScenario;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
     Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
     size_t scenarioIndex_ = 0;
@@ -210,6 +232,7 @@ private:
 
 bool CaptureSequence(const std::filesystem::path& outputDir,
                      const std::vector<CaptureScenario>& scenarios,
+                     uint32_t framesPerScenario,
                      std::string& error) {
     std::error_code ec;
     // The directory is supplied by the CTest runner. Create it if needed, but
@@ -221,8 +244,8 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
         return false;
     }
 
-    LookdevCaptureApplication app(outputDir, scenarios);
-    const uint32_t frameCount = kFramesPerScenario * static_cast<uint32_t>(scenarios.size());
+    LookdevCaptureApplication app(outputDir, scenarios, framesPerScenario);
+    const uint32_t frameCount = framesPerScenario * static_cast<uint32_t>(scenarios.size());
     const int result = app.Run(RunOptions{.exitAfterFrames = frameCount});
     if (result != 0 || app.CapturedCount() != scenarios.size()) {
         error = app.CaptureError().empty()
@@ -245,10 +268,11 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
     const std::filesystem::path outputDir(outputEnv);
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    const uint32_t framesPerScenario = CaptureFramesPerScenario();
     ASSERT_EQ(scenarios.size(), 4u)
         << "CTest must select one four-angle look-dev lighting preset";
     std::string error;
-    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, error)) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
 }
 
 } // namespace
