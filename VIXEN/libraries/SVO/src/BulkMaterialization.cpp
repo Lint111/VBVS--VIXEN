@@ -125,6 +125,7 @@ uint64_t canonicalHash(const SerializedOctree& page) {
     hashVector(hash, page.channelPool);
     hashVector(hash, page.brickGridLookup);
     hashVector(hash, page.mipPool);
+    hashVector(hash, page.emitterPowerPool);
     hashTypedVector(hash, std::span<const TierRef>(page.tierRefs));
     hashTypedVector(hash, std::span<const uint32_t>(page.perBrickOccupiedVoxelCount));
     hashValue(hash, page.config);

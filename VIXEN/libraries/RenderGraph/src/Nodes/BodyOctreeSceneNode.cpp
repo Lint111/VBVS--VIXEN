@@ -7,6 +7,7 @@
 #include "ConfiguredOptionalPath.h"
 #include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
 #include "MipBake.h"  // Lazy-Procedural-Delta-Baseline Inc0 M1: ConcatenateSdfWithMips
+#include "EmitterPower.h"  // R502.2: EmitterRootPowers
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
 
 #include <algorithm>
@@ -23,6 +24,33 @@
 #include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>  // W-RTQUERY Slice A: glm::translate/glm::scale for TLAS instance transforms
+
+#include "Generated/EmitterTotals.g.h"
+#include "Generated/RecipeEmitterEntry.g.h"
+#include "Generated/SparseEmitterEntry.g.h"
+
+// R502.2: the CPU emitter records in RecipeEmitterTable.h (SVO has no RenderGraph dependency)
+// must stay byte-identical to the generated GPU records.
+static_assert(sizeof(Vixen::SVO::RecipeEmitterEntry) == sizeof(Vixen::Gpu::RecipeEmitterEntry));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, instIdx) == offsetof(Vixen::Gpu::RecipeEmitterEntry, instIdx));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, phi) == offsetof(Vixen::Gpu::RecipeEmitterEntry, phi));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cdf) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cdf));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, flags) == offsetof(Vixen::Gpu::RecipeEmitterEntry, flags));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellOffset) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellOffset));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellCount) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellCount));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, gridDim) == offsetof(Vixen::Gpu::RecipeEmitterEntry, gridDim));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellSize) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellSize));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, gridAabbMin) == offsetof(Vixen::Gpu::RecipeEmitterEntry, gridAabbMinX));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, areaInst) == offsetof(Vixen::Gpu::RecipeEmitterEntry, areaInst));
+static_assert(sizeof(Vixen::SVO::SparseEmitterEntry) == sizeof(Vixen::Gpu::SparseEmitterEntry));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, octreeIdx) == offsetof(Vixen::Gpu::SparseEmitterEntry, octreeIdx));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, phi) == offsetof(Vixen::Gpu::SparseEmitterEntry, phi));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, cdf) == offsetof(Vixen::Gpu::SparseEmitterEntry, cdf));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, areaScale) == offsetof(Vixen::Gpu::SparseEmitterEntry, areaScale));
+static_assert(sizeof(Vixen::SVO::EmitterTotals) == sizeof(Vixen::Gpu::EmitterTotals));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, phiSparse) == offsetof(Vixen::Gpu::EmitterTotals, phiSparse));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, recipeEntryCount) == offsetof(Vixen::Gpu::EmitterTotals, recipeEntryCount));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, sparseEntryCount) == offsetof(Vixen::Gpu::EmitterTotals, sparseEntryCount));
 
 // W-RTQUERY Slice A: per-brick-AABB TLAS build (EnsureRtQueryTlasBuilt/DestroyRtQueryTlas below).
 
@@ -272,6 +300,7 @@ void BodyOctreeSceneNode::RefreshInstanceStreams() {
         instanceMaterials_ = std::move(nextMaterials);
         std::fill(materialDirty_.begin(), materialDirty_.end(), true);
     }
+    emitterTableDirty_ = true;
 }
 
 void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
@@ -357,6 +386,23 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
     occupancyGrid_ = std::move(concatenatedGrid);
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetOccupancyGrid: " +
                   std::to_string(occupancyGrid_.size()) + " floats staged");
+}
+
+void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes) {
+    emitterShapes_ = std::move(shapes);
+    emitterTableDirty_ = true;
+}
+
+const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
+    if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
+        emitterTableMipSize_ != concatenated_.mipPool.size()) {
+        const std::vector<float> rootPower = Vixen::SVO::EmitterRootPowers(concatenated_);
+        emitterTable_ = Vixen::SVO::BuildEmitterTable(instances_, emitterShapes_, rootPower);
+        emitterTableDirty_ = false;
+        emitterTableMipData_ = concatenated_.mipPool.data();
+        emitterTableMipSize_ = concatenated_.mipPool.size();
+    }
+    return emitterTable_;
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {

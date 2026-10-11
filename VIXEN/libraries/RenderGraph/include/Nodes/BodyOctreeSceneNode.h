@@ -11,6 +11,7 @@
 #include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
+#include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
@@ -180,6 +181,20 @@ public:
      * flag needed).
      */
     void SetOccupancyGrid(std::vector<float> concatenatedGrid);
+
+    /**
+     * @brief R502.2 (count-agnostic lighting S0) — per-recipe surface-cell lists and areas the
+     * emitter table needs, built from the RecipeRegistry by BuildRecipeEmitterShapes. Called
+     * from the same shader-build callback as SetOccupancyGrid. Nothing consumes the table on
+     * the GPU yet; S1 binds it.
+     */
+    void SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes);
+
+    /**
+     * @brief R502.2 — recipe + sparse emitter CDFs and EmitterTotals for the CURRENT instance
+     * list and octree pool. Rebuilt lazily when instances, shapes or the mip stream change.
+     */
+    [[nodiscard]] const Vixen::SVO::EmitterTable& GetEmitterTable();
 
     /**
      * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
@@ -441,6 +456,14 @@ private:
     // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
     // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
     std::vector<float> occupancyGrid_;
+
+    // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
+    // the concatenated mip stream it read the sparse power lanes from has been replaced.
+    Vixen::SVO::RecipeEmitterShapes emitterShapes_;
+    Vixen::SVO::EmitterTable        emitterTable_;
+    bool                            emitterTableDirty_ = true;
+    const uint8_t*                  emitterTableMipData_ = nullptr;
+    size_t                          emitterTableMipSize_ = 0;
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;

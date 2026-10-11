@@ -219,6 +219,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl" _out_miningbeambuffer_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterSample.g.h" _out_emittersample_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/EmitterSample.glsl" _out_emittersample_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterTotals.g.h" _out_emittertotals_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/EmitterTotals.glsl" _out_emittertotals_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/RecipeEmitterEntry.g.h" _out_recipeemitterentry_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeEmitterEntry.glsl" _out_recipeemitterentry_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/SparseEmitterEntry.g.h" _out_sparseemitterentry_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/SparseEmitterEntry.glsl" _out_sparseemitterentry_glsl_run)
         # Recipe-Load-Tier-Contract M2 (precision tier): dual full/half layout for the recipe
         # render-param block, via the new --struct-precision emitter.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
@@ -296,6 +304,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_miningbeambuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl")
         set(_out_reservoirrecord_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
+        set(_out_emittersample_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterSample.g.h")
+        set(_out_emittersample_glsl_run "${VIXEN_ROOT}/shaders/Generated/EmitterSample.glsl")
+        set(_out_emittertotals_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterTotals.g.h")
+        set(_out_emittertotals_glsl_run "${VIXEN_ROOT}/shaders/Generated/EmitterTotals.glsl")
+        set(_out_recipeemitterentry_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/RecipeEmitterEntry.g.h")
+        set(_out_recipeemitterentry_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeEmitterEntry.glsl")
+        set(_out_sparseemitterentry_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/SparseEmitterEntry.g.h")
+        set(_out_sparseemitterentry_glsl_run "${VIXEN_ROOT}/shaders/Generated/SparseEmitterEntry.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
@@ -733,6 +749,70 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
+    # --- EmitterSample via the same Yeroket tool (R502 count-agnostic lighting S0: emitter data records).
+    set(_emittersample_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct EmitterSample
+        --out-cpp  "${_out_emittersample_cpp_run}"
+        --out-glsl "${_out_emittersample_glsl_run}")
+    vixen_add_codegen_check(emittersample_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_emittersample_args} --check
+        COMMENT "[codegen] golden check: EmitterSample.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(emittersample_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_emittersample_args}
+        COMMENT "[codegen] regenerate EmitterSample.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- EmitterTotals via the same Yeroket tool (R502 count-agnostic lighting S0: emitter data records).
+    set(_emittertotals_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct EmitterTotals
+        --out-cpp  "${_out_emittertotals_cpp_run}"
+        --out-glsl "${_out_emittertotals_glsl_run}")
+    vixen_add_codegen_check(emittertotals_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_emittertotals_args} --check
+        COMMENT "[codegen] golden check: EmitterTotals.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(emittertotals_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_emittertotals_args}
+        COMMENT "[codegen] regenerate EmitterTotals.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- RecipeEmitterEntry via the same Yeroket tool (R502 count-agnostic lighting S0: emitter data records).
+    set(_recipeemitterentry_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct RecipeEmitterEntry
+        --out-cpp  "${_out_recipeemitterentry_cpp_run}"
+        --out-glsl "${_out_recipeemitterentry_glsl_run}")
+    vixen_add_codegen_check(recipeemitterentry_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_recipeemitterentry_args} --check
+        COMMENT "[codegen] golden check: RecipeEmitterEntry.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(recipeemitterentry_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_recipeemitterentry_args}
+        COMMENT "[codegen] regenerate RecipeEmitterEntry.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- SparseEmitterEntry via the same Yeroket tool (R502 count-agnostic lighting S0: emitter data records).
+    set(_sparseemitterentry_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct SparseEmitterEntry
+        --out-cpp  "${_out_sparseemitterentry_cpp_run}"
+        --out-glsl "${_out_sparseemitterentry_glsl_run}")
+    vixen_add_codegen_check(sparseemitterentry_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_sparseemitterentry_args} --check
+        COMMENT "[codegen] golden check: SparseEmitterEntry.g.h/.glsl match canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(sparseemitterentry_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_sparseemitterentry_args}
+        COMMENT "[codegen] regenerate SparseEmitterEntry.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
     # The generated header lives under application/main — it is a CONSUMER artifact (the native
     # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
@@ -918,7 +998,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/AppFlow/ViewNounId golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/EmitterSample/EmitterTotals/RecipeEmitterEntry/SparseEmitterEntry/Hud/EditorLayers/AppFlow/ViewNounId golden DRIFT GUARDS DISABLED; the committed generated artifacts "
         "are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
