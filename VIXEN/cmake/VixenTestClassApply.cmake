@@ -40,7 +40,7 @@ if(VIXEN_CLASS_TESTS)
 
         set_tests_properties("${_vixen_test}" PROPERTIES
             LABELS "${_vixen_class};${_vixen_source}"
-            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class}")
+            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
         if(_vixen_class STREQUAL "gpu")
             set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
         endif()

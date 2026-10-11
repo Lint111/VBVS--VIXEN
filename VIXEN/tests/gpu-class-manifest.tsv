@@ -82,7 +82,8 @@ AccumulationTypeTest.AccumulatedTypeForBool	cpu	test_connection_rule	9fe5bc41ee5
 AccumulationTypeTest.AccumulatedTypeForStruct	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AccumulationTypeTest.AccumulatedTypeForVkBuffer	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender	gpu	test_appflow_editor_toggle_render	cef71eb51d2d	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ArrayTypeValidation	cpu	test_array_type_validation	51287bceb77c	no GPU action in a passing run
+Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically	gpu	vixen_lookdev_capture	0806e6be8a21	unmeasured (failed, no GPU action before it ended): kept gpu
+ArrayTypeValidation	cpu	test_array_type_validation	659bc7a9ddb8	no GPU action in a passing run
 AttributeRegistryIntegrationTest.BackwardCompatibility_StringLookup	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.BrickViewPointerAccess	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.EntityOctreeRoundTrip	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
@@ -93,11 +94,11 @@ AttributeRegistryIntegrationTest.MultipleVoxelsVaryingDensity	cpu	test_attribute
 AttributeRegistryIntegrationTest.TypeSafeAttributeAccess	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeTest.MakeAttributes	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
 AttributeTest.UncompressedSize	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
-B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical	gpu	test_b1_occlusion_ab	61c8a32675d8	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
+B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical	gpu	test_b1_occlusion_ab	61c8a32675d8	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BackwardCompatibility.EmptyGroupInputsUsesLegacyQueue	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BackwardCompatibility.LegacyQueueDispatchStillWorks	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BakedVsVirtualParityTest.RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-BakedVsVirtualParityTest.RimleakSlabSphereMatchesAnalyticAndOccupancyOracle	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateDevice; seen: vkCreateDevice,vkCreateInstance,vkAllocateMemory,vkQueueSubmit
+BakedVsVirtualParityTest.RimleakSlabSphereMatchesAnalyticAndOccupancyOracle	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BakedVsVirtualParityTest.VirtualRendersGeometricallyEquivalentToBaked	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BandwidthAbMeasurementTest.MipOnlyFarBodiesUploadDrasticallyFewerBytesThanBaseline	gpu	test_rendergraph_nodes	f7e4495c379c	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BandwidthAbMeasurementTest.MixedSceneThroughLiveResidencyTriggerMeasuresRealisticBandwidthReduction	gpu	test_rendergraph_nodes	f7e4495c379c	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -130,13 +131,13 @@ BodyFootprintRegime.TransitionCannotHystereseBelowRegimeFloor	cpu	test_body_foot
 BodyFootprintRegime.TransitionsAtDistanceToRadiusBoundaries	cpu	test_body_footprint_regime	c8a8cf54a6ec	no GPU action in a passing run
 BodyInstanceOcclusionRejectTest.NonOccludedInstancesStillTraverse	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceOcclusionRejectTest.OccludedInstanceHasZeroTraversalIterations	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-BodyInstanceRayMarchRenderTest.DepthDistanceImageMatchesHitRecords	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateDevice; seen: vkCreateDevice,vkAllocateMemory,vkCreateInstance,vkQueueSubmit
+BodyInstanceRayMarchRenderTest.DepthDistanceImageMatchesHitRecords	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.HitRecordCompositingRealShaderBothOrderingsMatchOracle	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.PickSelectionReturnsInstanceForTwoBodiesAndNoneForBackground	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.RematerializeEditLoop	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.RenderMultiKindBodiesProvesStrideFix	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-BodyInstanceRayMarchRenderTest.RenderRealShaderNearViewToPng	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateDevice; seen: vkCreateDevice,vkCreateInstance,vkAllocateMemory,vkQueueSubmit
+BodyInstanceRayMarchRenderTest.RenderRealShaderNearViewToPng	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.RenderRecipeBakedBody	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.RenderStoredSdfBodiesNoHoles	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BodyInstanceRayMarchRenderTest.RenderStoredSdfMultiChannel	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -147,7 +148,7 @@ BodyOctree.CoarseLodGivesCoarserShell	cpu	test_shell_octree	1aa5288b57c0	no GPU 
 BodyOctree.ShellIsHollowNotSolid	cpu	test_shell_octree	1aa5288b57c0	no GPU action in a passing run
 BodyOctreeLifetimeTest.DeviceDestroyReportsNoLeakedObjects	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory
 BodyOctreeLifetimeTest.DiversityStressParamSweepAtScaleNeverMarksNodeNeedsRecompile	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory
-BodyOctreeLifetimeTest.ReadParamValueSweepNeverMarksNodeNeedsRecompile	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory
+BodyOctreeLifetimeTest.ReadParamValueSweepNeverMarksNodeNeedsRecompile	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkCreateDevice
 BodyOctreeLifetimeTest.RealNodeRingLifecycleHasNoValidationErrors	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory
 BodyOctreeLifetimeTest.ShellCachePopulatedThroughNodeCompile	gpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory
 BrdfMirror.EnergyConservationAcrossRoughness	cpu	test_rendergraph_shadermirrors	5710629bf8f8	no GPU action in a passing run
@@ -223,9 +224,16 @@ CalibrationStoreTest.PolymorphicPersistence	cpu	test_rendergraph_dispatch	810a3e
 CalibrationStoreTest.RejectsTamperedCalibrationJson	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 CalibrationStoreTest.SaveAndLoad	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0	gpu	test_shell_revalidate_node	353c00b859be	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1	gpu	test_shell_revalidate_node	353c00b859be	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1	gpu	test_shell_revalidate_node	353c00b859be	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
 CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2	gpu	test_shell_revalidate_node	353c00b859be	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3	gpu	test_shell_revalidate_node	353c00b859be	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+CelShading.BandQuantization	gpu	test_cel_shading_graph	3e6e26ac0066	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.CaptureCornell	gpu	test_cel_shading_graph	6566d4d3f6be	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.CaptureStarsBands2	gpu	test_cel_shading_graph	6566d4d3f6be	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.CaptureStarsBands3	gpu	test_cel_shading_graph	6566d4d3f6be	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.CaptureStarsBands5	gpu	test_cel_shading_graph	6566d4d3f6be	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.ModeSwitch	gpu	test_cel_shading_graph	d5af546cd0e0	unmeasured (skipped, no GPU action before it ended): kept gpu
+CelShading.ParameterBounds	gpu	test_cel_shading_graph	705adf7764bd	unmeasured (skipped, no GPU action before it ended): kept gpu
 CelestialBodyRegistry.RejectsInvalidPlacement	cpu	test_multi_body_renderer	4be84f1730fd	no GPU action in a passing run
 CelestialBodyRegistry.UpsertSnapshotAndRemoveAreDeterministic	cpu	test_multi_body_renderer	4be84f1730fd	no GPU action in a passing run
 CelestialRenderListBuilder.BuildsPerBodyLodAndSortsNearToFar	cpu	test_multi_body_renderer	4be84f1730fd	no GPU action in a passing run
@@ -332,9 +340,9 @@ DecideRenderTargetPriorLayoutAndUpdate.DistinctRingSlotsAreTrackedIndependently	
 DecideRenderTargetPriorLayoutAndUpdate.FirstUseOfAHandleIsUndefined	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.SecondUseReportsTheActualTrackedLayoutNotAGuess	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.UpdatesTrackedStateToTheNewLayout	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
-DeclaredPositionRenderTest.GeneratedGpuRoundingContainsExtremaTiesAndUnknowns	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+DeclaredPositionRenderTest.GeneratedGpuRoundingContainsExtremaTiesAndUnknowns	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
 DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-DeclaredPositionRenderTest.ThreeDeclaredPositionsMoveTheRenderedShape	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
+DeclaredPositionRenderTest.ThreeDeclaredPositionsMoveTheRenderedShape	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 DescriptorResourceGathererNodeTest.AllGraphicsStagesMerged	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.ComputeShaderDescriptors	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.ConfigArrayModeIsSingle	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
@@ -443,17 +451,17 @@ ESVOScaleHelperTest.ScaleToWorldSizeConversion	cpu	test_lod	dd3cb46315dd	no GPU 
 ESVOScaleHelperTest.TToWorldDistanceConversion	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
 EdgeCases.MaxGroupId	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 EdgeCases.MixedGroupIdsWithNullopt	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
-EditorDocumentRenderTest.DisablingCutLayerChangesTopFaceSilhouette	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateDevice; seen: vkCreateDevice,vkAllocateMemory,vkCreateInstance,vkQueueSubmit
+EditorDocumentRenderTest.DisablingCutLayerChangesTopFaceSilhouette	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 EditorDocumentRenderTest.FlattenIsDeterministic	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice
-EditorDocumentRenderTest.GoldenDocumentAllLayersRendersVisibleBody	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkCreateDevice,vkQueueSubmit
+EditorDocumentRenderTest.GoldenDocumentAllLayersRendersVisibleBody	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 EditorDocumentRenderTest.LayeredSlabSubtractSphereGuardsAreExactAndCaptureHasHole	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-EditorToggleUndoCapture.BackButtonReachesReturnInRunningEditor	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.LayerEditReachesRenderPipeline	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.ParameterEditReachesRenderPipeline	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.ParameterSnapshotAndSaveReopenStayCanonical	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.ToggleUndoRedoStateTrailThroughWindowedRun	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-EditorToggleUndoCapture.UndoRedoRestoresRenderByteExact	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
+EditorToggleUndoCapture.BackButtonReachesReturnInRunningEditor	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.LayerEditReachesRenderPipeline	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.ParameterEditReachesRenderPipeline	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.ParameterSnapshotAndSaveReopenStayCanonical	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.ToggleUndoRedoStateTrailThroughWindowedRun	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+EditorToggleUndoCapture.UndoRedoRestoresRenderByteExact	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
 EmitProceduralFieldFunctionGlsl.DeclaredPositionEmitsOutParamAndInlineAssignment	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
 EmitProceduralFieldFunctionGlsl.EveryNumericLiteralHasDecimalPoint	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
 EmitProceduralFieldFunctionGlsl.SingleSphereProducesComposableFunction	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
@@ -649,6 +657,9 @@ GroupPartitioning.DeterministicOrderingWithStdMap	cpu	test_rendergraph_dispatch	
 GroupPartitioning.EmptyInputProducesEmptyMap	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupPartitioning.MultiplePassesSameGroup	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupPartitioning.PassesWithoutGroupIdDefaultToGroup0	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+HeadlessStarfieldGraph.CaptureFirst	gpu	test_headless_starfield_graph	eef68080d863	unmeasured (skipped, no GPU action before it ended): kept gpu
+HeadlessStarfieldGraph.CaptureSecond	gpu	test_headless_starfield_graph	eef68080d863	unmeasured (skipped, no GPU action before it ended): kept gpu
+HeadlessStarfieldGraph.CompareIndependentCaptures	gpu	test_headless_starfield_graph	6b849a95a829	unmeasured (skipped, no GPU action before it ended): kept gpu
 HelperFunctions.GroupKeyDeducesType	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 HelperFunctions.GroupKeyReturnsNonNull	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 HiZDownsampleMirror.AllMissStaysSentinel	cpu	test_hiz_downsample_mirror	86e6a43f5e6a	no GPU action in a passing run
@@ -676,9 +687,9 @@ HitAccumMirror.Toksvig_PerfectAgreementNeverWidens	cpu	test_hit_accumulation_mir
 HitRecordReadbackTest.HitRecordMatchesShaderColorAndIdOutput	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 HitRecordSdiParity.ReflectedLayoutMatchesCppMirror	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
 HotnessGate.PromotesOnlyBucketsAboveThreshold	cpu	test_recipe_multi_bucket_compositing	3982c6c99bd9	no GPU action in a passing run
-HudRenderCapture.BaselineIsNonEmpty	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-HudRenderCapture.PayloadSwapProducesRealPixelDifference	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
-HudRenderCapture.SameFrameDeterministic	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	unmeasured (skipped, no GPU action before it ended): kept gpu
+HudRenderCapture.BaselineIsNonEmpty	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+HudRenderCapture.PayloadSwapProducesRealPixelDifference	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
+HudRenderCapture.SameFrameDeterministic	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
 HudSmokeTest.DataModelConstructsAndBinds	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
 HudSmokeTest.DirtyVariableUpdatesCorrectly	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
 HudSmokeTest.HudDocumentLoadsAndBindsResolve	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
@@ -1084,9 +1095,9 @@ ProceduralRecipeRenderTest.RenderComposition	gpu	test_procedural_recipe_render	8
 ProceduralRecipeRenderTest.RenderCone	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderDisplacement	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderMirrorCsgRecipe	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ProceduralRecipeRenderTest.RenderProceduralRecipe	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
+ProceduralRecipeRenderTest.RenderProceduralRecipe	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderPyramid	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ProceduralRecipeRenderTest.RenderRevolution	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ProceduralRecipeRenderTest.RenderRevolution	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
 ProceduralRecipeRenderTest.RenderSubtractBoxSphere	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderTorus	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderTwist	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -1183,10 +1194,10 @@ RecipeBounds.SmoothSubtractBoundIsConservativeUnion	cpu	test_recipe_bounds	71114
 RecipeBounds.TransformWithScaleBailsOut	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
 RecipeBounds.TwistBendBailsOut	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
 RecipeBounds.UnionOfDisjointSpheresBoundsBoth	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
-RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle	gpu	test_recipe_bucketed_indirect_dispatch	3f2dc0170f5d	first: vkCreateInstance; seen: vkCreateInstance,vkQueueSubmit,vkCreateDevice,vkAllocateMemory
-RecipeBucketingPerfTest.N100_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateDevice; seen: vkCreateDevice,vkAllocateMemory,vkQueueSubmit,vkCreateInstance
+RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle	gpu	test_recipe_bucketed_indirect_dispatch	3f2dc0170f5d	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+RecipeBucketingPerfTest.N100_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeBucketingPerfTest.N10_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-RecipeBucketingPerfTest.N3_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateDevice; seen: vkCreateDevice,vkAllocateMemory,vkQueueSubmit,vkCreateInstance
+RecipeBucketingPerfTest.N3_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeCodegen.EmitsCompilableProceduralShader	cpu	test_recipe_codegen	d343521c7f62	no GPU action in a passing run
 RecipeCodegen.EmitsCsgModifierCompilesToSpirv	cpu	test_recipe_codegen	d343521c7f62	no GPU action in a passing run
 RecipeCodegen.EmitsLeafPrimitivesCompilesToSpirv	cpu	test_recipe_codegen	d343521c7f62	no GPU action in a passing run
@@ -1316,7 +1327,7 @@ RecipeIngest.DuplicateIdReturnsRegistryRejected	cpu	test_recipe_ingest	07912ad11
 RecipeIngest.TruncatedBlobReturnsBadContainer	cpu	test_recipe_ingest	07912ad11960	no GPU action in a passing run
 RecipeIngest.ValidBlobRegistersOk	cpu	test_recipe_ingest	07912ad11960	no GPU action in a passing run
 RecipeIngest.WrongMagicReturnsBadContainer	cpu	test_recipe_ingest	07912ad11960	no GPU action in a passing run
-RecipeInstanceBucketingTest.BucketsAndCoverageMatchKnownSyntheticScene	gpu	test_recipe_instance_bucketing	6b22194117f5	first: vkCreateDevice; seen: vkCreateDevice,vkAllocateMemory,vkQueueSubmit,vkCreateInstance
+RecipeInstanceBucketingTest.BucketsAndCoverageMatchKnownSyntheticScene	gpu	test_recipe_instance_bucketing	6b22194117f5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeInstanceBucketingTest.GatingTierExcludesFarInstanceKeepsNearInstanceAndNonParticipant	gpu	test_recipe_instance_bucketing	6b22194117f5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeInstanceBucketingTest.PrecisionTierRoutesFarInstanceToHalfNearInstanceToFullNonParticipantAlwaysFull	gpu	test_recipe_instance_bucketing	6b22194117f5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeIntervalPruning.EditHeavyBuriedBranchesReduceOnlyTheTileTape	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
@@ -1333,7 +1344,7 @@ RecipeMultiBucketCompositingTest.OverlappingHotRecipesCompositeCorrectlyBothOrde
 RecipeNestedInvocation.CompilerOwnedUnrollMatchesRecursiveEvaluation	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
 RecipeNestedInvocation.CpuInterpreterMatchesCpuComposedReference	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
 RecipeNestedInvocation.GlslEmitCompilesAndInlinesCallee	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
-RecipeNestedInvocationGpuParityTest.GlslMatchesCpuEvalForNestedRecipe	gpu	test_recipe_nested_invocation	3e3cca2d31c5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+RecipeNestedInvocationGpuParityTest.GlslMatchesCpuEvalForNestedRecipe	gpu	test_recipe_nested_invocation	3e3cca2d31c5	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
 RecipeNestedInvocationGuard.NestingDepthExceeded	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
 RecipeNestedInvocationGuard.SelfInvocationRejected	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
 RecipeNestedInvocationGuard.TwoCycleRejected	cpu	test_recipe_nested_invocation	3e3cca2d31c5	no GPU action in a passing run
@@ -1386,8 +1397,8 @@ RecipeWholeDomainCompaction.RemovesGeneratedExactNoOpsWithoutChannelAssumptions	
 RecipeWholeDomainCompaction.UncertifiedGpuDuplicatesRetainTheOperator	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
 RecipeWholeDomainCompaction.UndeclaredEmissionBlocksGlobalBranchRemoval	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
 RecipeWholeDomainCompaction.UnenforcedBoundsBlockIntervalBranchRemoval	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
-RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system	cpu	test_compile_time_resource_system	d458f1a2ef7d	no GPU action in a passing run
-RenderGraph/CompileTimeResourceSystem/test_recursive_validation	cpu	test_recursive_validation	4feb9022d561	no GPU action in a passing run
+RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system	cpu	test_compile_time_resource_system	542250d2b7e2	no GPU action in a passing run
+RenderGraph/CompileTimeResourceSystem/test_recursive_validation	cpu	test_recursive_validation	56e4c9056ed4	no GPU action in a passing run
 RenderGraph_AccumulationGather.EmptyWhenUnconnected	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 RenderGraph_AccumulationGather.GathersAllProducers	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 RenderGraph_AccumulationGather.SortKeyOrdersGather	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
@@ -1633,10 +1644,11 @@ SetMutationDispatch.DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsser
 SetMutationDispatch.UndoNeverReRunsTheLiveSelectionQueryAfterSelectionDrifts	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
 SetMutationDispatch.UndoRestoresExactPreDispatchValuesAndRedoReapplies	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
 SetMutationDispatch.WritesExactlyTheSelectedSubsetNotTheWholeWorld	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
+ShaderManagementTests_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 ShadowConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
 ShadowCorrectnessTest.EmissivePointLightFacesThreeBodiesTowardTheStar	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ShadowCorrectnessTest.EmissivePointLightPickReturnsTheLitBodyInstance	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkCreateDevice,vkQueueSubmit
 ShellDerive.ApplyBrickSdfEditFeedsRevalidateAndKeepsProxiesValid	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
 ShellDerive.BakedNormalMipSamplesAreRenormalizedAndCovered	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
 ShellDerive.BakedNormalsRemainContinuousAcrossBrickBorders	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
@@ -2138,13 +2150,71 @@ WindowNodeTest.ConfigSurfaceTypeIsVkSurfaceKHR	cpu	test_rendergraph_criticalnode
 WindowNodeTest.TypeNameIsWindow	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 WorkUnitTypeTest.FromString	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 WorkUnitTypeTest.StringConversion	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
-test_body_instance_raymarch_rtquery_compile	cpu	-	-	no GPU action in a passing run
-test_exposure_meter_mirror	cpu	test_exposure_meter_mirror	50bf0f626465	no GPU action in a passing run
-test_spatial_reuse_history_mirror	cpu	test_spatial_reuse_history_mirror	62475df1f555	no GPU action in a passing run
-vixen_editor_appflow_channel_gate	gpu	-	-	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-vixen_editor_capture_producer	cpu	-	-	no GPU action in a passing run
-vixen_hud_capture_producer	gpu	VIXEN	3e6a1b9fd3c3	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
-vixen_multiinstance_cache_gate	gpu	-	-	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice
+sdi_merged_drift_check	cpu	sdi_tool	d40739323785	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_action_stack_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_app_run_tick_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_appflow_blob_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_appflow_data_seam_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_appflow_golden_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_appflow_loader_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_async_shader_bundle_builder_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_attribute_registry_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_attribute_storage_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_binding_pattern_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_binding_store_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_block_compressor_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_body_instance_raymarch_rtquery_compile	cpu	-	1240b338ac91	no GPU action in a passing run
+test_budget_manager_integration_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_cache_codec_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_cacher_chain_integration_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_component_system_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_editor_document_model_preview_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_emitter_sampling_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_exposure_meter_mirror	cpu	test_exposure_meter_mirror	9baa11100f57	no GPU action in a passing run
+test_flow_return_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_flow_state_machine_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_gaia_archetypes_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_gaia_voxel_world_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_gaia_voxel_world_coverage_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_headless_cornell_graph_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_headless_ui_graph_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_hlsl_ingestion_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_hud_view_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_input_profile_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_keychord_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_layer_controller_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_lifetime_safety_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_logger_basic_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_pipeline_blend_key_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_pipeline_cache_header_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_probe_update_smoke_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_recipe_bucket_data_cacher_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_recipe_content_cacher_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_recipe_content_hash_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_registration_api_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_resource_management_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_resourcemanagement_basic_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_return_dispatch_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_sdi_variant_merge_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_shader_family_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_snapshot_undo_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_spatial_reuse_history_mirror	cpu	test_spatial_reuse_history_mirror	a619f5525511	no GPU action in a passing run
+test_spirv_access_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_spirv_loader_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_tlas_phase3_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_typed_cacher_concurrency_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_view_blob_equiv_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_voxel_injector_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_voxel_scene_key_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_voxeldata_integration_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_vulkan_buffer_allocator_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_vulkan_global_names_policy_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_vulkanresources_basic_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+vixen_editor_appflow_channel_gate	gpu	vixen_editor	89a3313a1309	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+vixen_editor_capture_producer	gpu	vixen_editor	8705ff261fc6	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+vixen_hud_capture_producer	gpu	VIXEN	8a6a2e5fa129	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+vixen_multiinstance_cache_gate	gpu	VIXEN	11ccf5d53567	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+vixen_wsl_capture_witness	gpu	VIXEN	9f090193c1d8	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ═══════════════════════════════════════════════════════.CONNECTION CONCEPTS TEST SUITE	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.Compile-time: All static_assert checks passed	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.Coverage:	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run

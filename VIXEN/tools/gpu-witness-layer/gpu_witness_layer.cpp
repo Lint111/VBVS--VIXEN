@@ -112,8 +112,12 @@ void witness(unsigned bit, const char* action) {
     const long pid = getpid();
     std::ostringstream line;
     if (prior == 0) {
-        // First event in this process: emit the ancestry once so the classifier can attribute the
-        // process to the ctest test that (transitively) launched it.
+        // First event in this process: name the test (inherited VIXEN_TEST_NAME) and emit the
+        // ancestry once, so the classifier can attribute the process to the ctest test that
+        // (transitively) launched it even when a shell exec'd away its own command line.
+        if (const char* test = std::getenv("VIXEN_TEST_NAME"); test && *test) {
+            line << "test\t" << pid << '\t' << test << '\n';
+        }
         for (long p = pid; p > 1;) {
             line << "proc\t" << p << '\t' << cmdlineOf(p) << '\n';
             p = parentOf(p);

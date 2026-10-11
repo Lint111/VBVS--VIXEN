@@ -65,6 +65,19 @@ def load_exe_table(build_dir):
     return by_file, by_target
 
 
+def load_plain_table(build_dir):
+    """Plain add_test rows (test -> target, fingerprint, link class, evidence) written by CMake."""
+    path = os.path.join(build_dir, "vixen-test-classes", "plain-tests.tsv")
+    rows = {}
+    if os.path.exists(path):
+        for line in open(path):
+            if line.startswith("#") or not line.strip():
+                continue
+            name, target, fingerprint, cls, evidence = line.rstrip("\n").split("\t", 4)
+            rows[name] = {"target": target, "fingerprint": fingerprint, "class": cls, "evidence": evidence}
+    return rows
+
+
 def load_manifest(path):
     entries = {}
     if os.path.exists(path):
@@ -104,19 +117,21 @@ def read_junit(path):
 
 
 def read_witness(witness_dir):
-    """Return {ancestry cmdline -> [(time, action)]} per recorded process."""
+    """Return (ancestry cmdlines, VIXEN_TEST_NAME values, [(time, action)]) per recorded process."""
     processes = []
     for entry in sorted(os.listdir(witness_dir)):
         if not entry.endswith(".tsv"):
             continue
-        ancestry, events = [], []
+        ancestry, events, names = [], [], []
         for line in open(os.path.join(witness_dir, entry), errors="replace"):
             parts = line.rstrip("\n").split("\t")
             if parts[0] == "proc" and len(parts) >= 3:
                 ancestry.append(parts[2])
+            elif parts[0] == "test" and len(parts) >= 3:
+                names.append(parts[2])
             elif parts[0] == "event" and len(parts) >= 4:
                 events.append((float(parts[3]), parts[2]))
-        processes.append((ancestry, sorted(events)))
+        processes.append((ancestry, names, sorted(events)))
     return processes
 
 
@@ -126,10 +141,11 @@ def attribute(tests, processes):
     for name, t in tests.items():
         by_command["\x1f".join(t["command"])].append(name)
     actions = collections.defaultdict(list)
-    for ancestry, events in processes:
-        owners = set()
-        for cmdline in ancestry:
-            owners.update(by_command.get(cmdline, []))
+    for ancestry, names, events in processes:
+        owners = {n for n in names if n in tests}
+        if not owners:
+            for cmdline in ancestry:
+                owners.update(by_command.get(cmdline, []))
         for owner in owners:
             actions[owner].extend(events)
     result = {}
@@ -143,7 +159,9 @@ def attribute(tests, processes):
     return result
 
 
-def target_of(test, by_file):
+def target_of(name, test, by_file, plain):
+    if name in plain:
+        return plain[name]
     if not test["command"]:
         return None
     return by_file.get(os.path.realpath(test["command"][0]))
@@ -180,6 +198,7 @@ def main():
     all_tests = ctest_json(build_dir)
     selected = ctest_json(build_dir, args.label) if args.label else all_tests
     by_file, by_target = load_exe_table(build_dir)
+    plain = load_plain_table(build_dir)
     old = load_manifest(manifest_path)
 
     own_dir = None
@@ -198,7 +217,7 @@ def main():
     # Freshness of the manifest the build was configured with.
     fresh, stale, unknown = [], [], []
     for name, t in selected.items():
-        exe = target_of(t, by_file)
+        exe = target_of(name, t, by_file, plain)
         entry = old.get(name)
         if entry is None:
             unknown.append(name)
@@ -209,7 +228,7 @@ def main():
 
     rows = {}
     for name, t in selected.items():
-        exe = target_of(t, by_file)
+        exe = target_of(name, t, by_file, plain)
         guess, guess_evidence = link_guess(t, exe)
         previous = old.get(name, {}).get("class") or guess
         state = status.get(name, "unknown")
@@ -243,6 +262,22 @@ def main():
                 if owners:
                     rows[name]["class"] = "gpu"
                     rows[name]["evidence"] = f"fixture: requires GPU fixture {fx} (setup test {owners[0]})"
+                    changed = True
+                    break
+
+    # CTest runs a fixture's setup test with every test that requires it, so the setup of a fixture
+    # a gpu test requires is gpu too (otherwise it would run in both parts).
+    changed = True
+    while changed:
+        changed = False
+        for name, t in selected.items():
+            if rows[name]["class"] == "gpu":
+                continue
+            for fx in t["fixtures_setup"]:
+                users = [u for u, ut in selected.items() if fx in ut["fixtures_required"] and rows[u]["class"] == "gpu"]
+                if users:
+                    rows[name]["class"] = "gpu"
+                    rows[name]["evidence"] = f"fixture: setup of GPU fixture {fx} (required by {users[0]})"
                     changed = True
                     break
 
