@@ -1,0 +1,8 @@
+{
+  "configs": [
+    { "id": "esvo", "env": {} },
+    { "id": "brickmap", "env": { "VIXEN_BRICKMAP_TRAVERSAL": "1" } },
+    { "id": "rtquery", "env": { "VIXEN_RTQUERY_TRAVERSAL": "1" } },
+    { "id": "composed", "env": { "VIXEN_COMPOSED_TRAVERSAL": "1" } }
+  ]
+}
