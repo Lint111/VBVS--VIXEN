@@ -118,6 +118,10 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Set C++23 (required for advanced template features)
     target_compile_features(test_field_extraction PRIVATE cxx_std_23)
 
+    vixen_enable_asserts(test_field_extraction)
+    add_test(NAME test_field_extraction COMMAND test_field_extraction)
+    vixen_set_suite_properties(RenderGraph TESTS test_field_extraction)
+
     # Header-only field-extraction validation - no window-surface platform needed
 
     # Mark as trimmed build compatible
@@ -172,6 +176,10 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
 
     # Visual Studio solution folder organization
     set_target_properties(test_resource_gatherer PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    vixen_enable_asserts(test_resource_gatherer)
+    add_test(NAME test_resource_gatherer COMMAND test_resource_gatherer)
+    vixen_set_suite_properties(RenderGraph TESTS test_resource_gatherer)
 
     # Header-only resource-gatherer validation - no window-surface platform needed
 
