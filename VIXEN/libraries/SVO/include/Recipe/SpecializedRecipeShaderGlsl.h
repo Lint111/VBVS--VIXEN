@@ -233,15 +233,8 @@ inline std::string EmitSpecializedRecipeComputeShader(
     std::cout << "[RecipeBucketedDispatch] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
 
-    // Matches EmitProceduralFieldFunctionGlsl's/UberShaderSplice.h's own float-literal guard --
-    // every literal baked into GLSL source must carry a decimal point or GLSL parses it as an
-    // int (the "1/6 integer-divides to 0" failure class).
-    auto f = [](float v) {
-        std::string s = std::to_string(v);
-        if (s.find('.') == std::string::npos && s.find('e') == std::string::npos)
-            s += ".0";
-        return s;
-    };
+    // Bounds and grid metadata obey the same binary32 transport contract as operands.
+    const auto f = RecipeGlslFloatLiteral;
 
     std::ostringstream out;
     out << "#version 460\n\n";

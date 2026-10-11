@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include <regex>
+#include <bit>
 
 using namespace Vixen::SVO::Recipe;
 
@@ -51,6 +52,16 @@ TEST(EmitProceduralFieldFunctionGlsl, UnionOfTwoSpheresChainsCorrectly) {
 
     EXPECT_NE(glsl.find("SdfCore_Union(t0, t1)"), std::string::npos);
     EXPECT_NE(glsl.find("return t2;"), std::string::npos);
+}
+
+TEST(EmitProceduralFieldFunctionGlsl, InstructionFloatLiteralsRoundTripExactly) {
+    for (float value : {1.0f / 3.0f, 0.123456789f, 1.23456789e-12f, -0.0f}) {
+        SdfInstruction program[] = {MakeSphere(value, value, value, value)};
+        const auto glsl = EmitProceduralFieldFunctionGlsl(program, 1, 0);
+        const std::string literal = "uintBitsToFloat(" + std::to_string(std::bit_cast<std::uint32_t>(value)) + "u)";
+        EXPECT_NE(glsl.find("vec3(" + literal + ", " + literal + ", " + literal + "), " + literal),
+            std::string::npos) << glsl;
+    }
 }
 
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. Proves
