@@ -129,6 +129,18 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 endfunction()
 
+# Plain-main() tests check with assert(); Release defines NDEBUG and compiles those checks out, so the
+# test would exit 0 having verified nothing. Target options follow CMAKE_CXX_FLAGS_<CONFIG>, so this wins.
+function(vixen_enable_asserts)
+    foreach(_target IN LISTS ARGN)
+        if(MSVC)
+            target_compile_options(${_target} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${_target} PRIVATE -UNDEBUG)
+        endif()
+    endforeach()
+endfunction()
+
 function(vixen_set_suite_properties suite)
     cmake_parse_arguments(PARSE_ARGV 1 VSP "GPU" "" "TESTS;TEST_ENVIRONMENT")
     if(NOT VSP_TESTS)
