@@ -1,48 +1,49 @@
-# HDR exposure meter lane report
+# HDR exposure meter lane report (R505)
 
-Base: `5dd78d8675160314f5831e4b3d10b3fdefd8c164` (`lane-hdrmeter`, VIXEN Windows native checkout at `/mnt/c/vixen-native/hdrmeter`). The fetched `origin/wave/authoring-convergence` tip is the same commit; the required merge was already up to date.
+Starting lane tip: `d63a0e0c`. The native VIXEN checkout is `/mnt/c/vixen-native/hdrmeter`.
 
 ## LANDABLE NOW
 
-- Added optional per-pass CSV columns for `exposure_meter`, `exposure_reduce`, and `exposure_tonemap` in `VulkanGraphApplication.cpp`. The app translation unit compiled in the base Release build, but the app did not link because required dependencies failed. These columns are needed to locate the reported 1.1 ms meter cost once the native app is buildable.
-- All 22 VIXEN CMake codegen checks passed on the pinned kernel snapshot after the documented regeneration recovery. The first run had 21 passes and a stale `RecipeSimd.g.hpp`; `recipe_simd_regen` reported zero semantic lines changed, and the fresh `recipe_simd_check` passed. The generated blob hash matches the base blob; the initial stale result was caused by CRLF/LF handling on the `/mnt/c` checkout.
-- The requested exposure mirror test has not run. Its source uses `assert()`, while its CMake target does not undefine `NDEBUG`; the native Release compile would disable those assertions. An assertion-live target configuration is needed for that witness.
-- The requested meter optimization, default-on switch, native timings, after contact sheets, and assertion-live exposure mirror witness are not landable from this baseline. No semantic HDR edits were made because the required native Release app baseline could not be established.
+- Merged `origin/wave/authoring-convergence` at `a48a42df` (merge `941c27c9`) and the `lane-mirrorassert` fix at `69a18bda` (merge `834f7856`). Baseline evidence is committed at `0982b645`; this report is the final lane commit.
+- Native MSVC Release build passed for `VixenApp`, `vixen_lookdev_capture`, and `test_exposure_meter_mirror` on the merged tree. A later diagnostic rebuild of `VixenApp` and `vixen_lookdev_capture` also passed.
+- All 26 VIXEN generation checks passed. `recipe_simd_check` was initially stale on the Windows-mounted checkout; the documented regeneration reported no semantic output change, and the recheck passed. Logs: `1791742971-build-hdrmeter:native-codegen-26.log`, `1791743105-build-hdrmeter:recipe-simd-regen.log`, and `1791743215-build-hdrmeter:native-codegen-26-recheck.log`.
+- `test_exposure_meter_mirror` passed 1/1 in Release with `/UNDEBUG` live (the compiler reported `/DNDEBUG` overridden by `/UNDEBUG`). Log: `1791743958-test-hdrmeter:mirror-test-release.log`.
+- Native 500×500 HDR-on baseline completed on the unchanged exposure shader. There are 252 nonzero timing samples; four startup rows are zero and excluded. Percentiles use nearest rank.
+
+| Pass | Before p50 ms | Before p95 ms |
+|---|---:|---:|
+| Exposure meter | 0.12544 | 0.16380 |
+| Exposure reduction | 0.00448 | 0.00568 |
+| Tonemap | 0.01292 | 0.01788 |
+
+  The raw CSV and opened 2×2 midday sheet are committed at `reports/hdrmeter/perf-before-500.csv` and `reports/hdrmeter/midday-before-500.png`. The sheet uses explicit `VIXEN_HDR_EXPOSURE=1`; it is baseline context, not proof of default-on behavior. It shows a saturated amber ground plane, deep blue-violet sky, bright cream/red structure, and crisp toy-scale forms. Against C16's atmospheric industrial references, composition and material detail differ, so this fixture supports an exposure/color-cue review rather than a direct scene match.
+- The first post-merge native 500 command was `bash /home/liory/.local/bin/with-test-lock.sh --agent hdrmeter --resource gpu --credits 2 --label hdrmeter:baseline-perf-500-exclusive -- bash /mnt/c/vixen-native/hdrmeter/.tmp/hdrmeter-heartbeat.sh bash /mnt/c/vixen-native/hdrmeter/.tmp/hdrmeter-native-invoke.sh perf midday 500 500 'C:\vixen-native\hdrmeter\build\hdrmeter-native\hdrmeter-profiling\before-500\perf.csv' 'C:\vixen-native\hdrmeter\build\hdrmeter-native\hdrmeter-profiling\before-500' 1`. It failed before its render loop at `VoxelGridNode::CompileImpl` with only `Failed to create ray trace buffer (binding 4)` (exit 1; base `834f7856`; log `1791748378-gpu-hdrmeter:baseline-perf-500-exclusive.log`). Since `RayTraceBuffer::Create` hid the failing Vulkan stage, stage/result diagnostics were added and built. The unchanged capture then passed and wrote all four angles (97 seconds; log `1791749032-gpu-hdrmeter:raytrace-diagnostic-500.log`). No diagnostic fired, so the original failure did not recur and its cause remains unclassified. The diagnostic improvement and the SPT proposal are committed.
+- No HDR shader optimization or default-on change is landable from this checkpoint; the committed work is the native baseline diagnostic and 500p evidence.
 
 ## STOPs
 
-**STOPPED: baseline unobtainable: the native Release `VixenApp` target fails in its required SVO dependency.** The checked-in output generated from pinned kernel commit `c3fb3847979e3f9eef04783510c42b70d7058ae7` declares local `value` variables that shadow function parameters at `RecipeSimd.g.hpp:2831, 2849, 2858`. MSVC 14.44 emits C4457, promoted to C2220 by `/W4 /WX`. This repeats after the declared generator runs and the 22 generation checks pass. `VixenApp` depends on SVO, so this failure cannot be excluded from the native timing scope. The emitter lives in the pinned kernel CodegenTool, outside the two assigned VIXEN worktrees.
+- The native 1920×1080 baseline did not complete. The command `bash /home/liory/.local/bin/with-test-lock.sh --agent hdrmeter --resource gpu --credits 2 --label hdrmeter:baseline-perf-1080 -- bash /mnt/c/vixen-native/hdrmeter/.tmp/hdrmeter-heartbeat.sh bash /mnt/c/vixen-native/hdrmeter/.tmp/hdrmeter-native-invoke.sh perf midday 1920 1080 'C:\vixen-native\hdrmeter\build\hdrmeter-native\hdrmeter-profiling\before-1080\perf.csv' 'C:\vixen-native\hdrmeter\build\hdrmeter-native\hdrmeter-profiling\before-1080' 1` was submitted at 23:08:36 and admitted at 23:45:30 after the older 15-token exclusive RenderGraph/SVO run released the queue. At 23:48:23 the wrapper was signaled (queue exit 76, payload exit 143; log `1791751518-gpu-hdrmeter:baseline-perf-1080.log`). It produced one partial angle image and no CSV. I removed the partial image/readback, terminated the orphaned Windows capture process, and verified that no `vixen_lookdev_capture` process remained. No 1080p timing is reported.
+- The first 500p failure was recovered by retrying the same native capture with stage-specific diagnostics. Invocation/provisioning recovery is complete, and generation plus the Release mirror witness are green. The 1080p performance scope is still required and cannot be inferred from 500p; it is not classified as a pre-existing red or excluded. No HDR shader optimization, default-on switch, after timings, or after look-dev sheets were produced. Midday/night owner review therefore remains pending.
+- R494's 0.5 ms tone-map/exposure budget and R505 were read. The lane stopped at 23:48:23 local under the three-hour worker checkpoint. The HDR meter task is not complete.
 
-Required verification scope is: native Release `VixenApp` and dependencies; per-pass GPU timings with exposure enabled at 500×500 and 1920×1080; the exposure mirror test with assertions live; and the 22 CMake generation checks. The 22 checks are green. The build, native timing, look-dev-after, and mirror-test witnesses are incomplete.
+## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-### Recovery record
-
-- **Base and first red:** base SHA `5dd78d8675160314f5831e4b3d10b3fdefd8c164`. The full queued native Release build (`hdrmeter:base-full-build-retry`) was stopped by the box idle watchdog at 199 seconds (queue exit 75); its detached Windows child advanced to 811/1,152 targets and recorded six failures before it was terminated. Logs: `/home/liory/.local/state/undertow/undertow-box-logs/1791708489-build-hdrmeter:base-full-build-retry.log` and native `.tmp/native-temp/vixen_build_hdrmeter-base.log`. Failures included the SVO C4457, the RenderGraph aligned-storage C2338, a VoxelDocument translation unit, and three RenderGraph test translation units.
-- **A — invocation and provisioning:** the assigned native checkout did not exist, so it was created at the assigned path from the base. The first queued `cmd.exe` attempt used a WSL UNC working directory and an unquoted Windows path; it exited 1 before CMake. `build.bat provision; build.bat all vixen-ninja` then reported no VS C++ toolchain despite VS 2022 being installed. The native helper also rejected an unsupported `-StreamProgress` option. Recovery used the installed `vcvars64.bat`, a worktree-local native preset, the supported `run_configure_locked.ps1`/`run_build_with_summary.ps1`, a quoted `C:\` batch path, and the WSL-visible Yeroket root `//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy`. A cleanup configure initially looked for presets from the repository root and exited 1; rerunning from `VIXEN/` succeeded. The helper’s silent log polling caused the queue watchdog to detach its Windows child; subsequent scoped CMake builds streamed progress directly through the box queue. The final native cache has the default `/EHsc` flags restored.
-- **B — fresh generation:** the first scoped run of the 22 codegen targets found only `recipe_simd_check` stale. `recipe_simd_regen` completed and reported no semantic line changes in its four declared outputs. The full target set was rerun: the other 21 checks had passed in the first run, and the regenerated SIMD check passed on the second run. No generated semantic churn is included in the primary worktree.
-- **C — base proof and scope:** a fresh scoped `VixenApp` Release build on the unchanged base reproduced SVO C4457 and RenderGraph C2338 (`hdrmeter:base-app-target`, exit 2; log `/home/liory/.local/state/undertow/undertow-box-logs/1791709954-build-hdrmeter:base-app-target.log`). The app’s `VulkanGraphApplication.cpp` translation unit compiled, then Ninja stopped because dependencies failed. `clang-cl.exe` is not installed (`where clang-cl.exe` found none). A local attempt to apply MSVC’s documented `_ENABLE_EXTENDED_ALIGNED_STORAGE` option through `CMAKE_CXX_FLAGS` replaced the default `/EHsc` and introduced C4530; that retry was stopped at 128/469 targets. The override was removed from the local preset, and a queued configure is restoring the base flags. This does not change the reproduced C4457 blocker. No warning was suppressed and no generated file was hand-edited.
-- **Owner action needed:** update the pinned `RecipeSimdEmitter` to emit non-shadowing local names, then regenerate and build the native VixenApp dependency graph. If the aligned-storage C2338 remains after that, enable the compiler-documented extended alignment in the supported Windows configuration without replacing the default exception flags.
-
-The initial native look-dev references and pre-existing contact sheets were opened. The midday sheet reads flat and bright against the reference; the night sheet keeps the machine, worker, and water faint where the reference shows stronger sodium-lit pools. Existing captures measured in `reports/lookdev.md` include midday p95 0.859, late-afternoon p95 0.816, overcast p95 0.893, and night p95 0.284; they are pre-change context only. No new after contact sheet was produced, so there is no visual after result to describe.
-
-R494’s 0.5 ms tone-map/exposure cap was read. R505 was not present in `/home/liory/projects` or `/home/liory/scripts/codex-briefs`; this brief supplies the required scope and behavior.
-
-## SPT DISPOSITION
-
-Thirteen proposals were appended to `.spt-proposals/hdrmeter.jsonl` for incidental instrumentation, Windows-native provisioning, queue supervision, DrvFS metadata, generated line endings, compiler-flag setup, the Release assertion gap, and preset-directory selection. They are committed with this report.
-
-## CONSOLIDATION ISSUES
-
-- Expose HDR passes in the native performance CSV
-- Keep silent native builds alive under the box queue
-- Make the native build entry point use the installed Visual Studio toolchain
-- Resolve the Yeroket kernel root in native WSL-backed checkouts
-- Provision the assigned native checkout with the lane base
-- Keep native build helper parameters compatible across wave bases
-- Quote Windows paths in queued native build invocations
-- Ignore DrvFS executable-bit noise in Windows native worktrees
-- Preserve canonical line endings in generated native outputs
-- Enable MSVC extended aligned storage in the native preset
-- Preserve MSVC exception flags when adding native CXX options
-- Keep the exposure mirror assertions live in Release builds
-- Run native CMake presets from the VIXEN source directory
+- proposed: Expose HDR passes in the native performance CSV
+- proposed: Keep silent native builds alive under the box queue
+- proposed: Make the native build entry point use the installed Visual Studio toolchain
+- proposed: Resolve the Yeroket kernel root in native WSL-backed checkouts
+- proposed: Provision the assigned native checkout with the lane base
+- proposed: Keep native build helper parameters compatible across wave bases
+- proposed: Quote Windows paths in queued native build invocations
+- proposed: Ignore DrvFS executable-bit noise in Windows native worktrees
+- proposed: Preserve canonical line endings in generated native outputs
+- proposed: Enable MSVC extended aligned storage in the native preset
+- proposed: Preserve MSVC exception flags when adding native CXX options
+- proposed: Keep the exposure mirror assertions live in Release builds
+- proposed: Run native CMake presets from the VIXEN source directory
+- proposed: Make direct CMake inherit the provisioned Vulkan SDK pin
+- proposed: Scope native Git trust to the WSL kernel provider root
+- proposed: Stage TBB for native lookdev capture CTest
+- proposed: Keep native CTest captures alive under the box idle watchdog
+- proposed: Expose Vulkan buffer allocation failure stages in native captures
+- proposed: Provide a supported look-dev PNG contact sheet composer
