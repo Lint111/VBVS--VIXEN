@@ -447,13 +447,13 @@ inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
     {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog2"},
     {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Select"},
     {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DistanceTo"},
-    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Output"},
+    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Output"},
     {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PushParam"},
     {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ReadParam"},
     {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::RestorePosition, true, false, 1, 1, 1, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RestorePos"},
     {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PushFloat3"},
-    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ComposeFloat3"},
-    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Passthrough"},
+    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ComposeFloat3"},
+    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Passthrough"},
     {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DecomposeFloat3"},
     {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Add"},
     {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Sub"},
@@ -2909,10 +2909,14 @@ using yk::simd4::dual;
 using yk::simd4::dual2;
 using yk::simd4::dual3;
 
-// Output slots are selected on one recipe DAG. The gradient is an automatic slot derived from
-// the distance terminal; emission and typed material channels can add bits without minting a
-// second recipe identity once the engine-side slot ABI is complete.
-enum class RecipeOutputSlot : std::uint8_t { Distance = 1u, Gradient = 2u, Emission = 4u, Material = 8u };
+// Output channel IDs and component spans are carried by lowered opcode-94 markers.
+// This descriptor is deliberately open-ended: adding an authored channel does not
+// require changing the evaluator's C++ interface.
+struct RecipeOutputDescriptor {
+    std::uint32_t channel = 0;
+    std::uint8_t valueOffset = 0;
+    std::uint8_t elementCount = 1;
+};
 
 struct LoweredRecipeInstruction;
 struct RecipeSimdState {
@@ -3797,6 +3801,7 @@ public:
     bool Lower(const SdfInstruction* program, std::uint32_t count,
                std::span<const float> parameters, std::string& error) {
         instructions_.clear();
+        outputs_.clear();
         error.clear();
         if (program == nullptr && count != 0) {
             error="recipe program is null";
@@ -3827,9 +3832,27 @@ public:
             }
             if (!RecipeApplyValueTypes(source.opCode,valueTypes,sp,i,error)) {
                 instructions_.clear();
+                outputs_.clear();
                 return false;
             }
             psp=psp-arity.pPop+arity.pPush;
+            if (opcode==SdfOpCode::Output) {
+                const int elementCount=source.data[1] == 3.0f ? 3
+                    : source.data[1] == 0.0f || source.data[1] == 1.0f ? 1 : 0;
+                if (elementCount == 0 || sp < elementCount ||
+                    !std::isfinite(source.data[0]) || source.data[0] < 0.0f ||
+                    source.data[0] > 65535.0f ||
+                    source.data[0] != std::floor(source.data[0])) {
+                    error="invalid recipe output descriptor at instruction "+std::to_string(i);
+                    instructions_.clear();
+                    outputs_.clear();
+                    return false;
+                }
+                outputs_.push_back(RecipeOutputDescriptor{
+                    static_cast<std::uint32_t>(std::max(0.0f, source.data[0])),
+                    static_cast<std::uint8_t>(sp-elementCount),
+                    static_cast<std::uint8_t>(elementCount)});
+            }
             if (opcode==SdfOpCode::Output || opcode==SdfOpCode::ComposeFloat3 || opcode==SdfOpCode::Passthrough || opcode==SdfOpCode::InvokeRecipe)
                 continue;
             LoweredRecipeInstruction lowered{};
@@ -3854,15 +3877,49 @@ public:
             }
             instructions_.push_back(lowered);
         }
-        if (sp!=1 || psp!=0) {
-            error="closed recipe must finish with one value and an empty position stack";
+        if (outputs_.empty() && sp==1)
+            outputs_.push_back(RecipeOutputDescriptor{0u, 0u, 1u});
+        int expectedOutputOffset=0;
+        for (const RecipeOutputDescriptor& output:outputs_) {
+            if (output.valueOffset!=expectedOutputOffset) {
+                error="recipe output markers do not describe a contiguous value stack";
+                instructions_.clear();
+                outputs_.clear();
+                return false;
+            }
+            expectedOutputOffset+=output.elementCount;
+        }
+        if (sp!=expectedOutputOffset || psp!=0 || outputs_.empty()) {
+            error="closed recipe output markers must cover the value stack and leave an empty position stack";
             instructions_.clear();
+            outputs_.clear();
             return false;
         }
         return true;
     }
 
     void Evaluate4(const glm::vec3* positions, float* output, glm::vec3* declaredPositions=nullptr) const {
+        if (output==nullptr) return;
+        alignas(16) float outputSet[64*4]{};
+        if (!EvaluateOutputSet4(positions, outputSet, 64u*4u, declaredPositions)) return;
+        const RecipeOutputDescriptor* distance=FindOutput(0u);
+        if (distance==nullptr) distance=&outputs_.front();
+        std::memcpy(output, outputSet+static_cast<std::size_t>(distance->valueOffset)*4u,
+            sizeof(float)*4u);
+    }
+
+    bool EvaluateOutputSet4(const glm::vec3* positions, float* output,
+                            std::size_t outputFloatCapacity,
+                            glm::vec3* declaredPositions=nullptr,
+                            std::string* error=nullptr) const {
+        if (positions==nullptr || output==nullptr) {
+            if (error!=nullptr) *error="output-set evaluation requires positions and output storage";
+            return false;
+        }
+        if (outputFloatCapacity < OutputValueCount()*4u) {
+            if (error!=nullptr) *error="output-set storage is smaller than the generated recipe layout";
+            return false;
+        }
         alignas(16) float x[4],y[4],z[4];
         for (int lane=0;lane<4;++lane) { x[lane]=positions[lane].x; y[lane]=positions[lane].y; z[lane]=positions[lane].z; }
         RecipeSimdState state{};
@@ -3872,14 +3929,19 @@ public:
             state.psp=instruction.positionBase;
             instruction.execute(state,instruction);
         }
-        assert(state.sp==1 && state.psp==0);
-        state.stack[0].store_unaligned(output);
+        assert(state.sp==static_cast<int>(OutputValueCount()) && state.psp==0);
+        for (const RecipeOutputDescriptor& descriptor:outputs_)
+            for (std::uint32_t component=0;component<descriptor.elementCount;++component)
+                state.stack[descriptor.valueOffset+component].store_unaligned(
+                    output+(static_cast<std::size_t>(descriptor.valueOffset)+component)*4u);
         if (declaredPositions!=nullptr) {
             state.declaredPosition.yk_col0.store_unaligned(x);
             state.declaredPosition.yk_col1.store_unaligned(y);
             state.declaredPosition.yk_col2.store_unaligned(z);
             for (int lane=0;lane<4;++lane) declaredPositions[lane]=glm::vec3(x[lane],y[lane],z[lane]);
         }
+        if (error!=nullptr) error->clear();
+        return true;
     }
 
     // Forward-mode AD over the same lowered instruction stream. This fills the Distance and
@@ -3911,15 +3973,22 @@ public:
             state.psp=instruction.positionBase;
             instruction.gradientExecute(state,instruction);
         }
-        if (state.sp!=1 || state.psp!=0) {
+        if (state.sp!=static_cast<int>(OutputValueCount()) || state.psp!=0) {
             if (error!=nullptr) *error="gradient evaluator finished with an invalid stack shape";
             return false;
         }
+        const RecipeOutputDescriptor* distance=FindOutput(0u);
+        if (distance==nullptr) distance=&outputs_.front();
+        const std::size_t distanceOffset=distance->valueOffset;
+        if (distance->elementCount!=1u) {
+            if (error!=nullptr) *error="gradient evaluation requires a scalar distance output";
+            return false;
+        }
         alignas(16) float value[4],gx[4],gy[4],gz[4];
-        state.stack[0].value.store_unaligned(value);
-        state.stack[0].gx.store_unaligned(gx);
-        state.stack[0].gy.store_unaligned(gy);
-        state.stack[0].gz.store_unaligned(gz);
+        state.stack[distanceOffset].value.store_unaligned(value);
+        state.stack[distanceOffset].gx.store_unaligned(gx);
+        state.stack[distanceOffset].gy.store_unaligned(gy);
+        state.stack[distanceOffset].gz.store_unaligned(gz);
         for (int lane=0;lane<4;++lane)
             output[lane]=value[lane], gradients[lane]=glm::vec3(gx[lane],gy[lane],gz[lane]);
         if (error!=nullptr) error->clear();
@@ -3927,6 +3996,14 @@ public:
     }
 
     std::size_t InstructionCount() const { return instructions_.size(); }
+    std::size_t OutputCount() const { return outputs_.size(); }
+    std::size_t OutputValueCount() const {
+        std::size_t count=0;
+        for (const RecipeOutputDescriptor& output:outputs_)
+            count=std::max(count,static_cast<std::size_t>(output.valueOffset)+output.elementCount);
+        return count;
+    }
+    const RecipeOutputDescriptor& OutputAt(std::size_t index) const { return outputs_.at(index); }
 
     struct NativeTiming {
         bool gradientSupported = false;
@@ -4002,7 +4079,14 @@ public:
         return MeasureNativeTiming(positions, iterations, epsilon);
     }
 private:
+    const RecipeOutputDescriptor* FindOutput(std::uint32_t channel) const {
+        for (const RecipeOutputDescriptor& output:outputs_)
+            if (output.channel==channel) return &output;
+        return nullptr;
+    }
+
     std::vector<LoweredRecipeInstruction> instructions_;
+    std::vector<RecipeOutputDescriptor> outputs_;
 };
 } // namespace Vixen::SVO::Recipe
 
