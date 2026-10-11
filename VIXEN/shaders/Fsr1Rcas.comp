@@ -1,0 +1,36 @@
+#version 460
+#extension GL_GOOGLE_include_directive : enable
+
+// AMD FidelityFX FSR 1.0.2 RCAS. Sharpness is held at 0.2 stops for the stage-1
+// image and timing comparison; input and output are display-referred RGBA8 images.
+#define A_GPU 1
+#define A_GLSL 1
+#include "third_party/amd_fsr1/ffx_a.h"
+#define FSR_RCAS_F
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0, rgba8) readonly uniform image2D InputTexture;
+layout(binding = 1, rgba8) writeonly uniform image2D OutputTexture;
+
+ivec2 clampPixel(ivec2 p) {
+    return clamp(p, ivec2(0), imageSize(InputTexture) - ivec2(1));
+}
+
+AF4 FsrRcasLoadF(ASU2 p) {
+    return imageLoad(InputTexture, clampPixel(ivec2(p)));
+}
+void FsrRcasInputF(inout AF1 r, inout AF1 g, inout AF1 b) {}
+
+#include "third_party/amd_fsr1/ffx_fsr1.h"
+
+void main() {
+    uvec2 pos = gl_GlobalInvocationID.xy;
+    ivec2 extent = imageSize(OutputTexture);
+    if (any(greaterThanEqual(ivec2(pos), extent))) return;
+
+    uvec4 con;
+    FsrRcasCon(con, 0.2);
+    vec3 color;
+    FsrRcasF(color.r, color.g, color.b, pos, con);
+    imageStore(OutputTexture, ivec2(pos), vec4(color, 1.0));
+}

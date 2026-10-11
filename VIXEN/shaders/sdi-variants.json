@@ -66,12 +66,36 @@
       "name": "ExposureReduce",
       "source": "ExposureReduce.comp",
       "variants": [
-        []
+        [],
+        [
+          "VIXEN_HDR_EXPOSURE_FIXED"
+        ]
       ]
     },
     {
       "name": "ExposureTonemap",
       "source": "ExposureTonemap.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "FsrInputAA",
+      "source": "FsrInputAA.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "Fsr1Easu",
+      "source": "Fsr1Easu.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "Fsr1Rcas",
+      "source": "Fsr1Rcas.comp",
       "variants": [
         []
       ]

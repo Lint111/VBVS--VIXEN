@@ -229,7 +229,7 @@ namespace Push {
 struct PushBlock {
     uint8_t prevViewProj[64];
     glm::vec4 prevCamPos;
-    glm::uvec4 dims;
+    uint8_t dims[16];
 };
 
 static_assert(offsetof(PushBlock, prevViewProj) == Push::prevViewProj::OFFSET, "PushBlock.prevViewProj is not at its SDI OFFSET");

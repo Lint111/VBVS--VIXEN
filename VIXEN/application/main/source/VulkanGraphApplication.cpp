@@ -1688,6 +1688,15 @@ void VulkanGraphApplication::PostTick() {
     if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
         passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
     }
+    if (auto* fsrInputAa = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("fsr_input_aa"))) {
+        passes.push_back({"fsr_input_aa", fsrInputAa->GetGPUPerformanceLogger()});
+    }
+    if (auto* fsrEasu = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("fsr1_easu"))) {
+        passes.push_back({"fsr1_easu", fsrEasu->GetGPUPerformanceLogger()});
+    }
+    if (auto* fsrRcas = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("fsr1_rcas"))) {
+        passes.push_back({"fsr1_rcas", fsrRcas->GetGPUPerformanceLogger()});
+    }
     // W3c-2 / W-LEAN L3: the cell shade (exists only under
     // VIXEN_HIT_ACCUM_RESOLVE); the composite rides spatial_reuse's own column.
     if (auto* cellShade = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_cell_shade"))) {

@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: ExposureReduce
-// Feature axis: (none — single-variant interface)
+// Feature axis: VIXEN_HDR_EXPOSURE_FIXED
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -141,7 +141,7 @@ inline std::vector<MemberInfo> Members(
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ExposureReduce";
     static constexpr uint32_t NUM_MEMBERS = 2;
-    static constexpr uint32_t NUM_FEATURES = 0;
+    static constexpr uint32_t NUM_FEATURES = 1;
 };
 
 } // namespace ExposureReduce

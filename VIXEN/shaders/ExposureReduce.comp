@@ -20,6 +20,9 @@ shared float logLuminanceSum[256];
 shared uint validPixelCount[256];
 
 void main() {
+#ifdef VIXEN_HDR_EXPOSURE_FIXED
+    if (gl_LocalInvocationIndex == 0u) result.ev100 = 0.0;
+#else
     uint lane = gl_LocalInvocationIndex;
     uvec2 extent = uvec2(imageSize(sceneRadianceHistoryOutput));
     uint tilesX = (extent.x + 15u) / 16u;
@@ -49,4 +52,5 @@ void main() {
             ? 0.0
             : -logLuminanceSum[0] / float(validPixelCount[0]);
     }
+#endif
 }

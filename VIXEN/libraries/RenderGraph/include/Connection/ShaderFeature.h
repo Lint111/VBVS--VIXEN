@@ -88,6 +88,9 @@ inline constexpr ShaderFeature kFeatureSrsCellResolve{"VIXEN_SRS_CELL_RESOLVE"};
 /** @brief Mining feedback beam composition and its instance endpoint inputs. */
 inline constexpr ShaderFeature kFeatureMiningBeam{"VIXEN_MINING_BEAM"};
 
+/** @brief Use the fixed stage-1 exposure value instead of the frame-wide meter result. */
+inline constexpr ShaderFeature kFeatureHdrExposureFixed{"VIXEN_HDR_EXPOSURE_FIXED"};
+
 /** @brief W-BRICKMAP Slice 2: coarse-grid DDA backend for the ESVO leaf march
  *  (traverseCoarseGridInstancedSdf[AnyHit] in SceneBindings.glsl, FORMAT_STORED_SDF
  *  only — FORMAT_BINARY bodies fall back to the ESVO path per-instance at

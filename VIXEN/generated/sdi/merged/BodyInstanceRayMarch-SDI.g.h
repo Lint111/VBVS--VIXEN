@@ -1476,7 +1476,7 @@ struct alignas(16) PushBlock {
     float raySizeBias;
     int32_t instanceCount;
     uint8_t _pad76[4];
-    glm::ivec2 debugTargetPixel;
+    uint8_t debugTargetPixel[8];
     uint32_t accumFrameCount;
     float cosmicK;
 #if defined(VIXEN_B2_PROXY_PREPASS)

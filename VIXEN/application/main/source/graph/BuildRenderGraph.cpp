@@ -44,6 +44,9 @@
 #include "merged/ExposureTonemap-SDI.g.h"
 #include "merged/ExposureMeter-SDI.g.h"
 #include "merged/ExposureReduce-SDI.g.h"
+#include "merged/FsrInputAA-SDI.g.h"
+#include "merged/Fsr1Easu-SDI.g.h"
+#include "merged/Fsr1Rcas-SDI.g.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.g.h"
 #include "merged/ShadowRayTrace-SDI.g.h"
@@ -429,6 +432,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
+    const bool hdrExposureFixed = hdrExposureEnabled &&
+                                 envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
+    const char* upscalerEnv = std::getenv("VIXEN_UPSCALER");
+    const bool fsr1UpscalerEnabled = upscalerEnv && std::string(upscalerEnv) == "fsr1";
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
@@ -628,11 +635,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled) {
         exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
         exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
-        exposureMeterShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_meter_shader_lib");
-        exposureMeterNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_meter");
         exposureReduceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_reduce_shader_lib");
         exposureReduceNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_reduce");
         exposureMeterBuffer = renderGraph->AddNode<StorageBufferNodeType>("exposure_meter_buffer");
+        if (!hdrExposureFixed) {
+            exposureMeterShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_meter_shader_lib");
+            exposureMeterNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_meter");
+        }
     }
 
     // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers for the reservoir
@@ -655,6 +664,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // DirectLightingNode, before the sky-projection/UI composite chain (which still reads the
     // swapchain image, unchanged).
     NodeHandle blitNode = renderGraph->AddNode<BlitNodeType>("render_target_blit");
+
+    // The optional FSR1 route has its own intermediate targets and three explicit stages:
+    // VIXEN input AA -> AMD EASU -> AMD RCAS. Without VIXEN_UPSCALER=fsr1 these nodes are
+    // absent, preserving the existing native/linear graph and its scale-1 image path.
+    NodeHandle fsrInputAaTargetNode{};
+    NodeHandle fsrEasuTargetNode{};
+    NodeHandle fsrOutputTargetNode{};
+    NodeHandle fsrInputAaShaderLib{};
+    NodeHandle fsrEasuShaderLib{};
+    NodeHandle fsrRcasShaderLib{};
+    NodeHandle fsrInputAaNode{};
+    NodeHandle fsrEasuNode{};
+    NodeHandle fsrRcasNode{};
+    NodeHandle fsrInputReadGatherer{};
+    NodeHandle fsrEasuReadGatherer{};
+    NodeHandle fsrRcasReadGatherer{};
+    if (fsr1UpscalerEnabled) {
+        fsrInputAaTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr_input_aa_target");
+        fsrEasuTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr1_easu_target");
+        fsrOutputTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr1_output_target");
+        fsrInputAaShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr_input_aa_shader_lib");
+        fsrEasuShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr1_easu_shader_lib");
+        fsrRcasShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr1_rcas_shader_lib");
+        fsrInputAaNode = renderGraph->AddNode<ComputeStageNodeType>("fsr_input_aa");
+        fsrEasuNode = renderGraph->AddNode<ComputeStageNodeType>("fsr1_easu");
+        fsrRcasNode = renderGraph->AddNode<ComputeStageNodeType>("fsr1_rcas");
+        fsrInputReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr_input_read_gatherer");
+        fsrEasuReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr1_easu_read_gatherer");
+        fsrRcasReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr1_rcas_read_gatherer");
+    }
 
     // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
     // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
@@ -1455,6 +1494,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
+    if (fsr1UpscalerEnabled) {
+        auto* aaTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrInputAaTargetNode));
+        aaTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
+        auto* easuTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrEasuTargetNode));
+        easuTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
+        auto* rcasTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrOutputTargetNode));
+        rcasTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
+        for (auto* target : {aaTarget, easuTarget, rcasTarget}) {
+            target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT,
+                                 FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
+            target->SetParameter(RenderTargetNodeConfig::PARAM_FORMAT,
+                                 static_cast<uint32_t>(VK_FORMAT_R8G8B8A8_UNORM));
+        }
+    }
     const VkExtent2D renderExtent = RenderTargetNode::ComputeFollowExtent(
         {static_cast<uint32_t>(width), static_cast<uint32_t>(height)}, renderScale);
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -1511,7 +1564,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled) {
         const uint32_t exposureTilesX = (renderExtent.width + 15u) / 16u;
         const uint32_t exposureTilesY = (renderExtent.height + 15u) / 16u;
-        const uint64_t exposureMeterBytes = 8ull + 8ull * exposureTilesX * exposureTilesY;
+        const uint64_t exposureMeterBytes = hdrExposureFixed
+            ? 8ull : 8ull + 8ull * exposureTilesX * exposureTilesY;
         static_cast<StorageBufferNode*>(renderGraph->GetInstance(exposureMeterBuffer))
             ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
                            static_cast<uint32_t>(exposureMeterBytes));
@@ -2239,10 +2293,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Phase G: Compute dispatch parameters
     auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
-    uint32_t dispatchX = width / 8;
-    uint32_t dispatchY = height / 8;
+    // R493: the primary pass follows the offscreen render extent rather than the
+    // presentation target. Keep the canonical scale-1 floor tiling byte-identical;
+    // reduced extents use ceiling division so the last partial workgroup covers the
+    // target's rounded-up edge pixels (the shader already bounds-checks imageSize).
+    uint32_t dispatchX = renderScale == 1.0f
+        ? width / 8
+        : (renderExtent.width + 7u) / 8u;
+    uint32_t dispatchY = renderScale == 1.0f
+        ? height / 8
+        : (renderExtent.height + 7u) / 8u;
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Setting dispatch dims: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x1 (from window " + std::to_string(width) + "x" + std::to_string(height) + ")");
+        mainLogger->Info("[BuildRenderGraph] Setting primary dispatch dims: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x1 (render extent " + std::to_string(renderExtent.width) + "x" + std::to_string(renderExtent.height) + ", presentation " + std::to_string(width) + "x" + std::to_string(height) + ")");
     }
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
@@ -2434,7 +2496,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             return builder;
         });
     auto exposureMeterFamily = makeLightingFamily("ExposureMeter.comp", "ExposureMeter");
-    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureMeterShaderLib))
+    if (hdrExposureEnabled && !hdrExposureFixed) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureMeterShaderLib))
         ->RegisterShaderBuilder([this, exposureMeterFamily](int vulkanVer, int spirvVer) {
             auto builder = exposureMeterFamily->MakeBuilder({});
             builder.SetTargetVulkanVersion(vulkanVer)
@@ -2448,9 +2510,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
             return builder;
         });
     auto exposureReduceFamily = makeLightingFamily("ExposureReduce.comp", "ExposureReduce");
+    const std::vector<std::string> exposureReduceShaderFeatures = hdrExposureFixed
+        ? std::vector<std::string>{kFeatureHdrExposureFixed.define}
+        : std::vector<std::string>{};
     if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureReduceShaderLib))
-        ->RegisterShaderBuilder([this, exposureReduceFamily](int vulkanVer, int spirvVer) {
-            auto builder = exposureReduceFamily->MakeBuilder({});
+        ->RegisterShaderBuilder([this, exposureReduceFamily, exposureReduceShaderFeatures](int vulkanVer, int spirvVer) {
+            auto builder = exposureReduceFamily->MakeBuilder(exposureReduceShaderFeatures);
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
@@ -2461,6 +2526,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .EnableCaching(&shaderCacheManager_);
             return builder;
         });
+
+    if (fsr1UpscalerEnabled) {
+        const auto registerFsrFamily = [this](NodeHandle libHandle,
+                                               std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+            auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
+            libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
+                auto builder = family->MakeBuilder({});
+                builder.SetTargetVulkanVersion(vulkanVer)
+                       .SetTargetSpirvVersion(spirvVer)
+                       .AddIncludePath("shaders")
+                       .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                       .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                       .EnableCaching(&shaderCacheManager_);
+                return builder;
+            });
+        };
+        registerFsrFamily(fsrInputAaShaderLib,
+                          makeLightingFamily("FsrInputAA.comp", "FsrInputAA"));
+        registerFsrFamily(fsrEasuShaderLib,
+                          makeLightingFamily("Fsr1Easu.comp", "Fsr1Easu"));
+        registerFsrFamily(fsrRcasShaderLib,
+                          makeLightingFamily("Fsr1Rcas.comp", "Fsr1Rcas"));
+    }
 
     // W1a: the ProbeUpdate split's three compiled programs, each family-registered
     // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
@@ -3041,6 +3131,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Read-side image gatherer: two DDGI atlases and the sky cache, all read by SpatialReuseShade.
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(3);
+
+    if (fsr1UpscalerEnabled) {
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrInputReadGatherer))->PreRegisterImageSlots(1);
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrEasuReadGatherer))->PreRegisterImageSlots(1);
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrRcasReadGatherer))->PreRegisterImageSlots(1);
+    }
 
     // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
     // buffer entry on the cull's write side.
@@ -8944,6 +9040,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
     connectPresentationTargetInfo(renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
+    if (fsr1UpscalerEnabled) {
+        for (NodeHandle target : {fsrInputAaTargetNode, fsrEasuTargetNode, fsrOutputTargetNode}) {
+            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          target, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
+            connectPresentationTargetInfo(target, RenderTargetNodeConfig::EXTENT_SOURCE);
+        }
+    }
 
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
     // resize->recompile cascade as the render target itself.
@@ -9266,20 +9369,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
         &sdiCensusExclusions);
 
     if (hdrExposureEnabled) {
-    const auto meterSynth = SynthesizeComputeStage<ShaderInterface::ExposureMeter::Metadata,
-                                                     ShaderInterface::ExposureMeter::MEMBERS>(
-        renderGraph, batch, "exposure_meter", exposureMeterShaderLib, exposureMeterNode,
-        lightingCommon, sceneProviders, {});
-    (void)meterSynth;
-    auto* meterStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureMeterNode));
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 15u) / 16u);
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 15u) / 16u);
-    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    if (!hdrExposureFixed) {
+        const auto meterSynth = SynthesizeComputeStage<ShaderInterface::ExposureMeter::Metadata,
+                                                         ShaderInterface::ExposureMeter::MEMBERS>(
+            renderGraph, batch, "exposure_meter", exposureMeterShaderLib, exposureMeterNode,
+            lightingCommon, sceneProviders, {});
+        (void)meterSynth;
+        auto* meterStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureMeterNode));
+        meterStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 15u) / 16u);
+        meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 15u) / 16u);
+        meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    }
+    SdiFeatureSet exposureReduceFeatures;
+    if (hdrExposureFixed) exposureReduceFeatures.Enable(kFeatureHdrExposureFixed);
     const auto reduceSynth = SynthesizeComputeStage<ShaderInterface::ExposureReduce::Metadata,
                                                      ShaderInterface::ExposureReduce::MEMBERS>(
         renderGraph, batch, "exposure_reduce", exposureReduceShaderLib, exposureReduceNode,
-        lightingCommon, sceneProviders, {});
+        lightingCommon, sceneProviders, exposureReduceFeatures);
     (void)reduceSynth;
     auto* reduceStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureReduceNode));
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
@@ -9296,6 +9403,53 @@ void VulkanGraphApplication::BuildRenderGraph() {
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    }
+
+    if (fsr1UpscalerEnabled) {
+        const auto makeFsrProviders = [&](NodeHandle inputTarget, NodeHandle outputTarget) {
+            SdiProviderRegistry providers = sceneProviders;
+            providers.Provide("InputTexture", inputTarget,
+                              RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+            providers.Provide("OutputTexture", outputTarget,
+                              RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+            return providers;
+        };
+
+        auto aaProviders = makeFsrProviders(renderTargetNode, fsrInputAaTargetNode);
+        const auto aaSynth = SynthesizeComputeStage<ShaderInterface::FsrInputAA::Metadata,
+                                                     ShaderInterface::FsrInputAA::MEMBERS>(
+            renderGraph, batch, "fsr_input_aa", fsrInputAaShaderLib, fsrInputAaNode,
+            lightingCommon, aaProviders, {});
+        (void)aaSynth;
+        auto* aaStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrInputAaNode));
+        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 7u) / 8u);
+        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 7u) / 8u);
+        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        auto easuProviders = makeFsrProviders(fsrInputAaTargetNode, fsrEasuTargetNode);
+        const auto easuSynth = SynthesizeComputeStage<ShaderInterface::Fsr1Easu::Metadata,
+                                                       ShaderInterface::Fsr1Easu::MEMBERS>(
+            renderGraph, batch, "fsr1_easu", fsrEasuShaderLib, fsrEasuNode,
+            lightingCommon, easuProviders, {});
+        (void)easuSynth;
+        auto* easuStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrEasuNode));
+        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (width + 7u) / 8u);
+        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (height + 7u) / 8u);
+        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        auto rcasProviders = makeFsrProviders(fsrEasuTargetNode, fsrOutputTargetNode);
+        const auto rcasSynth = SynthesizeComputeStage<ShaderInterface::Fsr1Rcas::Metadata,
+                                                       ShaderInterface::Fsr1Rcas::MEMBERS>(
+            renderGraph, batch, "fsr1_rcas", fsrRcasShaderLib, fsrRcasNode,
+            lightingCommon, rcasProviders, {});
+        (void)rcasSynth;
+        auto* rcasStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrRcasNode));
+        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (width + 7u) / 8u);
+        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (height + 7u) / 8u);
+        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
@@ -9414,6 +9568,40 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled) {
         batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                       exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+    }
+    if (fsr1UpscalerEnabled) {
+        // Each pass declares its input read and output write independently. The array read
+        // slots make the image hazard visible to FrameSyncScheduler; the descriptor bindings
+        // themselves come from CURRENT_VIEW in the stage-local SDI provider registries above.
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrInputReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(fsrInputReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      fsrInputAaNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(fsrInputAaTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrInputAaNode, ComputeStageNodeConfig::IMAGE_WRITE,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        batch.Connect(fsrInputAaTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrEasuReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(fsrEasuReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      fsrEasuNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(fsrEasuTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrEasuNode, ComputeStageNodeConfig::IMAGE_WRITE,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        batch.Connect(fsrEasuTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrRcasReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(fsrRcasReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      fsrRcasNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(fsrOutputTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      fsrRcasNode, ComputeStageNodeConfig::IMAGE_WRITE,
+                      SlotRoleModifier(SlotRole::Execute));
     }
 
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
@@ -10020,7 +10208,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     }
-    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+    const NodeHandle blitSourceTargetNode = fsr1UpscalerEnabled
+        ? fsrOutputTargetNode : renderTargetNode;
+    batch.Connect(blitSourceTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
     // doc): establishes the SpatialReuse-before-Blit TOPOLOGY (Sampled Lighting Inc3 M5 — moved
@@ -10029,12 +10219,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // convention below). W-LEAN L3: SRS is the sole render-target writer again
     // (the composite is its own gated tail — no standalone resolve stage).
     if (hdrExposureEnabled) {
-        batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      exposureMeterNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
-             .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
-             .Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+        if (hdrExposureFixed) {
+            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        } else {
+            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          exposureMeterNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
+                 .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        }
+        batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
+    if (fsr1UpscalerEnabled) {
+        if (hdrExposureEnabled) {
+            batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          fsrInputAaNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        } else {
+            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          fsrInputAaNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        }
+        batch.Connect(fsrInputAaNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      fsrEasuNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
+             .Connect(fsrEasuNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      fsrRcasNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
+             .Connect(fsrRcasNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    } else if (hdrExposureEnabled) {
         batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
     } else {

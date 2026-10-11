@@ -55,12 +55,20 @@ std::vector<CaptureScenario> BuildScenarios() {
     const auto& presets = Vixen::App::Lookdev::LightingPresets();
     const char* requestedState = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
     std::vector<CaptureScenario> scenarios;
-    scenarios.reserve(presets.size() * yaws.size());
+    const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
+    constexpr size_t kPanAngles = 24;
+    scenarios.reserve(presets.size() * (slowPan ? kPanAngles : yaws.size()));
     for (const auto& preset : presets) {
         if (requestedState && preset.name != std::string(requestedState)) continue;
-        for (size_t angle = 0; angle < yaws.size(); ++angle) {
-            scenarios.push_back({preset, yaws[angle],
-                std::string(preset.name) + "-angle-" + std::to_string(angle) + ".png"});
+        const size_t angleCount = slowPan ? kPanAngles : yaws.size();
+        for (size_t angle = 0; angle < angleCount; ++angle) {
+            const float yaw = slowPan
+                ? 6.28318530718f * static_cast<float>(angle) / static_cast<float>(kPanAngles)
+                : yaws[angle];
+            std::ostringstream filename;
+            filename << preset.name << (slowPan ? "-pan-" : "-angle-")
+                     << std::setfill('0') << std::setw(slowPan ? 2 : 0) << angle << ".png";
+            scenarios.push_back({preset, yaw, filename.str()});
         }
     }
     return scenarios;
@@ -245,8 +253,9 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
     const std::filesystem::path outputDir(outputEnv);
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
-    ASSERT_EQ(scenarios.size(), 4u)
-        << "CTest must select one four-angle look-dev lighting preset";
+    const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
+    ASSERT_EQ(scenarios.size(), slowPan ? 24u : 4u)
+        << "CTest must select one fixed-lighting four-angle set or 24-angle pan";
     std::string error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, error)) << error;
 }

@@ -1,0 +1,54 @@
+#version 460
+
+// Lightweight edge-aware spatial AA applied to the display-referred input before
+// FSR 1. It uses only integer storage-image reads, so its input stays in GENERAL.
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0, rgba8) readonly uniform image2D InputTexture;
+layout(binding = 1, rgba8) writeonly uniform image2D OutputTexture;
+
+ivec2 clampPixel(ivec2 p, ivec2 extent) {
+    return clamp(p, ivec2(0), extent - ivec2(1));
+}
+
+vec3 samplePixel(ivec2 p, ivec2 extent) {
+    return imageLoad(InputTexture, clampPixel(p, extent)).rgb;
+}
+
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(InputTexture);
+    if (any(greaterThanEqual(p, extent))) return;
+
+    vec3 center = samplePixel(p, extent);
+    float nw = luma(samplePixel(p + ivec2(-1, -1), extent));
+    float n  = luma(samplePixel(p + ivec2( 0, -1), extent));
+    float ne = luma(samplePixel(p + ivec2( 1, -1), extent));
+    float w  = luma(samplePixel(p + ivec2(-1,  0), extent));
+    float m  = luma(center);
+    float e  = luma(samplePixel(p + ivec2( 1,  0), extent));
+    float sw = luma(samplePixel(p + ivec2(-1,  1), extent));
+    float s  = luma(samplePixel(p + ivec2( 0,  1), extent));
+    float se = luma(samplePixel(p + ivec2( 1,  1), extent));
+
+    float range = max(max(max(nw, n), max(ne, w)), max(max(m, e), max(max(sw, s), se))) -
+                  min(min(min(nw, n), min(ne, w)), min(min(m, e), min(min(sw, s), se)));
+    float threshold = max(0.0312, max(nw, max(ne, max(sw, se))) * 0.125);
+    if (range < threshold) {
+        imageStore(OutputTexture, p, vec4(center, 1.0));
+        return;
+    }
+
+    // Estimate the edge normal from opposite-luma differences, then blend the
+    // neighboring texels along that normal. The contrast gate keeps flat cel bands
+    // untouched while softening one-pixel silhouette stair steps.
+    vec2 normal = vec2((ne + 2.0 * e + se) - (nw + 2.0 * w + sw),
+                       (sw + 2.0 * s + se) - (nw + 2.0 * n + ne));
+    ivec2 step = abs(normal.x) >= abs(normal.y)
+        ? ivec2(normal.x < 0.0 ? -1 : 1, 0)
+        : ivec2(0, normal.y < 0.0 ? -1 : 1);
+    vec3 alongEdge = 0.5 * (samplePixel(p - step, extent) + samplePixel(p + step, extent));
+    float amount = clamp((range - threshold) / max(range, 1e-5) * 0.35, 0.0, 0.35);
+    imageStore(OutputTexture, p, vec4(mix(center, alongEdge, amount), 1.0));
+}

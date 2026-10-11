@@ -1,0 +1,49 @@
+#version 460
+#extension GL_GOOGLE_include_directive : enable
+
+// AMD FidelityFX FSR 1.0.2 EASU. Input gathers are reproduced with clamped
+// imageLoad() operations so the graph can keep all intermediate images in GENERAL.
+#define A_GPU 1
+#define A_GLSL 1
+#include "third_party/amd_fsr1/ffx_a.h"
+#define FSR_EASU_F 1
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0, rgba8) readonly uniform image2D InputTexture;
+layout(binding = 1, rgba8) writeonly uniform image2D OutputTexture;
+
+ivec2 clampPixel(ivec2 p) {
+    return clamp(p, ivec2(0), imageSize(InputTexture) - ivec2(1));
+}
+
+vec4 gatherChannel(vec2 p, int channel) {
+    vec2 texel = p * vec2(imageSize(InputTexture)) - vec2(0.5);
+    ivec2 base = ivec2(floor(texel));
+    ivec2 one = ivec2(1);
+    return vec4(imageLoad(InputTexture, clampPixel(base + ivec2(0, 1)))[channel],
+                imageLoad(InputTexture, clampPixel(base + one))[channel],
+                imageLoad(InputTexture, clampPixel(base + ivec2(1, 0)))[channel],
+                imageLoad(InputTexture, clampPixel(base))[channel]);
+}
+
+AF4 FsrEasuRF(AF2 p) { return gatherChannel(p, 0); }
+AF4 FsrEasuGF(AF2 p) { return gatherChannel(p, 1); }
+AF4 FsrEasuBF(AF2 p) { return gatherChannel(p, 2); }
+
+#include "third_party/amd_fsr1/ffx_fsr1.h"
+
+void main() {
+    uvec2 pos = gl_GlobalInvocationID.xy;
+    ivec2 inputExtent = imageSize(InputTexture);
+    ivec2 outputExtent = imageSize(OutputTexture);
+    if (any(greaterThanEqual(ivec2(pos), outputExtent))) return;
+
+    uvec4 con0, con1, con2, con3;
+    FsrEasuCon(con0, con1, con2, con3,
+               float(inputExtent.x), float(inputExtent.y),
+               float(inputExtent.x), float(inputExtent.y),
+               float(outputExtent.x), float(outputExtent.y));
+    vec3 color;
+    FsrEasuF(color, pos, con0, con1, con2, con3);
+    imageStore(OutputTexture, ivec2(pos), vec4(color, 1.0));
+}
