@@ -29,6 +29,18 @@ with the `composed` captures in
 `C:\vixen-native\brickcost\reports\brickcost\native\brickmapscene500-guarded`
 and `brickmapscene1080-guarded`.
 
+## Dozen fallback correctness witness
+
+The capture fixture defaults to 64 frames per camera angle. For this correctness-only
+software-driver check, set `VIXEN_LOOKDEV_CAPTURE_FRAMES=1` to render one frame at
+each of the four angles while keeping the default composed traversal request:
+
+```bash
+bash /home/liory/.local/bin/with-test-lock.sh --agent travdefault --resource test --label travdefault:dozen-dda-fallback -- env -u VIXEN_COMPOSED_TRAVERSAL -u VIXEN_RTQUERY_TRAVERSAL VK_ICD_FILENAMES=/home/liory/.cache/vixen/wsl-vulkan/dzn_icd.json VK_LAYER_PATH="$PWD/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d" VIXEN_BRICKMAP_SCENE=1 VIXEN_LOOKDEV_CAPTURE_STATE=midday VIXEN_LOOKDEV_CAPTURE_FRAMES=1 VIXEN_LOOKDEV_CAPTURE_DIR="$PWD/../build/wsl/runtime-captures/travdefault-dda-fallback" VIXEN_WINDOW_WIDTH=500 VIXEN_WINDOW_HEIGHT=500 ../build/wsl/application/main/vixen_lookdev_capture --gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
+```
+
+The log must report `[ComposedBackend] DDA` and the capture test must pass.
+
 ## R491 feature inventory update
 
 | Feature row | Updated classification |
