@@ -1335,7 +1335,7 @@ struct PushBlock {
     float raySizeBias;
     int32_t instanceCount;
     uint8_t _pad76[4];
-    uint8_t debugTargetPixel[8];
+    glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
     float cosmicK;
 };
