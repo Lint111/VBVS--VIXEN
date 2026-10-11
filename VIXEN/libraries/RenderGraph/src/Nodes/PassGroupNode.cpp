@@ -211,8 +211,9 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
         result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
     }
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("[PassGroupNode::ExecuteImpl] Failed to submit: " +
-                                 std::to_string(result));
+        NODE_LOG_ERROR("[PassGroupNode::ExecuteImpl] Failed to submit: " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("PassGroupNode::ExecuteImpl vkQueueSubmit", result);
+        return;
     }
 
     // ---- Outputs ----

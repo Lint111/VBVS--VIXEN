@@ -277,8 +277,9 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
         const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
         if (result != VK_SUCCESS) {
-            throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
-                                     std::to_string(result));
+            NODE_LOG_ERROR("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("ComputeStageNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 

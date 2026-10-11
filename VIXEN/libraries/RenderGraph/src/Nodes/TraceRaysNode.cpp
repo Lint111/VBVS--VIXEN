@@ -226,10 +226,9 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // This matches ComputeDispatchNode pattern exactly
     VkResult resetResult = vkResetFences(device, 1, &inFlightFence);
     if (resetResult != VK_SUCCESS) {
-        if (resetResult == VK_ERROR_DEVICE_LOST) {
-            GetOwningGraph()->NotifyDeviceLost("TraceRaysNode::ExecuteImpl vkResetFences");
-        }
-        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+        NODE_LOG_ERROR("[TraceRaysNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+        GetOwningGraph()->ReportGpuFault("TraceRaysNode::ExecuteImpl vkResetFences", resetResult);
+        return;
     }
 
     if (currentFrame >= tileQueries_.size()) {
@@ -503,10 +502,9 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // Matches ComputeDispatchNode: a swallowed submit failure here previously fell through to
         // ctx.Out() below, handing Present a semaphore that will never be signalled, and a
         // VK_ERROR_DEVICE_LOST on the RTX path never reached recovery (audit V-N8).
-        if (result == VK_ERROR_DEVICE_LOST) {
-            GetOwningGraph()->NotifyDeviceLost("TraceRaysNode::ExecuteImpl vkQueueSubmit");
-        }
-        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit): " + std::to_string(result));
+        NODE_LOG_ERROR("[TraceRaysNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit): " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("TraceRaysNode::ExecuteImpl vkQueueSubmit", result);
+        return;
     }
 
     // Output command buffer and semaphore

@@ -129,6 +129,11 @@ public:
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const { return device; }
 
+    /// Device-owning nodes return false after a compile that produced no VkDevice (adapter enumeration
+    /// or vkCreateDevice failed). RenderGraph::RecoverFromDeviceLoss checks it after each node's
+    /// Compile so a failed recreation stops the rebuild instead of handing a null device downstream.
+    virtual bool ProducesUsableDevice() const { return true; }
+
     // Owning graph access (for cleanup registration)
     RenderGraph* GetOwningGraph() const { return owningGraph; }
     void SetOwningGraph(RenderGraph* graph) { owningGraph = graph; }

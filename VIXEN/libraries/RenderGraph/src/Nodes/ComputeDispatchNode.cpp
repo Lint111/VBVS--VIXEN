@@ -212,10 +212,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (!leaveImageInGeneral) {
         VkResult resetResult = vkResetFences(vulkanDevice->device, 1, &inFlightFence);
         if (resetResult != VK_SUCCESS) {
-            if (resetResult == VK_ERROR_DEVICE_LOST) {
-                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkResetFences");
-            }
-            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+            NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+            GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkResetFences", resetResult);
+            return;
         }
     }
 
@@ -381,10 +380,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         const VkResult result = record.Submit(
             vulkanDevice->fpQueueSubmit2, vulkanDevice->queue);
         if (result != VK_SUCCESS) {
-            if (result == VK_ERROR_DEVICE_LOST) {
-                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
-            }
-            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
+            NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 

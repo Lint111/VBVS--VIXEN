@@ -64,7 +64,7 @@ void PresentNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void PresentNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // No resources to clean up
+    if (GetDevice() != nullptr) idleWait_.Destroy(GetDevice()->device);
 }
 
 VkResult PresentNode::Present(Context& ctx) {
@@ -146,7 +146,14 @@ VkResult PresentNode::Present(Context& ctx) {
     // VK_SUBOPTIMAL_KHR routinely) permanently loses this idle-wait's synchronization margin.
     const bool presentSucceeded = (lastResult == VK_SUCCESS || lastResult == VK_SUBOPTIMAL_KHR);
     if (waitForIdle && presentSucceeded && device != nullptr) {
-        vkDeviceWaitIdle(device->device);
+        const GpuWaitResult idle = idleWait_.Wait(*device);
+        if (!idle.Ok()) {
+            GetOwningGraph()->ReportGpuFault("PresentNode::idle wait", idle.result, true);
+        }
+    } else if (lastResult == VK_ERROR_DEVICE_LOST || lastResult == VK_ERROR_OUT_OF_DEVICE_MEMORY ||
+               lastResult == VK_ERROR_OUT_OF_HOST_MEMORY) {
+        // OUT_OF_DATE / SUBOPTIMAL are the swapchain nodes' business; a loss or OOM here is not.
+        GetOwningGraph()->ReportGpuFault("PresentNode::vkQueuePresentKHR", lastResult);
     }
     if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
         const auto completed = std::chrono::steady_clock::now();

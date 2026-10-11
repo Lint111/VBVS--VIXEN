@@ -105,6 +105,15 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
         }
 
         fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(vkInstance, "vkDestroySurfaceKHR");
+    } else if (surface == VK_NULL_HANDLE) {
+        // Device-loss recovery recreated the VkInstance (CleanupReason::DeviceLost dropped the old
+        // instance-scoped surface); the window persists, so mint a new surface against the new instance.
+        const VkResult result = glfwCreateWindowSurface(vkInstance, window, nullptr, &surface);
+        if (result != VK_SUCCESS) {
+            surface = VK_NULL_HANDLE;
+            NODE_LOG_ERROR("[WindowNode] glfwCreateWindowSurface failed after device-loss recovery: " + std::to_string(result));
+        }
+        fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(vkInstance, "vkDestroySurfaceKHR");
     } else {
         NODE_LOG_INFO("[WindowNode] Reusing persistent window + surface across recompile");
     }
@@ -329,6 +338,19 @@ size_t WindowNode::PendingEventCountForTest() const {
 void WindowNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
     // only the swapchain follows recompiles. Tear them down solely on final application teardown.
+    if (ctx.reason == CleanupReason::DeviceLost) {
+        // The VkInstance is recreated on device loss (InstanceNode); the surface is instance-scoped
+        // and must be destroyed against the old instance first. The window survives.
+        NODE_LOG_INFO("[WindowNode] Cleanup (device-loss) - destroying surface, keeping window");
+        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
+            fpDestroySurfaceKHR(vkInstance, surface, nullptr);
+        }
+        surface = VK_NULL_HANDLE;
+        if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
+            surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
+        }
+        return;
+    }
     if (ctx.reason != CleanupReason::FinalTeardown) {
         NODE_LOG_INFO("[WindowNode] Cleanup (recompile) - keeping persistent window + surface");
         return;

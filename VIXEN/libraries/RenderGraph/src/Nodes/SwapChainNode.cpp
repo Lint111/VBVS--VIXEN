@@ -184,7 +184,12 @@ void SwapChainNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (currentImageIndex != UINT32_MAX && !presentFencesArray.empty()) {
         VkFence presentFence = presentFencesArray[currentImageIndex];
         if (presentFence != VK_NULL_HANDLE && GetDevice() != nullptr) {
-            vkWaitForFences(GetDevice()->device, 1, &presentFence, VK_TRUE, UINT64_MAX);
+            const GpuWaitResult presentWait = BoundedWaitFence(GetDevice()->device, presentFence);
+            if (!presentWait.Ok()) {
+                GetOwningGraph()->ReportGpuFault("SwapChainNode::present-fence wait", presentWait.result, true);
+                ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, UINT32_MAX);
+                return;
+            }
             // Fence reset moved to PresentNode to avoid ownership violation
         }
     }
@@ -205,7 +210,12 @@ void SwapChainNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         currentImageIndex < imagesInFlight.size()) {
         VkFence imageFence = imagesInFlight[currentImageIndex];
         if (imageFence != VK_NULL_HANDLE) {
-            vkWaitForFences(GetDevice()->device, 1, &imageFence, VK_TRUE, UINT64_MAX);
+            const GpuWaitResult imageWait = BoundedWaitFence(GetDevice()->device, imageFence);
+            if (!imageWait.Ok()) {
+                GetOwningGraph()->ReportGpuFault("SwapChainNode::image-in-flight wait", imageWait.result, true);
+                ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, UINT32_MAX);
+                return;
+            }
         }
         // Record the fence that will guard this image's work THIS frame, so a future frame that
         // reuses this image index waits on it. The consumer nodes reset + submit with this same
@@ -266,8 +276,8 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // The VkSurfaceKHR is PERSISTENT across recompiles, mirroring WindowNode's window+surface
     // (see WindowNode.cpp CleanupImpl). Destroying/recreating the surface every recompile (the old
     // unconditional Destroy() below) was pure waste -- the surface doesn't depend on extent. Tear
-    // it down only on final teardown. This holds for DeviceLost too: VkSurfaceKHR is INSTANCE-scoped
-    // (created against VkInstance, not VkDevice), so it survives a device recreation untouched.
+    // it down on final teardown and on DeviceLost (the VkInstance is recreated there, and a surface is
+    // INSTANCE-scoped, so it cannot outlive the instance it was created from).
     //
     // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be treated like Recompile on
     // DeviceLost. On an ordinary Recompile the handle survives because the SAME device recreates it
@@ -288,8 +298,17 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     }
 
     if (ctx.reason == CleanupReason::DeviceLost) {
-        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] DeviceLost - destroying swapchain + image views (device-scoped; cannot survive a device recreation), keeping surface");
+        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] DeviceLost - destroying swapchain + image views (device-scoped; cannot survive a device recreation) and the instance-scoped surface");
         swapChainWrapper->DestroySwapChain(device);
+        // The VkInstance is recreated on device loss, so this instance-scoped surface cannot survive
+        // either (see InstanceNode::TypedCleanupImpl). Destroy it against the still-live old instance.
+        VkInstance lostInstance = VK_NULL_HANDLE;
+        if (Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0)) {
+            lostInstance = res->GetHandle<VkInstance>();
+        }
+        if (lostInstance != VK_NULL_HANDLE) {
+            swapChainWrapper->DestroySurface(lostInstance);
+        }
         return;
     }
 

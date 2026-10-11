@@ -20,6 +20,7 @@ VIXEN/libraries/GaiaArchetypes/include/RelationshipObserver.h	1	GA1
 VIXEN/libraries/GaiaArchetypes/src/RelationshipObserver.cpp	0	GA1
 VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h	3	UNCLASSIFIED
 VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp	1	UNCLASSIFIED
+VIXEN/libraries/RenderGraph/include/Core/BoundedQueueIdle.h	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/include/Core/ITaskProfile.h	1	RG2
 VIXEN/libraries/RenderGraph/include/Debug/DescriptorResourceTracker.h	1	RG7
 VIXEN/libraries/RenderGraph/include/Debug/RenderTargetReadback.h	0	VK2-borrowed

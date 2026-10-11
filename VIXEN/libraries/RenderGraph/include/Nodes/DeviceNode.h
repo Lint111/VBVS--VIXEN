@@ -58,6 +58,10 @@ public:
     );
     ~DeviceNode() override = default;
 
+    bool ProducesUsableDevice() const override {
+        return vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE;
+    }
+
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {
         return vulkanDevice.get();
