@@ -10,6 +10,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <functional>
 #include <vector>
 
@@ -177,4 +180,41 @@ TEST(EmitterPower, ShellDerivePassesLaneThroughUnchanged) {
     EXPECT_EQ(shell.compact.mipPool, cat.mipPool);
     EXPECT_EQ(emitterPowerPoolBaseOf(shell.compact.configs[0]), emitterPowerPoolBaseOf(cat.configs[0]));
     EXPECT_EQ(emitterPowerPoolBakedOf(shell.compact.configs[0]), emitterPowerPoolBakedOf(cat.configs[0]));
+}
+
+// Cost report (prints; asserts only that the lane is smaller than the far-field mip pool).
+// Meaningful only from a native Release build.
+TEST(EmitterPower, LaneBakeTimeAndMemoryReport) {
+    using Clock = std::chrono::steady_clock;
+    auto minMs = [](int reps, const auto& fn) {
+        double best = 1e30;
+        for (int i = 0; i < reps; ++i) {
+            const auto t0 = Clock::now();
+            fn();
+            best = std::min(best, std::chrono::duration<double, std::milli>(Clock::now() - t0).count());
+        }
+        return best;
+    };
+    struct Case { const char* name; int n; bool emissive; };
+    const Case cases[] = {{"emissive-64", 64, true}, {"emissive-128", 128, true},
+                          {"dark-64", 64, false}, {"dark-128", 128, false}};
+    for (const Case& c : cases) {
+        SdfBodyOctree body = c.emissive ? MakeBody(c.n, c.n * 0.375f, HalfEmitter)
+                                        : MakeBody(c.n, c.n * 0.375f, [](const glm::vec3&) { return 0.0f; });
+        SerializedOctree s = SerializeSdf(body);
+        const Octree* oct = body.octree->getOctree();
+        const double laneMs = minMs(15, [&] { volatile size_t sz = BakeEmitterPowerLane(*oct, s).size(); (void)sz; });
+        const double mipMs = minMs(15, [&] { volatile size_t sz = BakeMipPool(*oct, s).samples.size(); (void)sz; });
+        const std::vector<uint8_t> lane = BakeEmitterPowerLane(*oct, s);
+        const size_t farBytes = static_cast<size_t>(s.nodeCount) * s.channelCount * sizeof(MipSample);
+        std::printf("[lane-cost] %-13s nodes=%u bricks=%u channels=%u farFieldMipBytes=%zu laneBytes=%zu "
+                    "(%.2f%% of mip, %.1f B/node) brickBytes=%zu laneBakeMs=%.3f fullMipBakeMs(incl. lane)=%.3f "
+                    "laneShare=%.1f%%\n",
+                    c.name, s.nodeCount, s.brickCount, s.channelCount, farBytes, lane.size(),
+                    farBytes ? 100.0 * lane.size() / farBytes : 0.0,
+                    s.nodeCount ? double(lane.size()) / s.nodeCount : 0.0, s.bricks.size(), laneMs, mipMs,
+                    mipMs > 0 ? 100.0 * laneMs / mipMs : 0.0);
+        if (c.emissive) EXPECT_LT(lane.size(), farBytes);
+        else EXPECT_TRUE(lane.empty());
+    }
 }
