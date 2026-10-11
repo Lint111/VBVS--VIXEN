@@ -1,37 +1,64 @@
-# Lane vxtrain report
+# Lane vxtrain — controller review
 
-Checkpoint: **2026-10-11 11:24:54 UTC** (14:24:54 IDT), before the three-hour limit. The merged train and completed fixes are committed; native, look-dev, and three render witnesses remain open.
+Review continuation of checkpoint `231314f3`; no rebase or merge rewriting. Product tip at review start: `853b659c`.
 
 ## LANDABLE NOW
 
-The starting wave base was `5dd78d8675160314f5831e4b3d10b3fdefd8c164`. Merge commits, in requested order:
+The merge train remains in the requested order on `origin/wave/authoring-convergence`:
 
-| Lane | Merge commit | Landed tip |
+| Lane | Merge commit | Lane tip |
 |---|---|---|
 | gpuyield | `1e26ddec` | `e7d8a198` |
 | lights0 | `8e31dbb1` | `e6555dcf` |
 | shellasync0 | `90ec57b4` | `d3b2cf9f` |
 
-There were no gpuyield/lights0 conflicts. In shellasync0's include conflict in `BodyOctreeSceneNode.cpp`, both `EmitterPower.h` and `Recipe/RecipeBaker.h` were retained. The overlapping MSVC repairs were consolidated: one `(std::max)(...)` macro-safe spelling remains, and shellasync0's GLSL rename `flat` to `flatLookup` remains. The required merge commits have the requested `--no-ff` shape and Claude co-author trailer.
+There were no gpuyield/lights0 conflicts. The shellasync0 conflict in `BodyOctreeSceneNode.cpp` kept both `EmitterPower.h` and `Recipe/RecipeBaker.h`. Overlapping native fixes were consolidated into one macro-safe `std::max` spelling, and the shader identifier `flatLookup` was retained. All three merges are `--no-ff` with the requested messages and co-author trailer.
 
-Follow-on commits before the checkpoint change are `1d05ed93` (publish `EmitterRootPowers` with the async shell generation), `4e0f4371` (emit SDI integer push vectors with their reflected types), and `7d4540d1` (include Visual Studio Build Tools in `build.bat` discovery). The checkpoint commit adds a graph-free shell producer fallback, this report, and the SPT inbox.
+Follow-on commits before this review: `1d05ed93` publishes `EmitterRootPowers` with the async shell generation; `4e0f4371` emits typed SDI integer push vectors; `7d4540d1` discovers Visual Studio Build Tools; `231314f3` preserves graph-free shell publication; `a400a730` publishes the complete shell generation and power lane at t0; `853b659c` makes RenderGraph/SVO fixtures MSVC-portable.
 
-Witnesses:
+### Zero-hit attribution and repair
 
-- Queued Linux build passed with all 26 generation checks (22 base checks plus lights0's four): log `1791709858-build-vxtrain:build-corrected-sdi.log`.
-- `sdi_tool merge-variants shaders/sdi-variants.json --check` passed after its generator fix: all merged SDI headers are current.
-- Focused gpuyield tests: 47/47. Emitter, SDI, and async power publication tests: 17/17. Shell focused tests: 3/3, including the four-frame publish, eight-frame post-flip render, and worker-count byte parity. Logs: `1791710012-test-vxtrain:gpuyield-41.log`, `1791710022-test-vxtrain:emitter-and-sdi-tests.log`, `1791711003-gpu-vxtrain:shell-focused-dozen.log`, and `1791711359-gpu-vxtrain:async-emitter-power-dozen.log`.
-- After the graph-free fallback, 10 of 13 previously failing RenderGraph cases pass on fresh rebuilt binaries. They include recipe-pool rendering, mip residency, baked/virtual parity, editor documents, tier crossing, recipe authoring, and AppFlow toggle/undo. Build log: `1791717287-build-vxtrain:standalone-shell-fallback-build2.log`; focused log: `1791717616-gpu-vxtrain:standalone-shell-fallback-focused2.log`.
+The three requested cases pass on the wave base and both earlier merge steps. Their first zero-hit result is after shellasync0:
+
+| Snapshot | `RenderStoredSdfBodiesNoHoles` | `RenderStoredSdfMultiChannel` | `RenderRecipeBakedBody` |
+|---|---:|---:|---:|
+| Wave base `5dd78d86` | pass | pass | pass |
+| After gpuyield `1e26ddec` | pass | pass | pass |
+| After lights0 `8e31dbb1` | pass | pass | pass |
+| After shellasync0 `90ec57b4` | zero hits | zero hits | zero hits |
+| Checkpoint `231314f3` | zero hits | zero hits | zero hits |
+| Root publication fix `a400a730` / current product tip | pass | pass | pass |
+
+The shell producer now derives and publishes the initial complete generation synchronously during compile, including the power lane, before downstream handles bind. Later edits still publish asynchronously. Base/gpuyield/lights0/shellasync0 evidence is in logs `1791719582`, `1791720056`, `1791720247`, and `1791720417`; the repaired full suite log `1791720918` records all three passing after `a400a730`. The focused eight-case shell log `1791720524` also records the three requested cases passing, but one separate `RematerializeEditLoop` run failed there; the later full suite passed that case.
+
+### Builds, generation, and focused tests
+
+- Fresh Linux Release build passed after all source edits, including all 26 generation checks: `/home/liory/.local/state/undertow/undertow-box-logs/1791726980-build-linux-final-build-after-native-portability.log`.
+- `sdi_tool merge-variants shaders/sdi-variants.json --check` passed; recipe/SDI generated outputs were current. The no-new-mutex gate passed from WSL: 844 files scanned, 83 mutex-syntax files, 47 owning declarations, 2 existing `UNCLASSIFIED` warnings (`1791735672-light-final-no-new-mutex-wsl-gate.log`).
+- gpuyield focused tests passed 47/47 (including its 41 targeted cases); emitter/SDI/power tests passed 17/17; shell focused tests passed four-frame publication and eight-identical-frame checks. Logs are recorded in the checkpoint report and queue history: `1791710012-test-vxtrain:gpuyield-41.log`, `1791710022-test-vxtrain:emitter-and-sdi-tests.log`, `1791711003-gpu-vxtrain:shell-focused-dozen.log`, and `1791711359-gpu-vxtrain:async-emitter-power-dozen.log`.
+- Fresh tip MSVC Release build passed on the Windows-filesystem checkout `C:\vixen-native\vxtrain`, with 1,160 targets: `/home/liory/.local/state/undertow/undertow-box-logs/1791725650-build-native-final-release-fresh-dir.log`. Native R6 passed on the integrated GPU: 120 bounded submissions, zero unbounded submissions, maximum 1.727840 ms against the 2.0 ms budget; log `1791729998-gpu-native-tip-r6-env-restored.log`.
+
+### Full-suite name comparison
+
+The fresh wave-base suite completed 2,124 labeled RenderGraph/SVO cases. Its only failing name is `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes` (opcode 94), the accepted red. All three zero-hit tests passed on base. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1791736360-gpu-wave-base-rendergraph-svo-suite.log`.
+
+The identical final-tip command is queued as `final-tip-rendergraph-svo-suite` (`ctest --test-dir build/wsl -L 'RenderGraph|SVO' --output-on-failure --parallel 1`). It had not yet received queue tokens at the time of this report; log path will be `/home/liory/.local/state/undertow/undertow-box-logs/<queue-assigned-id>-gpu-final-tip-rendergraph-svo-suite.log`. Its name-set comparison remains outstanding until that run completes.
+
+### Look-dev captures
+
+All four 500x500 midday PNGs are byte-identical across base → gpuyield → lights0 → shellasync0 → fixed/current tip: every comparison reports zero differing bytes and zero differing pixels. The captures and `tools/compare-capture-pixels.py` results are documented in [the visual attribution record](vxtrain-visual/attribution.md).
+
+Current-tip overcast and night-service each have four saved first-pass angles. Overcast's internal repeat completed byte-identically for all angles; night-service's repeat timed out after two repeat angles, which match. The three available base overcast angles match the tip by SHA-256; base angle 3 is missing after DZN device loss. No full base night-service set was captured. There are no observed unexplained pixel changes; midday is fully attributed at each merge boundary.
 
 ## STOPs
 
-- **RenderGraph/SVO suite is not green.** The full run completed all 2,171 cases with 14 failures; opcode-94 `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes` is the accepted red. Thirteen other tests initially failed because graph-free `BodyOctreeSceneNode` callers could not schedule shell generation. The fallback fixed ten; these three still produce zero shader hits after logging both `[ShellDerive]` and `[Rematerialize]`: `BodyInstanceRayMarchRenderTest.RenderStoredSdfBodiesNoHoles`, `RenderStoredSdfMultiChannel`, and `RenderRecipeBakedBody`. All three also fail on Lavapipe, so this is not isolated to Dozen or GPU queue sharing. The full-suite log is `1791716002-gpu-vxtrain:rendergraph-svo-full.log`; the Lavapipe diagnostic is `1791717817-gpu-vxtrain:body-sdf-lavapipe-diagnostic.log`. They remain **unclassified**, not accepted baseline reds. A full-suite rerun after the fallback did not fit before the checkpoint.
-- **Native MSVC build and native R6 are unverified.** The queued `build.bat all vxtrain-native` reached the pinned kernel snapshot `c3fb3847979e3f9eef04783510c42b70d7058ae7`, then hung in Windows CMake `file(LOCK)` before target compilation. The WSL checkout had no stale snapshot/archive; five-second probes hung for existing and fresh lock files and for both `\\wsl$` and `\\wsl.localhost` paths. The queue stopped the build at its idle hard limit; log `1791712130-build-vxtrain:native-msvc-preset.log`. Recovery A used the documented `build.bat` entry through the live queue and checked the mapped path, toolchain, cache, and pin overrides. Recovery B was not applicable: no generated snapshot existed to regenerate, and the lock probe itself hung. Recovery C is unclassified: there is no native target result or matching clean-wave result. The required external action is a supported Windows CMake lock/cache route for WSL worktrees. Native R6 must follow that repair.
-- **Fresh look-dev comparison is incomplete and not byte-identical on Dozen.** Midday and late-afternoon four-angle captures passed each test's internal repeat check, but all 8 captures differed from the saved wave-base references. Overcast and night-service were not run; no native capture could be made while the native build is blocked. The Dozen mismatch is unclassified as a renderer/source delta. Compare all four states on the repaired native path before calling the look-dev witness green.
+- **Final full-suite witness is incomplete.** The wave-base suite completed with only opcode-94 red, but the identical full suite on `853b659c` was still waiting for shared queue tokens at the three-hour checkpoint. Do not land until it completes and its failing-name set is shown to be only opcode-94.
+- **Wave-base native R6 comparison is unobtainable on this base.** The wave-base native Release attempt used the same Windows-filesystem Recovery A route, then failed while compiling `VIXEN/libraries/SVO/src/BulkMaterialization.cpp`: base-generated `RecipeSimd.g.hpp` warnings C4457 are errors under `/WX` (log `/home/liory/.local/state/undertow/undertow-box-logs/1791730739-build-native-base-editor-target-batch-quoted.log`). Recovery A reached target compilation but failed on that source diagnostic. Recovery B is not applicable: base codegen had fresh inputs and no stale generated output was found; regeneration cannot repair a compile warning in the base emitter's output without changing the baseline. Recovery C is not applicable because the base has no `GpuSubmissionsRespectDeclaredBudget` R6 test or `[GPUYIELD]` instrumentation. Tip build/R6 passed, but a same-route base measurement cannot be reported.
+- **Base night-service visual comparison is incomplete.** The base Dozen capture lost its device; log `/home/liory/.local/state/undertow/undertow-box-logs/1791726137-gpu-wave-base-lookdev-night-service.log`. Tip's four angles are captured. The base overcast comparison is also partial, with only angles 0–2 available (all identical to tip); artifacts and status are saved under `reports/vxtrain-visual/wave-base/overcast-partial/`.
 
 ## SPT DISPOSITION
 
-No tracked SPT tasks were attached. Proposal `fa6fb7067691` covers the graph-free shell materialization contract. Other incidental workflow gaps found during the lane are recorded in `.spt-proposals/vxtrain.jsonl`.
+No tracked SPT tasks were attached. Existing proposal `fa6fb7067691` covers preserving graph-free shell materialization. Incidental authoring/tooling gaps are listed below and in the committed `.spt-proposals/vxtrain.jsonl` inbox.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
@@ -48,3 +75,23 @@ No tracked SPT tasks were attached. Proposal `fa6fb7067691` covers the graph-fre
 - proposed: Pass native CMake cache overrides through the locked VIXEN launcher
 - proposed: Make native kernel snapshot locking work in WSL worktrees
 - proposed: Preserve graph-free shell materialization behavior
+- proposed: Provide a root-aware native look-dev capture runner
+- proposed: Quote queued native batch arguments from WSL
+- proposed: Select a Ninja-visible WSL launcher for native codegen
+- proposed: Partition look-dev states under the CTest timeout
+- proposed: Use portable environment mutation in RenderGraph tests
+- proposed: Avoid Windows API macro names in the subgraph fixture
+- proposed: Give the photon mirror target its required C++23 feature
+- proposed: Avoid the Windows small macro in RecipeBaker tests
+- proposed: Expose native build lock waits to the box queue
+- proposed: Isolate native Release Ninja metadata from a failed restat
+- proposed: Set look-dev timeouts for the costliest individual states
+- proposed: Make native RecipeSimd generation checks self-consistent
+- proposed: Serialize concurrent builds over a shared FetchContent build directory
+- proposed: Avoid Dozen device loss during memory-pressured look-dev captures
+- proposed: Provide a CodeGraph index for VIXEN worktrees
+- proposed: Resolve cmd.exe in queued native test commands
+- proposed: Preserve staged DLLs after vcvars in native CTest
+- proposed: Declare the editor script as R6 CTest setup
+- proposed: Let native R6 launch the configured editor target
+- proposed: Run the mutex census from the native VIXEN build
