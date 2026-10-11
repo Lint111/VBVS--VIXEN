@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1030" height="750" viewBox="0 0 1030 750">
+<rect width="1030" height="750" fill="#f4f5f7"/>
+<style>text{font-family:Arial,sans-serif;fill:#20242b}.title{font-size:24px;font-weight:bold}.label{font-size:13px;fill:#5d6470}</style>
+<text x="20" y="30" class="title">FSR 1 at 2/3 scale — 24 yaw samples (15° steps)</text>
+
+<rect x="20" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-00.png" x="20" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="95" y="213" text-anchor="middle" class="label">00 · yaw 0°</text>
+<rect x="185" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-01.png" x="185" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="260" y="213" text-anchor="middle" class="label">01 · yaw 15°</text>
+<rect x="350" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-02.png" x="350" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="425" y="213" text-anchor="middle" class="label">02 · yaw 30°</text>
+<rect x="515" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-03.png" x="515" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="590" y="213" text-anchor="middle" class="label">03 · yaw 45°</text>
+<rect x="680" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-04.png" x="680" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="755" y="213" text-anchor="middle" class="label">04 · yaw 60°</text>
+<rect x="845" y="48" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-05.png" x="845" y="48" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="920" y="213" text-anchor="middle" class="label">05 · yaw 75°</text>
+<rect x="20" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-06.png" x="20" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="95" y="385" text-anchor="middle" class="label">06 · yaw 90°</text>
+<rect x="185" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-07.png" x="185" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="260" y="385" text-anchor="middle" class="label">07 · yaw 105°</text>
+<rect x="350" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-08.png" x="350" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="425" y="385" text-anchor="middle" class="label">08 · yaw 120°</text>
+<rect x="515" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-09.png" x="515" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="590" y="385" text-anchor="middle" class="label">09 · yaw 135°</text>
+<rect x="680" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-10.png" x="680" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="755" y="385" text-anchor="middle" class="label">10 · yaw 150°</text>
+<rect x="845" y="220" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-11.png" x="845" y="220" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="920" y="385" text-anchor="middle" class="label">11 · yaw 165°</text>
+<rect x="20" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-12.png" x="20" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="95" y="557" text-anchor="middle" class="label">12 · yaw 180°</text>
+<rect x="185" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-13.png" x="185" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="260" y="557" text-anchor="middle" class="label">13 · yaw 195°</text>
+<rect x="350" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-14.png" x="350" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="425" y="557" text-anchor="middle" class="label">14 · yaw 210°</text>
+<rect x="515" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-15.png" x="515" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="590" y="557" text-anchor="middle" class="label">15 · yaw 225°</text>
+<rect x="680" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-16.png" x="680" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="755" y="557" text-anchor="middle" class="label">16 · yaw 240°</text>
+<rect x="845" y="392" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-17.png" x="845" y="392" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="920" y="557" text-anchor="middle" class="label">17 · yaw 255°</text>
+<rect x="20" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-18.png" x="20" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="95" y="729" text-anchor="middle" class="label">18 · yaw 270°</text>
+<rect x="185" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-19.png" x="185" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="260" y="729" text-anchor="middle" class="label">19 · yaw 285°</text>
+<rect x="350" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-20.png" x="350" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="425" y="729" text-anchor="middle" class="label">20 · yaw 300°</text>
+<rect x="515" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-21.png" x="515" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="590" y="729" text-anchor="middle" class="label">21 · yaw 315°</text>
+<rect x="680" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-22.png" x="680" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="755" y="729" text-anchor="middle" class="label">22 · yaw 330°</text>
+<rect x="845" y="564" width="150" height="150" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-pan-scale-2-3/midday-pan-23.png" x="845" y="564" width="150" height="150" preserveAspectRatio="xMidYMid meet"/>
+<text x="920" y="729" text-anchor="middle" class="label">23 · yaw 345°</text>
+</svg>

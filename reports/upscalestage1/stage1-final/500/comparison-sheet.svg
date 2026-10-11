@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1260" viewBox="0 0 1800 1260">
+<rect width="1700" height="1260" fill="#f4f5f7"/>
+<style>text{font-family:Arial,sans-serif;fill:#20242b}.title{font-size:30px;font-weight:bold}.head{font-size:22px;font-weight:bold}.label{font-size:18px;font-weight:bold}.sub{font-size:14px;fill:#5d6470}</style>
+<text x="36" y="42" class="title">500×500 native, linear, and FSR 1 comparison</text>
+<text x="36" y="70" class="sub">Same fixed exposure, recipe, camera set, and LOD coefficient. Scale 1 linear equals the native path.</text>
+
+<text x="435" y="115" text-anchor="middle" class="head">R/D = 1.0</text>
+<text x="950" y="115" text-anchor="middle" class="head">R/D ≈ 2/3</text>
+<text x="1465" y="115" text-anchor="middle" class="head">R/D = 1/2</text>
+<text x="34" y="380" class="label">Native / linear</text>
+<rect x="230" y="135" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="native-scale1/midday-angle-0.png" x="230" y="135" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="470" y="640" text-anchor="middle" class="sub">native-scale1 · yaw 0°</text>
+<rect x="745" y="135" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="linear-scale-2-3/midday-angle-0.png" x="745" y="135" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="985" y="640" text-anchor="middle" class="sub">linear-scale-2-3 · yaw 0°</text>
+<rect x="1260" y="135" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="linear-scale-1-2/midday-angle-0.png" x="1260" y="135" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="1500" y="640" text-anchor="middle" class="sub">linear-scale-1-2 · yaw 0°</text>
+<text x="34" y="925" class="label">FSR 1</text>
+<rect x="230" y="680" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-scale1/midday-angle-0.png" x="230" y="680" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="470" y="1185" text-anchor="middle" class="sub">fsr1-scale1 · yaw 0°</text>
+<rect x="745" y="680" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-scale-2-3/midday-angle-0.png" x="745" y="680" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="985" y="1185" text-anchor="middle" class="sub">fsr1-scale-2-3 · yaw 0°</text>
+<rect x="1260" y="680" width="480" height="480" fill="#fff" stroke="#aab0ba"/>
+<image href="fsr1-scale-1-2/midday-angle-0.png" x="1260" y="680" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+<text x="1500" y="1185" text-anchor="middle" class="sub">fsr1-scale-1-2 · yaw 0°</text>
+</svg>
