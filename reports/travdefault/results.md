@@ -23,8 +23,10 @@ The shared R491 inventory is in the Undertow report checkout, outside this lane'
 - The first post-edit queued build was stopped by the idle watchdog during `BuildRenderGraph.cpp` compilation (exit 75, no compiler diagnostic). A retry with a 60-second heartbeat compiled and linked the changed target. A subsequent queue-wrapped build status check exited 0 with `ninja: no work to do`.
 - All 22 primary CMake generation-check targets completed successfully (already up to date); `sdi_tool merge-variants shaders/sdi-variants.json --check` reported all merged SDI headers up to date.
 - Post-change RenderGraph/SVO CTest passed 29 tests and skipped `SVOBuilderTest.GeometricError` (30 counted, 0 failed).
-- Dozen DDA fallback capture and native 8060S A/B matrix: pending.
-- The native assigned path was absent initially. `reproduce/native-build.sh` provisions it from the committed lane branch; the native build and captures require the implementation commit first.
+- The first Dozen DDA capture confirmed `[ComposedBackend] DDA` and unavailable `RayQueryLighting`, but was interrupted after 108 seconds (exit 130) because the fixture rendered at most one frame every ~14 seconds with its 64-frame-per-angle default. `VIXEN_LOOKDEV_CAPTURE_FRAMES` now supports a correctness-only count from 1–64 while preserving 64 by default; the quick four-angle retry is pending.
+- The first native helper invocation fetched the branch but launched its `.bat` before fast-forwarding the native checkout; Windows failed to find the script (exit 1, before CMake configure). The WSL helper now merges `FETCH_HEAD` before launching Windows; native build retry is pending.
+- Native 8060S A/B matrix and byte-comparison against the brickcost composed images: pending.
+- The native assigned path was absent initially and was provisioned from the committed lane branch by `reproduce/native-build.sh`.
 
 ## STOPs
 

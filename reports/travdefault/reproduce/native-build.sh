@@ -23,5 +23,6 @@ if [[ ! -d "$native_root/.git" ]]; then
 fi
 
 git -C "$native_root" fetch "$repo_root" lane-travdefault
+git -C "$native_root" merge --ff-only FETCH_HEAD
 cd /mnt/c
 /mnt/c/Windows/System32/cmd.exe /c "C:\vixen-native\travdefault\reports\travdefault\reproduce\native-build.bat"

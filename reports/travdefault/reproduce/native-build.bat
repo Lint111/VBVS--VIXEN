@@ -16,8 +16,6 @@ set "GIT_CONFIG_VALUE_1=//wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.
 set "VULKAN_SDK=C:\VulkanSDK\1.4.350.0"
 set "PATH=C:\Program Files\CMake\bin;C:\Users\liory\AppData\Local\Microsoft\WinGet\Links;C:\Program Files\Git\cmd;%PATH%"
 if not exist "%TEMP%" mkdir "%TEMP%"
-git merge --ff-only FETCH_HEAD
-if errorlevel 1 exit /b %errorlevel%
 copy /Y "%CD%\reports\travdefault\reproduce\CMakeUserPresets.json" "%CD%\VIXEN\CMakeUserPresets.json" >NUL
 if errorlevel 1 exit /b %errorlevel%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\VIXEN\scripts\build\run_configure_locked.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset travdefault-native -SourceDir "%CD%\VIXEN"
