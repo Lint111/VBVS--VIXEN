@@ -629,7 +629,9 @@ vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, Light
             ? lighting.celLitHueShiftDegrees
             : lighting.celShadowHueShiftDegrees;
         vec3 sideColor = celHueShiftRgb(color, shift);
-        Lo += sideColor * celLightColor * band * shadowFactor * attenuation;
+        // dimBandFloor lifts band 0 to a dim band; geometric ramp so a floor of 0 stays a no-op.
+        float celValue = lighting.dimBandFloor > 0.0 ? pow(lighting.dimBandFloor, 1.0 - band) : band;
+        Lo += sideColor * celLightColor * celValue * shadowFactor * attenuation;
     }
     return Lo;
 }
@@ -656,7 +658,9 @@ void main() {
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
     vec3 rayDir = getRayDir(uv);
 
-    vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
+    vec3 skyColor = lightingConfig.skyMode == 1u
+        ? lightingConfig.skyColor
+        : lightingConfig.skyColor * (1.0 - uv.y * lightingConfig.skyGradientSlope);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
     HitRecord recReadback = hitRecords[hitRecordIdx];

@@ -52,6 +52,13 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr const char* PARAM_CEL_BAND_FALLOFF_END = "celBandFalloffEnd";
     static constexpr const char* PARAM_CEL_LIGHT_SPILL_SCALE = "celLightSpillScale";
     static constexpr const char* PARAM_EXPOSURE_COMPENSATION_EV = "exposureCompensationEV";
+    // Cel profile floor and scene environment (sky) declaration.
+    static constexpr const char* PARAM_DIM_BAND_FLOOR = "dimBandFloor";
+    static constexpr const char* PARAM_SKY_MODE = "skyMode";
+    static constexpr const char* PARAM_SKY_COLOR_R = "skyColorR";
+    static constexpr const char* PARAM_SKY_COLOR_G = "skyColorG";
+    static constexpr const char* PARAM_SKY_COLOR_B = "skyColorB";
+    static constexpr const char* PARAM_SKY_GRADIENT_SLOPE = "skyGradientSlope";
 
     static constexpr uint32_t SHADING_MODE_LAMBERT_GGX = 0u;
     static constexpr uint32_t SHADING_MODE_CEL = 1u;
@@ -65,6 +72,13 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr float DEFAULT_CEL_BAND_FALLOFF_END = 0.0f;
     static constexpr float DEFAULT_CEL_LIGHT_SPILL_SCALE = 0.012f;
     static constexpr float DEFAULT_EXPOSURE_COMPENSATION_EV = 0.0f;
+    static constexpr float DEFAULT_DIM_BAND_FLOOR = 0.0f;
+    static constexpr uint32_t SKY_MODE_GRADIENT = 0u;
+    static constexpr uint32_t SKY_MODE_SOLID = 1u;
+    static constexpr float DEFAULT_SKY_COLOR_R = 0.02f;
+    static constexpr float DEFAULT_SKY_COLOR_G = 0.02f;
+    static constexpr float DEFAULT_SKY_COLOR_B = 0.06f;
+    static constexpr float DEFAULT_SKY_GRADIENT_SLOPE = 0.4f;
     static constexpr float MIN_EXPOSURE_COMPENSATION_EV = -16.0f;
     static constexpr float MAX_EXPOSURE_COMPENSATION_EV = 16.0f;
 
