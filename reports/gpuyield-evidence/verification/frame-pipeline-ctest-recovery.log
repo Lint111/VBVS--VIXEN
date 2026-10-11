@@ -1,0 +1,11 @@
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+    Start 223: FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder
+1/1 Test #223: FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder ...   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+RenderGraph    =   0.05 sec*proc (1 test)
+
+Total Test time (real) =   0.16 sec

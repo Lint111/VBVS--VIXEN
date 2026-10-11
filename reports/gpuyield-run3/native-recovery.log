@@ -1,0 +1,30 @@
+[box:flow] run3-native-recovery cpu=34% target=90% depth=1 free=2 baseline=3 granted=2 mode=static
+[box:flow] run3-native-recovery cpu=33% target=90% admit
+[box:flow] run3-native-recovery memory=admit avail=68423MB projected=13427MB estimate=class-max samples=889 reserved=34026MB total=80425MB reserve=4096MB disk=527041MB
+[box:flow] run3-native-recovery passed token-blocked queue head pid=1032469 (1/3)
+[box:flow] run3-native-recovery granted tokens=13 14 mask=26,27,28,29
+[box:flow] run3-native-recovery running on cores 26,27,28,29 (build)
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.14.41
+** Copyright (c) 2025 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+fatal: not a git repository: /home/liory/projects/VBVS--VIXEN/.git/worktrees/gpuyield
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+UT_JOB_FAILED build run3-native-recovery exit=128 log=/home/liory/.local/state/undertow/undertow-box-logs/1791654260-build-run3-native-recovery.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | **********************************************************************
+  | ** Visual Studio 2022 Developer Command Prompt v17.14.41
+  | ** Copyright (c) 2025 Microsoft Corporation
+  | **********************************************************************
+  | [vcvarsall.bat] Environment initialized for: 'x64'
+  | fatal: not a git repository: /home/liory/projects/VBVS--VIXEN/.git/worktrees/gpuyield
+  | fatal: Could not read from remote repository.
+  | 
+  | Please make sure you have the correct access rights
+  | and the repository exists.
+------------------------------
+UT_JOB_DONE build run3-native-recovery exit=128 state=PAYLOAD_FAIL

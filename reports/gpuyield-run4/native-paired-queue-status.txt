@@ -1,0 +1,26 @@
+GPU jobs held: off set-by=liory set-at=2026-10-10T22:18:17Z expires=never waiting=0
+flowing-slot: 15 physical pair-tokens (memory-first)
+memory-reservations: 1405MB projected of 80425MB total; reserve=4096MB
+disk: 506189MB free on /home/liory/projects's filesystem; floor=20480MB
+short-lane: reserved-token=14 mask=28,29
+cpu-target: 90% source=file ceiling=active measured=8%
+memory-capacity: 80425MB source=default(missing)
+flowing-jobs:
+  gpuyield4:takeover-native-paired-floor-fix-exclusive pid=843912 since=01:27:45 epoch=1791671265 res=gpu mem=1405MB estimate=class-p91 samples=119 priority=normal exclusive=1
+recent:
+  ok   2026-10-11 01:27:44 build wbb31au:wizard-check exit=0 dur=235s cpu=648.430s rss=3133MB cgpeak=3021MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791671029-build-wbb31au:wizard-check.log state=OK node=ws tokens=4 cmd=fbd080050db7 schema=8 last-ran 2s ago last-green 2s ago
+  FAIL 2026-10-11 01:26:44 build markersweep5:wizard-check exit=1 dur=234s cpu=646.930s rss=2721MB cgpeak=2759MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791670970-build-markersweep5:wizard-check.log state=PAYLOAD_FAIL node=ws tokens=4 cmd=06599019fc9b schema=8 last-ran 1m02s ago last-green never ago
+  ok   2026-10-11 01:23:41 build wbb31au:wizard-tool-build exit=0 dur=6s cpu=7.480s rss=22MB cgpeak=317MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791671015-build-wbb31au:wizard-tool-build.log state=OK node=ws tokens=3 cmd=d8ad64901940 buildproj=CodegenTool.csproj buildtarget=default schema=8 last-ran 4m05s ago last-green 4m05s ago
+  ok   2026-10-11 01:23:26 build eidunit0:wizard-check exit=0 dur=283s cpu=819.640s rss=2278MB cgpeak=2024MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791670723-build-eidunit0:wizard-check.log state=OK node=ws tokens=4 cmd=57824010c192 schema=8 last-ran 4m20s ago last-green 4m20s ago
+  ok   2026-10-11 01:23:20 test wbb31ak:cg exit=0 dur=236s cpu=387.680s rss=4558MB cgpeak=4351MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791670763-test-wbb31ak:cg.log state=OK node=ws tokens=4 cmd=d03680e7ca9d testcmd=1 testproj=CodegenTool.Tests.csproj testfull=1 proj=CodegenTool.Tests.csproj schema=8 last-ran 4m26s ago last-green 4m26s ago
+waiting (oldest first; blocked=tokens|memory|disk|desktop-hold|gpu|ready; passes=committed/max):
+  featureab:smoke-base2 pid=960933 since=01:20:32 res=gpu need=2 mem=1405MB estimate=class-p91 samples=121 agent=featureab priority=normal blocked=tokens passes=0/3
+  markersweep5:kernel-suite-build pid=1097040 since=01:27:23 res=build need=4 mem=526MB estimate=step-p90 samples=10 agent=markersweep5 priority=normal blocked=tokens passes=0/3
+turn-agents: featureab(steps=4) gpuyield-native(steps=1) markersweep5(steps=6)
+  turn-rule: one job per agent in the token line; held back: none
+  recent-turns:
+    2026-10-11 01:23:20 wbb31ak step=2 slot=flow
+    2026-10-11 01:23:26 eidunit0 step=3 slot=flow
+    2026-10-11 01:23:41 wbb31au step=1 slot=flow
+    2026-10-11 01:26:44 markersweep5 step=6 slot=flow
+    2026-10-11 01:27:44 wbb31au step=2 slot=flow

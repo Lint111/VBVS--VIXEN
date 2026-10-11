@@ -1,0 +1,187 @@
+{
+  "hud-profile/vixen-perf.csv": {
+    "whole_frame_gpu_span_ms": {
+      "samples": 77,
+      "mean": 224.2343116883117,
+      "p50": 224.389,
+      "p95": 235.059,
+      "p99": 238.994,
+      "max": 238.994
+    },
+    "esvo_traverse_shade_ms": {
+      "samples": 77,
+      "mean": 220.32145454545454,
+      "p50": 220.604,
+      "p95": 230.714,
+      "p99": 232.841,
+      "max": 232.841
+    },
+    "direct_lighting_ms": {
+      "samples": 77,
+      "mean": 0.0005168831168831169,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.00056,
+      "max": 0.00056
+    },
+    "spatial_reuse_ms": {
+      "samples": 77,
+      "mean": 0.15144,
+      "p50": 0.15192,
+      "p95": 0.15956,
+      "p99": 0.168,
+      "max": 0.168
+    },
+    "probe_gather_ms": {
+      "samples": 77,
+      "mean": 0.0005153246753246753,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.00056,
+      "max": 0.00056
+    },
+    "shadow_visibility_wave_ms": {
+      "samples": 77,
+      "mean": 2.698403116883117,
+      "p50": 2.69528,
+      "p95": 2.86156,
+      "p99": 3.03172,
+      "max": 3.03172
+    },
+    "shadow_ray_trace_ms": {
+      "samples": 77,
+      "mean": 0.0005163636363636363,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.00056,
+      "max": 0.00056
+    },
+    "probe_apply_ms": {
+      "samples": 77,
+      "mean": 0.0005179220779220778,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.00056,
+      "max": 0.00056
+    },
+    "render_target_blit_ms": {
+      "samples": 77,
+      "mean": 0.00979012987012987,
+      "p50": 0.00948,
+      "p95": 0.01036,
+      "p99": 0.0344,
+      "max": 0.0344
+    },
+    "ui_composite_render_ms": {
+      "samples": 77,
+      "mean": 0.032605194805194804,
+      "p50": 0.02684,
+      "p95": 0.03172,
+      "p99": 0.4394,
+      "max": 0.4394
+    }
+  },
+  "editor-concurrent/vixen.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 198,
+      "mean": 97.10235474747475,
+      "p50": 91.75136,
+      "p95": 96.78816,
+      "p99": 99.86992,
+      "max": 1188.768766
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 198,
+      "mean": 7.348141646464646,
+      "p50": 1.74404,
+      "p95": 2.19136,
+      "p99": 2.26016,
+      "max": 1103.538086
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 1
+  },
+  "hud-profile/vixen.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 85,
+      "mean": 211.08614674117646,
+      "p50": 211.507279,
+      "p95": 219.52212,
+      "p99": 222.1892,
+      "max": 222.1892
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 85,
+      "mean": 3.8225303529411763,
+      "p50": 3.81624,
+      "p95": 4.26324,
+      "p99": 4.61424,
+      "max": 4.61424
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 20.940999999998894
+  },
+  "windowed/editor.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 120,
+      "mean": 94.06374864166666,
+      "p50": 91.02204,
+      "p95": 107.44168,
+      "p99": 151.21228,
+      "max": 151.661599
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 120,
+      "mean": 1.8562516666666666,
+      "p50": 1.75656,
+      "p95": 2.95672,
+      "p99": 3.432,
+      "max": 3.51388
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 20.673000000002503
+  },
+  "windowed/hud.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 85,
+      "mean": 218.3864033882353,
+      "p50": 214.061479,
+      "p95": 271.212641,
+      "p99": 285.557721,
+      "max": 285.557721
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 85,
+      "mean": 4.199425411764706,
+      "p50": 3.94788,
+      "p95": 7.36796,
+      "p99": 7.42588,
+      "max": 7.42588
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 22.419000000001688
+  }
+}

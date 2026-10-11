@@ -1592,7 +1592,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         auto* indirectCmdInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketIndirectCommandBuffer));
         indirectCmdInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
-            kRecipeBucketingMaxBuckets * 12u);  // VkDispatchIndirectCommand: 3x uint32, per bucket
+            kRecipeBucketingMaxBuckets * 12u * (1u +
+                ((static_cast<uint32_t>(width) + 8u * DispatchPass::BoundedGroupEdge - 1u) /
+                    (8u * DispatchPass::BoundedGroupEdge)) *
+                ((static_cast<uint32_t>(height) + 8u * DispatchPass::BoundedGroupEdge - 1u) /
+                    (8u * DispatchPass::BoundedGroupEdge))));
 
         // Load-Tier Contract M2 (precision tier): the precision sub-bucket pair is compound-keyed
         // recipeId*2+tier (see RecipeInstanceBucketing.comp's PrecisionBucketCountBuffer comment),
@@ -1628,7 +1632,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // RecipeInstanceBucketing.comp's own push-constant `mode` semantics exactly.
         static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeInitConstant))->SetValue<uint32_t>(1u);
         static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeBucketConstant))->SetValue<uint32_t>(0u);
-        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeFinalConstant))->SetValue<uint32_t>(2u);
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeFinalConstant))->SetValue<uint32_t>((DispatchPass::BoundedGroupEdge << 8u) | 3u);
         static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingMaxBucketsConstant))->SetValue<uint32_t>(kRecipeBucketingMaxBuckets);
         static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingMaxMembersConstant))->SetValue<uint32_t>(kRecipeBucketingMaxMembersPerBucket);
         // Default-initialized to identity; PreTick overwrites this every frame with the live
@@ -1912,6 +1916,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                     renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+                bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
             }
 
             // Round 11 (far-field dispatch attribution): tag this shader as the

@@ -1,0 +1,11 @@
+{
+  "measurement": "native AMD Vulkan completion peer during Dozen VIXEN",
+  "native_producer": false,
+  "peer_launch_after_render_marker_seconds": 2.2396713649977755,
+  "peer_exit": 0,
+  "peer_finished_while_producer_running": true,
+  "peer_finished_seconds": 17.58721919099844,
+  "producer_exit": 0,
+  "wall_seconds": 61.43766608000078,
+  "complete_overlap": true
+}

@@ -1,0 +1,2 @@
+-- Native lock probe path: Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2
+[box:slotflow] STALL DETECTED (idle-hard): run2-native-lock-probe — 199s elapsed, cpu idle 195s, output idle 180s (>= 180s idle floor)

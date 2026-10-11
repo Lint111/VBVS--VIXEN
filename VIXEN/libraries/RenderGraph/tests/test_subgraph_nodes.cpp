@@ -16,24 +16,24 @@ namespace {
 // The test graph uses an opaque buffer value so the test exercises the real slot
 // type machinery without constructing Vulkan resources or devices.
 CONSTEXPR_NODE_CONFIG(SourceSlots, 0, 1, SlotArrayMode::Single) {
-    OUTPUT_SLOT(OUT, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(SourceOutput, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
 };
 
 CONSTEXPR_NODE_CONFIG(TransformSlots, 1, 1, SlotArrayMode::Single) {
-    INPUT_SLOT(IN, const VkBuffer, 0, SlotNullability::Required,
+    INPUT_SLOT(TransformInput, const VkBuffer, 0, SlotNullability::Required,
                SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
-    OUTPUT_SLOT(OUT, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(TransformOutput, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
 };
 
 CONSTEXPR_NODE_CONFIG(SinkSlots, 1, 0, SlotArrayMode::Single) {
-    INPUT_SLOT(IN, const VkBuffer, 0, SlotNullability::Required,
+    INPUT_SLOT(SinkInput, const VkBuffer, 0, SlotNullability::Required,
                SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 };
 
 CONSTEXPR_NODE_CONFIG(ChainPorts, 1, 1, SlotArrayMode::Single) {
-    INPUT_SLOT(IN, const VkBuffer, 0, SlotNullability::Required,
+    INPUT_SLOT(ChainInput, const VkBuffer, 0, SlotNullability::Required,
                SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
-    OUTPUT_SLOT(OUT, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(ChainOutput, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
 };
 
 CONSTEXPR_NODE_CONFIG(EmptyPorts, 0, 0, SlotArrayMode::Single) {};
@@ -76,8 +76,8 @@ public:
 
     void Build(GraphScope& scope, const Params&) {
         const NodeHandle transform = scope.AddNode("Transform", "transform");
-        scope.BindInput(ChainPorts::IN, transform, TransformSlots::IN);
-        scope.BindOutput(ChainPorts::OUT, transform, TransformSlots::OUT);
+        scope.BindInput(ChainPorts::ChainInput, transform, TransformSlots::TransformInput);
+        scope.BindOutput(ChainPorts::ChainOutput, transform, TransformSlots::TransformOutput);
     }
 };
 
@@ -88,7 +88,7 @@ public:
 
     void Build(GraphScope& scope, const Params&) {
         const NodeHandle transform = scope.AddNode("Transform", "Transform");
-        scope.BindOutput(ChainPorts::OUT, transform, TransformSlots::OUT);
+        scope.BindOutput(ChainPorts::ChainOutput, transform, TransformSlots::TransformOutput);
     }
 };
 
@@ -99,9 +99,9 @@ public:
 
     void Build(GraphScope& scope, const Params&) {
         const NodeHandle transform = scope.AddNode("Transform", "Transform");
-        scope.BindInput(ChainPorts::IN, transform, TransformSlots::IN);
-        scope.BindOutput(ChainPorts::OUT, transform, TransformSlots::OUT);
-        scope.BindOutput(ChainPorts::OUT, transform, TransformSlots::OUT);
+        scope.BindInput(ChainPorts::ChainInput, transform, TransformSlots::TransformInput);
+        scope.BindOutput(ChainPorts::ChainOutput, transform, TransformSlots::TransformOutput);
+        scope.BindOutput(ChainPorts::ChainOutput, transform, TransformSlots::TransformOutput);
     }
 };
 
@@ -213,8 +213,8 @@ TEST(SubGraphNodesTest, FlattenedSubGraphProducesTheHandWiredTaskPlan) {
     const NodeHandle groupedSink = grouped.AddSink("sink");
     const SubGraphHandle group = grouped.graph.Instantiate<ChainSubGraph>("group");
     ASSERT_TRUE(group.IsValid());
-    grouped.graph.Connect(groupedSource, SourceSlots::OUT, group, ChainPorts::IN);
-    grouped.graph.Connect(group, ChainPorts::OUT, groupedSink, SinkSlots::IN);
+    grouped.graph.Connect(groupedSource, SourceSlots::SourceOutput, group, ChainPorts::ChainInput);
+    grouped.graph.Connect(group, ChainPorts::ChainOutput, groupedSink, SinkSlots::SinkInput);
     ASSERT_NO_THROW(grouped.graph.Compile());
 
     const GraphTaskPlan& handPlan = hand.graph.GetExecutionTaskPlan();

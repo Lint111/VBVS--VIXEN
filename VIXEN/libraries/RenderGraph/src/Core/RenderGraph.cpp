@@ -20,6 +20,12 @@
 #include <cstring>
 #include <limits>
 #include <thread>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -31,6 +37,25 @@
 namespace Vixen::RenderGraph {
 
 namespace {
+void PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+#ifdef _WIN32
+    struct Timer {
+        HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr,
+            CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE);
+        ~Timer() { if (handle) CloseHandle(handle); }
+    };
+    thread_local Timer timer;
+    const auto remaining = deadline - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) return;
+    if (timer.handle) {
+        LARGE_INTEGER due{};
+        due.QuadPart = -(std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count() + 99) / 100;
+        if (SetWaitableTimer(timer.handle, &due, 0, nullptr, nullptr, FALSE) &&
+            WaitForSingleObject(timer.handle, INFINITE) == WAIT_OBJECT_0) return;
+    }
+#endif
+    std::this_thread::sleep_until(deadline);
+}
 uint64_t HashExecutionNodeNames(const std::vector<NodeInstance*>& executionOrder) {
     constexpr uint64_t offsetBasis = 14695981039346656037ULL;
     constexpr uint64_t prime = 1099511628211ULL;
@@ -896,7 +921,15 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
             presentInfo.pSwapchains = &rec.swapchain;
             presentInfo.pImageIndices = &rec.imageIndex;
             if (rec.presentFn && device) {
+                const auto started = std::chrono::steady_clock::now();
                 const VkResult r = rec.presentFn(device->queue, &presentInfo);
+                if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+                    const auto completed = std::chrono::steady_clock::now();
+                    std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
+                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count()),
+                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
+                        static_cast<int>(r));
+                }
                 // VK_SUBOPTIMAL_KHR / OUT_OF_DATE are handled by the swapchain nodes as before; only
                 // a hard failure is a channel fault. (Present result is not fed back per-node today.)
                 if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
@@ -904,15 +937,9 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
                 }
             }
         } else {
-            VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-            si.waitSemaphoreInfoCount = static_cast<uint32_t>(rec.waits.size());
-            si.pWaitSemaphoreInfos = rec.waits.empty() ? nullptr : rec.waits.data();
-            si.commandBufferInfoCount = static_cast<uint32_t>(rec.commandBuffers.size());
-            si.pCommandBufferInfos = rec.commandBuffers.empty() ? nullptr : rec.commandBuffers.data();
-            si.signalSemaphoreInfoCount = static_cast<uint32_t>(rec.signals.size());
-            si.pSignalSemaphoreInfos = rec.signals.empty() ? nullptr : rec.signals.data();
             if (device && device->fpQueueSubmit2) {
-                const VkResult r = device->fpQueueSubmit2(device->queue, 1, &si, rec.fence);
+                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
+                                              vkQueueWaitIdle, &outstandingBatches_[device->queue]);
                 if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
             }
         }
@@ -1261,6 +1288,28 @@ VkResult RenderGraph::RenderFrame() {
     // tells the trigger to route to recovery rather than treat the frame as a one-off error.
     if (deviceLost_) {
         return VK_ERROR_DEVICE_LOST;
+    }
+
+    // Offscreen, capture, and test graphs share the same existing frame budget as
+    // interactive graphs. Anchor each deadline to this frame, so an overrun never
+    // creates a burst of catch-up submissions. Error/aborted frames remain prompt.
+    if (frameResult == VK_SUCCESS && !frameAborted_) {
+        const auto frameBudget = std::chrono::nanoseconds(
+            capacityTracker_.GetConfig().gpuTimeBudgetNs);
+        const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
+        const auto paceStart = std::chrono::steady_clock::now();
+        PaceFrameUntil(frameExecuteStart + frameBudget);
+        if (traceYield) {
+            const auto paceEnd = std::chrono::steady_clock::now();
+            const auto ticks = [](auto time) {
+                return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    time.time_since_epoch()).count());
+            };
+            std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-execute-core start_ns=%lld end_ns=%lld result=0\n",
+                ticks(frameExecuteStart), ticks(paceStart));
+            std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-pace start_ns=%lld end_ns=%lld result=0\n",
+                ticks(paceStart), ticks(paceEnd));
+        }
     }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw

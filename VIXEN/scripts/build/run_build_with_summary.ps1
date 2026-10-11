@@ -57,7 +57,8 @@ param(
     [int]$MaxParallelJobs = 0,
     [string]$Target = "",
     [string]$QueueTicketId = "",
-    [string]$BuildId = ""
+    [string]$BuildId = "",
+    [switch]$StreamProgress
 )
 
 # Auto-generate if the caller didn't supply one. Sanitize a caller-supplied ID to safe
@@ -179,12 +180,13 @@ $job = Start-Job -ScriptBlock {
 } -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $BuildDir, $MaxParallelJobs, $Target
 
 $progressPattern = '^\[(\d+)/(\d+)\]\s+(.+)$'
-$failedPattern = '^FAILED:\s+\[code=\d+\]\s+(\S+)'
+$failedPattern = '^FAILED:\s+(?:\[code=\d+\]\s+)?(\S+)'
 
 $lastDone = 0
 $lastTotal = "?"
 $lastTarget = ""
 $failedTargets = @()
+$printedDone = 0
 
 while ($job.State -eq 'Running') {
     Start-Sleep -Seconds 5
@@ -205,6 +207,12 @@ while ($job.State -eq 'Running') {
     }
     $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
     Write-StatusFile "RUNNING" $elapsed $lastTotal $lastDone $failedTargets.Count $lastTarget $failedTargets
+    # Native Windows CPU time is invisible to the WSL queue watchdog. Forward
+    # actual compiler progress, never a heartbeat claiming that idle work progressed.
+    if ($StreamProgress -and $lastDone -gt $printedDone) {
+        Write-Host "[$lastDone/$lastTotal] $lastTarget"
+        $printedDone = $lastDone
+    }
 }
 
 # Drain the job's output. Its LAST result object is the real cmake/ninja exit code we

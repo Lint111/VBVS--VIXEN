@@ -1,0 +1,94 @@
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 68028,
+    "mean_ms": 0.5557893302757687,
+    "p99_ms": 1.05808,
+    "max_ms": 2.19704
+  },
+  "dispatch_intervals": {
+    "samples": 68028,
+    "mean_ms": 0.5549390409831246,
+    "p99_ms": 1.05692,
+    "max_ms": 2.18932
+  },
+  "frame_maxima": {
+    "samples": 184,
+    "mean_ms": 1.1509395652173913,
+    "p99_ms": 2.0938,
+    "max_ms": 2.19704
+  },
+  "host_calls": {
+    "acquire": {
+      "samples": 188,
+      "mean_ms": 0.004633718085106383,
+      "p99_ms": 0.019241,
+      "max_ms": 0.040513
+    },
+    "chunk-retire": {
+      "samples": 72819,
+      "mean_ms": 0.8625823748746893,
+      "p99_ms": 1.394075,
+      "max_ms": 6.469579
+    },
+    "submit": {
+      "samples": 72819,
+      "mean_ms": 0.03024517587442838,
+      "p99_ms": 0.076805,
+      "max_ms": 113.887615
+    },
+    "present-and-idle": {
+      "samples": 187,
+      "mean_ms": 4.454199807486631,
+      "p99_ms": 4.98149,
+      "max_ms": 6.595391
+    },
+    "frame-retire": {
+      "samples": 187,
+      "mean_ms": 0.1067136256684492,
+      "p99_ms": 0.227917,
+      "max_ms": 0.238772
+    },
+    "frame-execute-core": {
+      "samples": 187,
+      "mean_ms": 461.0281421069519,
+      "p99_ms": 957.411419,
+      "max_ms": 12992.301449
+    },
+    "frame-pace": {
+      "samples": 187,
+      "mean_ms": 4.272727272727273e-05,
+      "p99_ms": 0.00012,
+      "max_ms": 0.00012
+    }
+  },
+  "invalid_timestamp_pairs": 0,
+  "zero_resolution_dispatch_pairs": 0,
+  "submissions": {
+    "samples": 67968,
+    "mean_ms": 0.5562909522128061,
+    "p99_ms": 1.066,
+    "max_ms": 2.19704
+  },
+  "submissions_per_frame": {
+    "samples": 184,
+    "mean": 369.39130434782606,
+    "p99": 441,
+    "max": 441
+  },
+  "aggregate_gpu_ms": {
+    "samples": 184,
+    "mean_ms": 205.4890404619565,
+    "p99_ms": 244.634399,
+    "max_ms": 245.54684
+  },
+  "node": "test_dispatch",
+  "expected_frames": 500,
+  "observed_frames": 184,
+  "budget_ms": 2.0,
+  "budget_pass": false,
+  "exit": 139,
+  "source_runtime_tip": "9e9550f2",
+  "timeout": false,
+  "cause_classification": "latency-driven subdivision cliff observed; segfault mechanism unproven"
+}

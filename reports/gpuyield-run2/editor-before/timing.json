@@ -1,0 +1,67 @@
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 32000,
+    "mean_ms": 1.2996699362500002,
+    "p99_ms": 1.71328,
+    "max_ms": 2.18844
+  },
+  "dispatch_intervals": {
+    "samples": 32000,
+    "mean_ms": 1.2987459,
+    "p99_ms": 1.7056,
+    "max_ms": 2.18072
+  },
+  "frame_maxima": {
+    "samples": 500,
+    "mean_ms": 1.83076952,
+    "p99_ms": 2.17724,
+    "max_ms": 2.18844
+  },
+  "host_calls": {
+    "submit": {
+      "samples": 32000,
+      "mean_ms": 0.01430816196875,
+      "p99_ms": 0.05566,
+      "max_ms": 82.918888
+    }
+  },
+  "invalid_timestamp_pairs": 0,
+  "expected_frames": 500,
+  "observed_frames": 500,
+  "budget_ms": 16.666666,
+  "budget_pass": true,
+  "peer_invalid_rows": 1,
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 2396,
+      "mean_ms": 0.0017249415692821369,
+      "p99_ms": 0.0066,
+      "max_ms": 0.00716
+    },
+    "submit_call_ms": {
+      "samples": 2396,
+      "mean_ms": 0.09332436769616027,
+      "p99_ms": 0.202243,
+      "max_ms": 0.465957
+    },
+    "fence_wait_ms": {
+      "samples": 2396,
+      "mean_ms": 1.1921854536727878,
+      "p99_ms": 5.2331,
+      "max_ms": 9.6052
+    },
+    "service_ms": {
+      "samples": 2396,
+      "mean_ms": 1.2855097520868113,
+      "p99_ms": 5.32568,
+      "max_ms": 9.67058
+    },
+    "cadence_ms": {
+      "samples": 2396,
+      "mean_ms": 16.667065492487477,
+      "p99_ms": 21.261,
+      "max_ms": 24.2092
+    }
+  }
+}

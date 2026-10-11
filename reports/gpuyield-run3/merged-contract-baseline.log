@@ -1,0 +1,105 @@
+[box:flow] run3-merged-contract-baseline cpu=39% target=90% depth=0 free=0 baseline=2 granted=2 mode=static
+[box:flow] run3-merged-contract-baseline cpu=41% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67283MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528844MB
+[box:flow] run3-merged-contract-baseline queued — need=2 tokens projected=61MB estimate=step samples=3
+[box:flow] run3-merged-contract-baseline cpu=34% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67266MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528844MB
+[box:flow] run3-merged-contract-baseline cpu=45% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67266MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528843MB
+[box:flow] run3-merged-contract-baseline cpu=41% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67172MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528843MB
+[box:flow] run3-merged-contract-baseline cpu=44% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67070MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528843MB
+[box:flow] run3-merged-contract-baseline cpu=40% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67003MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528843MB
+[box:flow] run3-merged-contract-baseline cpu=41% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67056MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528843MB
+[box:flow] run3-merged-contract-baseline cpu=43% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66821MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528991MB
+[box:flow] run3-merged-contract-baseline cpu=39% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66550MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528991MB
+[box:flow] run3-merged-contract-baseline cpu=36% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66311MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528990MB
+[box:flow] run3-merged-contract-baseline cpu=38% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66128MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528974MB
+[box:flow] run3-merged-contract-baseline cpu=34% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66062MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528973MB
+[box:flow] run3-merged-contract-baseline cpu=39% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66163MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528973MB
+[box:flow] run3-merged-contract-baseline cpu=39% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=66150MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528973MB
+[box:flow] run3-merged-contract-baseline cpu=35% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=67583MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528972MB
+[box:flow] run3-merged-contract-baseline cpu=35% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68084MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528969MB
+[box:flow] run3-merged-contract-baseline cpu=27% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68083MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528914MB
+[box:flow] run3-merged-contract-baseline cpu=32% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68043MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528882MB
+[box:flow] run3-merged-contract-baseline cpu=24% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68024MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528820MB
+[box:flow] run3-merged-contract-baseline cpu=23% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68285MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528969MB
+[box:flow] run3-merged-contract-baseline cpu=25% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68257MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528969MB
+[box:flow] run3-merged-contract-baseline cpu=27% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68178MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528965MB
+[box:flow] run3-merged-contract-baseline cpu=39% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68139MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528946MB
+[box:flow] run3-merged-contract-baseline cpu=32% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=68109MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528946MB
+[box:flow] run3-merged-contract-baseline cpu=43% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=69496MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528946MB
+[box:flow] run3-merged-contract-baseline cpu=35% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=70379MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528946MB
+[box:flow] run3-merged-contract-baseline cpu=32% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=70288MB projected=61MB estimate=step samples=3 reserved=50307MB total=80425MB reserve=4096MB disk=528944MB
+[box:flow] run3-merged-contract-baseline cpu=37% target=90% admit
+[box:flow] run3-merged-contract-baseline memory=admit avail=70245MB projected=61MB estimate=step samples=3 reserved=43783MB total=80425MB reserve=4096MB disk=528876MB
+[box:flow] run3-merged-contract-baseline granted tokens=5 14 mask=10,11,28,29
+[box:flow] run3-merged-contract-baseline running on cores 10,11,28,29 (test)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SubmitRecord.*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+[       OK ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 3 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = MultiDispatchIntegration.ActualNode*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MultiDispatchIntegration
+[ RUN      ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+[       OK ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+[       OK ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+[       OK ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree (0 ms)
+[----------] 3 tests from MultiDispatchIntegration (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = RayGenerationTileContract.*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RayGenerationTileContract
+[ RUN      ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+[       OK ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields (206 ms)
+[----------] 1 test from RayGenerationTileContract (206 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (206 ms total)
+[  PASSED  ] 1 test.
+All seven required contract tests were discovered and executed.
+Timing smoke checks: completed frames, budget boundary, query availability, empty/invalid peer rows PASS
+UT_JOB_DONE test run3-merged-contract-baseline exit=0 state=OK

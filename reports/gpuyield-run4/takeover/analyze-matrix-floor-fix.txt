@@ -1,0 +1,42 @@
+Scale 1.0, 500 frames; per-pass GPU-clock spans after excluding 10 warmup frames.
+
+| Resolution / pass | Unbounded ms | Tuned bounded ms | Change |
+|---|---:|---:|---:|
+| 500×500 / cpu_frame_time_ms | 3.668313 | 17.079836 | +365.6% |
+| 500×500 / whole_frame_gpu_span_ms | 0.715966 | 1.557122 | +117.5% |
+| 500×500 / esvo_traverse_shade_ms | 0.326041 | 0.349328 | +7.1% |
+| 500×500 / direct_lighting_ms | 0.000280 | 0.000280 | -0.1% |
+| 500×500 / spatial_reuse_ms | 0.054153 | 0.066295 | +22.4% |
+| 500×500 / probe_gather_ms | 0.000280 | 0.000280 | -0.1% |
+| 500×500 / shadow_visibility_wave_ms | 0.048817 | 0.053722 | +10.0% |
+| 500×500 / shadow_ray_trace_ms | 0.000281 | 0.000279 | -0.5% |
+| 500×500 / probe_apply_ms | 0.000281 | 0.000280 | -0.2% |
+| 500×500 / render_target_blit_ms | 0.006257 | 0.010160 | +62.4% |
+| 500×500 / ui_composite_render_ms | 0.033164 | 0.044598 | +34.5% |
+| 1920×1080 / cpu_frame_time_ms | 4.434962 | 17.057190 | +284.6% |
+| 1920×1080 / whole_frame_gpu_span_ms | 3.643272 | 4.104231 | +12.7% |
+| 1920×1080 / esvo_traverse_shade_ms | 1.706686 | 2.041262 | +19.6% |
+| 1920×1080 / direct_lighting_ms | 0.000280 | 0.000280 | +0.1% |
+| 1920×1080 / spatial_reuse_ms | 0.732949 | 0.738185 | +0.7% |
+| 1920×1080 / probe_gather_ms | 0.000280 | 0.000280 | +0.0% |
+| 1920×1080 / shadow_visibility_wave_ms | 0.752600 | 0.729210 | -3.1% |
+| 1920×1080 / shadow_ray_trace_ms | 0.000280 | 0.000280 | +0.1% |
+| 1920×1080 / probe_apply_ms | 0.000280 | 0.000280 | +0.1% |
+| 1920×1080 / render_target_blit_ms | 0.034265 | 0.034965 | +2.0% |
+| 1920×1080 / ui_composite_render_ms | 0.036848 | 0.038376 | +4.1% |
+native-unbounded exit 0 CSV frames 500
+native-final exit 0 CSV frames 500
+  test_dispatch gate True aggregate True chunks {'samples': 852, 'mean_ms': 0.20968201877934273, 'p99_ms': 0.35888, 'max_ms': 0.36736} submissions/frame {'samples': 500, 'mean': 1.688, 'p99': 7, 'max': 81}
+native-unbounded-1080 exit 0 CSV frames 500
+native-final-1080 exit 0 CSV frames 500
+  test_dispatch gate False aggregate True chunks {'samples': 3784, 'mean_ms': 0.25842502114164906, 'p99_ms': 1.68624, 'max_ms': 2.56928} submissions/frame {'samples': 500, 'mean': 7.516, 'p99': 45, 'max': 400}
+native-pacing-500 exit 0 CSV frames 500
+  test_dispatch gate True aggregate True chunks {'samples': 892, 'mean_ms': 0.3540283408071749, 'p99_ms': 1.60824, 'max_ms': 1.62276} submissions/frame {'samples': 500, 'mean': 1.754, 'p99': 13, 'max': 81}
+native-pacing-1080 exit 0 CSV frames 500
+  test_dispatch gate False aggregate False chunks {'samples': 3784, 'mean_ms': 0.49026612050739954, 'p99_ms': 6.0518, 'max_ms': 6.09572} submissions/frame {'samples': 500, 'mean': 7.092, 'p99': 49, 'max': 400}
+native-final-no-trace exit 0 CSV frames 500
+  test_dispatch gate False aggregate True chunks None submissions/frame {'samples': 500, 'mean': 1.688, 'p99': 7, 'max': 81}
+native-final-1080-no-trace exit 0 CSV frames 500
+  test_dispatch gate False aggregate True chunks None submissions/frame {'samples': 500, 'mean': 7.372, 'p99': 45, 'max': 400}
+dozen-final exit 0 CSV frames 500
+  test_dispatch gate False aggregate None chunks {'samples': 38205, 'mean_ms': 1.3141909488286874, 'p99_ms': 2.24968, 'max_ms': 3.93876} submissions/frame {'samples': 500, 'mean': 76.41, 'p99': 81, 'max': 81}

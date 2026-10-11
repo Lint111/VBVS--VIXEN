@@ -1,0 +1,14 @@
+[
+  {
+    "path": "build/gpuyield/binaries/VIXEN",
+    "sha256": "e4a7947447a9565e40b5a09e309fb066da5654dff210e8899a5774b70408a129",
+    "mtime_ns": 1791664316153292389,
+    "unchanged_since_suite_start": true
+  },
+  {
+    "path": "build/gpuyield/binaries/vixen_editor",
+    "sha256": "d1ffbf2cf8850d13538f6697712e942b00539edd8723bb1eb3a3cc6518c808ce",
+    "mtime_ns": 1791664318049291256,
+    "unchanged_since_suite_start": true
+  }
+]

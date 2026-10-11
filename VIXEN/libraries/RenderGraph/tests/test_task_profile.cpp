@@ -230,6 +230,33 @@ TEST_F(SimpleTaskProfileTest, SaveLoadState) {
     EXPECT_TRUE(loaded.IsCalibrated());
 }
 
+TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
+    // R503: the chunk-cost envelope is saved per dispatch extent and restored in place.
+    profile->SetChunkCalibration("240x135", {14400, 128.5, 12'000.0});
+    profile->SetChunkCalibration("63x63", {3969, 90.0, 0.0});
+    nlohmann::json j;
+    profile->SaveState(j);
+    ASSERT_TRUE(j.contains("chunkCalibration"));
+    SimpleTaskProfile loaded;
+    loaded.LoadState(j);
+    const auto wide = loaded.GetChunkCalibration("240x135");
+    ASSERT_TRUE(wide.has_value());
+    EXPECT_EQ(wide->anchorUnits, 14400u);
+    EXPECT_DOUBLE_EQ(wide->unitNs, 128.5);
+    EXPECT_DOUBLE_EQ(wide->fixedNs, 12'000.0);
+    ASSERT_TRUE(loaded.GetChunkCalibration("63x63").has_value());
+    EXPECT_FALSE(loaded.GetChunkCalibration("120x68").has_value());
+    loaded.ResetCalibration();
+    EXPECT_FALSE(loaded.GetChunkCalibration("240x135").has_value());
+    // An invalid persisted entry is dropped rather than restored.
+    nlohmann::json bad = j;
+    bad["chunkCalibration"]["240x135"]["unitNs"] = 0.0;
+    SimpleTaskProfile rejected;
+    rejected.LoadState(bad);
+    EXPECT_FALSE(rejected.GetChunkCalibration("240x135").has_value());
+    EXPECT_TRUE(rejected.GetChunkCalibration("63x63").has_value());
+}
+
 // ============================================================================
 // RESOLUTION TASK PROFILE TESTS
 // ============================================================================

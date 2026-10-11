@@ -71,7 +71,7 @@ inline bool DeriveResidencyDefault(const ConcatenatedOctrees& pool) {
 // (concatenated_.configs) would clobber that rewrite at exactly the mip->brick
 // transition, corrupting SDF addressing for octree index >=1 in any multi-octree
 // pool. StampAndSelectActiveConfigs mutates brickResident=1 into every config in
-// the SAME view CreateShellBuffers last wrote (both CPU double-buffer shell slots
+// the SAME view CreateShellBuffers last wrote (the published compact shell configs
 // if a shell cache exists; the source configs otherwise) and returns which vector
 // a caller should actually re-upload to binding-5.
 //
@@ -81,21 +81,18 @@ inline bool DeriveResidencyDefault(const ConcatenatedOctrees& pool) {
 // device->Upload() call this function deliberately does not make).
 inline std::vector<OctreeConfig>* StampAndSelectActiveConfigs(
     ConcatenatedOctrees& source,
-    ShellPool shellCache[2]) {
+    ShellPool& shellCache) {
     for (auto& cfg : source.configs) {
         setBrickResident(cfg, true);
     }
-    const bool haveShellCache = !shellCache[0].compact.configs.empty();
+    const bool haveShellCache = !shellCache.compact.configs.empty();
     if (!haveShellCache) {
         return &source.configs;
     }
-    for (auto& cfg : shellCache[0].compact.configs) {
+    for (auto& cfg : shellCache.compact.configs) {
         setBrickResident(cfg, true);
     }
-    for (auto& cfg : shellCache[1].compact.configs) {
-        setBrickResident(cfg, true);
-    }
-    return &shellCache[0].compact.configs;
+    return &shellCache.compact.configs;
 }
 
 }  // namespace Vixen::SVO

@@ -77,6 +77,8 @@
 #include "ComputePipelineCacher.h"
 #include "PipelineLayoutCacher.h"
 #include "Nodes/MultiDispatchNode.h"
+#include "Core/RenderGraph.h"
+#include "Nodes/ConstantNodeType.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/SdfRecipeEval.h"
@@ -213,6 +215,7 @@ struct SpecializedPush {
     uint32_t  screenHeight;
     uint32_t  maxMembersPerBucket;
     uint32_t  recipeId;
+    glm::uvec2 tileOrigin{0, 0};
 };
 
 // Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).
@@ -786,7 +789,11 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     const VkDeviceSize countSize = kMaxBuckets * sizeof(uint32_t);
     const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
     const VkDeviceSize extremaSize = kMaxBuckets * sizeof(uint32_t);
-    const VkDeviceSize indirectSize = static_cast<VkDeviceSize>(kMaxBuckets) * 3 * sizeof(uint32_t);
+    constexpr uint32_t tileEdge = DispatchPass::BoundedGroupEdge;
+    constexpr uint32_t tileColumns = (kScreenWidth + 8u * tileEdge - 1u) / (8u * tileEdge);
+    constexpr uint32_t tileRows = (kScreenHeight + 8u * tileEdge - 1u) / (8u * tileEdge);
+    constexpr uint32_t tileCount = tileColumns * tileRows;
+    const VkDeviceSize indirectSize = VkDeviceSize(kMaxBuckets) * (1u + tileCount) * sizeof(VkDispatchIndirectCommand);
     // Load-Tier Contract M2: bindings 9-10 (precision sub-bucket pair) — this test doesn't
     // exercise precision tiering, but the pipeline layout must still declare every binding the
     // SPIR-V module references (same reasoning as the indirect-command buffer's own comment).
@@ -938,7 +945,7 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     vkCmdPipelineBarrier(bucketCmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          0, 1, &barrier, 0, nullptr, 0, nullptr);
 
-    BucketingPush pcFinalize = pcInit; pcFinalize.mode = 2;
+    BucketingPush pcFinalize = pcInit; pcFinalize.mode = (tileEdge << 8u) | 3u;
     vkCmdPushConstants(bucketCmd, bucketingLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pcFinalize), &pcFinalize);
     vkCmdDispatch(bucketCmd, (kMaxBuckets + 63) / 64, 1, 1);
 
@@ -961,6 +968,19 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     ReadbackBuffer(minXMem, extremaSize, minXBits);
     ReadbackBuffer(minYMem, extremaSize, minYBits);
     ReadbackBuffer(indirectMem, indirectSize, indirectCmds);
+    for (uint32_t bucket = 0; bucket < kMaxBuckets; ++bucket) {
+        const uint32_t fullX = indirectCmds[bucket * 3u];
+        const uint32_t fullY = indirectCmds[bucket * 3u + 1u];
+        for (uint32_t t = 0; t < tileCount; ++t) {
+            const uint32_t at = (kMaxBuckets + bucket * tileCount + t) * 3u;
+            const uint32_t originX = (t % tileColumns) * tileEdge;
+            const uint32_t originY = (t / tileColumns) * tileEdge;
+            EXPECT_EQ(indirectCmds[at], std::min(tileEdge, fullX - std::min(originX, fullX)));
+            EXPECT_EQ(indirectCmds[at + 1], std::min(tileEdge, fullY - std::min(originY, fullY)));
+            EXPECT_EQ(indirectCmds[at + 2], indirectCmds[bucket * 3u + 2u]);
+        }
+    }
+
 
     ASSERT_EQ(bucketCounts[kRecipeA], 5u) << "bucket A membership mismatch";
     ASSERT_EQ(bucketCounts[kRecipeB], 6u) << "bucket B membership mismatch";
@@ -1267,6 +1287,7 @@ void main() {
     ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &cplci, nullptr, &coldLayout), VK_SUCCESS);
 
     VkComputePipelineCreateInfo ccpci{};
+    ccpci.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
     ccpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     ccpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ccpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1407,6 +1428,15 @@ void main() {
         node->SetInput(MC::IMAGE_INDEX_Slot::index,         0, &imageIdxRes);
         node->SetInput(MC::CURRENT_FRAME_INDEX_Slot::index, 0, &frameIdxRes);
 
+        ConstantNodeType sourceType;
+        ConstantNode sourceA("group_source_a", &sourceType);
+        ConstantNode sourceB("group_source_b", &sourceType);
+        ConstantNode sourceCold("group_source_cold", &sourceType);
+        if (hotFirst) {
+            node->RegisterAccumulationSource(MC::GROUP_INPUTS_Slot::index, &sourceA, 0);
+            node->RegisterAccumulationSource(MC::GROUP_INPUTS_Slot::index, &sourceB, 0);
+            node->RegisterAccumulationSource(MC::GROUP_INPUTS_Slot::index, &sourceCold, 0);
+        }
         node->Setup();
         EXPECT_NO_THROW(node->Compile());
 
@@ -1425,7 +1455,8 @@ void main() {
             DispatchPass passA;
             passA.pipeline = compiledA.pipeline; passA.layout = compiledA.layout;
             if (bindSet) passA.descriptorSets = {sharedSpecSet};
-            passA.indirectBuffer = indirectBuf; passA.indirectBufferOffset = kRecipeA * 3 * sizeof(uint32_t);
+            passA.indirectBuffer = indirectBuf; passA.indirectBufferOffset = VkDeviceSize(kMaxBuckets + kRecipeA * tileCount) * sizeof(VkDispatchIndirectCommand);
+            passA.tiles = DispatchPass::TilePartition{{tileColumns, tileRows, 1u}, tileEdge, offsetof(SpecializedPush, tileOrigin), 8u};
             PushConstantData pcData; pcData.data.resize(sizeof(SpecializedPush));
             std::memcpy(pcData.data.data(), &pcA, sizeof(SpecializedPush));
             passA.pushConstants = pcData;
@@ -1436,7 +1467,8 @@ void main() {
             DispatchPass passB;
             passB.pipeline = compiledB.pipeline; passB.layout = compiledB.layout;
             if (bindSet) passB.descriptorSets = {sharedSpecSet};
-            passB.indirectBuffer = indirectBuf; passB.indirectBufferOffset = kRecipeB * 3 * sizeof(uint32_t);
+            passB.indirectBuffer = indirectBuf; passB.indirectBufferOffset = VkDeviceSize(kMaxBuckets + kRecipeB * tileCount) * sizeof(VkDispatchIndirectCommand);
+            passB.tiles = DispatchPass::TilePartition{{tileColumns, tileRows, 1u}, tileEdge, offsetof(SpecializedPush, tileOrigin), 8u};
             PushConstantData pcData; pcData.data.resize(sizeof(SpecializedPush));
             std::memcpy(pcData.data.data(), &pcB, sizeof(SpecializedPush));
             passB.pushConstants = pcData;
@@ -1448,6 +1480,7 @@ void main() {
             passCold.pipeline = coldPipeline; passCold.layout = coldLayout;
             passCold.descriptorSets = {setCold};
             passCold.workGroupCount = {(kScreenWidth + 7) / 8, (kScreenHeight + 7) / 8, 1};
+            passCold.groupId = 0u; // canonical grouped/direct dispatch-base partition
             PushConstantData pcData; pcData.data.resize(sizeof(ColdPush));
             std::memcpy(pcData.data.data(), &pcCold, sizeof(ColdPush));
             passCold.pushConstants = pcData;
@@ -1456,31 +1489,56 @@ void main() {
         };
 
         if (hotFirst) {
-            // A (first dispatch overall -> must bind), B (immediately follows A, same set -> skip
-            // bind), cold (different layout/set -> its own bind, unaffected by this change).
-            node->QueueDispatch(makePassA(/*bindSet=*/true));
-            node->QueueDispatch(makePassB(/*bindSet=*/false));
-            node->QueueDispatch(makePassCold());
+            // Publish only after the consumer compiled: these are Execute-time inputs.
+            auto groupedA = makePassA(true); groupedA.groupId = 1u;
+            auto groupedB = makePassB(false); groupedB.groupId = 1u;
+            auto groupedCold = makePassCold(); groupedCold.groupId = 2u;
+            sourceA.SetValue<DispatchPass>(groupedA); sourceA.Setup(); sourceA.Compile();
+            sourceB.SetValue<DispatchPass>(groupedB); sourceB.Setup(); sourceB.Compile();
+            sourceCold.SetValue<DispatchPass>(groupedCold); sourceCold.Setup(); sourceCold.Compile();
         } else {
-            // cold (first dispatch, its own set), A (first SPECIALIZED pass after cold -> must
-            // rebind sharedSpecSet, since cold's set was bound last), B (follows A, same set ->
-            // skip bind).
             node->QueueDispatch(makePassCold());
-            node->QueueDispatch(makePassA(/*bindSet=*/true));
-            node->QueueDispatch(makePassB(/*bindSet=*/false));
+            node->QueueDispatch(makePassA(true));
+            node->QueueDispatch(makePassB(false));
         }
 
         EXPECT_NO_THROW(node->Execute());
-        VkCommandBuffer cmdBuffer = node->GetOutput(MC::COMMAND_BUFFER_Slot::index, 0)->GetHandle<VkCommandBuffer>();
+        const auto commands = node->GetOutput(MC::COMMAND_BUFFERS_Slot::index, 0)->GetHandle<std::vector<VkCommandBuffer>>();
+        EXPECT_EQ(commands.size(), 3u * tileCount);
+        VkCommandBuffer cmdBuffer = commands.front();
         EXPECT_NE(cmdBuffer, VK_NULL_HANDLE);
 
         VkSubmitInfo si{}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         si.commandBufferCount = 1; si.pCommandBuffers = &cmdBuffer;
-        EXPECT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
-        EXPECT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+        for (auto command : commands) {
+            si.pCommandBuffers = &command;
+            EXPECT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+            EXPECT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+        }
 
         std::vector<HitRecordCpu> result;
         ReadbackBuffer(hitRecordMem, hitRecordSize, result);
+        if (hotFirst) {
+            ZeroBuffer(hitRecordMem, hitRecordSize);
+            EXPECT_NO_THROW(node->Execute()); // same producers, no manual requeuing
+            const auto nextCommands = node->GetOutput(MC::COMMAND_BUFFERS_Slot::index, 0)->GetHandle<std::vector<VkCommandBuffer>>();
+            EXPECT_EQ(nextCommands.size(), 3u * tileCount);
+            for (auto command : nextCommands) {
+                si.pCommandBuffers = &command;
+                EXPECT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+                EXPECT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+            }
+            std::vector<HitRecordCpu> secondFrame;
+            ReadbackBuffer(hitRecordMem, hitRecordSize, secondFrame);
+            EXPECT_EQ(secondFrame.size(), result.size());
+            EXPECT_EQ(std::memcmp(secondFrame.data(), result.data(), result.size() * sizeof(HitRecordCpu)), 0);
+            auto invalidCurrent = makePassA(true); invalidCurrent.pipeline = VK_NULL_HANDLE;
+            sourceA.SetValue<DispatchPass>(invalidCurrent); sourceA.Compile();
+            EXPECT_THROW(node->Execute(), std::runtime_error); // must observe the CURRENT value
+            sourceA.Cleanup(CleanupReason::FinalTeardown);
+            sourceB.Cleanup(CleanupReason::FinalTeardown);
+            sourceCold.Cleanup(CleanupReason::FinalTeardown);
+        }
 
         node->Cleanup(CleanupReason::FinalTeardown);
         return result;

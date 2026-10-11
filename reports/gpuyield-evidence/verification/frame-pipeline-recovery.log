@@ -1,0 +1,18 @@
+[box:flow] gpuyield-frame-pipeline-four-core-recovery cpu=36% target=90% depth=1 free=1 baseline=2 granted=2 mode=static
+[box:flow] gpuyield-frame-pipeline-four-core-recovery queued — need=2 tokens projected=281MB estimate=class samples=1338
+[box:flow] gpuyield-frame-pipeline-four-core-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-frame-pipeline-four-core-recovery memory=admit avail=71085MB projected=281MB estimate=class samples=1338 reserved=7665MB total=80425MB reserve=4096MB disk=555541MB
+[box:flow] gpuyield-frame-pipeline-four-core-recovery granted tokens=4 5 mask=8,9,10,11
+[box:flow] gpuyield-frame-pipeline-four-core-recovery running on cores 8,9,10,11 (test)
+Note: Google Test filter = FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from FramePipelineTest
+[ RUN      ] FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder
+[       OK ] FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder (31 ms)
+[----------] 1 test from FramePipelineTest (31 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (31 ms total)
+[  PASSED  ] 1 test.
+UT_JOB_DONE test gpuyield-frame-pipeline-four-core-recovery exit=0 state=OK

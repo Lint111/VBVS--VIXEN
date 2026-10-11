@@ -45,6 +45,9 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"         // MAX_FRAMES_IN_FLIGHT (== node's kRingSize)
 #include "Data/Core/CompileTimeResourceSystem.h"   // Resource
 #include "Core/NodeContext.h"                       // CleanupReason
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
+#include "MainCacher.h"
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"                          // Vixen::SVO::BodyInstanceGpu
@@ -59,8 +62,10 @@
 
 #include <cmath>
 #include <cstring>
+#include <chrono>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace Vixen::RenderGraph;
@@ -932,16 +937,16 @@ TEST_F(BodyOctreeLifetimeTest, DeviceDestroyReportsNoLeakedObjects) {
 // ---------------------------------------------------------------------------
 // Surface-Shell ESVO cache — end-to-end through a live node Compile on a real
 // device. Feeds a Stored-SDF sphere pool via SetRecipePool (the editor's path),
-// compiles (→ CreateOctreeBuffers → DeriveShellCache → CreateShellBuffers), and
-// asserts BOTH double-buffer slots are populated + byte-identical (bootstrap),
-// the compact pool is render-equivalent (<= source, valid), and the SHELL_DATA/
+// compiles the mips-first generation, then waits for RunAsync to derive + publish shells, and
+// asserts the published shell generation is populated, the compact pool is
+// render-equivalent (<= source, valid), and the SHELL_DATA/
 // SHELL_LOOKUP outputs are non-null (the render's binding-11/12 source). Then it
 // concretely proves the render reads the COMPACT shell, not the full pool, by
 // confirming the shell buffer size differs from the full pool for a large body.
 // ---------------------------------------------------------------------------
 /**
  * @test BodyOctreeLifetimeTest.ShellCachePopulatedThroughNodeCompile
- * @coverage BodyOctreeSceneNode::CompileImpl, BodyOctreeSceneNode::UploadShellSlot
+ * @coverage BodyOctreeSceneNode::CompileImpl, BodyOctreeSceneNode::CreateShellBuffers
  * @category integration
  * @owner RenderGraph
  * @modified 2026-09-01
@@ -964,10 +969,14 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ASSERT_FALSE(pool.channelPool.empty()) << "sphere pool must have an SDF channel";
     const size_t fullPoolBytes = pool.channelPool.size();
 
+    CashSystem::MainCacher mainCacher;
+    NodeTypeRegistry registry;
+    RenderGraph asyncGraph(&registry, nullptr, nullptr, &mainCacher);
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
     auto nodeBase = nodeType.CreateInstance("body_octree_shellcache");
     auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
     ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&asyncGraph);
 
     Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
     Resource poolRes;    SetHandleVal<VkCommandPool>(poolRes, commandPool_);
@@ -986,19 +995,23 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ASSERT_NO_THROW(node->Compile());
     ExpectNoValidationErrors("shellcache compile");
 
-    // Shell derived into BOTH slots (octree 0 = perOctree[0]).
-    const auto& s0 = node->ShellCacheSlot(0);
-    const auto& s1 = node->ShellCacheSlot(1);
-    EXPECT_GT(s0.sourceBrickCount, 0u);
-    EXPECT_GT(s0.surfaceBrickCount, 0u) << "sphere must have surface bricks";
-    EXPECT_GT(s0.shellBrickCount, 0u)   << "shell must be non-empty for a Stored-SDF body";
-    EXPECT_LT(s0.shellBrickCount, s0.sourceBrickCount)
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "initial shell generation must be published before Compile exposes its buffers";
+    ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
+
+    // The published shell generation includes octree 0 at perOctree[0].
+    const auto& shellDerive = node->ShellCache();
+    const uint32_t dilation1ShellBrickCount = shellDerive.shellBrickCount;
+    EXPECT_GT(shellDerive.sourceBrickCount, 0u);
+    EXPECT_GT(shellDerive.surfaceBrickCount, 0u) << "sphere must have surface bricks";
+    EXPECT_GT(shellDerive.shellBrickCount, 0u)   << "shell must be non-empty for a Stored-SDF body";
+    EXPECT_LT(shellDerive.shellBrickCount, shellDerive.sourceBrickCount)
         << "a large sphere must drop deep interior-solid bricks (the bandwidth win)";
     EXPECT_EQ(node->ShellDilation(), 1u);
 
     // The compact pool is the render's actual data source (binding 11) and is
     // STRICTLY SMALLER than the full pool → render never touches the full dataset.
-    const auto& sp0 = node->ShellPoolSlot(0);
+    const auto& shellPool = node->ShellPool();
     const auto proxyCountFor = [](const Vixen::SVO::ShellPool& shellPool) {
         size_t count = 0;
         for (const auto& derived : shellPool.perOctree) {
@@ -1006,22 +1019,15 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
         }
         return static_cast<uint32_t>(count);
     };
-    const size_t shellPoolBytes = sp0.compact.channelPool.size();
+    const size_t shellPoolBytes = shellPool.compact.channelPool.size();
     EXPECT_LT(shellPoolBytes, fullPoolBytes)
         << "compact shell pool must be smaller than the full pool "
         << "(shell=" << shellPoolBytes << "B full=" << fullPoolBytes << "B)";
-    std::cout << "[ shell-cache ] source=" << s0.sourceBrickCount
-              << " surface=" << s0.surfaceBrickCount
-              << " shell=" << s0.shellBrickCount
+    std::cout << "[ shell-cache ] source=" << shellDerive.sourceBrickCount
+              << " surface=" << shellDerive.surfaceBrickCount
+              << " shell=" << shellDerive.shellBrickCount
               << " | pool " << fullPoolBytes << " -> " << shellPoolBytes << " bytes ("
               << (100.0 * (double)shellPoolBytes / (double)fullPoolBytes) << "%)\n";
-
-    // Both slots byte-identical on bootstrap (ping-pong-safe).
-    ASSERT_EQ(sp0.compact.channelPool.size(),
-              node->ShellPoolSlot(1).compact.channelPool.size());
-    EXPECT_EQ(0, std::memcmp(sp0.compact.channelPool.data(),
-                             node->ShellPoolSlot(1).compact.channelPool.data(),
-                             shellPoolBytes));
 
     // B2 binder seam: allocation capacity is grow-only, so the graph must publish
     // the exact live element count beside the proxy SSBO. Consumers must never infer
@@ -1032,11 +1038,12 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ASSERT_NE(proxyBufferOut, nullptr);
     ASSERT_NE(proxyCountOut, nullptr);
     EXPECT_NE(proxyBufferOut->GetHandle<VkBuffer>(), VK_NULL_HANDLE);
-    const uint32_t dilation1ProxyCount = proxyCountFor(sp0);
+    const uint32_t dilation1ProxyCount = proxyCountFor(shellPool);
     EXPECT_GT(dilation1ProxyCount, 0u);
     EXPECT_EQ(proxyCountOut->GetHandle<uint32_t>(), dilation1ProxyCount);
 
     // Dilation 2 must re-derive a superset on the next compile.
+    const uint64_t dilation1Generation = node->PublishedShellGeneration();
     node->SetShellThickness(2u);
     EXPECT_EQ(node->ShellDilation(), 2u);
     node->Cleanup(CleanupReason::Recompile);
@@ -1045,10 +1052,19 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ASSERT_NO_THROW(node->Compile());
     node->ClearNeedsRecompile();
     node->ResetCleanupFlag();
+    for (uint32_t frame = 0; frame < 1000u &&
+         node->PublishedShellGeneration() == dilation1Generation; ++frame) {
+        frameIndex = frame % 2u;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_GT(node->PublishedShellGeneration(), dilation1Generation)
+        << "dilation 2 generation timed out";
     ExpectNoValidationErrors("shellcache recompile (dilation 2)");
-    EXPECT_GE(node->ShellCacheSlot(0).shellBrickCount, s0.shellBrickCount)
+    EXPECT_GE(node->ShellCache().shellBrickCount, dilation1ShellBrickCount)
         << "dilation 2 must be a superset of dilation 1";
-    const uint32_t dilation2ProxyCount = proxyCountFor(node->ShellPoolSlot(0));
+    const uint32_t dilation2ProxyCount = proxyCountFor(node->ShellPool());
     EXPECT_GE(dilation2ProxyCount, dilation1ProxyCount);
     proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
     proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);

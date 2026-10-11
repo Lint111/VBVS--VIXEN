@@ -1,0 +1,95 @@
+[box:flow] gpuyield-final-standard-witness cpu=46% target=90% depth=0 free=1 baseline=2 granted=2 mode=static
+[box:flow] gpuyield-final-standard-witness cpu=44% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=67932MB projected=698MB estimate=class samples=40 reserved=20142MB total=80425MB reserve=4096MB disk=551929MB
+[box:flow] gpuyield-final-standard-witness queued — need=2 tokens projected=698MB estimate=class samples=40
+[box:flow] gpuyield-final-standard-witness cpu=41% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=67711MB projected=698MB estimate=class samples=40 reserved=20142MB total=80425MB reserve=4096MB disk=551928MB
+[box:flow] gpuyield-final-standard-witness cpu=43% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=67165MB projected=698MB estimate=class samples=40 reserved=20142MB total=80425MB reserve=4096MB disk=551920MB
+[box:flow] gpuyield-final-standard-witness cpu=55% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66756MB projected=698MB estimate=class samples=40 reserved=19490MB total=80425MB reserve=4096MB disk=551913MB
+[box:flow] gpuyield-final-standard-witness cpu=43% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66244MB projected=698MB estimate=class samples=40 reserved=19490MB total=80425MB reserve=4096MB disk=551899MB
+[box:flow] gpuyield-final-standard-witness cpu=46% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66618MB projected=698MB estimate=class samples=40 reserved=19490MB total=80425MB reserve=4096MB disk=551894MB
+[box:flow] gpuyield-final-standard-witness cpu=46% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66221MB projected=698MB estimate=class samples=40 reserved=19490MB total=80425MB reserve=4096MB disk=551894MB
+[box:flow] gpuyield-final-standard-witness cpu=50% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65993MB projected=698MB estimate=class samples=40 reserved=19490MB total=80425MB reserve=4096MB disk=551881MB
+[box:flow] gpuyield-final-standard-witness cpu=41% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65906MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551857MB
+[box:flow] gpuyield-final-standard-witness cpu=54% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66093MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551847MB
+[box:flow] gpuyield-final-standard-witness cpu=57% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66709MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551841MB
+[box:flow] gpuyield-final-standard-witness cpu=60% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=67591MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551828MB
+[box:flow] gpuyield-final-standard-witness cpu=59% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66987MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551827MB
+[box:flow] gpuyield-final-standard-witness cpu=43% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66451MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551817MB
+[box:flow] gpuyield-final-standard-witness cpu=41% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66378MB projected=698MB estimate=class samples=40 reserved=23260MB total=80425MB reserve=4096MB disk=551809MB
+[box:flow] gpuyield-final-standard-witness cpu=46% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66034MB projected=698MB estimate=class samples=40 reserved=20504MB total=80425MB reserve=4096MB disk=551808MB
+[box:flow] gpuyield-final-standard-witness cpu=47% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66674MB projected=698MB estimate=class samples=40 reserved=20504MB total=80425MB reserve=4096MB disk=551808MB
+[box:flow] gpuyield-final-standard-witness cpu=49% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66326MB projected=698MB estimate=class samples=40 reserved=20504MB total=80425MB reserve=4096MB disk=551808MB
+[box:flow] gpuyield-final-standard-witness cpu=42% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=66351MB projected=698MB estimate=class samples=40 reserved=20504MB total=80425MB reserve=4096MB disk=551807MB
+[box:flow] gpuyield-final-standard-witness cpu=54% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65727MB projected=698MB estimate=class samples=40 reserved=20504MB total=80425MB reserve=4096MB disk=551807MB
+[box:flow] gpuyield-final-standard-witness cpu=65% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65667MB projected=698MB estimate=class samples=40 reserved=27697MB total=80425MB reserve=4096MB disk=551807MB
+[box:flow] gpuyield-final-standard-witness cpu=72% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=64998MB projected=698MB estimate=class samples=40 reserved=27697MB total=80425MB reserve=4096MB disk=551807MB
+[box:flow] gpuyield-final-standard-witness cpu=68% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65152MB projected=698MB estimate=class samples=40 reserved=27697MB total=80425MB reserve=4096MB disk=551806MB
+[box:flow] gpuyield-final-standard-witness cpu=62% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65456MB projected=698MB estimate=class samples=40 reserved=27697MB total=80425MB reserve=4096MB disk=551805MB
+[box:flow] gpuyield-final-standard-witness cpu=79% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65415MB projected=698MB estimate=class samples=40 reserved=27697MB total=80425MB reserve=4096MB disk=551805MB
+[box:flow] gpuyield-final-standard-witness cpu=76% target=90% admit
+[box:flow] gpuyield-final-standard-witness memory=admit avail=65716MB projected=698MB estimate=class samples=40 reserved=26999MB total=80425MB reserve=4096MB disk=551804MB
+[box:flow] gpuyield-final-standard-witness granted tokens=3 11 mask=6,7,22,23
+[box:flow] gpuyield-final-standard-witness running on cores 6,7,22,23 (gpu)
+Native VIXEN captures written to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/reports/gpuyield-evidence/after-merged/windowed (DISPLAY=:0)
+{
+  "measurement": "second Vulkan compute client completion (no present)",
+  "period_ns": 16666666,
+  "command": [
+    "./vixen_editor"
+  ],
+  "wall_seconds": 90.45254177699826,
+  "heavy_process_lifetime_ms": 68183.27613199835,
+  "render_started_monotonic_ns": 15626022313369,
+  "heavy_finished_monotonic_ns": 15689117835548,
+  "render_marker_poll_interval_ms": 50,
+  "service_ms": {
+    "samples": 3780,
+    "mean": 3.1891332219576722,
+    "p50": 3.00189,
+    "p95": 6.26772,
+    "p99": 9.73962,
+    "max": 24.8112
+  },
+  "cadence_ms": {
+    "samples": 3780,
+    "mean": 16.686705224867726,
+    "p50": 16.6285,
+    "p95": 21.0683,
+    "p99": 25.0942,
+    "max": 40.6373
+  },
+  "deadline_lateness_ms": {
+    "samples": 3780,
+    "mean": 3.5594331275132274,
+    "p50": 3.25418,
+    "p95": 7.39925,
+    "p99": 11.1354,
+    "max": 33.0804
+  },
+  "frames_over_two_periods": 2
+}
+UT_JOB_DONE gpu gpuyield-final-standard-witness exit=0 state=OK

@@ -1,0 +1,55 @@
+[box:flow] run3-batching-contracts cpu=27% target=90% depth=1 free=1 baseline=2 granted=1 mode=static
+[box:flow] run3-batching-contracts cpu=23% target=90% admit
+[box:flow] run3-batching-contracts memory=admit avail=71270MB projected=61MB estimate=step samples=4 reserved=31245MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-batching-contracts passed token-blocked queue head pid=1295938 (1/3)
+[box:flow] run3-batching-contracts granted tokens=12 mask=24,25
+[box:flow] run3-batching-contracts running on cores 24,25 (test)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SubmitRecord.*
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+[       OK ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal (0 ms)
+[ RUN      ] SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership
+[       OK ] SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership (0 ms)
+[ RUN      ] SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission
+[       OK ] SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 5 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 5 tests.
+Note: Google Test filter = MultiDispatchIntegration.ActualNode*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MultiDispatchIntegration
+[ RUN      ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+[       OK ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+[       OK ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+[       OK ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree (0 ms)
+[----------] 3 tests from MultiDispatchIntegration (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = RayGenerationTileContract.*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RayGenerationTileContract
+[ RUN      ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+[       OK ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields (143 ms)
+[----------] 1 test from RayGenerationTileContract (143 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (143 ms total)
+[  PASSED  ] 1 test.
+All seven required contract tests were discovered and executed.
+Timing smoke checks: completed frames, budget boundary, query availability, empty/invalid peer rows PASS
+UT_JOB_DONE test run3-batching-contracts exit=0 state=OK

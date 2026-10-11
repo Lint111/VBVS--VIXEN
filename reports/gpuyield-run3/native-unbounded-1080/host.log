@@ -1,0 +1,28 @@
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 6 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\BodyInstanceRayMarchNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch (72ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\DirectLightingNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: DirectLighting (38ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\SpatialReuseShadeNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: SpatialReuseShade (47ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ProbeGatherNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: ProbeGather (61ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ShadowRayTraceNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: ShadowRayTrace (46ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:53] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ProbeApplyNames.g.h
+[2026-10-10 22:37:53] [INFO] [Builder] Shader bundle build completed successfully: ProbeApply (3ms)
+[2026-10-10 22:37:53] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:54] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\ShadowVisibilityWaveNames.g.h
+[2026-10-10 22:37:54] [INFO] [Builder] Shader bundle build completed successfully: ShadowVisibilityWave (53ms)
+[2026-10-10 22:37:54] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:54] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\HiZDownsampleNames.g.h
+[2026-10-10 22:37:54] [INFO] [Builder] Shader bundle build completed successfully: HiZDownsample (1ms)
+[2026-10-10 22:37:54] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 22:37:54] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi\InstanceOcclusionCullNames.g.h
+[2026-10-10 22:37:54] [INFO] [Builder] Shader bundle build completed successfully: InstanceOcclusionCull (2ms)
+[ui-host] mounted 'building' (handle 1, 1084x1080)

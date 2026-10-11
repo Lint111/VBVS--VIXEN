@@ -7,6 +7,8 @@
 #include "ConfiguredOptionalPath.h"
 #include "Memory/BatchedUploader.h"  // Inc1 M2: ResourceManagement::InvalidUploadHandle
 #include "MipBake.h"  // Lazy-Procedural-Delta-Baseline Inc0 M1: ConcatenateSdfWithMips
+#include "EmitterPower.h"  // R502.2: EmitterRootPowers
+#include "Recipe/RecipeBaker.h" // runtime recipe edits bake on the shared RunAsync producer
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
 
 #include <algorithm>
@@ -23,6 +25,33 @@
 #include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>  // W-RTQUERY Slice A: glm::translate/glm::scale for TLAS instance transforms
+
+#include "Generated/EmitterTotals.g.h"
+#include "Generated/RecipeEmitterEntry.g.h"
+#include "Generated/SparseEmitterEntry.g.h"
+
+// R502.2: the CPU emitter records in RecipeEmitterTable.h (SVO has no RenderGraph dependency)
+// must stay byte-identical to the generated GPU records.
+static_assert(sizeof(Vixen::SVO::RecipeEmitterEntry) == sizeof(Vixen::Gpu::RecipeEmitterEntry));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, instIdx) == offsetof(Vixen::Gpu::RecipeEmitterEntry, instIdx));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, phi) == offsetof(Vixen::Gpu::RecipeEmitterEntry, phi));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cdf) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cdf));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, flags) == offsetof(Vixen::Gpu::RecipeEmitterEntry, flags));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellOffset) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellOffset));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellCount) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellCount));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, gridDim) == offsetof(Vixen::Gpu::RecipeEmitterEntry, gridDim));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, cellSize) == offsetof(Vixen::Gpu::RecipeEmitterEntry, cellSize));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, gridAabbMin) == offsetof(Vixen::Gpu::RecipeEmitterEntry, gridAabbMinX));
+static_assert(offsetof(Vixen::SVO::RecipeEmitterEntry, areaInst) == offsetof(Vixen::Gpu::RecipeEmitterEntry, areaInst));
+static_assert(sizeof(Vixen::SVO::SparseEmitterEntry) == sizeof(Vixen::Gpu::SparseEmitterEntry));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, octreeIdx) == offsetof(Vixen::Gpu::SparseEmitterEntry, octreeIdx));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, phi) == offsetof(Vixen::Gpu::SparseEmitterEntry, phi));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, cdf) == offsetof(Vixen::Gpu::SparseEmitterEntry, cdf));
+static_assert(offsetof(Vixen::SVO::SparseEmitterEntry, areaScale) == offsetof(Vixen::Gpu::SparseEmitterEntry, areaScale));
+static_assert(sizeof(Vixen::SVO::EmitterTotals) == sizeof(Vixen::Gpu::EmitterTotals));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, phiSparse) == offsetof(Vixen::Gpu::EmitterTotals, phiSparse));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, recipeEntryCount) == offsetof(Vixen::Gpu::EmitterTotals, recipeEntryCount));
+static_assert(offsetof(Vixen::SVO::EmitterTotals, sparseEntryCount) == offsetof(Vixen::Gpu::EmitterTotals, sparseEntryCount));
 
 // W-RTQUERY Slice A: per-brick-AABB TLAS build (EnsureRtQueryTlasBuilt/DestroyRtQueryTlas below).
 
@@ -272,6 +301,7 @@ void BodyOctreeSceneNode::RefreshInstanceStreams() {
         instanceMaterials_ = std::move(nextMaterials);
         std::fill(materialDirty_.begin(), materialDirty_.end(), true);
     }
+    emitterTableDirty_ = true;
 }
 
 void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
@@ -315,12 +345,43 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
     // actually happens; this just makes a pre-first-Compile SetBakeRecipe call behave like
     // a fresh boot (see the latch's own doc comment on the header for the full hazard).
     residencyExplicitlyRequested_ = false;
+    requestedPoolProducer_ = {};
+    if (nodesBuffer_ != VK_NULL_HANDLE) {
+        // Runtime recipe edits must not call EnsureOctreesBuilt from Execute. Bake the
+        // immutable recipe snapshot through the same registry baker used by the editor;
+        // mip, normal, and optional anisotropic pools are consequently part of the job.
+        auto recipe = bakeRecipe_;
+        if (!recipe.empty() &&
+            (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || envFlagEnabled("VIXEN_BRICKMAP_SCENE"))) {
+            requestedPoolProducer_ = [recipe = std::move(recipe)]() mutable {
+                Vixen::SVO::RecipeRegistry registry;
+                Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                entry.bytecode = recipe;
+                if (registry.Register(0u, entry) != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    throw std::runtime_error("SetBakeRecipe producer could not register recipe bytecode");
+                }
+                Vixen::SVO::RecipeBakeResult baked =
+                    Vixen::SVO::BakeRegistryToPool(registry, Vixen::SVO::RecipeBakeConfig{});
+                if (!baked.ok) {
+                    throw std::runtime_error("SetBakeRecipe producer failed: " + baked.err);
+                }
+                return std::move(baked.pool);
+            };
+        } else {
+            // The legacy binary-shell path ignores bakeRecipe_; preserve its existing
+            // behavior while still keeping the rematerialization work off the frame.
+            auto source = std::make_shared<Vixen::SVO::ConcatenatedOctrees>(concatenated_);
+            requestedPoolProducer_ = [source] { return *source; };
+        }
+    }
+    materializationRequested_ = true;
+    ++materializationRequestId_;
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetBakeRecipe: " +
                   std::to_string(bakeRecipe_.size()) + " instructions — octree 0 will use recipe bake");
 }
 
 void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
-    providedPool_ = std::move(pool);
+    providedPool_ = std::make_shared<Vixen::SVO::ConcatenatedOctrees>(std::move(pool));
     poolProvided_ = true;
     octreesBuilt_ = false;   // force EnsureOctreesBuilt to pick up the new pool
     recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
@@ -328,8 +389,24 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
     // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: see SetBakeRecipe's comment above —
     // same latch-clear reasoning, mirrored for the pool-provided path.
     residencyExplicitlyRequested_ = false;
+    const auto poolSnapshot = providedPool_;
+    requestedPoolProducer_ = [poolSnapshot] { return *poolSnapshot; };
+    materializationRequested_ = true;
+    ++materializationRequestId_;
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipePool: " +
-                  std::to_string(providedPool_.count) + " octrees staged");
+                  std::to_string(providedPool_->count) + " octrees staged");
+}
+
+void BodyOctreeSceneNode::SetRecipePoolProducer(
+    std::function<Vixen::SVO::ConcatenatedOctrees()> producer) {
+    if (!producer) {
+        NODE_LOG_WARNING("[BodyOctreeSceneNode] SetRecipePoolProducer ignored an empty producer");
+        return;
+    }
+    requestedPoolProducer_ = std::move(producer);
+    recipeDirty_ = true;
+    materializationRequested_ = true;
+    ++materializationRequestId_;
 }
 
 bool BodyOctreeSceneNode::EditSourceBrickSdf(uint32_t brickId,
@@ -338,11 +415,15 @@ bool BodyOctreeSceneNode::EditSourceBrickSdf(uint32_t brickId,
                                        sdf512.data(), sdf512.size())) {
         return false;
     }
-    dirtyBricks_.push_back(brickId);
     ++rtQueryGeometryEpoch_;
+    auto source = std::make_shared<Vixen::SVO::ConcatenatedOctrees>(concatenated_);
+    requestedPoolProducer_ = [source] { return *source; };
+    recipeDirty_ = true;
+    materializationRequested_ = true;
+    ++materializationRequestId_;
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] EditSourceBrickSdf: brick " +
                    std::to_string(brickId) + " edited + marked dirty (" +
-                   std::to_string(dirtyBricks_.size()) + " pending)");
+                   " queued for a full asynchronous generation");
     return true;
 }
 
@@ -357,6 +438,26 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
     occupancyGrid_ = std::move(concatenatedGrid);
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetOccupancyGrid: " +
                   std::to_string(occupancyGrid_.size()) + " floats staged");
+}
+
+void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes) {
+    emitterShapes_ = std::move(shapes);
+    emitterTableDirty_ = true;
+}
+
+const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
+    if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
+        emitterTableMipSize_ != concatenated_.mipPool.size()) {
+        const std::vector<float> rootPower = published_ &&
+                publishedEmitterRootPowers_.size() == concatenated_.configs.size()
+            ? publishedEmitterRootPowers_
+            : Vixen::SVO::EmitterRootPowers(concatenated_);
+        emitterTable_ = Vixen::SVO::BuildEmitterTable(instances_, emitterShapes_, rootPower);
+        emitterTableDirty_ = false;
+        emitterTableMipData_ = concatenated_.mipPool.data();
+        emitterTableMipSize_ = concatenated_.mipPool.size();
+    }
+    return emitterTable_;
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
@@ -429,8 +530,16 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[BodyOctreeSceneNode] COMMAND_POOL is null");
     }
 
-    // 1+2) Build the per-kind shell octrees + concatenate (once; cached).
-    EnsureOctreesBuilt();
+    // 1+2) Build the source pool once. A staged producer takes precedence on the
+    // first compile; it may carry a recipe bake and emitter power lane that are
+    // absent from the node's default scene pool.
+    if (nodesBuffer_ == VK_NULL_HANDLE && requestedPoolProducer_) {
+        auto initialPoolProducer = std::move(requestedPoolProducer_);
+        concatenated_ = initialPoolProducer();
+        octreesBuilt_ = true;
+    } else {
+        EnsureOctreesBuilt();
+    }
 
     // 3a) Octree GPU buffers — persistent across recompile (create only once).
     if (nodesBuffer_ == VK_NULL_HANDLE) {
@@ -441,7 +550,27 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // pool swap re-enters CompileImpl with nodesBuffer_ already valid, so this branch
         // is skipped) — see DeriveResidencyDefaultIfUnset's own doc comment.
         DeriveResidencyDefaultIfUnset();
-        CreateOctreeBuffers(devicePtr);
+
+        // Outputs are bound by downstream nodes as Compile returns. The first shell
+        // generation must therefore be complete before those handles are published;
+        // a later Execute cannot replace a placeholder handle already captured by a
+        // consumer. Runtime edits still use ScheduleShellGeneration's async path.
+        auto* graph = GetOwningGraph();
+        const uint32_t workers = graph
+            ? graph->GetMainCacher().GetTaskExecutor().Profile().WorkerCount(
+                  Vixen::KernelDispatch::TaskLane::FrameCompute, 2u)
+            : 1u;
+        ShellGenerationPayload initial = BuildShellGenerationPayload(
+            std::move(concatenated_), shellDilation_,
+            envFlagEnabled("VIXEN_SHELL_NORMALS"), workers);
+        concatenated_ = std::move(initial.pool);
+        shellCache_ = std::move(initial.shell);
+        publishedEmitterRootPowers_ = std::move(initial.emitterRootPowers);
+        emitterTableDirty_ = true;
+        CreateOctreeBuffers(devicePtr, /*publishingShellGeneration=*/true);
+        published_ = nextPublishedGeneration_++;
+        ++shellFullDeriveCount_;
+        materializationRequested_ = false;
     } else {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent octree buffers across recompile");
     }
@@ -480,24 +609,30 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
     // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
-    // Surface-Shell ESVO cache — publish slot 0 as the compile-time placeholder;
-    // ExecuteImpl re-emits slot [frame&1] each frame (the last committed cache).
-    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_[0]);
-    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,         shellLookupBuffer_[0]);
+    // Surface-Shell ESVO cache — publish descriptor-valid placeholders until the
+    // first complete generation is produced and re-emitted by ExecuteImpl.
+    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,         shellLookupBuffer_);
     // W-RTQUERY Slice A: compile-time placeholder — VK_NULL_HANDLE until
     // EnsureRtQueryTlasBuilt runs (ExecuteImpl, once instances_ is known); re-emitted there.
     ctx.Out(BodyOctreeSceneNodeConfig::RTQUERY_TLAS,                rtQueryTlas_);
-    // Raster-proxy B2 binder: allocation capacity is grow-only, so publish the
-    // exact live count from the same shell read slot as the buffer handle.
-    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,            proxyAabbBuffer_[0]);
-    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,             proxyAabbCount_[0]);
+    // Raster-proxy B2 binder publishes the exact live count beside its buffer.
+    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,            proxyAabbBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,             proxyAabbCount_);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
                   std::to_string(instanceCount_) + ", ringSlots=" +
                   std::to_string(kRingSize) + ")");
 
-    // A fresh compile already baked the current recipe — no pending re-materialize.
+    if (!published_ && !materializationRequested_ && !shellGenerationJob_) {
+        ++materializationRequestId_;
+        materializationRequested_ = true;
+    }
+    ScheduleShellGeneration();
+
+    // A fresh compile already consumed the source recipe snapshot. Shell/mip generation
+    // is a separate producer job and is published by Execute when its future is ready.
     recipeDirty_ = false;
 }
 
@@ -512,28 +647,15 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Runs every Execute (cheap scan when empty); never a device-wide wait.
     ReclaimRetiredBuffers(executeFrame);
 
-    // P2.3: a runtime recipe edit (SetBakeRecipe after Compile) re-bakes + re-uploads here,
-    // at the fence-waited safe point — never on the recompile cascade. OOC R1: this is now an
-    // off-tick unload(g)+load(g+1)+flip — the old buffers are retired, not freed behind a stall.
+    // A runtime edit stages its immutable input before Execute. This safe point only
+    // requests the producer, polls completion, and publishes a complete generation.
     bool octreeRepublished = false;
     if (recipeDirty_) {
-        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
-            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            std::fprintf(stderr, "[RECIPE/latency] phase=materialize edge=begin wall_us=%lld\n",
-                static_cast<long long>(wallUs));
-        }
-        Rematerialize(executeFrame);
-        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
-            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            std::fprintf(stderr, "[RECIPE/latency] phase=materialize edge=end wall_us=%lld\n",
-                static_cast<long long>(wallUs));
-        }
-
         recipeDirty_      = false;
-        octreeRepublished = true;
+        materializationRequested_ = true;
     }
+    ScheduleShellGeneration();
+    octreeRepublished = PollShellGeneration(executeFrame);
 
     // Inc1 M2: a residency request toggled since the last Execute is serviced here — the
     // same fence-waited safe point recipeDirty_ uses, never synchronously in the setter.
@@ -576,44 +698,16 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t rawFrame   = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
     const uint32_t frameIndex = rawFrame % kRingSize;
 
-    // --- Surface-Shell ESVO cache double-buffer (§B/§C) ---
-    // Render binds the CURRENT read slot [rawFrame&1] (last committed). A pending
-    // CPU dirty list (a value edit that did NOT force a full Rematerialize) is
-    // applied to the WRITE slot [(rawFrame+1)&1] here — a partial re-derive of only
-    // the dirty bricks, then re-uploaded to that slot's GPU buffer. Because the two
-    // GPU slots are DISTINCT VkBuffer objects, a render reading slot N and this
-    // revalidate writing slot N+1 touch disjoint Resource*; the FrameSyncScheduler
-    // (pointer-identity hazard keying) inserts no barrier between them.
+    // --- Surface-Shell ESVO generation selection ---
+    // The worker only writes its private CPU result. The Execute safe point swaps the
+    // complete shell/config generation after its future becomes ready; the published
+    // VkBuffers are never mapped or overwritten by a later producer.
     VulkanDevice* device = GetDevice();
-    const uint32_t readSlot  = rawFrame & 1u;
-    const uint32_t writeSlot = (rawFrame + 1u) & 1u;
-    if (device && !octreeRepublished && !dirtyBricks_.empty() &&
-        !shellCache_[writeSlot].perOctree.empty() && concatenated_.count > 0u) {
-        // Value-edit revalidate for octree 0 (the primary Stored-SDF body): rewrite
-        // only the dirty bricks' data in the WRITE slot's compact octree-0 region,
-        // then re-upload that slot's GPU buffer. Distinct GPU slot => no barrier vs
-        // the render reading the READ slot.
-        Vixen::SVO::ShellPool& ws = shellCache_[writeSlot];
-        Vixen::SVO::ShellDeriveResult& r0 = ws.perOctree[0];
-        // The compact channelPool holds octree 0's shell bricks first (poolBrickBase
-        // 0), so RevalidateShellBricks can rewrite them in-place in the compact pool.
-        const uint32_t rewritten = Vixen::SVO::RevalidateShellBricks(
-            concatenated_, /*octreeIdx=*/0u, r0, dirtyBricks_, ws.compact.channelPool);
-        if (rewritten > 0u) ++rtQueryGeometryEpoch_;
-        UploadShellSlot(device, writeSlot);
-        ++shellRevalidateCount_;
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Shell revalidate: " +
-                      std::to_string(rewritten) + " shell slots updated from " +
-                      std::to_string(dirtyBricks_.size()) + " dirty bricks (write slot " +
-                      std::to_string(writeSlot) + ")");
-        dirtyBricks_.clear();
-    }
-    // Re-emit the CURRENT read slot so the render descriptor binds the committed cache.
-    if (shellDataBuffer_[readSlot] != VK_NULL_HANDLE) {
-        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,   shellDataBuffer_[readSlot]);
-        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_[readSlot]);
-        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,   proxyAabbBuffer_[readSlot]);
-        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,    proxyAabbCount_[readSlot]);
+    if (shellDataBuffer_ != VK_NULL_HANDLE) {
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, shellDataBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, proxyAabbBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT, proxyAabbCount_);
     }
 
     // Each transform stream is one contiguous span copied once per frame. The fence for
@@ -682,12 +776,11 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
-        // Rematerialize re-derived + re-created the shell buffers (both slots) inside
-        // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
-        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
-        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,       shellLookupBuffer_[0]);
-        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,         proxyAabbBuffer_[0]);
-        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,          proxyAabbCount_[0]);
+        // Publish shell handles with the config created from the same complete pool.
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, shellDataBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, proxyAabbBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT, proxyAabbCount_);
     }
 
     // W-RTQUERY Slice A: (re)build the proxy-AABB TLAS once octree buffers AND the
@@ -728,7 +821,10 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
 
     // I4.1: a pre-baked pool from SetRecipePool takes priority over ALL built-in paths.
     if (poolProvided_) {
-        concatenated_ = providedPool_;   // ponytail: shallow copy (vector data owned by providedPool_)
+        if (!providedPool_) {
+            throw std::runtime_error("[BodyOctreeSceneNode] poolProvided_ without a pool snapshot");
+        }
+        concatenated_ = *providedPool_;
         octreesBuilt_ = true;
         NODE_LOG_INFO("[BodyOctreeSceneNode] Using provided recipe pool (" +
                       std::to_string(concatenated_.count) + " octrees, channelPool=" +
@@ -1004,7 +1100,8 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
                   "B, materials=" + std::to_string(concatenated_.materials.size()) + "B)");
 }
 
-void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
+void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
+                                               bool publishingShellGeneration) {
     // nodes / bricks / materials SSBOs from the concatenated byte buffers.
     // Each buffer must be non-empty for a valid VkBuffer; pad to a minimum if a
     // table happened to be empty (defensive — shell octrees produce real data).
@@ -1037,11 +1134,14 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // only ever toggled residency BEFORE the first Compile/upload cycle) hit
     // VUID-vkCmdCopyBuffer-dstBuffer-00120 on real hardware with validation on: this buffer was
     // created host-visible/mapped-write-only, with no path for a later GPU-side copy into it.
+    const bool finePayloadReady = publishingShellGeneration || concatenated_.channelPool.empty();
+    const bool populateBricks = residencyRequested_ && finePayloadReady &&
+        !concatenated_.bricks.empty();
     CreateHostBuffer(device, bricksSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        (residencyRequested_ && !concatenated_.bricks.empty()) ? concatenated_.bricks.data() : nullptr,
+        populateBricks ? concatenated_.bricks.data() : nullptr,
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
-    brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
+    brickPoolUploaded_ = populateBricks;
     if (brickPoolUploaded_) {
         Vixen::SVO::SetCommittedRegime(wholesaleAvailability_, Vixen::SVO::CellFootprintRegime::Surface);
         wholesaleAvailability_.readyMask =
@@ -1090,6 +1190,20 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // else: bricks are uploaded AND the caller's per-octree stamps already diverge
     // -- preserve them untouched (this is the ONLY branch that changes behavior).
 
+    // The async shell was derived from an immutable source snapshot before this
+    // generation's brick upload decision. Keep its compact configs' residency bits
+    // aligned with the finalized source configs before CreateShellBuffers publishes
+    // them into the render's config buffer.
+    const size_t shellConfigCount = std::min(shellCache_.compact.configs.size(),
+                                             concatenated_.configs.size());
+    for (size_t i = 0; i < shellConfigCount; ++i) {
+        Vixen::SVO::setBrickResident(
+            shellCache_.compact.configs[i],
+            Vixen::SVO::brickResidentOf(concatenated_.configs[i]));
+        shellCache_.compact.configs[i]._tailPad[0] =
+            concatenated_.configs[i]._tailPad[0];
+    }
+
     // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
     // ponytail: min 1 entry so the buffer is never zero-byte.
     //
@@ -1124,8 +1238,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // allocation. Keep the full source buffers for flag-off identity and for
     // non-shell paths; the shell pair owns the real shader-readable bytes.
     const bool shellReplacesSourcePair = wholesaleAdmissionEnabled_ &&
-        !shellCache_[0].compact.channelPool.empty() &&
-        !shellCache_[0].compact.brickGridLookup.empty();
+        !shellCache_.compact.channelPool.empty() &&
+        !shellCache_.compact.brickGridLookup.empty();
     const VkDeviceSize sdfSize = shellReplacesSourcePair ? 1 :
         std::max<VkDeviceSize>(concatenated_.channelPool.size(), 1);
     const VkDeviceSize brickLookupSize = shellReplacesSourcePair ? 1 :
@@ -1255,10 +1369,9 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
                       "B configs=" << (concatenated_.configs.size() * sizeof(Vixen::SVO::OctreeConfig)) << "B" << std::endl;
     }
 
-    // Surface-Shell ESVO cache: derive the reachable shell of octree 0 from the
-    // just-created full pool into BOTH CPU slots, then bootstrap both GPU slots.
-    // Render binds SHELL_DATA/SHELL_LOOKUP (the compact pool) — never the full pool.
-    DeriveShellCache();
+    // Surface-Shell ESVO buffers use the currently published CPU image. Initial
+    // compile creates valid placeholders; the RunAsync producer supplies the first
+    // compact pool, lookup, proxy list, and matching config at the safe point.
     CreateShellBuffers(device);
 
     // A newly-created buffer set is a new content generation. A lazy generation starts with
@@ -1269,9 +1382,9 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         if (!concatenated_.bricks.empty()) {
             dirty.bricks.push_back({0, concatenated_.bricks.size()});
         }
-        const auto* activeConfigs = shellCache_[0].compact.configs.empty()
+        const auto* activeConfigs = shellCache_.compact.configs.empty()
             ? &concatenated_.configs
-            : &shellCache_[0].compact.configs;
+            : &shellCache_.compact.configs;
         if (!activeConfigs->empty()) {
             dirty.configs.push_back({0, activeConfigs->size() * sizeof(Vixen::SVO::OctreeConfig)});
         }
@@ -1322,35 +1435,174 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
                   "B transforms and " + std::to_string(static_cast<uint64_t>(materialCapacity)) + "B materials");
 }
 
-void BodyOctreeSceneNode::Rematerialize(uint64_t executeFrame) {
+void BodyOctreeSceneNode::Rematerialize(
+    uint64_t executeFrame,
+    Vixen::SVO::ConcatenatedOctrees pool,
+    Vixen::SVO::ShellPool shell,
+    std::vector<float> emitterRootPowers,
+    const ShellGenerationMetrics& metrics) {
+    const auto publishStart = std::chrono::steady_clock::now();
     VulkanDevice* device = GetDevice();
     if (!device) {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
         return;
     }
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: rebuilding octree buffers off-tick "
-                  "(gen retire at execute frame " + std::to_string(executeFrame) + ")");
+    RetireOctreeBuffers(executeFrame);
+    concatenated_ = std::move(pool);
+    shellCache_ = std::move(shell);
+    publishedEmitterRootPowers_ = std::move(emitterRootPowers);
+    emitterTableDirty_ = true;
+    octreesBuilt_ = true;
 
-    // OOC R1 (design §1.1 site 2, §4.1 step 1b + 1a, §4.3 rules 1-3): a recipe edit is an
-    // unload(gen g) + load(gen g+1) + flip, NOT a device-wide stall.
-    //
-    //  1. The CPU re-bake/re-concatenate is pure over immutable input (no GPU object touched).
-    //  2. The OLD generation's GPU buffers are RETIRED — moved into pendingRetire_ stamped with
-    //     the frame that last bound them — not freed. A fresh VkBuffer created below is a new
-    //     Resource* identity that no in-flight command buffer can reference, so nothing has to
-    //     wait for the queue to idle before it exists.
-    //  3. CreateOctreeBuffers builds the new (back) generation into the now-nulled members;
-    //     ExecuteImpl publishes them by re-emitting the handles this same frame (octreeRepublished).
-    //  4. ReclaimRetiredBuffers destroys the retired generation once kRingSize frames have
-    //     elapsed — the conservative "every frame-in-flight that could still bind it is done"
-    //     bound (the same bound the instance ring's grow path relies on). No vkDeviceWaitIdle,
-    //     no per-frame stall: this runs at the fence-waited Execute safe point and returns.
+    // CreateOctreeBuffers allocates fresh handles and a config buffer for this exact
+    // compact pool. Retired handles stay alive for kRingSize executes, so an in-flight
+    // frame can keep using the old generation while the new one becomes visible.
+    CreateOctreeBuffers(device, /*publishingShellGeneration=*/true);
+    published_ = nextPublishedGeneration_++;
+    ++shellFullDeriveCount_;
+    const double publishMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - publishStart).count();
+    std::printf("[Rematerialize] bricks=%llu shell_bricks=%llu bytes=%llu ms=%.3f "
+                "workers=%u derive_ms=%.3f producer_ms=%.3f\n",
+        static_cast<unsigned long long>(metrics.bricks),
+        static_cast<unsigned long long>(metrics.shellBricks),
+        static_cast<unsigned long long>(metrics.bytes),
+        publishMs, metrics.workers, metrics.deriveMs, metrics.producerMs);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize published generation " +
+                  std::to_string(*published_) + " at execute frame " +
+                  std::to_string(executeFrame));
+}
 
-    octreesBuilt_ = false;     // force EnsureOctreesBuilt to re-bake + re-concatenate all 3 octrees
-    EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged (pure CPU)
+BodyOctreeSceneNode::ShellGenerationPayload BodyOctreeSceneNode::BuildShellGenerationPayload(
+    Vixen::SVO::ConcatenatedOctrees pool,
+    uint32_t shellDilation,
+    bool bakeNormals,
+    uint32_t workerCount) {
+    ShellGenerationPayload payload;
+    const auto workerStart = std::chrono::steady_clock::now();
+    // RecipePoolProducer completes RecipeBaker's mip and emitter-power-lane bakes
+    // before this immutable pool reaches the generation payload.
+    payload.emitterRootPowers = Vixen::SVO::EmitterRootPowers(pool);
+    const auto deriveStart = std::chrono::steady_clock::now();
+    payload.shell = DeriveShellCache(pool, shellDilation, bakeNormals, workerCount);
+    const auto finished = std::chrono::steady_clock::now();
 
-    RetireOctreeBuffers(executeFrame);  // move old GPU buffers + AS into pendingRetire_ (no free, no wait)
-    CreateOctreeBuffers(device);        // build the fresh generation into the nulled members
+    uint64_t bricks = 0;
+    for (uint32_t count : pool.brickCounts) bricks += count;
+    uint64_t shellBricks = 0;
+    for (const auto& perOctree : payload.shell.perOctree) shellBricks += perOctree.shellBrickCount;
+    const uint64_t bytes = payload.shell.compact.channelPool.size() +
+        payload.shell.compact.brickGridLookup.size() + payload.shell.compact.mipPool.size() +
+        payload.shell.compact.mipAnisoPool.size() +
+        payload.shell.compact.tierRefTable.size() * sizeof(Vixen::SVO::TierRef) +
+        payload.shell.compact.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
+    const double deriveMs = std::chrono::duration<double, std::milli>(finished - deriveStart).count();
+    const double producerMs = std::chrono::duration<double, std::milli>(finished - workerStart).count();
+    payload.metrics = {bricks, shellBricks, bytes, workerCount, deriveMs, producerMs};
+    std::printf("[ShellDerive] bricks=%llu shell_bricks=%llu bytes=%llu ms=%.3f workers=%u\n",
+        static_cast<unsigned long long>(bricks),
+        static_cast<unsigned long long>(shellBricks),
+        static_cast<unsigned long long>(bytes), deriveMs, workerCount);
+    payload.pool = std::move(pool);
+    return payload;
+}
+
+void BodyOctreeSceneNode::ScheduleShellGeneration() {
+    if (!materializationRequested_ || shellGenerationJob_) return;
+
+    auto* graph = GetOwningGraph();
+    const uint32_t workers = graph
+        ? graph->GetMainCacher().GetTaskExecutor().Profile().WorkerCount(
+              Vixen::KernelDispatch::TaskLane::FrameCompute, 2u)
+        : 1u;
+    const uint64_t requestId = materializationRequestId_;
+
+    auto poolProducer = std::move(requestedPoolProducer_);
+    if (!poolProducer) {
+        auto source = std::make_shared<Vixen::SVO::ConcatenatedOctrees>(concatenated_);
+        poolProducer = [source] { return *source; };
+    }
+
+    auto payload = std::make_shared<ShellGenerationPayload>();
+    const uint32_t dilation = shellDilation_;
+    const bool bakeNormals = envFlagEnabled("VIXEN_SHELL_NORMALS");
+    const uint64_t owner = static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(this));
+    const Vixen::KernelDispatch::TaskId taskId{owner == 0 ? 1u : owner,
+                                                static_cast<uint32_t>(requestId)};
+    auto produce = [payload, poolProducer = std::move(poolProducer), dilation,
+                    bakeNormals, workers]() mutable {
+        *payload = BodyOctreeSceneNode::BuildShellGenerationPayload(
+            poolProducer(), dilation, bakeNormals, workers);
+    };
+
+    if (!graph) {
+        // Graph-free callers (including standalone render fixtures) have no
+        // executor. Keep their historical synchronous materialization behavior,
+        // then send the completed payload through the normal publication path.
+        produce();
+        std::promise<Vixen::KernelDispatch::AsyncRunResult> completed;
+        auto completion = completed.get_future();
+        completed.set_value(Vixen::KernelDispatch::AsyncRunResult{true, {}});
+
+        ShellGenerationJob job;
+        job.requestId = requestId;
+        job.payload = std::move(payload);
+        job.completion = std::move(completion);
+        shellGenerationJob_ = std::move(job);
+        materializationRequested_ = false;
+        return;
+    }
+
+    auto& executor = graph->GetMainCacher().GetTaskExecutor();
+    Vixen::KernelDispatch::VirtualTask task;
+    task.id = taskId;
+    task.execute = std::move(produce);
+
+    std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
+    tasks.push_back(std::move(task));
+    std::vector<std::vector<Vixen::KernelDispatch::TaskId>> waves{{taskId}};
+    ShellGenerationJob job;
+    job.requestId = requestId;
+    job.payload = std::move(payload);
+    job.completion = executor.RunAsync(std::move(tasks), std::move(waves),
+                                      static_cast<int>(workers));
+    shellGenerationJob_ = std::move(job);
+    materializationRequested_ = false;
+}
+
+bool BodyOctreeSceneNode::PollShellGeneration(uint64_t executeFrame) {
+    if (!shellGenerationJob_ ||
+        shellGenerationJob_->completion.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return false;
+    }
+    // Keep at most the published and one retiring GPU generation live. If an edit
+    // finishes before the previous generation's in-flight frames retire, leave its
+    // completed CPU payload queued and keep rendering the published generation.
+    if (!pendingRetire_.empty()) {
+        return false;
+    }
+
+    ShellGenerationJob job = std::move(*shellGenerationJob_);
+    shellGenerationJob_.reset();
+    const auto result = job.completion.get();
+    if (!result.succeeded) {
+        NODE_LOG_WARNING("[BodyOctreeSceneNode] Shell producer failed; keeping the published generation");
+        for (const auto& error : result.errors) {
+            NODE_LOG_WARNING("[BodyOctreeSceneNode] Shell producer error: " + error.message);
+        }
+        return false;
+    }
+    if (job.requestId != materializationRequestId_) {
+        // An edit arrived while this immutable snapshot was being derived. Discard its
+        // complete result and let the newest request use the producer on the next Execute.
+        materializationRequested_ = true;
+        return false;
+    }
+
+    Rematerialize(executeFrame, std::move(job.payload->pool),
+                  std::move(job.payload->shell),
+                  std::move(job.payload->emitterRootPowers), job.payload->metrics);
+    return true;
 }
 
 // OOC R1: retire the current octree/shell/proxy GPU buffers and the RT acceleration structure
@@ -1377,15 +1629,13 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
     retire(configBuffer_,        configMemory_);
     retire(sdfBuffer_,           sdfMemory_);
     retire(brickLookupBuffer_,   brickLookupMemory_);
-    for (uint32_t i = 0; i < 2; ++i) {
-        retire(shellDataBuffer_[i],   shellDataMemory_[i]);
-        retire(shellLookupBuffer_[i], shellLookupMemory_[i]);
-        retire(proxyAabbBuffer_[i],   proxyAabbMemory_[i]);
-        shellDataCapacity_[i]   = 0;
-        shellLookupCapacity_[i] = 0;
-        proxyAabbCapacity_[i]   = 0;
-        proxyAabbCount_[i]      = 0;
-    }
+    retire(shellDataBuffer_,   shellDataMemory_);
+    retire(shellLookupBuffer_, shellLookupMemory_);
+    retire(proxyAabbBuffer_,   proxyAabbMemory_);
+    shellDataCapacity_ = 0;
+    shellLookupCapacity_ = 0;
+    proxyAabbCapacity_ = 0;
+    proxyAabbCount_ = 0;
     retire(mipPoolBuffer_,       mipPoolMemory_);
     retire(tierRefTableBuffer_,  tierRefTableMemory_);
     retire(occupancyGridBuffer_, occupancyGridMemory_);
@@ -1462,55 +1712,37 @@ void BodyOctreeSceneNode::SetShellThickness(uint32_t dilation) {
     const uint32_t clamped = dilation < 1u ? 1u : (dilation > 3u ? 3u : dilation);
     if (clamped != shellDilation_) {
         shellDilation_ = clamped;
+        // A live node needs a fresh immutable shell generation. Keep the current
+        // published pool visible while the producer derives the new dilation.
+        // If another recipe/pool request is already staged, that producer will
+        // observe the new shellDilation_ when it is scheduled instead.
+        if (published_ && !recipeDirty_) {
+            auto source = std::make_shared<Vixen::SVO::ConcatenatedOctrees>(concatenated_);
+            requestedPoolProducer_ = [source] { return *source; };
+            recipeDirty_ = true;
+            materializationRequested_ = true;
+            ++materializationRequestId_;
+        }
         NODE_LOG_INFO("[BodyOctreeSceneNode] SetShellThickness: shellDilation=" +
                       std::to_string(shellDilation_));
     }
 }
 
-void BodyOctreeSceneNode::DeriveShellCache() {
-    // Derive the reachable shell of EVERY octree into BOTH CPU double-buffer slots
-    // (bootstrap; byte-identical). Multi-octree safe: DeriveShellPool assembles a
-    // compact, render-equivalent ConcatenatedOctrees (compact pool + grid remap +
-    // per-octree poolBrickBase). No-op for binary/Procedural (no SDF pool).
-    if (concatenated_.count == 0u || concatenated_.channelPool.empty()) {
-        shellCache_[0] = Vixen::SVO::ShellPool{};
-        shellCache_[1] = Vixen::SVO::ShellPool{};
-        return;
-    }
+Vixen::SVO::ShellPool BodyOctreeSceneNode::DeriveShellCache(
+    const Vixen::SVO::ConcatenatedOctrees& source,
+    uint32_t shellDilation,
+    bool bakeNormals,
+    uint32_t workerCount) {
+    if (source.count == 0u || source.channelPool.empty()) return {};
     Vixen::SVO::ShellDeriveParams params;
-    params.shellDilation = shellDilation_;
-    params.bakeNormals = envFlagEnabled("VIXEN_SHELL_NORMALS");
-    if (params.bakeNormals) {
-        NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_SHELL_NORMALS: baking oct16 normals into shell brick tails");
-    }
-    try {
-        Vixen::SVO::ShellPool derived =
-            Vixen::SVO::DeriveShellPool(concatenated_, params);
-        shellCache_[0] = derived;             // slot 0 (copy)
-        shellCache_[1] = std::move(derived);  // slot 1 (byte-identical bootstrap)
-        ++shellFullDeriveCount_;
-
-        const Vixen::SVO::ShellPool& s = shellCache_[0];
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Shell pool derived (dilation=" +
-                      std::to_string(shellDilation_) + ", octrees=" +
-                      std::to_string(s.compact.count) +
-                      "): pool " + std::to_string(s.sourcePoolBytes) + "B -> " +
-                      std::to_string(s.shellPoolBytes) + "B (" +
-                      (s.sourcePoolBytes ? std::to_string(
-                          100ull * s.shellPoolBytes / s.sourcePoolBytes) : std::string("100")) +
-                      "%), compact channelPool=" +
-                      std::to_string(s.compact.channelPool.size()) + "B lookup=" +
-                      std::to_string(s.compact.brickGridLookup.size()) + "B");
-    } catch (const std::exception& e) {
-        NODE_LOG_WARNING(std::string("[BodyOctreeSceneNode] Shell derive skipped: ") + e.what());
-        shellCache_[0] = Vixen::SVO::ShellPool{};
-        shellCache_[1] = Vixen::SVO::ShellPool{};
-    }
+    params.shellDilation = shellDilation;
+    params.bakeNormals = bakeNormals;
+    params.workerCount = workerCount;
+    return Vixen::SVO::DeriveShellPool(source, params);
 }
 
-void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
-    slot &= 1u;
-    const Vixen::SVO::ShellPool& sp = shellCache_[slot];
+void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
+    const Vixen::SVO::ShellPool& sp = shellCache_;
 
     // Compact pool (binding-11 replacement) — pad to 1 byte when empty so the
     // descriptor is always valid (binary/Procedural non-regression invariant).
@@ -1519,8 +1751,9 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
     const VkDeviceSize lookupSize =
         std::max<VkDeviceSize>(sp.compact.brickGridLookup.size(), 1);
 
-    // (Re)create the slot buffers only if capacity changed (shell size is stable
-    // for a static doc; a re-derive at a new dilation may grow it).
+    // Reuse is only possible when no generation is being replaced. Rematerialize
+    // retires the old handles before reaching here, so a generation that may still
+    // be referenced by an in-flight frame always gets fresh buffers.
     auto ensure = [&](VkBuffer& buf, VkDeviceMemory& mem, VkDeviceSize& cap,
                       VkDeviceSize needed, const void* data, size_t dataBytes,
                       const char* ctx) {
@@ -1544,12 +1777,13 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
         RecordWholeBufferUpload(static_cast<uint64_t>(needed));
     };
 
-    ensure(shellDataBuffer_[slot], shellDataMemory_[slot], shellDataCapacity_[slot],
-           dataSize, sp.compact.channelPool.empty() ? nullptr : sp.compact.channelPool.data(),
-           sp.compact.channelPool.size(), "shell data SSBO");
-    ensure(shellLookupBuffer_[slot], shellLookupMemory_[slot], shellLookupCapacity_[slot],
-           lookupSize, sp.compact.brickGridLookup.empty() ? nullptr : sp.compact.brickGridLookup.data(),
-           sp.compact.brickGridLookup.size(), "shell lookup SSBO");
+    const uint8_t emptyByte = 0u;
+    ensure(shellDataBuffer_, shellDataMemory_, shellDataCapacity_,
+           dataSize, sp.compact.channelPool.empty() ? &emptyByte : sp.compact.channelPool.data(),
+           std::max<size_t>(sp.compact.channelPool.size(), 1u), "shell data SSBO");
+    ensure(shellLookupBuffer_, shellLookupMemory_, shellLookupCapacity_,
+           lookupSize, sp.compact.brickGridLookup.empty() ? &emptyByte : sp.compact.brickGridLookup.data(),
+           std::max<size_t>(sp.compact.brickGridLookup.size(), 1u), "shell lookup SSBO");
 
     // Raster-proxy artifact: flatten the per-octree proxy AABB lists (template-
     // local space) into one contiguous SSBO for the proxy raster pre-pass. Value
@@ -1566,18 +1800,15 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
     }
     const VkDeviceSize proxySize = std::max<VkDeviceSize>(
         flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), 1);
-    proxyAabbCount_[slot] = static_cast<uint32_t>(flatProxies.size());
-    ensure(proxyAabbBuffer_[slot], proxyAabbMemory_[slot], proxyAabbCapacity_[slot],
-           proxySize, flatProxies.empty() ? nullptr : flatProxies.data(),
-           flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), "shell proxy AABB SSBO");
-    ++proxyAabbUploadCount_[slot];
-}
-
-void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
-    // Bootstrap BOTH GPU slots from the (identical) CPU cache so frame 0's render
-    // reads a valid shell regardless of which slot &1 selects.
-    UploadShellSlot(device, 0);
-    UploadShellSlot(device, 1);
+    proxyAabbCount_ = static_cast<uint32_t>(flatProxies.size());
+    const void* proxyData = flatProxies.empty()
+        ? static_cast<const void*>(&emptyByte)
+        : static_cast<const void*>(flatProxies.data());
+    ensure(proxyAabbBuffer_, proxyAabbMemory_, proxyAabbCapacity_,
+           proxySize, proxyData,
+           std::max<size_t>(flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), 1u),
+           "shell proxy AABB SSBO");
+    ++proxyAabbUploadCount_;
 
     // The render reads binding 5 (OCTREE_CONFIG_BUFFER) for poolBrickBase /
     // brickStrideFloats / bricksPerAxisSdf. The COMPACT pool re-packs bricks so its
@@ -1585,7 +1816,6 @@ void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
     // the compact configs so binding-5 addressing matches the compact pool the
     // render now reads. (For a single-octree pool poolBrickBase is 0 in both, so
     // this is a no-op; it is the multi-octree correctness fix.)
-    const Vixen::SVO::ShellPool& sp = shellCache_[0];
     if (!sp.compact.configs.empty() && configBuffer_ != VK_NULL_HANDLE) {
         const VkDeviceSize cfgBytes =
             sp.compact.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
@@ -1597,18 +1827,21 @@ void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
     }
     size_t proxyCount = 0;
     for (const auto& r : sp.perOctree) proxyCount += r.proxyAabbs.size();
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Shell GPU buffers created (slot0 data=" +
-                  std::to_string(static_cast<uint64_t>(shellDataCapacity_[0])) + "B lookup=" +
-                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[0])) + "B; slot1 data=" +
-                  std::to_string(static_cast<uint64_t>(shellDataCapacity_[1])) + "B lookup=" +
-                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[1])) + "B; proxyAabbs=" +
-                  std::to_string(proxyCount) + " x32B x2 slots)");
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Shell GPU generation created (data=" +
+                  std::to_string(static_cast<uint64_t>(shellDataCapacity_)) + "B lookup=" +
+                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_)) + "B; proxyAabbs=" +
+                  std::to_string(proxyCount) + " x32B)");
 }
 
 bool BodyOctreeSceneNode::UploadBrickPool() {
     VulkanDevice* device = GetDevice();
     if (!device) {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool called with no device");
+        return false;
+    }
+    if (!published_ && !concatenated_.channelPool.empty()) {
+        // Keep Stored-SDF in mip-only mode until its compact shell/config tuple has
+        // published. The first generation rebuild applies the current residency request.
         return false;
     }
 
@@ -1793,16 +2026,14 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(configBuffer_,        configMemory_);
     destroy(sdfBuffer_,           sdfMemory_);         // Inc2 M3
     destroy(brickLookupBuffer_,   brickLookupMemory_); // Inc2 M3
-    // Surface-Shell ESVO cache — both double-buffer slots.
-    for (uint32_t i = 0; i < 2; ++i) {
-        destroy(shellDataBuffer_[i],   shellDataMemory_[i]);
-        destroy(shellLookupBuffer_[i], shellLookupMemory_[i]);
-        destroy(proxyAabbBuffer_[i],   proxyAabbMemory_[i]);
-        shellDataCapacity_[i]   = 0;
-        shellLookupCapacity_[i] = 0;
-        proxyAabbCapacity_[i]   = 0;
-        proxyAabbCount_[i]      = 0;
-    }
+    // Surface-Shell ESVO cache for the currently published generation.
+    destroy(shellDataBuffer_,   shellDataMemory_);
+    destroy(shellLookupBuffer_, shellLookupMemory_);
+    destroy(proxyAabbBuffer_,   proxyAabbMemory_);
+    shellDataCapacity_ = 0;
+    shellLookupCapacity_ = 0;
+    proxyAabbCapacity_ = 0;
+    proxyAabbCount_ = 0;
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
     destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
@@ -1913,7 +2144,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     // Primitive order is deliberately the shell slot order emitted by ShellDerive. The
     // shader uses the primitive index to address the same compact ChannelPool slot.
     rtQueryBlas_.assign(concatenated_.count, RtQueryBlas{});
-    const auto& shellPool = shellCache_[0];
+    const auto& shellPool = shellCache_;
     uint32_t proxyBase = 0u;
 
     for (uint32_t oi = 0; oi < concatenated_.count; ++oi) {

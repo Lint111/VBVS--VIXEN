@@ -37,6 +37,18 @@ struct PushConstantData {
  * @see MultiDispatchNode for usage
  */
 struct DispatchPass {
+    // Existing bucket/tile partition, not a separate dispatch registry. For indirect
+    // work the buffer carries one VkDispatchIndirectCommand per tile and the shader
+    // consumes a reflected pixel origin. Direct work uses dispatch-base coordinates.
+    struct TilePartition {
+        glm::uvec3 grid{1, 1, 1};
+        uint32_t groupEdge = 7;
+        uint32_t originPushOffset = 0;
+        uint32_t localSize = 8;
+    };
+    std::optional<TilePartition> tiles;
+    static constexpr uint32_t BoundedGroupEdge = 7;
+
     // Pipeline binding
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;

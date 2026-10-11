@@ -1,0 +1,867 @@
+[box:flow] gpuyield-baseline-apps-checks-two-jobs cpu=34% target=80% depth=2 free=0 baseline=3 granted=1 mode=static
+[box:flow] gpuyield-baseline-apps-checks-two-jobs queued — need=1 tokens projected=11970MB estimate=class-max samples=998
+[box:flow] gpuyield-baseline-apps-checks-two-jobs cpu-target=80% source=default(missing) ceiling=disabled (fail-open)
+[box:flow] gpuyield-baseline-apps-checks-two-jobs memory=admit avail=70628MB projected=11970MB estimate=class-max samples=998 reserved=13893MB total=80425MB reserve=4096MB disk=563338MB
+[box:flow] gpuyield-baseline-apps-checks-two-jobs passed token-blocked queue head pid=1701715 (1/3)
+[box:flow] gpuyield-baseline-apps-checks-two-jobs granted tokens=5 mask=10,11
+[box:flow] gpuyield-baseline-apps-checks-two-jobs running on cores 10,11 (build)
+[0/2] Re-checking globbed directories...
+[1/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glm-build/glm/CMakeFiles/glm.dir/detail/glm.cpp.o
+[2/602] Linking CXX static library lib/libglm.a
+[3/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/address_waiter.cpp.o
+[4/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/allocator.cpp.o
+[5/602] Building CXX object libraries/Core/CMakeFiles/Core.dir/cmake_pch.hxx.gch
+[6/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/arena.cpp.o
+[7/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/arena_slot.cpp.o
+[8/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/concurrent_bounded_queue.cpp.o
+[9/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/dynamic_link.cpp.o
+[10/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/exception.cpp.o
+[11/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/governor.cpp.o
+[12/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/global_control.cpp.o
+[13/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/main.cpp.o
+[14/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/itt_notify.cpp.o
+[15/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/market.cpp.o
+[16/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/tcm_adaptor.cpp.o
+[17/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/misc_ex.cpp.o
+[18/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/misc.cpp.o
+[19/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/observer_proxy.cpp.o
+[20/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/parallel_pipeline.cpp.o
+[21/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/private_server.cpp.o
+[22/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/profiling.cpp.o
+[23/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/rml_tbb.cpp.o
+[24/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/rtm_mutex.cpp.o
+[25/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/rtm_rw_mutex.cpp.o
+[26/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/semaphore.cpp.o
+[27/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/small_object_pool.cpp.o
+[28/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/task.cpp.o
+[29/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/task_dispatcher.cpp.o
+[30/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/task_group_context.cpp.o
+[31/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/thread_dispatcher.cpp.o
+[32/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/thread_request_serializer.cpp.o
+[33/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/version.cpp.o
+[34/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/threading_control.cpp.o
+[35/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbb/CMakeFiles/tbb.dir/queuing_rw_mutex.cpp.o
+[36/602] Building CXX object libraries/Core/CMakeFiles/Core.dir/src/MortonEncoding.cpp.o
+[37/602] Building CXX object libraries/EventBus/CMakeFiles/EventBus.dir/cmake_pch.hxx.gch
+[38/602] Building CXX object libraries/VoxelComponents/CMakeFiles/VoxelComponents.dir/cmake_pch.hxx.gch
+[39/602] Building CXX object libraries/Core/CMakeFiles/Core.dir/src/RuntimeCachePaths.cpp.o
+[40/602] Linking CXX static library lib/libCore.a
+[41/602] Building CXX object libraries/logger/CMakeFiles/Logger.dir/cmake_pch.hxx.gch
+[42/602] Building CXX object libraries/EventBus/CMakeFiles/EventBus.dir/src/MessageBus.cpp.o
+[43/602] Building CXX object libraries/VoxelComponents/CMakeFiles/VoxelComponents.dir/src/VoxelComponents.cpp.o
+[44/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/cmake_pch.hxx.gch
+[45/602] Linking CXX shared library gnu_15.2_cxx11_64_release/libtbb.so.12.11
+[46/602] Creating library symlink gnu_15.2_cxx11_64_release/libtbb.so.12 gnu_15.2_cxx11_64_release/libtbb.so
+[47/602] Building CXX object dependencies/native/kernel-dispatch/CMakeFiles/KernelDispatch.dir/src/TaskDependencyGraph.cpp.o
+[48/602] Building CXX object dependencies/native/kernel-dispatch/CMakeFiles/KernelDispatch.dir/src/TaskExecutor.cpp.o
+[49/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/context.c.o
+[50/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/init.c.o
+[51/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/input.c.o
+[52/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/monitor.c.o
+[53/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/platform.c.o
+[54/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/vulkan.c.o
+[55/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/window.c.o
+[56/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/egl_context.c.o
+[57/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/osmesa_context.c.o
+[58/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/null_init.c.o
+[59/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/null_monitor.c.o
+[60/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/null_window.c.o
+[61/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/null_joystick.c.o
+[62/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/posix_module.c.o
+[63/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/posix_time.c.o
+[64/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/posix_thread.c.o
+[65/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/x11_init.c.o
+[66/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/x11_monitor.c.o
+[67/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/x11_window.c.o
+[68/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/xkb_unicode.c.o
+[69/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/glx_context.c.o
+[70/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/linux_joystick.c.o
+[71/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/glfw-build/src/CMakeFiles/glfw.dir/posix_poll.c.o
+[72/602] Building CXX object libraries/logger/CMakeFiles/Logger.dir/FrameRateLogger.cpp.o
+[73/602] Building CXX object libraries/logger/CMakeFiles/Logger.dir/ILoggable.cpp.o
+[74/602] Building CXX object libraries/logger/CMakeFiles/Logger.dir/Logger.cpp.o
+[75/602] Linking CXX static library lib/libEventBus.a
+[76/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Updates/BatchedUpdater.cpp.o
+[77/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/DirectAllocator.cpp.o
+[78/602] Building CXX object libraries/GaiaVoxelWorld/CMakeFiles/GaiaVoxelWorld.dir/cmake_pch.hxx.gch
+[79/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/VMAAllocator.cpp.o
+In file included from ../../VIXEN/libraries/ResourceManagement/src/Memory/VMAAllocator.cpp:13:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘void VmaBlockMetadata::DebugLogAllocation(VkDeviceSize, VkDeviceSize, void*) const’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:6615:21: warning: unused variable ‘name’ [-Wunused-variable]
+ 6615 |         const char* name = allocation->GetName();
+      |                     ^~~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘virtual void VmaBlockMetadata_Linear::Alloc(const VmaAllocationRequest&, VmaSuballocationType, void*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:7994:34: warning: unused variable ‘suballocations1st’ [-Wunused-variable]
+ 7994 |         SuballocationVectorType& suballocations1st = AccessSuballocations1st();
+      |                                  ^~~~~~~~~~~~~~~~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: At global scope:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9755:49: warning: missing initializer for member ‘VmaDefragmentationStats::bytesFreed’ [-Wmissing-field-initializers]
+ 9755 |     VmaDefragmentationStats m_GlobalStats = { 0 };
+      |                                                 ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9755:49: warning: missing initializer for member ‘VmaDefragmentationStats::allocationsMoved’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9755:49: warning: missing initializer for member ‘VmaDefragmentationStats::deviceMemoryBlocksFreed’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9756:47: warning: missing initializer for member ‘VmaDefragmentationStats::bytesFreed’ [-Wmissing-field-initializers]
+ 9756 |     VmaDefragmentationStats m_PassStats = { 0 };
+      |                                               ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9756:47: warning: missing initializer for member ‘VmaDefragmentationStats::allocationsMoved’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:9756:47: warning: missing initializer for member ‘VmaDefragmentationStats::deviceMemoryBlocksFreed’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘void VmaBlockVector::Free(VmaAllocation)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11361:22: warning: unused variable ‘res’ [-Wunused-variable]
+11361 |             VkResult res = pBlock->ValidateMagicValueAfterAllocation(m_hAllocator, hAllocation->GetOffset(), hAllocation->GetSize());
+      |                      ^~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaBlockVector::CommitAllocationRequest(VmaAllocationRequest&, VmaDeviceMemoryBlock*, VkDeviceSize, VmaAllocationCreateFlags, void*, VmaSuballocationType, VmaAllocation_T**)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11544:18: warning: unused variable ‘res’ [-Wunused-variable]
+11544 |         VkResult res = pBlock->WriteMagicValueAfterAllocation(m_hAllocator, (*pAllocation)->GetOffset(), allocRequest.size);
+      |                  ^~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaBlockVector::CreateBlock(VkDeviceSize, size_t*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11552:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+11552 |     VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+      |                                                                               ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11552:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::allocationSize’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11552:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::memoryTypeIndex’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11559:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::pNext’ [-Wmissing-field-initializers]
+11559 |     VkMemoryAllocateFlagsInfoKHR allocFlagsInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR };
+      |                                                                                                      ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11559:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::flags’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11559:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::deviceMask’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11568:106: warning: missing initializer for member ‘VkMemoryPriorityAllocateInfoEXT::pNext’ [-Wmissing-field-initializers]
+11568 |     VkMemoryPriorityAllocateInfoEXT priorityInfo = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
+      |                                                                                                          ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11568:106: warning: missing initializer for member ‘VkMemoryPriorityAllocateInfoEXT::priority’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11579:111: warning: missing initializer for member ‘VkExportMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+11579 |     VkExportMemoryAllocateInfoKHR exportMemoryAllocInfo = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHR };
+      |                                                                                                               ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11579:111: warning: missing initializer for member ‘VkExportMemoryAllocateInfo::handleTypes’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaDefragmentationContext_T::DefragmentPassEnd(VmaDefragmentationPassMoveInfo&)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11967:23: warning: missing initializer for member ‘VmaDefragmentationStats::bytesFreed’ [-Wmissing-field-initializers]
+11967 |     m_PassStats = { 0 };
+      |                       ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11967:23: warning: missing initializer for member ‘VmaDefragmentationStats::allocationsMoved’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:11967:23: warning: missing initializer for member ‘VmaDefragmentationStats::deviceMemoryBlocksFreed’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:12036:18: warning: unused variable ‘res’ [-Wunused-variable]
+12036 |         VkResult res = block.block->Map(allocator, block.data, VMA_NULL);
+      |                  ^~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaAllocator_T::AllocateDedicatedMemory(VmaPool, VkDeviceSize, VmaSuballocationType, VmaDedicatedAllocationList&, uint32_t, bool, bool, bool, bool, void*, float, VkBuffer, VkImage, VmaBufferImageUsage, size_t, VmaAllocation_T**, const void*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13365:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+13365 |     VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+      |                                                                               ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13365:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::allocationSize’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13365:79: warning: missing initializer for member ‘VkMemoryAllocateInfo::memoryTypeIndex’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13371:114: warning: missing initializer for member ‘VkMemoryDedicatedAllocateInfo::pNext’ [-Wmissing-field-initializers]
+13371 |     VkMemoryDedicatedAllocateInfoKHR dedicatedAllocInfo = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
+      |                                                                                                                  ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13371:114: warning: missing initializer for member ‘VkMemoryDedicatedAllocateInfo::image’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13371:114: warning: missing initializer for member ‘VkMemoryDedicatedAllocateInfo::buffer’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13392:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::pNext’ [-Wmissing-field-initializers]
+13392 |     VkMemoryAllocateFlagsInfoKHR allocFlagsInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR };
+      |                                                                                                      ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13392:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::flags’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13392:102: warning: missing initializer for member ‘VkMemoryAllocateFlagsInfo::deviceMask’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13414:106: warning: missing initializer for member ‘VkMemoryPriorityAllocateInfoEXT::pNext’ [-Wmissing-field-initializers]
+13414 |     VkMemoryPriorityAllocateInfoEXT priorityInfo = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
+      |                                                                                                          ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13414:106: warning: missing initializer for member ‘VkMemoryPriorityAllocateInfoEXT::priority’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13425:111: warning: missing initializer for member ‘VkExportMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+13425 |     VkExportMemoryAllocateInfoKHR exportMemoryAllocInfo = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHR };
+      |                                                                                                               ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13425:111: warning: missing initializer for member ‘VkExportMemoryAllocateInfo::handleTypes’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘void VmaAllocator_T::GetBufferMemoryRequirements(VkBuffer, VkMemoryRequirements&, bool&, bool&) const’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13553:115: warning: missing initializer for member ‘VkBufferMemoryRequirementsInfo2::pNext’ [-Wmissing-field-initializers]
+13553 |         VkBufferMemoryRequirementsInfo2KHR memReqInfo = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR };
+      |                                                                                                                   ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13553:115: warning: missing initializer for member ‘VkBufferMemoryRequirementsInfo2::buffer’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13556:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::pNext’ [-Wmissing-field-initializers]
+13556 |         VkMemoryDedicatedRequirementsKHR memDedicatedReq = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR };
+      |                                                                                                                  ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13556:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::prefersDedicatedAllocation’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13556:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::requiresDedicatedAllocation’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13558:90: warning: missing initializer for member ‘VkMemoryRequirements2::pNext’ [-Wmissing-field-initializers]
+13558 |         VkMemoryRequirements2KHR memReq2 = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+      |                                                                                          ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13558:90: warning: missing initializer for member ‘VkMemoryRequirements2::memoryRequirements’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘void VmaAllocator_T::GetImageMemoryRequirements(VkImage, VkMemoryRequirements&, bool&, bool&) const’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13585:113: warning: missing initializer for member ‘VkImageMemoryRequirementsInfo2::pNext’ [-Wmissing-field-initializers]
+13585 |         VkImageMemoryRequirementsInfo2KHR memReqInfo = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+      |                                                                                                                 ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13585:113: warning: missing initializer for member ‘VkImageMemoryRequirementsInfo2::image’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13588:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::pNext’ [-Wmissing-field-initializers]
+13588 |         VkMemoryDedicatedRequirementsKHR memDedicatedReq = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR };
+      |                                                                                                                  ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13588:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::prefersDedicatedAllocation’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13588:114: warning: missing initializer for member ‘VkMemoryDedicatedRequirements::requiresDedicatedAllocation’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13590:90: warning: missing initializer for member ‘VkMemoryRequirements2::pNext’ [-Wmissing-field-initializers]
+13590 |         VkMemoryRequirements2KHR memReq2 = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+      |                                                                                          ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:13590:90: warning: missing initializer for member ‘VkMemoryRequirements2::memoryRequirements’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaAllocator_T::AllocateVulkanMemory(const VkMemoryAllocateInfo*, VkDeviceMemory_T**)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14182:20: warning: unused variable ‘prevDeviceMemoryCount’ [-Wunused-variable]
+14182 |     const uint64_t prevDeviceMemoryCount = deviceMemoryCountIncrement.Increment(&m_DeviceMemoryCount);
+      |                    ^~~~~~~~~~~~~~~~~~~~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaAllocator_T::BindVulkanBuffer(VkDeviceMemory, VkDeviceSize, VkBuffer, const void*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14272:110: warning: missing initializer for member ‘VkBindBufferMemoryInfo::pNext’ [-Wmissing-field-initializers]
+14272 |             VkBindBufferMemoryInfoKHR bindBufferMemoryInfo = { VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO_KHR };
+      |                                                                                                              ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14272:110: warning: missing initializer for member ‘VkBindBufferMemoryInfo::buffer’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14272:110: warning: missing initializer for member ‘VkBindBufferMemoryInfo::memory’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14272:110: warning: missing initializer for member ‘VkBindBufferMemoryInfo::memoryOffset’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘VkResult VmaAllocator_T::BindVulkanImage(VkDeviceMemory, VkDeviceSize, VkImage, const void*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14303:108: warning: missing initializer for member ‘VkBindImageMemoryInfo::pNext’ [-Wmissing-field-initializers]
+14303 |             VkBindImageMemoryInfoKHR bindBufferMemoryInfo = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO_KHR };
+      |                                                                                                            ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14303:108: warning: missing initializer for member ‘VkBindImageMemoryInfo::image’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14303:108: warning: missing initializer for member ‘VkBindImageMemoryInfo::memory’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14303:108: warning: missing initializer for member ‘VkBindImageMemoryInfo::memoryOffset’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In member function ‘void VmaAllocator_T::UpdateVulkanBudget()’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14672:113: warning: missing initializer for member ‘VkPhysicalDeviceMemoryProperties2::pNext’ [-Wmissing-field-initializers]
+14672 |     VkPhysicalDeviceMemoryProperties2KHR memProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR };
+      |                                                                                                                 ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14672:113: warning: missing initializer for member ‘VkPhysicalDeviceMemoryProperties2::memoryProperties’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14674:126: warning: missing initializer for member ‘VkPhysicalDeviceMemoryBudgetPropertiesEXT::pNext’ [-Wmissing-field-initializers]
+14674 |     VkPhysicalDeviceMemoryBudgetPropertiesEXT budgetProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT };
+      |                                                                                                                              ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14674:126: warning: missing initializer for member ‘VkPhysicalDeviceMemoryBudgetPropertiesEXT::heapBudget’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:14674:126: warning: missing initializer for member ‘VkPhysicalDeviceMemoryBudgetPropertiesEXT::heapUsage’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In function ‘VkResult vmaFindMemoryTypeIndexForBufferInfo(VmaAllocator, const VkBufferCreateInfo*, const VmaAllocationCreateInfo*, uint32_t*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15161:116: warning: missing initializer for member ‘VkDeviceBufferMemoryRequirements::pNext’ [-Wmissing-field-initializers]
+15161 |         VkDeviceBufferMemoryRequirementsKHR devBufMemReq = {VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS_KHR};
+      |                                                                                                                    ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15161:116: warning: missing initializer for member ‘VkDeviceBufferMemoryRequirements::pCreateInfo’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15164:80: warning: missing initializer for member ‘VkMemoryRequirements2::pNext’ [-Wmissing-field-initializers]
+15164 |         VkMemoryRequirements2 memReq = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+      |                                                                                ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15164:80: warning: missing initializer for member ‘VkMemoryRequirements2::memoryRequirements’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: In function ‘VkResult vmaFindMemoryTypeIndexForImageInfo(VmaAllocator, const VkImageCreateInfo*, const VmaAllocationCreateInfo*, uint32_t*)’:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15213:114: warning: missing initializer for member ‘VkDeviceImageMemoryRequirements::pNext’ [-Wmissing-field-initializers]
+15213 |         VkDeviceImageMemoryRequirementsKHR devImgMemReq = {VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS_KHR};
+      |                                                                                                                  ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15213:114: warning: missing initializer for member ‘VkDeviceImageMemoryRequirements::pCreateInfo’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15213:114: warning: missing initializer for member ‘VkDeviceImageMemoryRequirements::planeAspect’ [-Wmissing-field-initializers]
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15218:80: warning: missing initializer for member ‘VkMemoryRequirements2::pNext’ [-Wmissing-field-initializers]
+15218 |         VkMemoryRequirements2 memReq = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+      |                                                                                ^
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:15218:80: warning: missing initializer for member ‘VkMemoryRequirements2::memoryRequirements’ [-Wmissing-field-initializers]
+../../VIXEN/libraries/ResourceManagement/src/Memory/VMAAllocator.cpp: In member function ‘virtual std::expected<ResourceManagement::BufferAllocation, ResourceManagement::AllocationError> ResourceManagement::VMAAllocator::CreateAliasedBuffer(const ResourceManagement::AliasedBufferRequest&)’:
+../../VIXEN/libraries/ResourceManagement/src/Memory/VMAAllocator.cpp:532:39: warning: variable ‘nameInfo’ set but not used [-Wunused-but-set-variable]
+  532 |         VkDebugUtilsObjectNameInfoEXT nameInfo{};
+      |                                       ^~~~~~~~
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h: At global scope:
+../../.tmp/fetch/vulkanmemoryallocator-src/include/vk_mem_alloc.h:3841:13: warning: ‘void swap(VmaBufferImageUsage&, VmaBufferImageUsage&)’ defined but not used [-Wunused-function]
+ 3841 | static void swap(VmaBufferImageUsage& lhs, VmaBufferImageUsage& rhs) noexcept
+      |             ^~~~
+[80/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/ResourceBudgetManager.cpp.o
+[81/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/HostBudgetManager.cpp.o
+[82/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/DeviceBudgetManager.cpp.o
+[83/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/BudgetBridge.cpp.o
+[84/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/StagingBufferPool.cpp.o
+[85/602] Building CXX object libraries/ResourceManagement/CMakeFiles/ResourceManagement.dir/src/Memory/BatchedUploader.cpp.o
+../../VIXEN/libraries/ResourceManagement/src/Memory/BatchedUploader.cpp: In member function ‘void ResourceManagement::BatchedUploader::CreateCommandPool(uint32_t)’:
+../../VIXEN/libraries/ResourceManagement/src/Memory/BatchedUploader.cpp:357:14: warning: variable ‘result’ set but not used [-Wunused-but-set-variable]
+  357 |     VkResult result = vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_);
+      |              ^~~~~~
+[86/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/spirv_reflect-build/CMakeFiles/spirv-reflect-static.dir/spirv_reflect.c.o
+[87/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/cmake_pch.hxx.gch
+[88/602] Linking CXX static library lib/libVoxelComponents.a
+[89/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/cmake_pch.hxx.gch
+[90/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/AttributeRegistry.cpp.o
+[91/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/AttributeStorage.cpp.o
+[92/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/BrickView.cpp.o
+In file included from ../../VIXEN/libraries/VoxelData/src/BrickView.cpp:259:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onKeyChanged(const std::string&, const std::string&)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:331:42: warning: unused parameter ‘oldKey’ [-Wunused-parameter]
+  331 |     void onKeyChanged(const std::string& oldKey, const std::string& newKey) override {
+      |                       ~~~~~~~~~~~~~~~~~~~^~~~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:331:69: warning: unused parameter ‘newKey’ [-Wunused-parameter]
+  331 |     void onKeyChanged(const std::string& oldKey, const std::string& newKey) override {
+      |                                                  ~~~~~~~~~~~~~~~~~~~^~~~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onAttributeAdded(const std::string&, Vixen::VoxelData::AttributeType)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:341:46: warning: unused parameter ‘name’ [-Wunused-parameter]
+  341 |     void onAttributeAdded(const std::string& name, AttributeType type) override {
+      |                           ~~~~~~~~~~~~~~~~~~~^~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:341:66: warning: unused parameter ‘type’ [-Wunused-parameter]
+  341 |     void onAttributeAdded(const std::string& name, AttributeType type) override {
+      |                                                    ~~~~~~~~~~~~~~^~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onAttributeRemoved(const std::string&)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:351:48: warning: unused parameter ‘name’ [-Wunused-parameter]
+  351 |     void onAttributeRemoved(const std::string& name) override {
+      |                             ~~~~~~~~~~~~~~~~~~~^~~~
+[93/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/Compression/BlockCompressor.cpp.o
+[94/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/Compression/DXT1Compressor.cpp.o
+[95/602] Building CXX object libraries/VoxelData/CMakeFiles/VoxelData.dir/src/DynamicVoxelStruct.cpp.o
+In file included from ../../VIXEN/libraries/VoxelData/src/DynamicVoxelStruct.cpp:2:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onKeyChanged(const std::string&, const std::string&)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:331:42: warning: unused parameter ‘oldKey’ [-Wunused-parameter]
+  331 |     void onKeyChanged(const std::string& oldKey, const std::string& newKey) override {
+      |                       ~~~~~~~~~~~~~~~~~~~^~~~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:331:69: warning: unused parameter ‘newKey’ [-Wunused-parameter]
+  331 |     void onKeyChanged(const std::string& oldKey, const std::string& newKey) override {
+      |                                                  ~~~~~~~~~~~~~~~~~~~^~~~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onAttributeAdded(const std::string&, Vixen::VoxelData::AttributeType)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:341:46: warning: unused parameter ‘name’ [-Wunused-parameter]
+  341 |     void onAttributeAdded(const std::string& name, AttributeType type) override {
+      |                           ~~~~~~~~~~~~~~~~~~~^~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:341:66: warning: unused parameter ‘type’ [-Wunused-parameter]
+  341 |     void onAttributeAdded(const std::string& name, AttributeType type) override {
+      |                                                    ~~~~~~~~~~~~~~^~~~
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h: In member function ‘virtual void Vixen::VoxelData::DynamicVoxelSyncObserver::onAttributeRemoved(const std::string&)’:
+../../VIXEN/libraries/VoxelData/include/DynamicVoxelStruct.h:351:48: warning: unused parameter ‘name’ [-Wunused-parameter]
+  351 |     void onAttributeRemoved(const std::string& name) override {
+      |                             ~~~~~~~~~~~~~~~~~~~^~~~
+[96/602] Building CXX object libraries/GaiaVoxelWorld/CMakeFiles/GaiaVoxelWorld.dir/src/GaiaVoxelWorld.cpp.o
+../../VIXEN/libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp: In member function ‘void Vixen::GaiaVoxel::GaiaVoxelWorld::tryAutoParentToChunk(EntityID, const glm::vec3&)’:
+../../VIXEN/libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp:126:82: warning: unused parameter ‘position’ [-Wunused-parameter]
+  126 | void GaiaVoxelWorld::tryAutoParentToChunk(EntityID voxelEntity, const glm::vec3& position) {
+      |                                                                 ~~~~~~~~~~~~~~~~~^~~~~~~~
+../../VIXEN/libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp: In member function ‘Vixen::GaiaVoxel::GaiaVoxelWorld::BrickEntities Vixen::GaiaVoxel::GaiaVoxelWorld::getBrickEntitiesByWorldPos(const glm::ivec3&, uint32_t) const’:
+../../VIXEN/libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp:545:28: warning: ‘Vixen::GaiaVoxel::GaiaVoxelWorld::BrickEntities Vixen::GaiaVoxel::GaiaVoxelWorld::getBrickEntities(const Vixen::Core::MortonCode64&, uint32_t) const’ is deprecated: Use getBrickEntitiesInto() for zero-copy access [-Wdeprecated-declarations]
+  545 |     return getBrickEntities(brickBaseMorton, brickSize);
+      |            ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp:529:31: note: declared here
+  529 | GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntities(
+      |                               ^~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/GaiaVoxelWorld/include/pch.h:9,
+                 from ./libraries/GaiaVoxelWorld/CMakeFiles/GaiaVoxelWorld.dir/cmake_pch.hxx:5,
+                 from <command-line>:
+In copy constructor ‘gaia::cnt::darr<T, Allocator>::darr(const gaia::cnt::darr<T, Allocator>&) [with T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’,
+    inlined from ‘robin_hood::pair<T1, T2>::pair(std::tuple<_Args1 ...>&, std::tuple<_Args2 ...>&, std::index_sequence<_Is ...>, std::index_sequence<I2 ...>) [with U1 = {gaia::ecs::EntityLookupKey&&}; long unsigned int ...I1 = {0}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; long unsigned int ...I2 = {0}; T1 = gaia::ecs::EntityLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16282:42,
+    inlined from ‘constexpr robin_hood::pair<T1, T2>::pair(std::piecewise_construct_t, std::tuple<_Args1 ...>, std::tuple<_Args2 ...>) [with U1 = {gaia::ecs::EntityLookupKey&&}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; T1 = gaia::ecs::EntityLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16274:82,
+    inlined from ‘robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::DataNode<M, true>::DataNode(M&, Args&& ...) [with Args = {const std::piecewise_construct_t&, std::tuple<gaia::ecs::EntityLookupKey&&>, std::tuple<gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&>}; M = robin_hood::detail::Table<true, 80, gaia::ecs::EntityLookupKey, gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>, robin_hood::hash<gaia::ecs::EntityLookupKey, void>, gaia::core::equal_to<gaia::ecs::EntityLookupKey> >; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16587:49,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace_impl(OtherKey&&, Args&& ...) [with OtherKey = gaia::ecs::EntityLookupKey; Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17965:37,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace(key_type&&, Args&& ...) [with Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17424:28,
+    inlined from ‘void gaia::ecs::QueryCache::add_sort_to_query_pair(gaia::ecs::Entity, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54691:37,
+    inlined from ‘void gaia::ecs::QueryCache::add_sort_to_query_pairs(const gaia::ecs::QueryCtx&, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54721:27,
+    inlined from ‘gaia::ecs::QueryInfo& gaia::ecs::QueryCache::register_query_info(gaia::ecs::QueryHandle, gaia::ecs::QueryInfo&)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54020:28:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11203:81: warning: ‘<unknown>’ may be used uninitialized [-Wmaybe-uninitialized]
+11203 |                         darr(const darr& other): darr(other.begin(), other.end()) {}
+      |                                                                                 ^
+../../.tmp/fetch/gaia-src/single_include/gaia.h: In member function ‘gaia::ecs::QueryInfo& gaia::ecs::QueryCache::register_query_info(gaia::ecs::QueryHandle, gaia::ecs::QueryInfo&)’:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11180:25: note: by argument 3 of type ‘const gaia::ecs::QueryHandle*’ to ‘gaia::cnt::darr<T, Allocator>::darr(InputIt, InputIt) [with InputIt = const gaia::ecs::QueryHandle*; T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’ declared here
+11180 |                         darr(InputIt first, InputIt last) {
+      |                         ^~~~
+[97/602] Building CXX object libraries/GaiaVoxelWorld/CMakeFiles/GaiaVoxelWorld.dir/src/VoxelInjector.cpp.o
+[98/602] Building CXX object libraries/GaiaVoxelWorld/CMakeFiles/GaiaVoxelWorld.dir/src/EntityBrickView.cpp.o
+[99/602] Linking CXX static library lib/libKernelDispatch.a
+[100/602] Linking C static library lib/libglfw3.a
+[101/602] Linking CXX static library lib/libLogger.a
+[102/602] Linking CXX static library lib/libResourceManagement.a
+[103/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/cmake_pch.hxx.gch
+[104/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/AsyncShaderBundleBuilder.cpp.o
+[105/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/FileManifest.cpp.o
+[106/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SPIRVReflection.cpp.o
+[107/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SdiDiscoveryScanner.cpp.o
+[108/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SdiRegistryManager.cpp.o
+[109/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ResourceExtractor.cpp.o
+[110/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SdiVariantMerge.cpp.o
+[111/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderBundleBuilder.cpp.o
+[112/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderBundleSerializer.cpp.o
+[113/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderCacheManager.cpp.o
+[114/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderCompiler.cpp.o
+[115/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderFamily.cpp.o
+[116/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderDataBundle.cpp.o
+[117/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderPipelineUtils.cpp.o
+[118/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderLibrary.cpp.o
+[119/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderPreprocessor.cpp.o
+[120/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SpirvInterfaceGenerator.cpp.o
+[121/602] Linking C static library lib/libspirv-reflect-static.a
+[122/602] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/SpirvReflector.cpp.o
+[123/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanInstance.cpp.o
+[124/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanDevice.cpp.o
+[125/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanLayerAndExtension.cpp.o
+[126/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanSwapChain.cpp.o
+[127/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/CommandBufferUtility.cpp.o
+[128/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/GPUTimestampQuery.cpp.o
+[129/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/error/VulkanError.cpp.o
+[130/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/CapabilityGraph.cpp.o
+[131/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/Time/EngineTime.cpp.o
+[132/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/GLITextureLoader.cpp.o
+[133/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/TextureLoader.cpp.o
+[134/602] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/STBTextureLoader.cpp.o
+[135/602] Linking CXX static library lib/libVoxelData.a
+[136/602] Linking CXX static library lib/libGaiaVoxelWorld.a
+[137/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/cmake_pch.hxx.gch
+[138/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/ISVOStructure.cpp.o
+[139/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOTypes.cpp.o
+[140/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOBuilder.cpp.o
+[141/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/ContourBuilder.cpp.o
+[142/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/AttributeIntegrator.cpp.o
+[143/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOTraversal.cpp.o
+[144/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/LaineKarrasOctree.cpp.o
+[145/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOBrickDDA.cpp.o
+[146/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVORebuild.cpp.o
+[147/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/VoxelSamplers.cpp.o
+[148/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Serialization.cpp.o
+[149/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SceneGenerator.cpp.o
+[150/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/BulkMaterialization.cpp.o
+[151/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/RecipePackLoader.cpp.o
+[152/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/LodSelection.cpp.o
+[153/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/MultiBodyRenderer.cpp.o
+[154/602] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/RecipeComposition.cpp.o
+[155/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/autofit/autofit.c.o
+[156/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftbbox.c.o
+[157/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftbase.c.o
+[158/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftbitmap.c.o
+[159/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftbdf.c.o
+[160/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftfstype.c.o
+[161/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftcid.c.o
+[162/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftgasp.c.o
+[163/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftglyph.c.o
+[164/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftgxval.c.o
+[165/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftinit.c.o
+[166/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftmm.c.o
+[167/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftotval.c.o
+[168/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftpatent.c.o
+[169/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftpfr.c.o
+[170/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftsynth.c.o
+[171/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftstroke.c.o
+[172/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftwinfnt.c.o
+[173/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/fttype1.c.o
+[174/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/bdf/bdf.c.o
+[175/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/bzip2/ftbzip2.c.o
+[176/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/cache/ftcache.c.o
+[177/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/cff/cff.c.o
+[178/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/cid/type1cid.c.o
+[179/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/gzip/ftgzip.c.o
+[180/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/lzw/ftlzw.c.o
+[181/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/pcf/pcf.c.o
+[182/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/pfr/pfr.c.o
+[183/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/psaux/psaux.c.o
+[184/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/pshinter/pshinter.c.o
+[185/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/psnames/psnames.c.o
+[186/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/raster/raster.c.o
+[187/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/sdf/sdf.c.o
+[188/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/sfnt/sfnt.c.o
+[189/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/smooth/smooth.c.o
+[190/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/svg/svg.c.o
+[191/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/truetype/truetype.c.o
+[192/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/type1/type1.c.o
+[193/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/type42/type42.c.o
+[194/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/builds/unix/ftsystem.c.o
+[195/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/winfonts/winfnt.c.o
+[196/602] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/freetype-build/CMakeFiles/freetype.dir/src/base/ftdebug.c.o
+[197/602] Linking CXX static library lib/libShaderManagement.a
+[198/602] Linking CXX static library lib/libVulkanResources.a
+[199/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/cmake_pch.hxx.gch
+[200/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/AccelerationStructureCacher.cpp.o
+[201/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/CacherAllocationHelpers.cpp.o
+[202/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/ComputePipelineCacher.cpp.o
+[203/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/DescriptorSetLayoutCacher.cpp.o
+[204/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/DynamicTLAS.cpp.o
+[205/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/MeshCacher.cpp.o
+[206/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/RenderPassCacher.cpp.o
+[207/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/SamplerCacher.cpp.o
+[208/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TLASInstanceBuffer.cpp.o
+[209/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TLASInstanceManager.cpp.o
+[210/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TLASUpdateRequest.cpp.o
+[211/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TextureCacher.cpp.o
+[212/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelAABBCacher.cpp.o
+[213/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/descriptor_cacher.cpp.o
+[214/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelSceneCacher.cpp.o
+[215/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/device_identifier.cpp.o
+[216/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/main_cacher.cpp.o
+[217/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_layout_cacher.cpp.o
+[218/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_cacher.cpp.o
+[219/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_module_cacher.cpp.o
+[220/602] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_compilation_cacher.cpp.o
+[221/602] Linking CXX static library lib/libSVO.a
+[222/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/googletest-build/googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[223/602] Linking C static library lib/libfreetype.a
+[224/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/BaseXMLParser.cpp.o
+[225/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/cmake_pch.hxx.gch
+[226/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Box.cpp.o
+[227/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/BoxShadowCache.cpp.o
+[228/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/CallbackTexture.cpp.o
+[229/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Clock.cpp.o
+[230/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/CompiledFilterShader.cpp.o
+[231/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ComputedValues.cpp.o
+[232/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ComputeProperty.cpp.o
+[233/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Context.cpp.o
+[234/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ContextInstancerDefault.cpp.o
+[235/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ContextInstancer.cpp.o
+[236/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ConvolutionFilter.cpp.o
+[237/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Core.cpp.o
+[238/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataController.cpp.o
+[239/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataControllerDefault.cpp.o
+[240/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataExpression.cpp.o
+[241/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataModel.cpp.o
+[242/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataTypeRegister.cpp.o
+[243/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataModelHandle.cpp.o
+[244/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataView.cpp.o
+[245/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataVariable.cpp.o
+[246/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Decorator.cpp.o
+[247/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DataViewDefault.cpp.o
+[248/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorNinePatch.cpp.o
+[249/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorGradient.cpp.o
+[250/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorText.cpp.o
+[251/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorShader.cpp.o
+[252/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorTiled.cpp.o
+[253/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorTiledBox.cpp.o
+[254/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorTiledHorizontal.cpp.o
+[255/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorTiledImage.cpp.o
+[256/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorUtilities.cpp.o
+[257/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DecoratorTiledVertical.cpp.o
+[258/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/DocumentHeader.cpp.o
+[259/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EffectSpecification.cpp.o
+[260/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementAnimation.cpp.o
+[261/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Element.cpp.o
+[262/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementDefinition.cpp.o
+[263/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementBackgroundBorder.cpp.o
+[264/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementDocument.cpp.o
+[265/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementEffects.cpp.o
+[266/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementInstancer.cpp.o
+[267/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementHandle.cpp.o
+[268/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementMeta.cpp.o
+[269/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementScroll.cpp.o
+[270/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementText.cpp.o
+[271/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementStyle.cpp.o
+[272/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ElementUtilities.cpp.o
+[273/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Event.cpp.o
+[274/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EventInstancer.cpp.o
+[275/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EventDispatcher.cpp.o
+[276/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EventInstancerDefault.cpp.o
+[277/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EventListenerInstancer.cpp.o
+[278/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/EventSpecification.cpp.o
+[279/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Factory.cpp.o
+[280/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FileInterface.cpp.o
+[281/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FileInterfaceDefault.cpp.o
+[282/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Filter.cpp.o
+[283/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FilterBasic.cpp.o
+[284/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FilterDropShadow.cpp.o
+[285/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FilterBlur.cpp.o
+[286/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffect.cpp.o
+[287/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffectBlur.cpp.o
+[288/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffectGlow.cpp.o
+[289/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffectInstancer.cpp.o
+[290/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffectShadow.cpp.o
+[291/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEffectOutline.cpp.o
+[292/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Geometry.cpp.o
+[293/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineInterface.cpp.o
+[294/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/GeometryBoxShadow.cpp.o
+[295/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/GeometryBackgroundBorder.cpp.o
+[296/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/LogDefault.cpp.o
+[297/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Log.cpp.o
+[298/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Math.cpp.o
+[299/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Memory.cpp.o
+[300/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/MeshUtilities.cpp.o
+[301/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ObserverPtr.cpp.o
+[302/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Plugin.cpp.o
+[303/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PluginRegistry.cpp.o
+[304/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Profiling.cpp.o
+[305/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertiesIteratorView.cpp.o
+[306/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Property.cpp.o
+[307/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyDefinition.cpp.o
+[308/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserAnimation.cpp.o
+[309/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyDictionary.cpp.o
+[310/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserBoxShadow.cpp.o
+[311/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserColorStopList.cpp.o
+[312/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserColour.cpp.o
+[313/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserDecorator.cpp.o
+[314/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserFilter.cpp.o
+[315/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserFontEffect.cpp.o
+[316/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserKeyword.cpp.o
+[317/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserNumber.cpp.o
+[318/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserRatio.cpp.o
+[319/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserString.cpp.o
+[320/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertyParserTransform.cpp.o
+[321/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/PropertySpecification.cpp.o
+[322/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/RenderInterface.cpp.o
+[323/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/RenderInterfaceCompatibility.cpp.o
+[324/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/RenderManager.cpp.o
+[325/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/RenderManagerAccess.cpp.o
+[326/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ScrollController.cpp.o
+[327/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/ScriptInterface.cpp.o
+[328/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Stream.cpp.o
+[329/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Spritesheet.cpp.o
+[330/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StreamMemory.cpp.o
+[331/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StreamFile.cpp.o
+[332/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheet.cpp.o
+[333/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StringUtilities.cpp.o
+[334/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetFactory.cpp.o
+[335/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetContainer.cpp.o
+[336/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetNode.cpp.o
+[337/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetParser.cpp.o
+[338/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetSelector.cpp.o
+[339/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/StyleSheetSpecification.cpp.o
+[340/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Template.cpp.o
+[341/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/SystemInterface.cpp.o
+[342/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TemplateCache.cpp.o
+[343/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Texture.cpp.o
+[344/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TextureDatabase.cpp.o
+[345/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TextureLayout.cpp.o
+[346/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TextureLayoutRectangle.cpp.o
+[347/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TextureLayoutRow.cpp.o
+[348/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Traits.cpp.o
+[349/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TextureLayoutTexture.cpp.o
+[350/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Transform.cpp.o
+[351/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TransformPrimitive.cpp.o
+[352/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TransformState.cpp.o
+[353/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TransformUtilities.cpp.o
+[354/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Tween.cpp.o
+[355/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/TypeConverter.cpp.o
+[356/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/URL.cpp.o
+[357/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/WidgetScroll.cpp.o
+[358/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Variant.cpp.o
+[359/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLNodeHandler.cpp.o
+[360/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLNodeHandlerBody.cpp.o
+[361/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLNodeHandlerHead.cpp.o
+[362/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLNodeHandlerDefault.cpp.o
+[363/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLParser.cpp.o
+[364/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLNodeHandlerTemplate.cpp.o
+[365/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/XMLParseTools.cpp.o
+[366/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementFormControl.cpp.o
+[367/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementFormControlInput.cpp.o
+[368/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementFormControlSelect.cpp.o
+[369/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementFormControlTextArea.cpp.o
+[370/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementForm.cpp.o
+[371/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementImage.cpp.o
+[372/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementLabel.cpp.o
+[373/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementProgress.cpp.o
+[374/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementTabSet.cpp.o
+[375/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/ElementTextSelection.cpp.o
+[376/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeButton.cpp.o
+[377/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeCheckbox.cpp.o
+[378/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputType.cpp.o
+[379/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeRadio.cpp.o
+[380/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeRange.cpp.o
+[381/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeText.cpp.o
+[382/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/InputTypeSubmit.cpp.o
+[383/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetDropDown.cpp.o
+[384/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetSlider.cpp.o
+[385/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetTextInputMultiLine.cpp.o
+[386/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetTextInput.cpp.o
+[387/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetTextInputSingleLine.cpp.o
+[388/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/WidgetTextInputSingleLinePassword.cpp.o
+[389/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/XMLNodeHandlerTabSet.cpp.o
+[390/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/XMLNodeHandlerSelect.cpp.o
+[391/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Elements/XMLNodeHandlerTextArea.cpp.o
+[392/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/BlockContainer.cpp.o
+[393/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/BlockFormattingContext.cpp.o
+[394/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/ContainerBox.cpp.o
+[395/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/FloatedBoxSpace.cpp.o
+[396/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/FlexFormattingContext.cpp.o
+[397/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/InlineBox.cpp.o
+[398/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/FormattingContext.cpp.o
+[399/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/InlineLevelBox.cpp.o
+[400/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/InlineContainer.cpp.o
+[401/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/LayoutDetails.cpp.o
+[402/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/LayoutBox.cpp.o
+[403/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/LayoutEngine.cpp.o
+[404/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/LayoutPools.cpp.o
+[405/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/ReplacedFormattingContext.cpp.o
+[406/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/LineBox.cpp.o
+[407/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/TableFormattingContext.cpp.o
+[408/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/Layout/TableFormattingDetails.cpp.o
+[409/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontEngineInterfaceDefault.cpp.o
+[410/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontFace.cpp.o
+[411/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontFaceHandleDefault.cpp.o
+[412/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontFaceLayer.cpp.o
+[413/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontFamily.cpp.o
+[414/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FontProvider.cpp.o
+[415/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Core/CMakeFiles/rmlui_core.dir/FontEngineDefault/FreeTypeInterface.cpp.o
+[416/602] Linking CXX static library lib/libCashSystem.a
+[417/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/ConnectionRuleRegistry.cpp.o
+[418/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/ConnectionPipeline.cpp.o
+[419/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/AccumulationConnectionRule.cpp.o
+[420/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/DirectConnectionRule.cpp.o
+[421/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/FailScenario.cpp.o
+[422/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GPUPerformanceLogger.cpp.o
+[423/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GPUQueryManager.cpp.o
+[424/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/VariadicConnectionRule.cpp.o
+[425/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphTopology.cpp.o
+[426/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/LoopManager.cpp.o
+[427/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphLifecycleHooks.cpp.o
+[428/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeRegistration.cpp.o
+[429/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeType.cpp.o
+[430/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeTypeRegistry.cpp.o
+[431/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/PerFrameResources.cpp.o
+[432/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeInstance.cpp.o
+[433/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/EngineContext.cpp.o
+[434/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/SubmitChannel.cpp.o
+[435/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/FrameSyncScheduler.cpp.o
+[436/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphTaskLowering.cpp.o
+[437/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/PassRecorder.cpp.o
+[438/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceAccessTracker.cpp.o
+[439/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceDependencyTracker.cpp.o
+[440/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/WaveScheduler.cpp.o
+[441/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/SlotTask.cpp.o
+[442/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/TimelineCapacityTracker.cpp.o
+[443/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/TaskProfileRegistry.cpp.o
+[444/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/TaskQueue.cpp.o
+[445/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/Timer.cpp.o
+[446/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Debug/RayTraceBuffer.cpp.o
+[447/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Debug/ShaderCountersBuffer.cpp.o
+[448/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Selection/SelectionSet.cpp.o
+[449/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/cmake_pch.hxx.gch
+[450/602] Linking CXX static library lib/libgtest.a
+[451/602] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/googletest-build/googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[452/602] Linking CXX static library lib/librmlui.a
+[453/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/AppFlowLoader.cpp.o
+[454/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/ActionStack.cpp.o
+[455/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/FlowStateMachine.cpp.o
+[456/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/BindingStore.cpp.o
+[457/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/LayerController.cpp.o
+[458/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/AppFlowRuntime.cpp.o
+[459/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/AppFlowBlobFile.cpp.o
+[460/602] Building CXX object libraries/AppFlow/CMakeFiles/AppFlow.dir/src/InputProfile.cpp.o
+[461/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/VixenRmlRenderInterface.cpp.o
+[462/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/UiHitMask.cpp.o
+[463/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/ViewStore.cpp.o
+[464/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/ViewBlobFile.cpp.o
+[465/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/ViewWireReader.cpp.o
+[466/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/ViewWireReaderSoa.cpp.o
+[467/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphUiSupport.dir/src/Ui/BlobView.cpp.o
+[468/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SceneRadianceNode.dir/src/Nodes/SceneRadianceNode.cpp.o
+[469/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BoolOpNode.dir/src/Nodes/BoolOpNode.cpp.o
+[470/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BlitNode.dir/src/Nodes/BlitNode.cpp.o
+[471/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BufferSyncGathererNode.dir/src/Nodes/BufferSyncGathererNode.cpp.o
+[472/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ConstantNode.dir/src/Nodes/ConstantNode.cpp.o
+[473/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CameraNode.dir/src/Nodes/CameraNode.cpp.o
+[474/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CommandPoolNode.dir/src/Nodes/CommandPoolNode.cpp.o
+[475/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[476/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeStageNode.dir/src/Nodes/ComputeStageNode.cpp.o
+[477/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProxyRasterStageNode.dir/src/Nodes/ProxyRasterStageNode.cpp.o
+[478/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputePipelineNode.dir/src/Nodes/ComputePipelineNode.cpp.o
+[479/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:521:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  521 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from ../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+../../VIXEN/libraries/CashSystem/include/MainCacher.h:568:10: note: declared here
+  568 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[480/602] Linking CXX static library lib/libRenderGraphCore.a
+[481/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DebugBufferReaderNode.dir/src/Nodes/DebugBufferReaderNode.cpp.o
+[482/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MultiDispatchNode.dir/src/Nodes/MultiDispatchNode.cpp.o
+[483/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthBufferNode.dir/src/Nodes/DepthBufferNode.cpp.o
+[484/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RaySizeCoefNode.dir/src/Nodes/RaySizeCoefNode.cpp.o
+[485/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderTargetNode.dir/src/Nodes/RenderTargetNode.cpp.o
+[486/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PickIdTargetNode.dir/src/Nodes/PickIdTargetNode.cpp.o
+[487/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceBufferNode.dir/src/Nodes/InstanceBufferNode.cpp.o
+[488/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_StorageBufferNode.dir/src/Nodes/StorageBufferNode.cpp.o
+[489/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DynamicInstanceBufferNode.dir/src/Nodes/DynamicInstanceBufferNode.cpp.o
+[490/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightingConfigNode.dir/src/Nodes/LightingConfigNode.cpp.o
+[491/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShadowConfigNode.dir/src/Nodes/ShadowConfigNode.cpp.o
+[492/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationConfigNode.dir/src/Nodes/AccumulationConfigNode.cpp.o
+[493/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationHistoryNode.dir/src/Nodes/AccumulationHistoryNode.cpp.o
+[494/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WorldPosHistoryNode.dir/src/Nodes/WorldPosHistoryNode.cpp.o
+[495/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthTargetNode.dir/src/Nodes/DepthTargetNode.cpp.o
+[496/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PrevCameraConfigNode.dir/src/Nodes/PrevCameraConfigNode.cpp.o
+[497/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_HitAccumParamsConfigNode.dir/src/Nodes/HitAccumParamsConfigNode.cpp.o
+[498/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ReservoirConfigNode.dir/src/Nodes/ReservoirConfigNode.cpp.o
+[499/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightTreeBufferNode.dir/src/Nodes/LightTreeBufferNode.cpp.o
+[500/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MiningBeamBufferNode.dir/src/Nodes/MiningBeamBufferNode.cpp.o
+[501/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeGridConfigNode.dir/src/Nodes/ProbeGridConfigNode.cpp.o
+[502/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkySphereNode.dir/src/Nodes/SkySphereNode.cpp.o
+[503/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeAtlasNode.dir/src/Nodes/ProbeAtlasNode.cpp.o
+[504/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MvpUniformNode.dir/src/Nodes/MvpUniformNode.cpp.o
+[505/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorResourceGathererNode.dir/src/Nodes/DescriptorResourceGathererNode.cpp.o
+[506/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorSetNode.dir/src/Nodes/DescriptorSetNode.cpp.o
+[507/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DeviceNode.dir/src/Nodes/DeviceNode.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp: In member function ‘void Vixen::RenderGraph::DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry&)’:
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:610:36: warning: ‘void CashSystem::DeviceRegistry::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  610 |     deviceRegistry.SetBudgetManager(budgetManager.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Nodes/DeviceNode.h:7,
+                 from ../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:3:
+../../VIXEN/libraries/CashSystem/include/DeviceIdentifier.h:197:10: note: declared here
+  197 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+      |          ^~~~~~~~~~~~~~~~
+[508/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FramebufferNode.dir/src/Nodes/FramebufferNode.cpp.o
+[509/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FrameSyncNode.dir/src/Nodes/FrameSyncNode.cpp.o
+[510/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GeometryRenderNode.dir/src/Nodes/GeometryRenderNode.cpp.o
+[511/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ImageSyncGathererNode.dir/src/Nodes/ImageSyncGathererNode.cpp.o
+[512/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InputNode.dir/src/Nodes/InputNode.cpp.o
+[513/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GraphicsPipelineNode.dir/src/Nodes/GraphicsPipelineNode.cpp.o
+[514/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceNode.dir/src/Nodes/InstanceNode.cpp.o
+[515/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SelectionCoordinatorNode.dir/src/Nodes/SelectionCoordinatorNode.cpp.o
+[516/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelSelectionProviderNode.dir/src/Nodes/VoxelSelectionProviderNode.cpp.o
+[517/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_UISelectionProviderNode.dir/src/Nodes/UISelectionProviderNode.cpp.o
+[518/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LoopBridgeNode.dir/src/Nodes/LoopBridgeNode.cpp.o
+[519/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PushConstantGathererNode.dir/src/Nodes/PushConstantGathererNode.cpp.o
+[520/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PresentNode.dir/src/Nodes/PresentNode.cpp.o
+[521/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PassGroupNode.dir/src/Nodes/PassGroupNode.cpp.o
+[522/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderPassNode.dir/src/Nodes/RenderPassNode.cpp.o
+[523/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShaderLibraryNode.dir/src/Nodes/ShaderLibraryNode.cpp.o
+[524/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SwapChainNode.dir/src/Nodes/SwapChainNode.cpp.o
+[525/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TextureLoaderNode.dir/src/Nodes/TextureLoaderNode.cpp.o
+[526/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VertexBufferNode.dir/src/Nodes/VertexBufferNode.cpp.o
+[527/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelGridNode.dir/src/Nodes/VoxelGridNode.cpp.o
+[528/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelAABBConverterNode.dir/src/Nodes/VoxelAABBConverterNode.cpp.o
+[529/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RayTracingPipelineNode.dir/src/Nodes/RayTracingPipelineNode.cpp.o
+[530/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccelerationStructureNode.dir/src/Nodes/AccelerationStructureNode.cpp.o
+[531/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WindowNode.dir/src/Nodes/WindowNode.cpp.o
+[532/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[533/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellParamsConfigNode.dir/src/Nodes/PhotonCellParamsConfigNode.cpp.o
+[534/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellTableNode.dir/src/Nodes/PhotonCellTableNode.cpp.o
+[535/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellDepositNode.dir/src/Nodes/PhotonCellDepositNode.cpp.o
+[536/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellFoldNode.dir/src/Nodes/PhotonCellFoldNode.cpp.o
+[537/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellClearNode.dir/src/Nodes/PhotonCellClearNode.cpp.o
+[538/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShellRevalidateNode.dir/src/Nodes/ShellRevalidateNode.cpp.o
+[539/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BodyOctreeSceneNode.dir/src/Nodes/BodyOctreeSceneNode.cpp.o
+[540/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkyProjectionNode.dir/src/Nodes/SkyProjectionNode.cpp.o
+[541/602] Building CXX object libraries/VoxelDocument/CMakeFiles/VoxelDocument.dir/src/EditorDocumentModel.cpp.o
+[542/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanApplicationBase.cpp.o
+[543/602] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_UIRenderNode.dir/src/Nodes/UIRenderNode.cpp.o
+[544/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[545/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildUIGraph.cpp.o
+[546/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildInstancingDemoGraph.cpp.o
+[547/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildAutoSyncDemoGraph.cpp.o
+[548/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[549/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/HudView.cpp.o
+[550/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/HudViewBridge.cpp.o
+[551/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildingInspectorView.cpp.o
+[552/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildFanInDemoGraph.cpp.o
+[553/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/StbImageWriteImpl.cpp.o
+[554/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildingInspectorBridge.cpp.o
+[555/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/PerfCsvWriter.cpp.o
+[556/602] vixen_stage_assets: staging /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/assets -> /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/binaries/assets
+[557/602] Linking CXX static library lib/libgtest_main.a
+[558/602] Linking CXX static library lib/libAppFlow.a
+[559/602] Linking CXX static library lib/libRenderGraphNodes.a
+[560/602] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/FrameCapture.cpp.o
+[561/602] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_windowedcapture.dir/Nodes/test_editor_toggle_undo_capture.cpp.o
+[562/602] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_windowedcapture.dir/Nodes/test_hud_render_capture.cpp.o
+[563/602] Linking CXX static library lib/libVoxelDocument.a
+[564/602] [codegen] materializing cached kernel CodegenTool
+-- [codegen] reused shared CodegenTool: /home/liory/.cache/vixen/kernel-codegen/tools/b1b67fc2a4a615ff880e18d1e698b6291d798be000a8d20ff5531b6746dd9ba9/bin
+[565/602] Linking CXX static library lib/libVixenApp.a
+[566/602] Building CXX object application/main/CMakeFiles/test_app_run_tick.dir/tests/test_app_run_tick.cpp.o
+[567/602] Building CXX object application/main/CMakeFiles/VIXEN.dir/source/main.cpp.o
+[568/602] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/main.cpp.o
+[569/602] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_baked_vs_virtual_parity.dir/Nodes/test_baked_vs_virtual_parity.cpp.o
+[570/602] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/AppFlowChannel.cpp.o
+[571/602] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/AppFlowReadback.cpp.o
+[572/602] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/EditorLayersViewBridge.cpp.o
+[573/602] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 833 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[574/602] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[575/602] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[576/602] [codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)
+[577/602] [codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)
+[578/602] [codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations
+[579/602] [codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels
+[580/602] [codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes
+[581/602] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/EditorApplication.cpp.o
+[582/602] Linking CXX executable binaries/VIXEN
+[583/602] Linking CXX executable application/main/test_app_run_tick
+[584/602] Linking CXX executable binaries/vixen_editor
+[585/602] [codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)
+[586/602] [codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)
+[587/602] [codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)
+[588/602] [codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)
+[589/602] [codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)
+[590/602] [codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)
+[591/602] [codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)
+[592/602] [codegen] golden check: MiningBeamBuffer.g.h/.glsl match canonical schema
+[593/602] [codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)
+[594/602] [codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)
+[595/602] [codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)
+[596/602] [codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)
+[597/602] [codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema
+[598/602] [codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)
+[599/602] [codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema
+[600/602] [codegen] golden check: ViewNounId.g.h matches the [View] schema nouns
+[601/602] [codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema
+UT_JOB_DONE build gpuyield-baseline-apps-checks-two-jobs exit=0 state=OK

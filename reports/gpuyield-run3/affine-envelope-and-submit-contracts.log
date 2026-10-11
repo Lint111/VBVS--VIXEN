@@ -1,0 +1,37 @@
+[box:flow] affine-envelope-and-submit-contracts cpu=11% target=90% depth=0 free=4 baseline=2 granted=1 mode=static
+[box:flow] affine-envelope-and-submit-contracts cpu=10% target=90% admit
+[box:flow] affine-envelope-and-submit-contracts memory=admit avail=71578MB projected=3693MB estimate=class-p91 samples=1335 reserved=7898MB total=80425MB reserve=4096MB disk=521386MB
+[box:flow] affine-envelope-and-submit-contracts granted tokens=4 mask=8,9
+[box:flow] affine-envelope-and-submit-contracts running on cores 8,9 (test)
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+      Start 1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+ 1/11 Test #1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork ..............   Passed    0.01 sec
+      Start 1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+ 2/11 Test #1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission ...   Passed    0.01 sec
+      Start 1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+ 3/11 Test #1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree ....   Passed    0.01 sec
+      Start 1676: SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+ 4/11 Test #1676: SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit ...........   Passed    0.01 sec
+      Start 1677: SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+ 5/11 Test #1677: SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal .........   Passed    0.01 sec
+      Start 1678: SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership
+ 6/11 Test #1678: SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership .........   Passed    0.01 sec
+      Start 1679: SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission
+ 7/11 Test #1679: SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission ...................   Passed    0.01 sec
+      Start 1680: SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+ 8/11 Test #1680: SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence ....................   Passed    0.01 sec
+      Start 1681: GpuChunkCost.ClippedLatencyDoesNotAmplifyThroughputCost
+ 9/11 Test #1681: GpuChunkCost.ClippedLatencyDoesNotAmplifyThroughputCost .....................   Passed    0.01 sec
+      Start 1682: GpuChunkCost.LargerLaunchRetainsEveryEarlierSampleBound
+10/11 Test #1682: GpuChunkCost.LargerLaunchRetainsEveryEarlierSampleBound .....................   Passed    0.01 sec
+      Start 1683: GpuChunkCost.FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget
+11/11 Test #1683: GpuChunkCost.FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget ....   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 11
+
+Label Time Summary:
+RenderGraph    =   0.10 sec*proc (11 tests)
+
+Total Test time (real) =   0.45 sec
+UT_JOB_DONE test affine-envelope-and-submit-contracts exit=0 state=OK

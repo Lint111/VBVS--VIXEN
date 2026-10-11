@@ -1,0 +1,643 @@
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% depth=3 free=3 baseline=2 granted=1 mode=static
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=14% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74719MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549288MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery queued — need=1 tokens projected=368MB estimate=class samples=46
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=17% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74670MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549288MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=21% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74458MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549288MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74425MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74315MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=18% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74302MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74265MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74248MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=15% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74210MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549288MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=12% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74164MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549288MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=14% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74173MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=13% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74178MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=549287MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74174MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=15% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73979MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73971MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=12% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73906MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=9% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73921MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=9% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73920MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=14% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73845MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=9% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73743MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=9% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73709MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73716MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73724MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73741MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=6% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73739MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=17% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73673MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551406MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73845MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=17% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73728MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=11% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73558MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=20% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73563MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=13% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73521MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=5% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73942MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73868MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=8% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73876MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=19% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73911MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=10% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73887MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73895MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=8% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73938MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73918MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=14% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73743MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=23% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73613MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=20% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73671MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=13% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73549MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=17% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73587MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=17% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73634MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551405MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=25% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73863MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=14% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73679MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=15% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74161MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73956MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=15% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73886MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=16% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73737MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=19% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73695MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73593MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=22% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73457MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=26% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73591MB projected=368MB estimate=class samples=46 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72347MB projected=368MB estimate=class samples=46 reserved=4573MB total=80425MB reserve=4096MB disk=545833MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72293MB projected=368MB estimate=class samples=46 reserved=12440MB total=80425MB reserve=4096MB disk=545841MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=56% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72408MB projected=368MB estimate=class samples=46 reserved=12440MB total=80425MB reserve=4096MB disk=545835MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=52% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72122MB projected=368MB estimate=class samples=46 reserved=12347MB total=80425MB reserve=4096MB disk=545833MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71979MB projected=368MB estimate=class samples=46 reserved=4687MB total=80425MB reserve=4096MB disk=545833MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71901MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545833MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72470MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545832MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=74190MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545848MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73909MB projected=368MB estimate=class samples=46 reserved=5121MB total=80425MB reserve=4096MB disk=545832MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=55% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=73093MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545832MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72913MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545832MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72614MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=52% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72306MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72120MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72097MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71660MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=47% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71325MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70767MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=58% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70432MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=55% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71413MB projected=368MB estimate=class samples=46 reserved=5112MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71263MB projected=368MB estimate=class samples=46 reserved=5055MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70896MB projected=368MB estimate=class samples=46 reserved=5132MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70808MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70804MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70789MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71919MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545838MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72634MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545828MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72276MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545832MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72757MB projected=368MB estimate=class samples=46 reserved=5377MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72099MB projected=368MB estimate=class samples=46 reserved=5377MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71687MB projected=368MB estimate=class samples=46 reserved=5377MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71990MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71823MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72236MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545839MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71982MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71705MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71725MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71796MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71690MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71620MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71248MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71102MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=26% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71919MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545833MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71483MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71298MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71264MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71132MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72721MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545831MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=26% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72977MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545837MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72513MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72181MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71879MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545830MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72083MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71751MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71687MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545826MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71776MB projected=368MB estimate=class samples=46 reserved=5371MB total=80425MB reserve=4096MB disk=545826MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71702MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545826MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71626MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545826MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71498MB projected=368MB estimate=class samples=46 reserved=5055MB total=80425MB reserve=4096MB disk=545826MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72785MB projected=368MB estimate=class samples=46 reserved=5055MB total=80425MB reserve=4096MB disk=545834MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72038MB projected=368MB estimate=class samples=46 reserved=5055MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71644MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72416MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545828MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71880MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71647MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71610MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72009MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71755MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71572MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71335MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71108MB projected=368MB estimate=class samples=46 reserved=5516MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70960MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71610MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71200MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71053MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71806MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=31% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71453MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545817MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71148MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545817MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72158MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545814MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72294MB projected=368MB estimate=class samples=46 reserved=5459MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71813MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=26% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71658MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71533MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71317MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71160MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71014MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70880MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70705MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70534MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70259MB projected=368MB estimate=class samples=46 reserved=4998MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=27% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70281MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70156MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545812MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=28% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70067MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69939MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=29% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69769MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69650MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=30% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69563MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70586MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70149MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70906MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545816MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70634MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71515MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545822MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71187MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545814MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=72095MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71626MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71391MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=71048MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70857MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70689MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70466MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70194MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70421MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70163MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69980MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69877MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69609MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70007MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545815MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70032MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545816MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=57% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69892MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545816MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69856MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545807MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=68% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69511MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545807MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=49% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69302MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545807MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69326MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545807MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69298MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545807MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70844MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545817MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70444MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69870MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70078MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70007MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=49% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70046MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70347MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545811MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70122MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70085MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=49% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70159MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69765MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69683MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69640MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70844MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545813MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70375MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545804MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=54% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69916MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545804MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=49% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69757MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545804MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=56% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69510MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545804MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=64% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69670MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545810MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=61% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69681MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545809MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69644MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545806MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=53% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69312MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545809MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=59% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69294MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545808MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=52% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70441MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70112MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69855MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545819MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69592MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=53% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69287MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69446MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70218MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=70014MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69754MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69644MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=53% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69467MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69928MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545837MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69894MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545837MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69801MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545837MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69534MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69513MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69396MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69250MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69327MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69166MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69068MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68807MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=48% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68718MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=53% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68675MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=57% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68704MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68714MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=48% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68699MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=54% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68559MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68441MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68584MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68402MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68364MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68371MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68186MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=47% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68039MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68873MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545828MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68869MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68842MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545828MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68768MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68646MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68613MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=55% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68574MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68457MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68424MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545829MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=51% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68389MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545828MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=53% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68373MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=58% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68176MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68065MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=52% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67985MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545827MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67866MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545823MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=56% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67717MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545820MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67672MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=68% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67310MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=56% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67170MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67335MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545818MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67255MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545813MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67806MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67760MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67664MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67596MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67466MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67436MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545778MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=69262MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545773MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68933MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68686MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68603MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68483MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=47% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68150MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=50% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67851MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545762MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=35% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68068MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67946MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67912MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=55% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67854MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67848MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67785MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67784MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67787MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67661MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68240MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67863MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67842MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67771MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67759MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67812MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67763MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545761MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67732MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545760MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=47% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67866MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545760MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68626MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=42% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68389MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68252MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68078MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=33% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67912MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67784MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67648MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67552MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=44% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67486MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=32% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67953MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=46% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67755MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=40% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67712MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67583MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=37% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67553MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=39% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67394MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=41% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67352MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=36% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67245MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545754MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68208MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545757MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=38% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68047MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545757MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=45% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=68074MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545756MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=34% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67914MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545756MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67815MB projected=368MB estimate=class samples=46 reserved=7898MB total=80425MB reserve=4096MB disk=545755MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery cpu=43% target=90% admit
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery memory=admit avail=67965MB projected=368MB estimate=class samples=46 reserved=7587MB total=80425MB reserve=4096MB disk=545755MB
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery granted tokens=1 mask=2,3
+[box:flow] gpuyield-offscreen-baseline-candidate-recovery running on cores 2,3 (gpu)
+Traceback (most recent call last):
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 119, in <module>
+    main()
+    ~~~~^^
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 79, in main
+    raise RuntimeError(f"witness child exited {child.returncode}; see logs")
+RuntimeError: witness child exited -11; see logs
+Traceback (most recent call last):
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 119, in <module>
+    main()
+    ~~~~^^
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 61, in main
+    raise TimeoutError("probe/VIXEN exceeded the bounded witness timeout")
+TimeoutError: probe/VIXEN exceeded the bounded witness timeout
+UT_JOB_DONE gpu gpuyield-offscreen-baseline-candidate-recovery exit=0 state=OK

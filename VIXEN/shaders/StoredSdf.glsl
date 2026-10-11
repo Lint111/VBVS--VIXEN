@@ -107,9 +107,9 @@ bool _sampleShellNormalVoxel(ivec3 gridCoord, int octreeIdx, out vec3 normal) {
 
     ivec3 brickCoord = gridCoord / 8;
     ivec3 local = gridCoord - brickCoord * 8;
-    uint flat = _gridToLookupIdx(brickCoord, bpa);
-    if (flat == 0xFFFFFFFFu) return false;
-    uint brickIdx = brickLookup[configs[octreeIdx].brickLookupBase + flat];
+    uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
+    if (flatLookup == 0xFFFFFFFFu) return false;
+    uint brickIdx = brickLookup[configs[octreeIdx].brickLookupBase + flatLookup];
     if (brickIdx == 0xFFFFFFFFu) return false;
     uint voxel = uint(local.z * 64 + local.y * 8 + local.x);
     if (voxel / 2u >= normalStride) return false;

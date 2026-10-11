@@ -68,6 +68,7 @@
 #include "Recipe/SpecializedRecipeShaderGlsl.h"  // Inc4 M3: EmitSpecializedRecipeComputeShader
 #include "HitAccumulation.h"                     // W3b: the CPU mirror, cross-validated by the diag readback
 #include "ShaderCompiler.h"                    // Inc4 M3: runtime GLSL->SPIR-V compile for a hot recipe's specialized shader
+#include "Data/Nodes/RenderTargetNodeConfig.h"
 #include "ShaderBundleBuilder.h"               // Inc4 M3: AddStageFromSpirv -> reflection-only ShaderDataBundle
 #include "ComputePipelineCacher.h"             // Inc4 M3: GetOrCreate for the specialized VkPipeline
 #include "DescriptorSetLayoutCacher.h"         // Inc4 M3: BuildDescriptorSetLayoutFromReflection/ExtractPushConstantsFromReflection/CalculateDescriptorPoolSizes
@@ -760,6 +761,36 @@ void VulkanGraphApplication::RunB1OcclusionCullPreTick() {
 
 void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     if (!renderGraph) return;
+    auto* targetNode = renderGraph->GetInstanceByName("compute_render_target");
+    if (!targetNode) return;
+    auto* targetWidth = targetNode->GetOutput(RenderTargetNodeConfig::WIDTH_OUT_Slot::index, 0);
+    auto* targetHeight = targetNode->GetOutput(RenderTargetNodeConfig::HEIGHT_OUT_Slot::index, 0);
+    if (!targetWidth || !targetHeight) return;
+    const uint32_t bucketWidth = targetWidth->GetHandle<uint32_t>();
+    const uint32_t bucketHeight = targetHeight->GetHandle<uint32_t>();
+    if (!bucketWidth || !bucketHeight) return;
+    const auto reflectTiles = [](auto& cached, const auto& bundle) {
+        for (const auto& range : bundle.GetPushConstants()) {
+            cached.pushSize = std::max(cached.pushSize, range.offset + range.size);
+            for (const auto& member : range.structDef.members) {
+                if (member.name != "tileOrigin") continue;
+                if (member.type.baseType != ShaderManagement::SpirvTypeInfo::BaseType::UInt ||
+                    member.type.width != 32 || member.type.vecSize != 2 || member.type.arraySize != 0)
+                    throw std::runtime_error("Specialized recipe tileOrigin must be uvec2");
+                cached.tileOriginOffset = member.offset;
+            }
+        }
+        if (!cached.tileOriginOffset || cached.tileOriginOffset + sizeof(glm::uvec2) > cached.pushSize)
+            throw std::runtime_error("Specialized recipe has no reflected tileOrigin");
+    };
+    const auto boundedTiles = [&](uint32_t offset) {
+        DispatchPass::TilePartition tile;
+        tile.groupEdge = DispatchPass::BoundedGroupEdge;
+        tile.grid = { (bucketWidth + tile.localSize * tile.groupEdge - 1u) / (tile.localSize * tile.groupEdge),
+                      (bucketHeight + tile.localSize * tile.groupEdge - 1u) / (tile.localSize * tile.groupEdge), 1u };
+        tile.originPushOffset = offset;
+        return tile;
+    };
 
     auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstanceByName("body_octree_scene"));
     auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
@@ -1087,6 +1118,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             cached.descriptorSets = descriptorSets;
             cached.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
             cached.pipeline = pipelineWrapper->pipeline;
+            reflectTiles(cached, *buildResult.bundle);
 
             // Write this recipe's descriptor-set ring ONCE, here at first promotion, not every
             // frame. Body/meta use their persistent frame slots; bucket members and hit records
@@ -1149,7 +1181,9 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         pass.layout = cached.pipelineLayout;
         pass.descriptorSets = { cached.DescriptorSetForFrame(frameIndex) };
         pass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
-        pass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;  // 3x uint32 per bucket
+        pass.tiles = boundedTiles(cached.tileOriginOffset);
+        const uint32_t tileCount = pass.tiles->grid.x * pass.tiles->grid.y;
+        pass.indirectBufferOffset = VkDeviceSize(kRecipeBucketingMaxBuckets + recipeId * tileCount) * sizeof(VkDispatchIndirectCommand);  // 3x uint32 per bucket
         pass.debugName = "recipe_specialized_" + std::to_string(recipeId);
 
         // Push constants: SpecializedRecipeShaderGlsl.h's own Push block (96 bytes) --
@@ -1178,13 +1212,13 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             pushData.fov = cam.fov;
             pushData.aspect = cam.aspect;
         }
-        pushData.screenWidth = static_cast<uint32_t>(width);
-        pushData.screenHeight = static_cast<uint32_t>(height);
+        pushData.screenWidth = bucketWidth;
+        pushData.screenHeight = bucketHeight;
         pushData.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
         pushData.recipeIdField = recipeId;
 
         Vixen::RenderGraph::PushConstantData pcData;
-        pcData.data.resize(sizeof(SpecializedPushCpu));
+        pcData.data.resize(cached.pushSize);
         std::memcpy(pcData.data.data(), &pushData, sizeof(SpecializedPushCpu));
         pcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         pcData.offset = 0;
@@ -1317,6 +1351,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                     cachedShade.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper
                                         ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
                                     cachedShade.pipeline = pipelineWrapper->pipeline;
+                                    reflectTiles(cachedShade, *buildResult.bundle);
                                     bucketShadePipelineCache_[shadeRecipeId] = cachedShade;
                                     if (mainLogger) mainLogger->Info("[BucketShade] compiled specialized shade pipeline for recipeId=" +
                                                                      std::to_string(shadeRecipeId));
@@ -1362,8 +1397,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             shadePush.fov = cam.fov;
             shadePush.aspect = cam.aspect;
         }
-        shadePush.screenWidth = static_cast<uint32_t>(width);
-        shadePush.screenHeight = static_cast<uint32_t>(height);
+        shadePush.screenWidth = bucketWidth;
+        shadePush.screenHeight = bucketHeight;
         shadePush.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
         for (uint32_t recipeId : hotRecipeIds) {
             auto shadeIt = bucketShadePipelineCache_.find(recipeId);
@@ -1374,11 +1409,13 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             shadePass.layout = shade.pipelineLayout;
             shadePass.descriptorSets = { shade.DescriptorSetForFrame(frameIndex) };
             shadePass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
-            shadePass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;
+            shadePass.tiles = boundedTiles(shade.tileOriginOffset);
+            const uint32_t tileCount = shadePass.tiles->grid.x * shadePass.tiles->grid.y;
+            shadePass.indirectBufferOffset = VkDeviceSize(kRecipeBucketingMaxBuckets + recipeId * tileCount) * sizeof(VkDispatchIndirectCommand);
             shadePass.debugName = "recipe_shade_" + std::to_string(recipeId);
             shadePush.recipeIdField = recipeId;
             Vixen::RenderGraph::PushConstantData shadePcData;
-            shadePcData.data.resize(sizeof(BucketShadePushCpu));
+            shadePcData.data.resize(shade.pushSize);
             std::memcpy(shadePcData.data.data(), &shadePush, sizeof(BucketShadePushCpu));
             shadePcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             shadePcData.offset = 0;
@@ -4223,6 +4260,17 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
         node->SetRecipePool(std::move(pool));
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetRecipePool] bodyOctreeSceneNode_ not found — recipe pool not applied");
+    }
+}
+
+void VulkanGraphApplication::SetRecipePoolProducer(
+    std::function<Vixen::SVO::ConcatenatedOctrees()> producer) {
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->SetRecipePoolProducer(std::move(producer));
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetRecipePoolProducer] bodyOctreeSceneNode_ not found — producer not applied");
     }
 }
 

@@ -314,6 +314,24 @@ TEST(SdiVariantMerge, MergedEmissionNamesAndIndices) {
     EXPECT_NE(code.find("INDEX = 2"), std::string::npos);
 }
 
+TEST(SdiVariantMerge, MergedEmissionUsesTypedIntegerVectorsInPushBlock) {
+    auto signedVector = MakePushMember("debugTargetPixel", 0, 8);
+    signedVector.type.baseType = SpirvTypeInfo::BaseType::Int;
+    signedVector.type.vecSize = 2;
+    auto unsignedVector = MakePushMember("dims", 16, 16);
+    unsignedVector.type.baseType = SpirvTypeInfo::BaseType::UInt;
+    unsignedVector.type.vecSize = 4;
+
+    auto result = MergeSdiVariants(
+        "IntegerPushVectors", {MakeVariant({}, MakeData({}, {signedVector, unsignedVector}))});
+    ASSERT_TRUE(result.success) << result.errorMessage;
+
+    SpirvInterfaceGenerator generator;
+    const std::string code = generator.GenerateMergedToString(result.merged);
+    EXPECT_NE(code.find("glm::ivec2 debugTargetPixel;"), std::string::npos);
+    EXPECT_NE(code.find("glm::uvec4 dims;"), std::string::npos);
+}
+
 TEST(SdiVariantMerge, DuplicateMemberNamesSkipAliases) {
     // Two bindings sharing a (fallback) name: Binding structs always emit,
     // but the name-keyed alias would be a redefinition — it must be skipped

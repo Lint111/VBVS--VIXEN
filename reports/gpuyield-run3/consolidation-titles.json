@@ -1,0 +1,22 @@
+[
+  "Treat pinned generated SIMD headers as compiler system imports",
+  "Declare MSVC extended-alignment requirements with generated row types",
+  "Keep editor AppFlow comparison immune to Windows macros",
+  "Forward native compiler progress to the box queue watchdog",
+  "Fetch WSL lane revisions through a Git transport that resolves worktree pointers",
+  "Retain native full-producer exit status with explicit process ownership",
+  "Let a GPU-device wait yield the lane turn to its ready compiler jobs",
+  "Read grouped accumulation inputs at their declared execute lifetime",
+  "Make the ConstantNode header self-contained for typed grouped producers",
+  "Expose a production offscreen hardware-ray graph witness",
+  "Provision author identity for the Windows-local witness checkout",
+  "Separate shared FetchContent sources from native build directories",
+  "Carry private temporary directories into native runtime witnesses",
+  "Use a native high-resolution contract for renderer frame pacing",
+  "Release recorded query-pool references when growing chunk instrumentation",
+  "Derive native queue reservations from compiler parallelism",
+  "Validate quantized inner GPU timestamps separately from command bounds",
+  "Separate GPU exclusivity from whole-host timing reservations",
+  "Require fresh capture provenance in runtime fixture gates",
+  "Reset native renderer feature flags for each witness mode"
+]

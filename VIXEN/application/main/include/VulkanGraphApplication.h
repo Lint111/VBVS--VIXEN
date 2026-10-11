@@ -18,6 +18,7 @@
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
@@ -407,6 +408,8 @@ private:
         std::vector<VkDescriptorSet> descriptorSets; // one immutable set per frame-in-flight slot
         VkPipelineLayout      pipelineLayout = VK_NULL_HANDLE;
         VkPipeline            pipeline = VK_NULL_HANDLE;
+        uint32_t tileOriginOffset = 0;
+        uint32_t pushSize = 0;
 
         VkDescriptorSet DescriptorSetForFrame(uint32_t frameIndex) const {
             if (!descriptorSets.empty()) return descriptorSets[frameIndex % descriptorSets.size()];
@@ -551,6 +554,7 @@ public:
     // null-guard; a host that owns document/recipe authoring (e.g. vixen_editor) uses this to
     // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    void SetRecipePoolProducer(std::function<Vixen::SVO::ConcatenatedOctrees()> producer);
     // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: register a zero-bake procedural recipe
     // by id. Fills any unset bounds-metadata field via Recipe::ApplyRecipeBoundsDefaults
     // (Recipe/RecipeBounds.h) before registering. Safe to call BEFORE the graph's first

@@ -1,0 +1,12 @@
+{
+  "compiled_source": "5a13200f",
+  "scope": "RenderGraph/SVO plus ShaderManagement",
+  "full_suite_command": "ctest --test-dir build/gpuyield -L 'RenderGraph|SVO' --output-on-failure --parallel 1",
+  "ctest_exit": 8,
+  "gate_wrapper_exit": 1,
+  "product_binaries": "../cache-gate-binaries.json",
+  "only_unaccepted_failure": "EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget",
+  "accepted_failure": "RecipeSimdParity opcode 94",
+  "gpu_host_context": "GPU serialized; shared CPU cohort",
+  "cache_gate_seconds": 642.53
+}

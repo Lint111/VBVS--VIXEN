@@ -1,0 +1,10 @@
+Scale 1.0, 500 frames; per-pass GPU-clock spans after excluding 10 warmup frames.
+
+| Resolution / pass | Unbounded ms | Tuned bounded ms | Change |
+|---|---:|---:|---:|
+native-pacing-500 exit 0 CSV frames 500
+  test_dispatch gate True aggregate True chunks {'samples': 892, 'mean_ms': 0.3540283408071749, 'p99_ms': 1.60824, 'max_ms': 1.62276} submissions/frame {'samples': 500, 'mean': 1.754, 'p99': 13, 'max': 81}
+native-pacing-1080 exit 0 CSV frames 500
+  test_dispatch gate False aggregate False chunks {'samples': 3784, 'mean_ms': 0.49026612050739954, 'p99_ms': 6.0518, 'max_ms': 6.09572} submissions/frame {'samples': 500, 'mean': 7.092, 'p99': 49, 'max': 400}
+dozen-final exit 0 CSV frames 500
+  test_dispatch gate False aggregate None chunks {'samples': 38205, 'mean_ms': 1.3141909488286874, 'p99_ms': 2.24968, 'max_ms': 3.93876} submissions/frame {'samples': 500, 'mean': 76.41, 'p99': 81, 'max': 81}

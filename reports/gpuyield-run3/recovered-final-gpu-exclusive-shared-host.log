@@ -1,0 +1,2 @@
+[box:flow] recovered-final-gpu-exclusive-shared-host cpu=31% target=90% depth=3 free=1 baseline=15 granted=15 mode=static
+[box:flow] recovered-final-gpu-exclusive-shared-host queued — need=15 tokens projected=1353MB estimate=class-p91 samples=104

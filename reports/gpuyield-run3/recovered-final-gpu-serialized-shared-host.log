@@ -1,0 +1,768 @@
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% depth=3 free=1 baseline=2 granted=2 mode=static
+[box:flow] recovered-final-gpu-serialized-shared-host queued — need=2 tokens projected=1353MB estimate=class-p91 samples=104
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68660MB projected=1353MB estimate=class-p91 samples=104 reserved=16800MB total=80425MB reserve=4096MB disk=519846MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68289MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519466MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68670MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519462MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68307MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519457MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68645MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519452MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68609MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519447MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68910MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519442MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69511MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519442MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69540MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69275MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69263MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69194MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=18% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69152MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69167MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=18% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69011MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519460MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68977MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519459MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68849MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68754MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519452MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68827MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519447MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68784MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519444MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68713MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519441MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69278MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519441MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69358MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519471MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69378MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69406MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69452MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69370MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69361MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69322MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69454MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69706MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69769MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69790MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69793MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519456MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69671MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519444MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69664MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69641MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69647MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519429MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69629MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69444MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519427MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69365MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69327MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69273MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519429MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69301MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69314MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=17% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69318MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69417MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69312MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519412MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69255MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69045MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68996MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69027MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68943MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68982MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68979MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69007MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69495MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519412MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69442MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69299MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519424MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69247MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69264MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69282MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69295MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69178MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69148MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519408MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69108MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519408MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69556MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519391MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69533MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=18% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69409MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69348MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519408MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69526MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519409MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69556MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69582MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69606MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69544MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519380MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69504MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69441MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69583MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69590MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69552MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69454MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69448MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69511MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519393MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69466MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519378MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69512MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519378MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69445MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519368MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69329MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519366MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69304MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519364MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69216MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69180MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69235MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69113MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519370MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68643MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68561MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68421MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519407MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68390MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68382MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68377MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68372MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68355MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68348MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68355MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68339MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68330MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68267MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68241MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68127MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67968MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519392MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67900MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67866MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67699MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67612MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67515MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67416MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519377MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67441MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519376MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67427MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519374MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67378MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519371MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67357MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519367MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67299MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519367MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67213MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519362MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67161MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519342MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67284MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519338MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67871MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519336MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67743MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519350MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67656MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67571MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67907MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67879MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67700MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67664MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67544MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67480MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519361MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67434MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519345MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67404MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519342MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67875MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519338MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67754MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519337MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67783MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519333MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67893MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519328MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67924MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519324MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68438MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519321MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68216MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519321MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68112MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519345MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68739MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519345MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68764MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519345MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68773MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519345MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68774MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519330MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68841MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519330MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68870MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519330MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=18% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68776MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519330MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68796MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=18% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68950MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=20% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68965MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=17% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69003MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=17% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69038MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=21% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69070MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=16% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69070MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=22% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69050MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519322MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=19% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69054MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519306MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69113MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519306MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68819MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68351MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=45% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68522MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=52% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68306MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68152MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68075MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68068MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68134MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519307MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68038MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519306MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67824MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519306MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68031MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519291MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68078MB projected=1353MB estimate=class-p91 samples=104 reserved=12082MB total=80425MB reserve=4096MB disk=519291MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68796MB projected=1353MB estimate=class-p91 samples=104 reserved=8611MB total=80425MB reserve=4096MB disk=519290MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68890MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519290MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68832MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519290MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=48% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68760MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519290MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68547MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519290MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68507MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519291MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=28% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68516MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519293MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68519MB projected=1353MB estimate=class-p91 samples=104 reserved=8940MB total=80425MB reserve=4096MB disk=519293MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68618MB projected=1353MB estimate=class-p91 samples=104 reserved=8611MB total=80425MB reserve=4096MB disk=519291MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68619MB projected=1353MB estimate=class-p91 samples=104 reserved=9205MB total=80425MB reserve=4096MB disk=519291MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68423MB projected=1353MB estimate=class-p91 samples=104 reserved=9205MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68474MB projected=1353MB estimate=class-p91 samples=104 reserved=9205MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=58% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68419MB projected=1353MB estimate=class-p91 samples=104 reserved=9205MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68783MB projected=1353MB estimate=class-p91 samples=104 reserved=9635MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69019MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68897MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68928MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68861MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68666MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=45% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68625MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=49% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68433MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68356MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68299MB projected=1353MB estimate=class-p91 samples=104 reserved=12071MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71382MB projected=1353MB estimate=class-p91 samples=104 reserved=7718MB total=80425MB reserve=4096MB disk=519261MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71361MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519261MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71338MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519261MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71321MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519418MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71183MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519263MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71153MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71107MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71357MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71504MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71418MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=44% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71663MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=44% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71469MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519262MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71333MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519247MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71477MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519247MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71311MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519247MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71169MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519247MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71118MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519247MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71032MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71028MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70936MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71086MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71101MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71100MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71073MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71073MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519246MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=71023MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70777MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70689MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=52% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70599MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70554MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=49% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70498MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=54% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70380MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70629MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70353MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70176MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70092MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=57% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70061MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519228MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=56% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70205MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=54% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70307MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70339MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=56% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70156MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=62% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70078MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=71% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70027MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=65% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69954MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=58% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69852MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69816MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=53% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69682MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69616MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69549MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519213MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=56% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69526MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519198MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=48% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69524MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519198MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69529MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519198MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69657MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519198MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69903MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69932MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=45% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69896MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69903MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69912MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69853MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69844MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69854MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519200MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=53% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69773MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69763MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69683MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69561MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69337MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69169MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=48% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68856MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68858MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68632MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=51% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68587MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=49% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68426MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68324MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519184MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=54% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68205MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68137MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68120MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68071MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68164MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68431MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68386MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68363MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68382MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68292MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68233MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68679MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519168MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68710MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519153MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68727MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519153MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68731MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519153MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68708MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519153MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68676MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519153MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68565MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68436MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68418MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68390MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=45% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68402MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68414MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68360MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68355MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519152MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68355MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68295MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68311MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68437MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69021MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69039MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69084MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=26% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69095MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69098MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69515MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=32% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69518MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69513MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519136MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69460MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=25% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69365MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69367MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69362MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69468MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=27% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69439MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519121MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70093MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519118MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=24% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70663MB projected=1353MB estimate=class-p91 samples=104 reserved=10842MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70634MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=23% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70613MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70493MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=61% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=70118MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=49% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69921MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519120MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69521MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=54% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69634MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=47% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69437MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=69015MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68899MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=33% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68888MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68838MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519104MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68544MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519356MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=68093MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519557MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67882MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519557MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67541MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519557MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=44% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67246MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=67121MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=66976MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=66758MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=66582MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=66404MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=66098MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65742MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65492MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65294MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65158MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64789MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519541MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=55% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64499MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519526MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64212MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519526MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=63843MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519525MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=61% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=63600MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519525MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=50% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=63304MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=63179MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=46% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=63077MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62966MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=38% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62888MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62972MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62826MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62743MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519524MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62893MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519509MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=43% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62762MB projected=1353MB estimate=class-p91 samples=104 reserved=17079MB total=80425MB reserve=4096MB disk=519509MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62647MB projected=1353MB estimate=class-p91 samples=104 reserved=17079MB total=80425MB reserve=4096MB disk=519509MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62485MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519509MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=45% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62365MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519488MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62308MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62207MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62255MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=39% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62728MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=44% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62481MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=53% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62340MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62453MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519440MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=42% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62301MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519425MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=48% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62283MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519423MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=44% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62943MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519423MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=40% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62991MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519422MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=62873MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=41% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64291MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64193MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64149MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519421MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64087MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519420MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=34% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64064MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519419MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=36% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65460MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519419MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65349MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519418MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=35% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64980MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519403MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64776MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519402MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=30% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=65003MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519401MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=53% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64888MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519401MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=37% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64750MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519401MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=29% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64724MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519401MB
+[box:flow] recovered-final-gpu-serialized-shared-host cpu=31% target=90% admit
+[box:flow] recovered-final-gpu-serialized-shared-host memory=admit avail=64627MB projected=1353MB estimate=class-p91 samples=104 reserved=16055MB total=80425MB reserve=4096MB disk=519401MB

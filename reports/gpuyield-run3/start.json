@@ -1,0 +1,9 @@
+{
+  "start_utc": "2026-10-10 17:17:15 UTC",
+  "checkpoint_utc": "2026-10-10 20:17:15 UTC",
+  "merged_baseline": "3b2482d95deef62b3fda03cac9282f9b9764ce3b",
+  "wave": "4ddea47390880152d35371193e10c7ac722101d9",
+  "native_root": "C:\\vixen-native\\gpuyield",
+  "primary_raymarch_budget_ms": 6.0,
+  "submission_budget_ms": 2.0
+}

@@ -1,0 +1,9 @@
+{
+  "ctest_exit_status": 8,
+  "failing_tests": [
+    "223:FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder",
+    "1982:RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes",
+    "2200:vixen_multiinstance_cache_gate"
+  ],
+  "matches_permitted_opcode_94_only": false
+}
