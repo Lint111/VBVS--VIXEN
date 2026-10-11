@@ -97,10 +97,19 @@ public:
             return;
         }
 
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, 5.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 5.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 5.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, 14.0f);
+        // The ordinary look-dev capture below is procedural-only, so it cannot
+        // exercise VIXEN_BRICKMAP_TRAVERSAL. When the existing stored-SDF scene
+        // is requested, keep its six FORMAT_STORED_SDF instances and orbit that
+        // scene with the same four yaw angles and lighting presets.
+        const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
+        const float orbitCenterX = storedSdfScene ? 64.0f : 5.0f;
+        const float orbitCenterY = storedSdfScene ? 64.0f : 5.0f;
+        const float orbitCenterZ = storedSdfScene ? 0.0f : 5.0f;
+        const float orbitDistance = storedSdfScene ? 300.0f : 14.0f;
+        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
+        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
+        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
+        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, 45.0f);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
@@ -110,8 +119,10 @@ public:
                              Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                 scenarios_.front().lighting.exposureCompensationEV);
-        SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
-            recipes, scenarios_.front().lighting));
+        if (!storedSdfScene) {
+            SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
+                recipes, scenarios_.front().lighting));
+        }
     }
 
     bool Render() override {

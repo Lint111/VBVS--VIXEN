@@ -1,0 +1,24 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "brickcost-native",
+      "inherits": "vixen-ninja",
+      "binaryDir": "${sourceDir}/../build/brickcost-native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /GR /EHsc /D_ENABLE_EXTENDED_ALIGNED_STORAGE /wd4457",
+        "USE_CCACHE": "OFF",
+        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF",
+        "VIXEN_CAPABILITY_BUILD_MODE": "FULL",
+        "YEROKET_ROOT": "//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy",
+        "VIXEN_KERNEL_CACHE_DIR": "${sourceDir}/../.tmp/native-kernel-cache"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "brickcost-native", "configurePreset": "brickcost-native" }
+  ]
+}
