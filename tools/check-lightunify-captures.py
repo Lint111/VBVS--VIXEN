@@ -188,8 +188,9 @@ def main():
     (args.output/"properties.json").write_text(json.dumps(properties, indent=2)+"\n")
     failures = []
     if args.gate:
-        # Night tiles are recorded, never gated: every service point light sits inside or
-        # on the machine's own volume, so the any-light lit/shadow split has no lit class.
+        # Night tiles are recorded, never gated: the lit/shadow split is "any light reaches the
+        # pixel", which mixes the key with three point lights, so foliage and glass shadows are
+        # not a clean lower band of the receiver's own colour.
         for row in properties:
             if row["tile"].startswith("night-service"):
                 continue

@@ -2,23 +2,21 @@
 
 Owner ruling R502 changed this lane: lighting is agnostic to the number of lights. Lights are emitters and cost follows a fixed sample or photon budget, never lights x pixels. Direct light will use stochastic many-light sampling through the existing reservoirs; indirect light will use photon emission into the photon cells. A separate design pass covers that path and this lane does not build it. This pass keeps only what holds for any light count.
 
-Lane branch `lane-lightunify`. Base `ed36300c`; this pass adds new commits on top (no rewrite, no push).
+Lane branch `lane-lightunify`. Base `ed36300c`; each pass adds new commits on top (no rewrite, no push).
 
 ## LANDABLE NOW
 
-Owner review of the first salvage: midday shadows approved, the -18 degree cel hue shift stays as authored, and the base night lights come back. This pass restores them and keeps the shadow-reach fix and the receiver-material shading. Per-pane windows return as emissive instances when R502 slice S1 lands reservoir sampling; nothing here works around that.
+Owner review of the restored night: the base lights sit inside or behind the hull and light nothing once shadows are real, so the owner chose to move them. This pass is an authoring change in `LookdevSceneDefinition.h` (3 constants) plus a comment fix in the analyzer. The shadow code is untouched.
 
-### Kept
+### The move (grid units; world = grid x 10/64)
 
-- **SDF-recipe shadows through the shared traversal.** The lighting-family shaders splice the registered recipes with the same `SpliceProceduralRecipesIntoSource` the primary march uses, and the wave and the shade debug path declare binding 48, `recipe/SdfCoreKernels.g.glsl` and the splice marker ahead of `SceneBindings.glsl`.
-- **Shadow-reach fix.** The lighting splices bind an empty occupancy buffer, so the 8x relaxed-step boost overshot occluders farther than about 1 unit. `g_recipeProvenStepOnly` (`SdfRecipes.glsl`, set around the shadow any-hit call in `TraceWorldShadowImpl`) limits the boost to a real per-cell bound. The primary march is unchanged.
-- **Shading from the receiver's own material and cel band**, no fixed tint; the authored +/-18 degree cel hue shift stays.
+| Light | Base | Now | Why |
+|---|---|---|---|
+| Window light | (32, 37, 24.75) inside the hull box | (32, 37, 20) | 2 units in front of the front face (hull box z 22..42), at pane height, facing out; the panes themselves stay where they were |
+| Flood (night only) | (40.6, 36, 32) above the hull top | (47, 26, 16) | front-right of the machine, clear of the hull footprint |
+| Worklight | (32, 47.3, 32) above the tower | (17, 26, 46) | rear-left, clear of the hull footprint and the tower |
 
-### Restored to base in this pass
-
-- `LookdevSceneDefinition.h` is byte-identical to the base, apart from one small helper, `PrimitiveForLighting` (the night-lamp placement the recipe gather already did, split out because the capture's scene export needs it). The light set is the base one: day = key + flood; night = key, one window light at the central pane, worklight, flood. The central pane is back at z=24.75, one recipe per material, the old `RecipeId(material)` and `EmitterOrigin`.
-- The per-pane test `LookdevLighting.EmittersHaveDistinctDeclaredSources` and its CTest registration are removed (it asserts the per-pane set that no longer exists). `test_lookdev_capture.cmake` equals the base.
-- Earlier in the lane (`e49c578a`): the per-light mask growth is already dropped (capacity 4, base `HitRecord` and photon-cell layout).
+Colour, intensity and range are unchanged (window 3.5 at 0xe9bf6b, worklight 5.0 and flood 8.0 in the flood colour, range 8). No intensity adjustment was needed. Each emitter's instance origin, `EmitterOrigin` and light position still come from the same constant, so the shadow ray's source exclusion keeps working. Positions were chosen by a CPU segment test against the authored primitives over the plinth hit positions of the previous capture, then confirmed on the GPU. Midday constants (`kFloodlightGridPosition`) are unchanged. The emitter bodies (Lamp, Worklight) move with the lights, so two small glowing blocks now float beside the plinth at night (visible in the sheet); there is no pole.
 
 ### Witnesses
 
@@ -26,34 +24,53 @@ All on the lane worktree. The GPU runs use dzn (Dozen), so they prove correctnes
 
 | Check | Result |
 |---|---|
-| Build: the 22 `codegen/*_check` generation checks plus `test_rendergraph_criticalnodes_gpurender2b`, `..._sdiparity`, `test_rendergraph_core`, `test_uber_shader_splice`, `vixen_lookdev_capture` (`nice -n 10 ninja -j4`) | PASS, exit 0; `.tmp/lightunify/restore-build.log` |
-| Focused tests via the queue | PASS, 18/18 (LightingConfigParity x4, ShadowCorrectnessTest x5, LightingConfigSdiParity, UberShaderSplice x8); `.tmp/lightunify/restore-tests.log` |
+| Build: 22 `codegen/*_check` generation checks plus `test_rendergraph_criticalnodes_gpurender2b`, `..._sdiparity`, `test_rendergraph_core`, `test_uber_shader_splice`, `vixen_lookdev_capture` (`nice -n 10 ninja -j4`) | PASS, exit 0; `.tmp/lightunify/lights-build.log` |
+| Focused tests via the queue | PASS, 18/18 (LightingConfigParity x4, ShadowCorrectnessTest x5, LightingConfigSdiParity, UberShaderSplice x8); `.tmp/lightunify/lights-tests.log` |
 | Fresh midday and night-service captures, one queue job per state | PASS: `Application.LookdevCapture` repeat-pixel test passed in both |
-| `tools/check-lightunify-captures.py --gate` (midday gated, night recorded) | PASS, 8 tiles, no failures |
+| Midday unchanged | confirmed: all four midday PNGs and hit records are byte-identical to the previous pass's captures (`cmp`) |
+| `tools/check-lightunify-captures.py --gate` (midday gated, night recorded) | PASS, 8 tiles |
 
-**Midday (shadows still present).** Footprint occlusion (occluded/tested), before -> after: machine 0/7 -> 7/7, 93/93, 562/562, 22/22; foliage 184/184, 746/746, 310/310 (0 before); figure 83/83, 44/44; rock 46/46, 13/13. Fill is identical (0.416 / 0.343 / 0.349 / 0.359) and unexplained-energy pixels are 0. Shadow hue is 17-26 degrees from the receiver's own albedo and one band lower than the lit side.
+**Occlusion probe: share of plinth (Soil, top-facing) pixels each light reaches**, from the visibility bits in the hit records, only counting pixels inside the light's range (all four angles, `night-service`):
+
+| Angle | Key | Window | Worklight | Flood | Any point light |
+|---|---|---|---|---|---|
+| 0 | 80.7% | 4.0% | 58.9% | 31.2% | 72.1% |
+| 1 | 43.0% | 38.3% | 18.6% | 82.4% | 88.2% |
+| 2 | 35.2% | 62.1% | 16.5% | 80.5% | 86.8% |
+| 3 | 66.7% | 50.2% | 42.9% | 53.8% | 81.8% |
+
+Previous pass (restored base lights): key 35-81%, window 0%, worklight 0%, flood 0% at every angle, any point light 0%. A CPU segment test against the primitives agrees with the GPU bits for 99.2% (angle 0) and 99.6% (angle 2) of sampled plinth pixels; the rest is the GPU seeing the light where the CPU test says blocked (shadow-ray bias at the plinth).
+
+Plinth mean luma (angles 0-3), base / restored / moved: 37.0, 44.1, 48.1, 39.6 / 10.5, 7.5, 6.9, 9.4 / 19.0, 37.1, 41.9, 34.2. So the pool is back at about 85-90% of the base brightness at angles 1-3. At angle 0 it is about half: that tile views the plinth from the side where the window light is hidden by the hull (4% reach), so only the worklight and flood light it.
 
 **Sheets (I opened both).**
-- `reports/lightunify-visual/restore/midday-before-after.png` (rows: base image, after image, base shadow mask, after shadow mask; four angles). Base: flat cel colours, almost no cast shadows. After: the hull, tree and figure cast dark red-brown (the plinth's own colour, one band down) shadows across the plinth, as in the approved sheet; the mask rows show black footprints where the base is white. Everything else (sky, hull, trees, rocks, water) is unchanged.
-- `reports/lightunify-visual/restore/night-service-before-after.png`. Base: a warm orange pool glows across the whole plinth around the machine, the cab windows are bright yellow, the hull top is warm-lit and trees are dark green. After: the windows, tree and rock colours and the sky match the base, and the machine still receives the key and ambient. But the plinth is almost black (mean luma 35 -> 10 at angle 0, 41 -> 6 at angle 2), the warm pool is gone, and the hull is a little darker (111 -> 91, 101 -> 75). The after mask has the plinth entirely black and the tree/hull shadow shapes visible. So night is **not** close to the base: see STOP 1.
-- `after-contact-sheet.png` and `after-shadow-mask-sheet.png`: the 8 analyzer tiles (midday angles 0-3, then night-service 0-3). `captures-before/` and `owner-*` are the earlier committed sheets.
+- `reports/lightunify-visual/lights/midday-before-after.png` (rows: base image, after image, base shadow mask, after shadow mask): identical to the approved midday sheet. Dark red-brown hull, tree, figure and rock shadows across the plinth; masks show the black footprints.
+- `reports/lightunify-visual/lights/night-service-before-after.png` (rows: base image, after image, base mask, after mask). Base: a smooth warm orange pool across the whole plinth, no cast shadows, bright yellow windows. After: the plinth is a warm orange-brown pool again, brighter near the machine's front and the right side, with real cast shadows: the hull's dark footprint on the plinth, the tree and rock shadows, and the figure's shadow. The hull's front face gets a bright warm patch from the window light (strongest at angle 2). Windows, sky, foliage and the key-lit hull top match the base. Two small gold emitter blocks sit beside the plinth. Against the base it is a shadowed warm pool rather than a flat one, slightly darker at angle 0. The after mask rows show the plinth mostly lit (white) with black wedges behind the hull and trees.
+- `after-contact-sheet.png` and `after-shadow-mask-sheet.png`: the 8 analyzer tiles. `restore/` holds the previous pass's sheets (dark plinth).
 
-**Why night is dark (measured, not assumed).** A throwaway probe wrote the index of the first blocking instance into the visibility word for each light on every plinth pixel (night angle 2; probe reverted, not committed). Every blocked plinth ray to the three point lights is blocked by the **Hull** body: window light 30920/30920, flood 30920/30920, worklight 30418/30920 (the rest by the Lamp body). The key is blocked mostly by Hull (15760 of the 20200 shadowed) plus trees, rocks and props, as a real cast shadow. This is geometry, not a trace error: the window light sits at z=24.75 inside the hull box (z 22-42), the flood sits at y=36 just above the hull top (y 35) at the cab side, and the worklight is above the central tower, so no line from a plinth point to any of them avoids the hull. In the base these lights never saw an occluder because the wave had no recipe path.
+### Analyzer gate
+
+Night stays recorded, not gated. I tried gating night tiles after the move: it still fails (foliage and glass materials show a shadow that is not a lower band, and one material's hue is 171-176 degrees from its albedo), because the "any light reaches the pixel" split mixes the key with three point lights. The tool comment is corrected (the old reason, every point light occluded, no longer holds). The midday gate is unchanged and passes.
+
+### Kept from the earlier passes
+
+- SDF-recipe shadows through the shared traversal (lighting-family shaders splice the registered recipes), the shadow-reach fix `g_recipeProvenStepOnly`, shading from the receiver's own material and cel band (the +/-18 degree hue shift stays), the per-light mask growth dropped (capacity 4), and the `PrimitiveForLighting` helper.
 
 ### Canonical-shape checklist (R412)
 
-Added lines are GLSL, C++ (one header helper, a test removal), CMake and Python. No C#/Undertow code changed. The `throw`, `KindRef`, `PipeWriter`, `.Baked()` and `static readonly` greps over the added lines are empty. `Program.Legacy.cs` line delta: 0.
+Added lines are three numeric constants in a C++ header and one Python comment. The `throw`, `KindRef`, `PipeWriter`, `.Baked()` and `static readonly` greps over the added lines are empty. `Program.Legacy.cs` line delta: 0.
 
 ## STOPs
 
-1. **Night plinth is dark once shadows are real.** With the base lights restored and recipe shadows working, every service point light is occluded by the machine's own hull for every plinth pixel (evidence above), so the warm pool of the base is gone. The window glow, flood and worklight still light and glow on the machine's own surfaces. The rulings do not settle this. Options: (a) accept it until R502 S1: the shadows the owner approved are the cause, and no code change is needed (my recommendation, since any fix is a stand-in for S1); (b) move the three lights out of the hull volume in `LookdevSceneDefinition.h` (scene data, like `ed36300c`'s central-pane move; a pane 2 grid units in front of the face, the flood and worklight clear of the tower), which restores a pool but is an authoring change to the base light set that you told me not to make; (c) skip the host body for an attached light's shadow ray (a new mechanism beside `isPointLightSourceInstance`, which today excludes only the emitter's own instance; it is a deviation from "emitters are instances" that S1 supersedes); (d) turn point-light shadows off at night (a workaround). I did none of (b)-(d).
-2. **Night is not gated.** The analyzer records night tiles but does not gate them: with every point light occluded the any-light lit/shadow split has no lit class, and two foliage materials show a shadow that is not a lower band there. The midday gate is unchanged.
-3. **No unit test for the shadow-reach fix.** `ShadowCorrectnessTest`'s dummy SDF buffer has `gridDim == 0`, so it cannot hit the empty-grid boost; the captures (footprints 0% -> 100%) are the evidence.
-4. **Not re-run in this pass:** editormaterials fill and lighting-ratio checks, R434/R6, and the RenderGraph/SVO suites; late-afternoon and overcast were not captured (only the two states you asked for). Known baseline reds: `Undertow.Core.Tests` and `Undertow.Content.Core.Tests` do not build on main-wave; wizard jobs `core-callable-registries` and `transpiled-app-system-schedule`.
+1. **Angle 0 night plinth is dimmer than the base** (luma 19 vs 37; window light reaches 4%). The side of the plinth that view sees is behind the hull from the window light. Options: (a) accept; R502 S1 sampling covers it (my recommendation); (b) a second window light on the back face, but that is one more point light and the mask holds 4; (c) move the worklight toward that side. Not done.
+2. **Floating emitter bodies.** The Lamp and Worklight bodies move with their lights and float beside the plinth with no support. Cosmetic, easy to add a pole or put them on the rocks and trees if wanted.
+3. **Night is not gated** (above), and midday is the only gated state.
+4. **No unit test for the shadow-reach fix.** `ShadowCorrectnessTest`'s dummy SDF buffer has `gridDim == 0`; the captures are the evidence.
+5. **Not re-run in this pass:** editormaterials fill and lighting-ratio checks, R434/R6, and the RenderGraph/SVO suites; late-afternoon and overcast were not captured. Known baseline reds: `Undertow.Core.Tests` and `Undertow.Content.Core.Tests` do not build on main-wave; wizard jobs `core-callable-registries` and `transpiled-app-system-schedule`.
 
 ## SPT DISPOSITION
 
-- `lightunify` shadow/night-light unification task (proposals in `.spt-proposals/lightunify.jsonl`): PARTIAL. Shared-traversal SDF shadows and material-driven shading are done; the night set is back to base, and the night plinth stays dark until R502 S1 (STOP 1).
+- `lightunify` shadow/night-light unification task (proposals in `.spt-proposals/lightunify.jsonl`): PARTIAL. Shared-traversal SDF shadows and material-driven shading are done; the night lights are base colour and intensity at new positions that light the plinth; per-pane windows and many-light sampling wait for R502 S1.
 
 ## CONSOLIDATION ISSUES
 

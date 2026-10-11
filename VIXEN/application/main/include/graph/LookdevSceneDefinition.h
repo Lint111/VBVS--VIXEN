@@ -64,9 +64,9 @@ inline constexpr int kResolution = 64;
 inline constexpr int kBrickDepth = 3;
 inline constexpr float kWorldSpan = 10.0f;
 inline constexpr glm::vec3 kFloodlightGridPosition{39.0f, 36.0f, 25.0f};
-inline constexpr glm::vec3 kNightFloodlightGridPosition{40.6f, 36.0f, 32.0f};
-inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 24.75f};
-inline constexpr glm::vec3 kWorklightGridPosition{32.0f, 47.3f, 32.0f};
+inline constexpr glm::vec3 kNightFloodlightGridPosition{47.0f, 26.0f, 16.0f};
+inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 20.0f};
+inline constexpr glm::vec3 kWorklightGridPosition{17.0f, 26.0f, 46.0f};
 
 inline const std::array<LightingPreset, 4>& LightingPresets() {
     // Directions point from the scene toward the light source. Colors are the
