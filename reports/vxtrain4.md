@@ -31,18 +31,27 @@ The wave-base report records 2,124 selected cases and exactly one accepted failu
 
 The first full tip run was exposed to concurrent GPU tests and builds. It selected 2,181 cases and reported 15 failures, including fixture-dependent `Not Run` cases, a segfault, and producer/gate timeouts. Its N100 bucket took 253.87 seconds compared with 40.46 seconds in the published wave run. A second run using the standard test resource was explicitly interrupted at 654/2,181 after more concurrent GPU jobs began. These are not used as the final product result. Logs: `/home/liory/.local/state/undertow/undertow-box-logs/1791746135-gpu-vxtrain4:rendergraph-svo-final.log` and `1791748392-test-vxtrain4:rendergraph-svo-final-testqueue.log`.
 
-An exclusive, serial recovery run is pending in the global box queue as `vxtrain4:rendergraph-svo-exclusive-recovery` (`ctest --test-dir build/wsl -L 'RenderGraph|SVO' --output-on-failure --parallel 1`). It requests all 15 queue tokens so concurrent jobs cannot contaminate the witness. Final result and exact failing-name comparison: pending.
+The exclusive serial run completed all 2,181 selected cases in 1,404.98 seconds (queue log `/home/liory/.local/state/undertow/undertow-box-logs/1791750110-test-vxtrain4:rendergraph-svo-exclusive-recovery.log`). CTest reported 13 failures out of 2,179 run cases:
+
+- `vixen_hud_capture_producer` timed out at 180.51 seconds. Ten fixture-dependent cases were then `Not Run`: six `EditorToggleUndoCapture.*` cases, `EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget`, and three `HudRenderCapture.*` cases.
+- `B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical` segfaulted after 15.97 seconds.
+- `vixen_multiinstance_cache_gate` failed because `solo-app` exited `-11` (gate duration 56.04 seconds).
+
+The accepted opcode-94 parity test passed. The editor capture producer passed in 290.18 seconds, and the AppFlow channel gate passed in 168.33 seconds. Thus the final failure set is not the wave-base set.
+
+Although this run held all 15 queue tokens, a separate direct `ctest -j4 --output-junit ... -L 'RenderGraph|SVO'` launched by `tools/classify-tests-gpu.py` in another worktree ran concurrently for most of it. I could not stop or modify that lane. The HUD timeout, B1 segfault, and multi-instance failure therefore remain unclassified; this is not a clean isolation witness and needs a rerun after other VIXEN CTest processes are routed through the shared queue or have finished. The first parallel run and interrupted standard-resource retry are documented above and in their logs.
 
 ### Native performance and visual witnesses
 
-The previous `travdefault` lane measured Radeon 8060S look-dev at 1920×1080: whole-frame p50 composed→ESVO `22.760→42.962 ms` (+20.202 ms), traversal/shade `18.637→38.694 ms` (+20.057 ms). These are prior-lane results, not an A/B measurement on this merged tip. The current-tip 1080p A/B runner and native R6 are pending.
+The previous `travdefault` lane measured Radeon 8060S look-dev at 1920×1080: whole-frame p50 composed→ESVO `22.760→42.962 ms` (+20.202 ms), traversal/shade `18.637→38.694 ms` (+20.057 ms). These are prior-lane results, not an A/B measurement on this merged tip. The current-tip native R6 request is queued as `vxtrain4:native-r6-final` behind other GPU jobs; it has not started.
 
 Current-tip midday, overcast, and night-service capture sheets and pixel comparisons are pending. Expected attribution from the merged work is pixel-identical midday/overcast, with the intended night-only change from lightunify; R505 traversal default should not alter pixels.
 
 ## STOPs
 
 - No product compile or generation failure is established. The full Linux Release build and all generated checks passed.
-- The final full RenderGraph/SVO result, native R6 ≤2.0 ms result, current-tip native 1080p A/B timings, and current-tip look-dev sheets/comparisons are still pending at this report revision. Do not treat this report as a complete landing witness until these are filled or recorded as unfinished at the lane checkpoint.
+- The completed full RenderGraph/SVO run has extra failures compared with wave base; their cause is unclassified because a direct CTest classifier ran concurrently. Rerun the suite after that classifier and other GPU tests have stopped or are admitted through the global queue.
+- Native R6 ≤2.0 ms on this product tip, current-tip native 1080p A/B timings, and current-tip midday/overcast/night-service sheets and pixel comparisons remain unfinished at the lane checkpoint. The prior `travdefault` timing is reported above but is not a current-tip measurement.
 - While composing a proposal command, shell backticks inside a double-quoted body triggered an accidental unqueued `cmake --build build/wsl --parallel 4` for about 44 seconds. The processes were terminated when detected. This output was not used as evidence; all reported build/test evidence above came from the queue.
 
 ## SPT DISPOSITION
