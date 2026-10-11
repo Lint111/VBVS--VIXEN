@@ -24,4 +24,6 @@ set "VIXEN_MAX_BUILD_JOBS=4"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset vxtrain4-native -BuildDir "%CD%\build\vxtrain4-native" -Target vixen_editor -BuildId vxtrain4-native-release -StatusFile "%CD%\.tmp\native-temp\build-status.txt" -StreamProgress
 if errorlevel 1 exit /b %errorlevel%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset vxtrain4-native -BuildDir "%CD%\build\vxtrain4-native" -Target test_rendergraph_criticalnodes_windowedcapture -BuildId vxtrain4-native-r6-test -StatusFile "%CD%\.tmp\native-temp\r6-build-status.txt" -StreamProgress
+if errorlevel 1 exit /b %errorlevel%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset vxtrain4-native -BuildDir "%CD%\build\vxtrain4-native" -Target vixen_lookdev_capture -BuildId vxtrain4-native-lookdev -StatusFile "%CD%\.tmp\native-temp\lookdev-build-status.txt" -StreamProgress
 exit /b %errorlevel%
