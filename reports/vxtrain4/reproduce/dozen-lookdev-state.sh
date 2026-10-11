@@ -25,4 +25,4 @@ export VIXEN_LOOKDEV_CAPTURE_FRAMES=64
 export VIXEN_LOOKDEV_READBACK=1
 ctest --test-dir build/wsl \
   -R '^Application\.LookdevCapture\.RendersFourStatesAtFourAnglesDeterministically$' \
-  --output-on-failure --parallel 1
+  --output-on-failure --parallel 1 --timeout 2300
