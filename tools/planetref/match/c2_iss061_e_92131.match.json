@@ -1,0 +1,51 @@
+{
+ "derived": {
+  "camera_radius_m": 6784000.0,
+  "hfov_deg": 4.112071016350105,
+  "horizon_dip_below_horizontal_deg": 20.09546296353744,
+  "image_up_source": "local zenith projected on the image plane",
+  "look_dir_source": "photo center point",
+  "notes": [
+   "sun azimuth taken as degrees clockwise from north at the nadir point (Gateway convention assumed)",
+   "planet is a sphere of 6371 km; altitude added to it",
+   "sun placed at 1 AU"
+  ],
+  "sun_elevation_at_nadir_deg": 6.0000000000000036,
+  "vfov_deg": 2.738216974478056
+ },
+ "gateway": {
+  "altitude_km": 413.0,
+  "camera": "Nikon D5 Electronic Still Camera",
+  "camera_tilt": "High Oblique",
+  "camera_tilt_deg": null,
+  "center": [
+   27.7,
+   88.1
+  ],
+  "date": "2019.12.16",
+  "focal_length_mm": 500.0,
+  "frame_px": [
+   5568,
+   3712
+  ],
+  "nadir": [
+   28.9,
+   78.1
+  ],
+  "nadir_to_center": "East",
+  "sensor_mm": [
+   35.9,
+   23.9
+  ],
+  "sun_azimuth_deg": 239.0,
+  "sun_elevation_deg": 6.0,
+  "time_gmt": "11:16:06"
+ },
+ "id": "c2_iss061_e_92131",
+ "kind": "iss",
+ "photo": "ISS061-E-92131",
+ "schema": "planetref-match/v1",
+ "source": "https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?mission=ISS061&roll=E&frame=92131",
+ "state": "C2",
+ "time_gmt": "2019.12.16 11:16:06"
+}

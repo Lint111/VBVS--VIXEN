@@ -1,0 +1,62 @@
+{
+ "band_deg": 5.0,
+ "exr_file": "c1_fixture.exr",
+ "exr_sha256": "9c9c0d29c2609130d73a7cb14ec394d6013352c8555a6a2a3e413e2bd9013124",
+ "id": "c1_fixture",
+ "image": {
+  "height": 1080,
+  "vfov_deg": 0.6,
+  "width": 1080
+ },
+ "radiance_unit_w_m2": 1361.0,
+ "regions": {
+  "planet.day": {
+   "analytic_sun_only_mean_luminance": 0.06436089351096816,
+   "max_luminance": 0.09579808615595102,
+   "mean_luminance": 0.06456408136320836,
+   "mean_rgb": [
+    0.07167483866214752,
+    0.0630238950252533,
+    0.0588994100689888
+   ],
+   "pixels": 534480,
+   "ratio_render_to_analytic": 1.003157007946224,
+   "std_luminance": 0.021905003449812617
+  },
+  "planet.disc": {
+   "analytic_sun_only_mean_luminance": 0.06436089351096816,
+   "max_luminance": 0.09579808615595102,
+   "mean_luminance": 0.06456408136320836,
+   "mean_rgb": [
+    0.07167483866214752,
+    0.0630238950252533,
+    0.0588994100689888
+   ],
+   "pixels": 534480,
+   "ratio_render_to_analytic": 1.003157007946224,
+   "std_luminance": 0.021905003449812617
+  },
+  "sky": {
+   "max_luminance": 0.0,
+   "mean_luminance": 0.0,
+   "mean_rgb": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "pixels": 613928,
+   "std_luminance": 0.0
+  }
+ },
+ "renderer": {
+  "max_depth": 6,
+  "name": "mitsuba",
+  "seed": 1,
+  "spp": 32,
+  "variant": "scalar_rgb",
+  "version": "3.9.1"
+ },
+ "scene_sha256": "0cc1a36dba45313c4cfb389a337f68eda7bf4ae8a33b43f102da3281dae93158",
+ "schema": "planetref-regions/v1",
+ "state": "C1"
+}

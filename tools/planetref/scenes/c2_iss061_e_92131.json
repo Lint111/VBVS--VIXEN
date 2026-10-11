@@ -1,0 +1,81 @@
+{
+ "bodies": [
+  {
+   "center_m": [
+    135245121455.28296,
+    23329415316.788452,
+    -59529877385.28806
+   ],
+   "emission": {
+    "color_temperature_k": 5772.0,
+    "limb": {
+     "law": "none"
+    },
+    "radiance": 14718.276069141893
+   },
+   "name": "sun",
+   "radius_m": 695700000.0,
+   "role": "star",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.3,
+   "center_m": [
+    -1224677.8663149148,
+    -5811512.960997375,
+    -3278587.6880019354
+   ],
+   "name": "earth",
+   "radius_m": 6371000.0,
+   "role": "planet",
+   "shape": "sphere"
+  }
+ ],
+ "camera": {
+  "height": 640,
+  "look_dir": [
+   -0.9443129891015948,
+   -0.1581398930034388,
+   -0.2885563252726793
+  ],
+  "position_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "up": [
+   -0.2400690576618111,
+   0.7862149832665869,
+   0.35476046488744833
+  ],
+  "vfov_deg": 2.738216974478056,
+  "width": 960
+ },
+ "id": "c2_iss061_e_92131",
+ "integrator": {
+  "max_depth": 6,
+  "seed": 1,
+  "spp": 32
+ },
+ "length_unit": "m",
+ "match": {
+  "derived": {
+   "camera_radius_m": 6784000.0,
+   "hfov_deg": 4.112071016350105,
+   "horizon_dip_below_horizontal_deg": 20.09546296353744,
+   "image_up_source": "local zenith projected on the image plane",
+   "look_dir_source": "photo center point",
+   "notes": [
+    "sun azimuth taken as degrees clockwise from north at the nadir point (Gateway convention assumed)",
+    "planet is a sphere of 6371 km; altitude added to it",
+    "sun placed at 1 AU"
+   ],
+   "sun_elevation_at_nadir_deg": 6.0000000000000036,
+   "vfov_deg": 2.738216974478056
+  }
+ },
+ "note": "airless Lambert Earth (albedo 0.3) seen from ISS061-E-92131; atmosphere, clouds and city lights omitted; photo center point",
+ "radiance_unit_w_m2": 1361.0,
+ "schema": "planetref-scene/v1",
+ "state": "C2"
+}

@@ -1,0 +1,52 @@
+{
+ "derived": {
+  "camera_radius_m": 6721000.0,
+  "hfov_deg": null,
+  "horizon_dip_below_horizontal_deg": 18.571955699851813,
+  "image_up_source": "north projected on the image plane (near-nadir)",
+  "look_dir_source": "photo center point",
+  "notes": [
+   "sun azimuth taken as degrees clockwise from north at the nadir point (Gateway convention assumed)",
+   "planet is a sphere of 6371 km; altitude added to it",
+   "sun placed at 1 AU",
+   "vertical FOV unknown (focal length or sensor size missing); no scene is emitted"
+  ],
+  "sun_elevation_at_nadir_deg": -29.000000000000004,
+  "vfov_deg": null
+ },
+ "gateway": {
+  "altitude_km": 350.0,
+  "camera": "Nikon D3 Electronic Still Camera",
+  "camera_tilt": "19 degrees",
+  "camera_tilt_deg": 19.0,
+  "center": [
+   30.0,
+   -95.0
+  ],
+  "date": "2010.02.28",
+  "focal_length_mm": null,
+  "frame_px": [
+   4256,
+   2832
+  ],
+  "nadir": [
+   29.4,
+   -94.1
+  ],
+  "nadir_to_center": "Northwest",
+  "sensor_mm": [
+   36.0,
+   23.9
+  ],
+  "sun_azimuth_deg": 83.0,
+  "sun_elevation_deg": -29.0,
+  "time_gmt": "10:34:12"
+ },
+ "id": "c3_iss022_e_78463",
+ "kind": "iss",
+ "photo": "ISS022-E-78463",
+ "schema": "planetref-match/v1",
+ "source": "https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?mission=ISS022&roll=E&frame=78463",
+ "state": "C3",
+ "time_gmt": "2010.02.28 10:34:12"
+}

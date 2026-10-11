@@ -1,0 +1,25 @@
+{
+ "altitude_km": 387.0,
+ "camera": "Kodak DCS760c Electronic Still Camera",
+ "camera_tilt": "33 degrees",
+ "camera_tilt_deg": 33.0,
+ "center": [
+  34.0,
+  -118.0
+ ],
+ "date": "2003.03.10",
+ "focal_length_mm": 85.0,
+ "frame_px": [
+  3060,
+  2036
+ ],
+ "nadir": [
+  35.3,
+  -116.1
+ ],
+ "nadir_to_center": "Southwest",
+ "sensor_mm": null,
+ "sun_azimuth_deg": 36.0,
+ "sun_elevation_deg": -54.0,
+ "time_gmt": "09:15:07"
+}
