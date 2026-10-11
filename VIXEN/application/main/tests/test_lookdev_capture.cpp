@@ -98,8 +98,8 @@ public:
         }
 
         // The ordinary look-dev capture below is procedural-only, so it cannot
-        // exercise VIXEN_BRICKMAP_TRAVERSAL. When the existing stored-SDF scene
-        // is requested, keep its six FORMAT_STORED_SDF instances and orbit that
+        // prove the composed DDA fallback. When the existing stored-SDF scene is
+        // requested, keep its six FORMAT_STORED_SDF instances and orbit that
         // scene with the same four yaw angles and lighting presets.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
         const float orbitCenterX = storedSdfScene ? 64.0f : 5.0f;

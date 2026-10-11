@@ -58,11 +58,11 @@ A temporary native-only measurement counter, compiled only for `VIXEN_BRICKMAP_T
 
 Despite removing those atomics, DDA remained 3.80 ms at 500×500 and 35.06 ms at 1920×1080, versus guarded ESVO at 1.46 and 13.71 ms. On this six-body Stored-SDF fixture, the unguarded DDA path was already about 121–123% slower than unguarded ESVO; after guarding, the gap is about 156–160%. This fixture does not reproduce the earlier +62–70% result, and its corrected DDA path is substantially slower. The first procedural-only fixture could not measure DDA at all. Probe removal is therefore a useful cleanup for the other backends, but it does not explain the standalone DDA penalty here. The results point toward the flat DDA's repeated cell lookup/refinement work; a hierarchical-skip A/B would be needed to establish its contribution.
 
-## Standalone DDA recommendation
+## R505 composed traversal outcome
 
-`BuildRenderGraph.cpp` resolves composed traversal by capability: RTQUERY when ray-query is available and grid DDA when it is not. On this native device, composed resolved to RTQUERY, which is why its timings closely match the RTQUERY mode. Outside that composed fallback, `VIXEN_BRICKMAP_TRAVERSAL` is an explicit standalone A/B switch.
+At the time of these captures, `BuildRenderGraph.cpp` resolved composed traversal by capability: RTQUERY when ray-query was available and grid DDA when it was not. On this native device, composed resolved to RTQUERY, which is why its timings closely match the RTQUERY mode. R505 retires the standalone `VIXEN_BRICKMAP_TRAVERSAL` A/B switch; DDA remains only as composed traversal's capability-selected software fallback. The reproduction matrix now uses default-on composed traversal and `VIXEN_COMPOSED_TRAVERSAL=0` for ESVO-forced A/B.
 
-Recommendation: remove the standalone override from the supported product path after this A/B use is retired, but retain the DDA implementation as the composed software fallback for devices without ray-query. Deleting the DDA implementation itself would remove that fallback. The DDA default and override were not changed in this work.
+R505 retires the standalone DDA override from the product path. Composed traversal is now default-on: the CapabilityGraph selects RT-query when available and the DDA fallback otherwise. `VIXEN_COMPOSED_TRAVERSAL=0` and `=1` remain developer A/B controls for ESVO and composed traversal. The standalone DDA timing above is historical evidence for retaining DDA as a fallback rather than making it a user-selected native mode.
 
 ## Verification and recovery
 
