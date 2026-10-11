@@ -1,0 +1,53 @@
+if(NOT DEFINED PLANET_CAPTURE_EXE OR NOT DEFINED PLANET_CAPTURE_DIR)
+    message(FATAL_ERROR "PLANET_CAPTURE_EXE and PLANET_CAPTURE_DIR are required")
+endif()
+
+set(_gtest_filter "--gtest_filter=PlanetCapture.RendersStateDeterministically")
+set(_states C1 C1-epic C2 C2-term C4a C4b C4c C5a-moon C7 C7-60 C7-60-1p5au C9)
+if(DEFINED ENV{VIXEN_PLANET_CAPTURE_STATE} AND NOT "$ENV{VIXEN_PLANET_CAPTURE_STATE}" STREQUAL "")
+    string(REPLACE "," ";" _states "$ENV{VIXEN_PLANET_CAPTURE_STATE}")
+endif()
+foreach(_state IN LISTS _states)
+    set(_first_dir "${PLANET_CAPTURE_DIR}")
+    set(_repeat_dir "${PLANET_CAPTURE_DIR}/.repeat")
+    set(_run_logs)
+    foreach(_run IN ITEMS "${_first_dir}" "${_repeat_dir}")
+        set(ENV{VIXEN_PLANET_CAPTURE_STATE} "${_state}")
+        set(ENV{VIXEN_PLANET_CAPTURE_DIR} "${_run}")
+        set(ENV{VIXEN_PLANET_READBACK} "1")
+        # Dozen loses the device under APU contention (D3D12 TDR); a lost process is retried, and the
+        # byte comparison below still decides determinism.
+        foreach(_attempt RANGE 1 3)
+            execute_process(
+                COMMAND "${PLANET_CAPTURE_EXE}" "${_gtest_filter}"
+                RESULT_VARIABLE _result
+                OUTPUT_VARIABLE _stdout
+                ERROR_VARIABLE _stderr)
+            if(_result STREQUAL "0")
+                break()
+            endif()
+            message(STATUS "Planet ${_state} capture attempt ${_attempt} exited ${_result}")
+        endforeach()
+        if(NOT _result STREQUAL "0")
+            message(FATAL_ERROR "Planet ${_state} capture failed (${_result})\n${_stdout}\n${_stderr}")
+        endif()
+        string(REGEX MATCHALL "\\[HDRMeter\\][^\n]*" _meter_lines "${_stdout}")
+        list(APPEND _run_logs "${_meter_lines}")
+    endforeach()
+
+    foreach(_suffix IN ITEMS ".png" ".hits.bin" ".lighting.bin" ".meter.bin" ".scene.json")
+        set(_first "${_first_dir}/${_state}${_suffix}")
+        set(_repeat "${_repeat_dir}/${_state}${_suffix}")
+        if(NOT EXISTS "${_first}" OR NOT EXISTS "${_repeat}")
+            message(FATAL_ERROR "Missing deterministic capture: ${_first} or ${_repeat}")
+        endif()
+        file(SHA256 "${_first}" _first_hash)
+        file(SHA256 "${_repeat}" _repeat_hash)
+        if(NOT _first_hash STREQUAL _repeat_hash)
+            message(FATAL_ERROR "Repeated capture differs for ${_state}${_suffix}\nFirst run:\n${_run_logs}")
+        endif()
+    endforeach()
+endforeach()
+
+list(LENGTH _states _state_count)
+message(STATUS "All ${_state_count} selected planet states are byte-identical across fresh per-state process runs")
