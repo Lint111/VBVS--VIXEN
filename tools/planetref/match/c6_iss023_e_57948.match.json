@@ -1,0 +1,49 @@
+{
+ "derived": {
+  "camera_radius_m": 6727000.0,
+  "hfov_deg": 5.153143660537661,
+  "horizon_dip_below_horizontal_deg": 18.723457566587097,
+  "image_up_source": "north projected on the image plane (near-nadir)",
+  "look_dir_source": "assumed nadir (record has no center point or tilt)",
+  "notes": [
+   "sun azimuth taken as degrees clockwise from north at the nadir point (Gateway convention assumed)",
+   "planet is a sphere of 6371 km; altitude added to it",
+   "sun placed at 1 AU",
+   "look direction is NOT in the Gateway record; no scene is emitted until an owner-supplied look direction exists"
+  ],
+  "sun_elevation_at_nadir_deg": -23.0,
+  "vfov_deg": 3.422404884847037
+ },
+ "gateway": {
+  "altitude_km": 356.0,
+  "camera": "Nikon D3 Electronic Still Camera",
+  "camera_tilt": "High Oblique",
+  "camera_tilt_deg": null,
+  "center": null,
+  "date": "2010.05.25",
+  "focal_length_mm": 400.0,
+  "frame_px": [
+   4256,
+   2832
+  ],
+  "nadir": [
+   -8.9,
+   74.2
+  ],
+  "nadir_to_center": null,
+  "sensor_mm": [
+   36.0,
+   23.9
+  ],
+  "sun_azimuth_deg": 289.0,
+  "sun_elevation_deg": -23.0,
+  "time_gmt": "14:25:14"
+ },
+ "id": "c6_iss023_e_57948",
+ "kind": "iss",
+ "photo": "ISS023-E-57948",
+ "schema": "planetref-match/v1",
+ "source": "https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?mission=ISS023&roll=E&frame=57948",
+ "state": "C6",
+ "time_gmt": "2010.05.25 14:25:14"
+}

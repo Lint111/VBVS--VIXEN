@@ -1,0 +1,75 @@
+{
+ "band_deg": 5.0,
+ "exr_file": "c4d_epic_20170821T181450.exr",
+ "exr_sha256": "6589eb8288b64cb9b35b036767da50c62ff98fb21fcbfd0ff94baf6422ed555c",
+ "id": "c4d_epic_20170821T181450",
+ "image": {
+  "height": 768,
+  "vfov_deg": 0.62,
+  "width": 768
+ },
+ "radiance_unit_w_m2": 1361.0,
+ "regions": {
+  "earth.day": {
+   "analytic_sun_only_mean_luminance": 0.06306881555387438,
+   "max_luminance": 0.0936906442373991,
+   "mean_luminance": 0.05765757607680774,
+   "mean_rgb": [
+    0.06401113420724869,
+    0.05627943202853203,
+    0.05259975790977478
+   ],
+   "pixels": 249927,
+   "ratio_render_to_analytic": 0.9142010289943646,
+   "std_luminance": 0.021299918974893473
+  },
+  "earth.disc": {
+   "analytic_sun_only_mean_luminance": 0.06254488174090977,
+   "max_luminance": 0.0936906442373991,
+   "mean_luminance": 0.05718230369826294,
+   "mean_rgb": [
+    0.06348340958356857,
+    0.0558154359459877,
+    0.05216606706380844
+   ],
+   "pixels": 252188,
+   "ratio_render_to_analytic": 0.914260321654118,
+   "std_luminance": 0.021786227210415853
+  },
+  "earth.terminator_band": {
+   "analytic_sun_only_mean_luminance": 0.004630151058554629,
+   "max_luminance": 0.008328394563030452,
+   "mean_luminance": 0.004646523179656816,
+   "mean_rgb": [
+    0.0051585473120212555,
+    0.00453546829521656,
+    0.004238941706717014
+   ],
+   "pixels": 2261,
+   "ratio_render_to_analytic": 1.003535979905437,
+   "std_luminance": 0.0024056377409388393
+  },
+  "sky": {
+   "max_luminance": 0.0,
+   "mean_luminance": 0.0,
+   "mean_rgb": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "pixels": 325052,
+   "std_luminance": 0.0
+  }
+ },
+ "renderer": {
+  "max_depth": 6,
+  "name": "mitsuba",
+  "seed": 1,
+  "spp": 32,
+  "variant": "scalar_rgb",
+  "version": "3.9.1"
+ },
+ "scene_sha256": "ef5a5ad1bc512c0d13de765e38d5ee322e750c07f9eedb2e28daca95c554858f",
+ "schema": "planetref-regions/v1",
+ "state": "C4d"
+}

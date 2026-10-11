@@ -108,3 +108,8 @@ temp_bench/*
 
 # runtime log whose filename literally contains a backslash (Windows path separator bug)
 *vulkan_app_log.txt
+
+# planetref offline reference tooling
+tools/planetref/.venv/
+tools/planetref/out/
+tools/planetref/**/__pycache__/
