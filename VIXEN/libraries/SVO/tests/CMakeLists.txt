@@ -463,6 +463,7 @@ add_executable(test_photon_cells_mirror test_photon_cells_mirror.cpp)
 # the heavy SVO archive so generated recipe/SIMD implementation failures in an
 # unrelated target cannot make the cache arithmetic gate vacuous.
 target_link_libraries(test_photon_cells_mirror PRIVATE GTest::gtest_main)
+target_compile_features(test_photon_cells_mirror PRIVATE cxx_std_23)
 target_include_directories(test_photon_cells_mirror PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 if(TARGET glm::glm)

@@ -62,14 +62,26 @@ public:
         if (const char* previous = std::getenv(name_)) {
             previous_ = std::string(previous);
         }
+#ifdef _WIN32
+        _putenv_s(name_, value);
+#else
         setenv(name_, value, 1);
+#endif
     }
 
     ~ScopedEnvironment() {
         if (previous_) {
+#ifdef _WIN32
+            _putenv_s(name_, previous_->c_str());
+#else
             setenv(name_, previous_->c_str(), 1);
+#endif
         } else {
+#ifdef _WIN32
+            _putenv_s(name_, "");
+#else
             unsetenv(name_);
+#endif
         }
     }
 
