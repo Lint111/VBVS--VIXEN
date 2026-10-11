@@ -384,6 +384,11 @@ private:
         std::vector<float> emitterRootPowers;
         ShellGenerationMetrics metrics;
     };
+    static ShellGenerationPayload BuildShellGenerationPayload(
+        Vixen::SVO::ConcatenatedOctrees pool,
+        uint32_t shellDilation,
+        bool bakeNormals,
+        uint32_t workerCount);
     struct ShellGenerationJob {
         std::future<Vixen::KernelDispatch::AsyncRunResult> completion;
         std::shared_ptr<ShellGenerationPayload> payload;

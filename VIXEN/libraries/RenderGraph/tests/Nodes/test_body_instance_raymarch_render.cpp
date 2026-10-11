@@ -2633,14 +2633,12 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     // re-runs EnsureOctreesBuilt(), which gates on this env var.
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());      // bakes recipe A; clears recipeDirty_
-    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
-        frameIndex = frame % 2u;
-        SetHandleVal<uint32_t>(frameRes, frameIndex);
-        ASSERT_NO_THROW(node->Execute());
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "initial shell generation timed out";
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "initial shell generation must be published before Compile exposes its buffers";
     ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
+    frameIndex = 0;
+    SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute()); // initialize the per-frame instance stream before rendering A
     constexpr uint32_t kW = 512, kH = 512;
     const glm::vec3 focus = ShaderBodyCentre(frameInst);
     const float     R     = ShaderBodyRadius(frameInst);

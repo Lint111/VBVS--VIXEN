@@ -995,15 +995,8 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ASSERT_NO_THROW(node->Compile());
     ExpectNoValidationErrors("shellcache compile");
 
-    EXPECT_FALSE(node->HasPublishedShellGeneration());
-    EXPECT_EQ(node->ShellFullDeriveCount(), 0u);
-    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
-        frameIndex = frame % 2u;
-        SetHandleVal<uint32_t>(frameRes, frameIndex);
-        ASSERT_NO_THROW(node->Execute());
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "initial shell generation timed out";
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "initial shell generation must be published before Compile exposes its buffers";
     ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
 
     // The published shell generation includes octree 0 at perOctree[0].

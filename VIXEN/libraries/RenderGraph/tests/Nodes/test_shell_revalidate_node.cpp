@@ -622,14 +622,8 @@ TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
 
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
-    ASSERT_FALSE(node->HasPublishedShellGeneration());
-    ASSERT_EQ(node->ShellFullDeriveCount(), 0u);
-    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
-        SetHandleVal<uint32_t>(frameRes, frame % 2u);
-        ASSERT_NO_THROW(node->Execute());
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "initial shell generation timed out";
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "initial shell generation must be published before Compile exposes its buffers";
     ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
     const uint64_t proxyUploadsBeforeEdit = node->ProxyAabbUploadCount();
     ASSERT_GT(proxyUploadsBeforeEdit, 0u);
@@ -753,20 +747,16 @@ TEST_F(ShellRevalidateNodeTest, AsyncProducerPublishesEmitterPowerWithItsGenerat
     node->SetInstances({instance});
     node->SetRecipePoolProducer([body] {
         const std::vector<const SdfBodyOctree*> sources{body.get()};
-        // ConcatenateSdfWithMips runs inside RunAsync and bakes the emitter
-        // power lane alongside the mip stream for this generation.
+        // The initial compile and later async generations both use this complete
+        // bake, including the emitter power lane alongside the mip stream.
         return ConcatenateSdfWithMips(sources);
     });
 
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
-    ASSERT_FALSE(node->HasPublishedShellGeneration());
-    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
-        SetHandleVal<uint32_t>(frameRes, frame % 2u);
-        ASSERT_NO_THROW(node->Execute());
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "emissive shell generation timed out";
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "emissive shell generation must be published before Compile exposes its buffers";
+    ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
 
     const ConcatenatedOctrees& generation = node->ShellPool().compact;
     ASSERT_EQ(generation.count, 1u);

@@ -530,8 +530,16 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[BodyOctreeSceneNode] COMMAND_POOL is null");
     }
 
-    // 1+2) Build the per-kind shell octrees + concatenate (once; cached).
-    EnsureOctreesBuilt();
+    // 1+2) Build the source pool once. A staged producer takes precedence on the
+    // first compile; it may carry a recipe bake and emitter power lane that are
+    // absent from the node's default scene pool.
+    if (nodesBuffer_ == VK_NULL_HANDLE && requestedPoolProducer_) {
+        auto initialPoolProducer = std::move(requestedPoolProducer_);
+        concatenated_ = initialPoolProducer();
+        octreesBuilt_ = true;
+    } else {
+        EnsureOctreesBuilt();
+    }
 
     // 3a) Octree GPU buffers — persistent across recompile (create only once).
     if (nodesBuffer_ == VK_NULL_HANDLE) {
@@ -542,7 +550,27 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // pool swap re-enters CompileImpl with nodesBuffer_ already valid, so this branch
         // is skipped) — see DeriveResidencyDefaultIfUnset's own doc comment.
         DeriveResidencyDefaultIfUnset();
-        CreateOctreeBuffers(devicePtr);
+
+        // Outputs are bound by downstream nodes as Compile returns. The first shell
+        // generation must therefore be complete before those handles are published;
+        // a later Execute cannot replace a placeholder handle already captured by a
+        // consumer. Runtime edits still use ScheduleShellGeneration's async path.
+        auto* graph = GetOwningGraph();
+        const uint32_t workers = graph
+            ? graph->GetMainCacher().GetTaskExecutor().Profile().WorkerCount(
+                  Vixen::KernelDispatch::TaskLane::FrameCompute, 2u)
+            : 1u;
+        ShellGenerationPayload initial = BuildShellGenerationPayload(
+            std::move(concatenated_), shellDilation_,
+            envFlagEnabled("VIXEN_SHELL_NORMALS"), workers);
+        concatenated_ = std::move(initial.pool);
+        shellCache_ = std::move(initial.shell);
+        publishedEmitterRootPowers_ = std::move(initial.emitterRootPowers);
+        emitterTableDirty_ = true;
+        CreateOctreeBuffers(devicePtr, /*publishingShellGeneration=*/true);
+        published_ = nextPublishedGeneration_++;
+        ++shellFullDeriveCount_;
+        materializationRequested_ = false;
     } else {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent octree buffers across recompile");
     }
@@ -1445,6 +1473,40 @@ void BodyOctreeSceneNode::Rematerialize(
                   std::to_string(executeFrame));
 }
 
+BodyOctreeSceneNode::ShellGenerationPayload BodyOctreeSceneNode::BuildShellGenerationPayload(
+    Vixen::SVO::ConcatenatedOctrees pool,
+    uint32_t shellDilation,
+    bool bakeNormals,
+    uint32_t workerCount) {
+    ShellGenerationPayload payload;
+    const auto workerStart = std::chrono::steady_clock::now();
+    // RecipePoolProducer completes RecipeBaker's mip and emitter-power-lane bakes
+    // before this immutable pool reaches the generation payload.
+    payload.emitterRootPowers = Vixen::SVO::EmitterRootPowers(pool);
+    const auto deriveStart = std::chrono::steady_clock::now();
+    payload.shell = DeriveShellCache(pool, shellDilation, bakeNormals, workerCount);
+    const auto finished = std::chrono::steady_clock::now();
+
+    uint64_t bricks = 0;
+    for (uint32_t count : pool.brickCounts) bricks += count;
+    uint64_t shellBricks = 0;
+    for (const auto& perOctree : payload.shell.perOctree) shellBricks += perOctree.shellBrickCount;
+    const uint64_t bytes = payload.shell.compact.channelPool.size() +
+        payload.shell.compact.brickGridLookup.size() + payload.shell.compact.mipPool.size() +
+        payload.shell.compact.mipAnisoPool.size() +
+        payload.shell.compact.tierRefTable.size() * sizeof(Vixen::SVO::TierRef) +
+        payload.shell.compact.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
+    const double deriveMs = std::chrono::duration<double, std::milli>(finished - deriveStart).count();
+    const double producerMs = std::chrono::duration<double, std::milli>(finished - workerStart).count();
+    payload.metrics = {bricks, shellBricks, bytes, workerCount, deriveMs, producerMs};
+    std::printf("[ShellDerive] bricks=%llu shell_bricks=%llu bytes=%llu ms=%.3f workers=%u\n",
+        static_cast<unsigned long long>(bricks),
+        static_cast<unsigned long long>(shellBricks),
+        static_cast<unsigned long long>(bytes), deriveMs, workerCount);
+    payload.pool = std::move(pool);
+    return payload;
+}
+
 void BodyOctreeSceneNode::ScheduleShellGeneration() {
     if (!materializationRequested_ || shellGenerationJob_) return;
 
@@ -1469,37 +1531,8 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
                                                 static_cast<uint32_t>(requestId)};
     auto produce = [payload, poolProducer = std::move(poolProducer), dilation,
                     bakeNormals, workers]() mutable {
-        const auto workerStart = std::chrono::steady_clock::now();
-        // RecipePoolProducer runs here on the async worker. RecipeBaker's
-        // ConcatenateSdfWithMips path performs the mip and emitter-power-lane
-        // bakes before this complete pool is attached to the generation.
-        Vixen::SVO::ConcatenatedOctrees pool = poolProducer();
-        std::vector<float> emitterRootPowers = Vixen::SVO::EmitterRootPowers(pool);
-        const auto deriveStart = std::chrono::steady_clock::now();
-        Vixen::SVO::ShellPool shell = BodyOctreeSceneNode::DeriveShellCache(
-            pool, dilation, bakeNormals, workers);
-        const auto finished = std::chrono::steady_clock::now();
-
-        uint64_t bricks = 0;
-        for (uint32_t count : pool.brickCounts) bricks += count;
-        uint64_t shellBricks = 0;
-        for (const auto& perOctree : shell.perOctree) shellBricks += perOctree.shellBrickCount;
-        const uint64_t bytes = shell.compact.channelPool.size() +
-            shell.compact.brickGridLookup.size() + shell.compact.mipPool.size() +
-            shell.compact.mipAnisoPool.size() +
-            shell.compact.tierRefTable.size() * sizeof(Vixen::SVO::TierRef) +
-            shell.compact.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
-        const double deriveMs = std::chrono::duration<double, std::milli>(finished - deriveStart).count();
-        const double producerMs = std::chrono::duration<double, std::milli>(finished - workerStart).count();
-        payload->metrics = {bricks, shellBricks, bytes, workers, deriveMs, producerMs};
-        std::printf("[ShellDerive] bricks=%llu shell_bricks=%llu bytes=%llu ms=%.3f workers=%u\n",
-            static_cast<unsigned long long>(bricks),
-            static_cast<unsigned long long>(shellBricks),
-            static_cast<unsigned long long>(bytes), deriveMs, workers);
-
-        payload->pool = std::move(pool);
-        payload->shell = std::move(shell);
-        payload->emitterRootPowers = std::move(emitterRootPowers);
+        *payload = BodyOctreeSceneNode::BuildShellGenerationPayload(
+            poolProducer(), dilation, bakeNormals, workers);
     };
 
     if (!graph) {
