@@ -258,7 +258,7 @@ add_custom_command(
             -fshader-stage=compute
             -I ${_brm_shader_dir}
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
-            --target-env=vulkan1.3
+            --target-env=vulkan1.2
             -DVIXEN_GPU_TRACE_HOOKS=1
             -DVIXEN_B1_OCCLUSION_CULL=1
             ${_brm_src}
@@ -278,7 +278,7 @@ add_custom_command(
             -fshader-stage=compute
             -I ${_brm_shader_dir}
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
-            --target-env=vulkan1.3
+            --target-env=vulkan1.2
             -DVIXEN_GPU_TRACE_HOOKS=1
             -DVIXEN_B1_OCCLUSION_CULL=1
             -DVIXEN_B2_PROXY_PREPASS=1
@@ -1012,7 +1012,7 @@ if(VIXEN_GLSLC)
         OUTPUT  ${_hiz_spv}
         COMMAND ${VIXEN_GLSLC}
                 -fshader-stage=compute
-                --target-env=vulkan1.3
+                --target-env=vulkan1.2
                 ${_hiz_src}
                 -o ${_hiz_spv}
         DEPENDS ${_hiz_src}
@@ -1051,7 +1051,7 @@ if(VIXEN_GLSLC)
         COMMAND ${VIXEN_GLSLC}
                 -fshader-stage=compute
                 -I ${_brm_shader_dir}
-                --target-env=vulkan1.3
+                --target-env=vulkan1.2
                 ${_cull_src}
                 -o ${_cull_spv}
         DEPENDS ${_cull_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
@@ -1133,7 +1133,7 @@ if(VIXEN_GLSLC)
                 -fshader-stage=compute
                 -I ${_brm_shader_dir}
                 -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
-                --target-env=vulkan1.3
+                --target-env=vulkan1.2
                 ${_shadow_ray_trace_src}
                 -o ${_shadow_ray_trace_spv}
         DEPENDS ${_shadow_ray_trace_src} ${_brm_includes}

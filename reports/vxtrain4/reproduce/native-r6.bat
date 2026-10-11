@@ -3,6 +3,7 @@ setlocal
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b %errorlevel%
 cd /d C:\vixen-native\vxtrain4\VIXEN
+set "VIXEN_EDITOR_EXE=C:\vixen-native\vxtrain4\build\vxtrain4-native\binaries\vixen_editor.exe"
 set "VIXEN_GPUYIELD_TRACE=1"
 set "VIXEN_EDITOR_TEST_CAMERA=top-down"
 set "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"

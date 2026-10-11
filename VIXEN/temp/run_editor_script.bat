@@ -49,7 +49,11 @@ REM script works unmodified in whichever worktree/checkout invokes it.
 cd /d %~dp0..
 if not exist temp mkdir temp
 
-binaries\vixen_editor.exe > temp\run_editor_script.log 2>&1
+if defined VIXEN_EDITOR_EXE (
+    "%VIXEN_EDITOR_EXE%" > temp\run_editor_script.log 2>&1
+) else (
+    binaries\vixen_editor.exe > temp\run_editor_script.log 2>&1
+)
 set VIXEN_EDITOR_EXIT_CODE=%ERRORLEVEL%
 
 echo vixen_editor exited with code %VIXEN_EDITOR_EXIT_CODE% (see temp\run_editor_script.log)
