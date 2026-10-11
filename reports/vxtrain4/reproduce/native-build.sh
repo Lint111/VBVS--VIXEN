@@ -5,6 +5,15 @@ native_root=/mnt/c/vixen-native/vxtrain4
 repo_root=$(git rev-parse --show-toplevel)
 tip=$(git rev-parse HEAD)
 
+(
+  while true; do
+    sleep 60
+    echo "[heartbeat] vxtrain4 native build active $(date +%T)"
+  done
+) &
+heartbeat_pid=$!
+trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+
 if [[ ! -d "$native_root/.git" ]]; then
   echo "Assigned native checkout is missing: $native_root" >&2
   exit 1
