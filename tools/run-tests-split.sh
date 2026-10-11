@@ -9,11 +9,12 @@
 # CPU part never holds a GPU slot and the GPU part never holds CPU slots it does not use.
 #
 # Usage:
-#   tools/run-tests-split.sh --build-dir build/wsl --regex 'RenderGraph|SVO' --agent mylane
+#   tools/run-tests-split.sh --build-dir build/wsl --label 'RenderGraph|SVO' --agent mylane
 #   tools/run-tests-split.sh --build-dir build/wsl -- --timeout 120      # extra args go to both ctest runs
 #
 # Options:
 #   --build-dir DIR   CMake build tree (default build/wsl)
+#   --label RE        ctest -L suite selection, ANDed with the class label (e.g. 'RenderGraph|SVO')
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
 #   --cpu-jobs N      ctest -j for the cpu part (default: nproc/2, max 8)
@@ -22,13 +23,14 @@
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run
 #   --no-queue        run ctest directly (for hosts without the queue)
-# Lane example:   bash tools/run-tests-split.sh --agent "$LANE" --regex 'RenderGraph|SVO'
+# Lane example:   bash tools/run-tests-split.sh --agent "$LANE" --label 'RenderGraph|SVO'
 # Batch example:  one call per batch with no --regex; the exit status is non-zero if either part failed.
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="build/wsl"
 regex=""
+suite_label=""
 agent="$(basename "$root")"
 cpu_jobs="$(( $(nproc) / 2 ))"
 (( cpu_jobs < 1 )) && cpu_jobs=1
@@ -42,6 +44,7 @@ extra=()
 while (( $# )); do
   case "$1" in
     --build-dir) build_dir="$2"; shift 2 ;;
+    --label) suite_label="$2"; shift 2 ;;
     --regex) regex="$2"; shift 2 ;;
     --agent) agent="$2"; shift 2 ;;
     --cpu-jobs) cpu_jobs="$2"; shift 2 ;;
@@ -65,7 +68,8 @@ if (( witness )); then
 fi
 
 select_args=()
-[[ -n "$regex" ]] && select_args=(-R "$regex")
+[[ -n "$suite_label" ]] && select_args+=(-L "$suite_label")
+[[ -n "$regex" ]] && select_args+=(-R "$regex")
 
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
@@ -95,7 +99,7 @@ run_part() {
   return "$status"
 }
 
-echo "[run-tests-split] build=$build_dir regex='${regex:-<all>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
+echo "[run-tests-split] build=$build_dir label='${suite_label:-<all>}' regex='${regex:-<all>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
 echo "[run-tests-split] cpu: $(ctest --test-dir "$build_dir" -N -L '^cpu$' "${select_args[@]}" | sed -n 's/^Total Tests: //p')   gpu: $(ctest --test-dir "$build_dir" -N -L '^gpu$' "${select_args[@]}" | sed -n 's/^Total Tests: //p')"
 
 wall_start=$SECONDS
