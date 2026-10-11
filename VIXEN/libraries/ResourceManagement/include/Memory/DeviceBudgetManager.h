@@ -2,6 +2,7 @@
 
 #include "Memory/IMemoryAllocator.h"
 #include "Memory/ResourceBudgetManager.h"
+#include "Memory/MemoryPressure.h"
 #include "MessageBus.h"  // Include for ScopedSubscriptions
 #include <memory>
 #include <functional>
@@ -77,6 +78,14 @@ public:
         uint64_t deviceMemoryWarning = 0; // Warning threshold
         uint64_t stagingQuota = 256 * 1024 * 1024; // 256 MB staging buffer quota
         bool strictBudget = false;        // Fail allocations over budget
+
+        // R516: true only when VK_EXT_memory_budget was enabled at vkCreateDevice. Turns on the live
+        // budget: device-local allocations are checked against what the OS grants this process now.
+        bool memoryBudgetExtensionEnabled = false;
+
+        // Called (outside any lock) when live pressure rises to Elevated or above. Caches/pools use it
+        // to release memory. Not called for Normal.
+        std::function<void(MemoryPressure)> pressureCallback = nullptr;
 
         // Optional MessageBus for event-driven frame tracking
         // If provided, manager auto-subscribes to FrameStartEvent/FrameEndEvent
@@ -322,6 +331,36 @@ public:
      */
     void SetStagingQuota(uint64_t quota);
 
+    // =========================================================================
+    // Live memory budget (VK_EXT_memory_budget) and degrade ladder — R516
+    // =========================================================================
+
+    /**
+     * @brief Re-read the live device-local budget and update pressure. Cheap; called every
+     * kLiveRefreshFrames frames from OnFrameStart and after an out-of-memory failure. No-op without a
+     * physical device. Fires the pressure callback when pressure rises to Elevated or above.
+     */
+    void RefreshLiveBudget();
+
+    /** @brief Current pressure (Normal when the live budget is unavailable). */
+    [[nodiscard]] MemoryPressure GetPressure() const {
+        return static_cast<MemoryPressure>(pressure_.load(std::memory_order_acquire));
+    }
+
+    /** @brief Last live device-local budget/usage read (zeros until the first refresh). */
+    [[nodiscard]] LiveDeviceBudget GetLiveBudget() const {
+        return {liveBudget_.load(std::memory_order_acquire), liveUsage_.load(std::memory_order_acquire),
+                config_.memoryBudgetExtensionEnabled};
+    }
+
+    /**
+     * @brief Degrade decision for a device-local request of `bytes` under the live budget.
+     * Optional requests are refused before required ones fail.
+     */
+    [[nodiscard]] DegradeAction DecideDegrade(uint64_t bytes, bool optional) const;
+
+    static constexpr uint64_t kLiveRefreshFrames = 30;
+
 private:
     Config config_;
     std::shared_ptr<IMemoryAllocator> allocator_;
@@ -329,6 +368,12 @@ private:
 
     // Staging quota tracking
     std::atomic<uint64_t> stagingQuotaUsed_{0};
+
+    // Live budget (R516). Written by RefreshLiveBudget, read lock-free by the allocation path.
+    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+    std::atomic<uint64_t> liveBudget_{0};
+    std::atomic<uint64_t> liveUsage_{0};
+    std::atomic<uint8_t> pressure_{static_cast<uint8_t>(MemoryPressure::Normal)};
 
     // Aliased allocation tracking (Sprint 4 Phase B+)
     std::atomic<uint32_t> aliasedAllocationCount_{0};

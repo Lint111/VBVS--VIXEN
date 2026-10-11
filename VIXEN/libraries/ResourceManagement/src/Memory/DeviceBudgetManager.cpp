@@ -11,6 +11,7 @@ DeviceBudgetManager::DeviceBudgetManager(
     const Config& config)
     : config_(config)
     , allocator_(std::move(allocator))
+    , physicalDevice_(config_.memoryBudgetExtensionEnabled ? physicalDevice : VK_NULL_HANDLE)
 {
     // Auto-detect device memory if not specified
     uint64_t deviceMemory = config_.deviceMemoryBudget;
@@ -40,6 +41,8 @@ DeviceBudgetManager::DeviceBudgetManager(
         allocator_->SetBudgetManager(&budgetTracker_);
     }
 
+    RefreshLiveBudget();
+
     // Subscribe to frame events if MessageBus provided
     messageBus_ = config_.messageBus;
     if (messageBus_) {
@@ -57,8 +60,15 @@ DeviceBudgetManager::AllocateBuffer(const BufferAllocationRequest& request) {
         return std::unexpected(AllocationError::InvalidParameters);
     }
 
+    if (request.location == MemoryLocation::DeviceLocal &&
+        DecideDegrade(request.size, false) == DegradeAction::FailAllocation) {
+        return std::unexpected(AllocationError::OverBudget);
+    }
+
     // Budget check is done by allocator via SetBudgetManager
-    return allocator_->AllocateBuffer(request);
+    auto result = allocator_->AllocateBuffer(request);
+    if (!result && result.error() == AllocationError::OutOfDeviceMemory) RefreshLiveBudget();
+    return result;
 }
 
 void DeviceBudgetManager::FreeBuffer(BufferAllocation& allocation) {
@@ -73,7 +83,17 @@ DeviceBudgetManager::AllocateImage(const ImageAllocationRequest& request) {
         return std::unexpected(AllocationError::InvalidParameters);
     }
 
-    return allocator_->AllocateImage(request);
+    if (request.location == MemoryLocation::DeviceLocal) {
+        // Upper bound of the image footprint is unknown before creation; use the allocator's own check
+        // for size and only gate on pressure already at the limit.
+        if (GetPressure() == MemoryPressure::Exhausted) {
+            return std::unexpected(AllocationError::OverBudget);
+        }
+    }
+
+    auto result = allocator_->AllocateImage(request);
+    if (!result && result.error() == AllocationError::OutOfDeviceMemory) RefreshLiveBudget();
+    return result;
 }
 
 void DeviceBudgetManager::FreeImage(ImageAllocation& allocation) {
@@ -162,11 +182,16 @@ uint32_t DeviceBudgetManager::GetAliasedAllocationCount() const {
 }
 
 bool DeviceBudgetManager::TryReserveStagingQuota(uint64_t bytes) {
+    // Degrade ladder: Elevated halves the quota, Critical/Exhausted refuse optional staging outright.
+    const MemoryPressure pressure = GetPressure();
+    if (pressure >= MemoryPressure::Critical) return false;
+    const uint64_t quota = pressure == MemoryPressure::Elevated ? config_.stagingQuota / 2 : config_.stagingQuota;
+
     // Atomic check-and-reserve
     uint64_t current = stagingQuotaUsed_.load(std::memory_order_acquire);
 
     while (true) {
-        if (current + bytes > config_.stagingQuota) {
+        if (current + bytes > quota) {
             return false;  // Would exceed quota
         }
 
@@ -306,7 +331,31 @@ AllocationSnapshot DeviceBudgetManager::CaptureSnapshot() const {
     return snapshot;
 }
 
+void DeviceBudgetManager::RefreshLiveBudget() {
+    if (physicalDevice_ == VK_NULL_HANDLE) return;
+
+    const LiveDeviceBudget live = QueryLiveDeviceBudget(physicalDevice_, config_.memoryBudgetExtensionEnabled);
+    liveBudget_.store(live.budgetBytes, std::memory_order_release);
+    liveUsage_.store(live.usageBytes, std::memory_order_release);
+
+    const MemoryPressure now = ClassifyMemoryPressure(live.budgetBytes, live.usageBytes);
+    const auto previous = static_cast<MemoryPressure>(
+        pressure_.exchange(static_cast<uint8_t>(now), std::memory_order_acq_rel));
+    if (now >= MemoryPressure::Elevated && now > previous && config_.pressureCallback) {
+        config_.pressureCallback(now);
+    }
+}
+
+DegradeAction DeviceBudgetManager::DecideDegrade(uint64_t bytes, bool optional) const {
+    if (physicalDevice_ == VK_NULL_HANDLE) return DegradeAction::None;
+    return ChooseDegradeAction(liveBudget_.load(std::memory_order_acquire),
+                               liveUsage_.load(std::memory_order_acquire), bytes, optional);
+}
+
 void DeviceBudgetManager::OnFrameStart() {
+    if (physicalDevice_ != VK_NULL_HANDLE && (frameNumber_ % kLiveRefreshFrames) == 0) {
+        RefreshLiveBudget();
+    }
     frameStartSnapshot_ = CaptureSnapshot();
 }
 

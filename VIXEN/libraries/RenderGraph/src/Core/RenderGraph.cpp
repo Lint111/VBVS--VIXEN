@@ -780,7 +780,7 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 
     // Recovery-storm guard: a workload that re-loses the device right after every recovery would
     // otherwise loop forever. Fail cleanly after kMaxConsecutiveRecoveries back-to-back losses.
-    if (lastRecoveryFrame_ != 0 && globalFrameIndex - lastRecoveryFrame_ <= kRecoveryStormWindowFrames) {
+    if (lastRecoveryFrame_ != 0 && (globalFrameIndex + 1) - lastRecoveryFrame_ <= kRecoveryStormWindowFrames) {
         ++consecutiveRecoveries_;
     } else {
         consecutiveRecoveries_ = 1;
@@ -814,16 +814,15 @@ bool RenderGraph::RecoverFromDeviceLoss() {
     }
 
     try {
-        // Drain in-flight work before destroying resources. On a truly-lost device vkDeviceWaitIdle
-        // returns VK_ERROR_DEVICE_LOST immediately (no hang); on a healthy device (fault-injection test)
-        // it actually drains, making the teardown safe in both cases.
+        // Drain in-flight work before destroying resources, bounded by the watchdog: each VulkanDevice has a
+        // single queue, so a bounded queue drain is a complete device drain. On a truly-lost device the
+        // drain returns DEVICE_LOST immediately; a wait that outlives the bound means the GPU is wedged
+        // and tearing resources down would destroy objects it is still using, so fail cleanly instead.
         if (!DrainGraphDevicesBounded()) {
-            InvalidateExecutionEpoch();
             deviceLostUnrecoverable_ = true;
             GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] GPU did not drain within the watchdog bound — the device is unrecoverable");
             return false;
         }
-        WaitForGraphDevicesIdle();
 
         // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
         // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
@@ -875,7 +874,7 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 
     // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt).
     deviceLost_ = false;
-    lastRecoveryFrame_ = globalFrameIndex ? globalFrameIndex : 1;
+    lastRecoveryFrame_ = globalFrameIndex + 1;  // +1 so 0 stays "never recovered"
     dirtyNodes.clear();
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
     return true;

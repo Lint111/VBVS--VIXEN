@@ -839,3 +839,47 @@ TEST_F(StagingBufferPoolTest, StatsAccuracy) {
 // - Deadline-based flush (uses std::chrono, tested via integration)
 //
 // See: application/tests/test_batched_upload_integration.cpp (future)
+
+// ============================================================================
+// R516: memory-pressure ladder (pure) and DeviceBudgetManager without a live budget
+// ============================================================================
+
+TEST(MemoryPressureLadder, ClassifiesAgainstTheBudget) {
+    EXPECT_EQ(ClassifyMemoryPressure(0, 123), MemoryPressure::Normal);          // unknown budget
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 0), MemoryPressure::Normal);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 749), MemoryPressure::Normal);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 750), MemoryPressure::Elevated);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 899), MemoryPressure::Elevated);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 900), MemoryPressure::Critical);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 999), MemoryPressure::Critical);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 1000), MemoryPressure::Exhausted);
+    EXPECT_EQ(ClassifyMemoryPressure(1000, 5000), MemoryPressure::Exhausted);
+}
+
+TEST(MemoryPressureLadder, DegradeActionsEscalateAndOptionalGoesFirst) {
+    EXPECT_EQ(ChooseDegradeAction(0, 0, 1 << 30, false), DegradeAction::None);  // no live budget
+    EXPECT_EQ(ChooseDegradeAction(1000, 100, 100, false), DegradeAction::None);
+    EXPECT_EQ(ChooseDegradeAction(1000, 600, 200, false), DegradeAction::TrimCaches);  // lands at 80%
+    EXPECT_EQ(ChooseDegradeAction(1000, 600, 320, false), DegradeAction::TrimCaches);  // lands at 92%
+    EXPECT_EQ(ChooseDegradeAction(1000, 600, 320, true), DegradeAction::RefuseOptional);
+    EXPECT_EQ(ChooseDegradeAction(1000, 600, 401, false), DegradeAction::FailAllocation);
+    EXPECT_EQ(ChooseDegradeAction(1000, 600, 401, true), DegradeAction::FailAllocation);
+    EXPECT_EQ(ChooseDegradeAction(1000, 1000, 1, false), DegradeAction::FailAllocation);
+}
+
+TEST(MemoryPressureLadder, NoPhysicalDeviceMeansNoLiveBudget) {
+    auto allocator = std::make_shared<MockAllocator>();
+    DeviceBudgetManager::Config config{};
+    config.memoryBudgetExtensionEnabled = true;  // ignored without a physical device
+    DeviceBudgetManager manager(allocator, VK_NULL_HANDLE, config);
+    manager.RefreshLiveBudget();
+    EXPECT_EQ(manager.GetPressure(), MemoryPressure::Normal);
+    EXPECT_EQ(manager.DecideDegrade(1ull << 40, false), DegradeAction::None);
+    EXPECT_TRUE(manager.TryReserveStagingQuota(1024));
+}
+
+TEST(MemoryPressureLadder, QueryWithoutPhysicalDeviceIsEmpty) {
+    const LiveDeviceBudget live = QueryLiveDeviceBudget(VK_NULL_HANDLE, true);
+    EXPECT_EQ(live.budgetBytes, 0u);
+    EXPECT_EQ(live.usageBytes, 0u);
+}

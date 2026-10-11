@@ -82,6 +82,7 @@ private:
     std::vector<VkPhysicalDevice> availableGPUs;
     uint32_t selectedGPUIndex = 0;
     VkPhysicalDevice selectedPhysicalDevice = VK_NULL_HANDLE; // Store selected GPU
+    bool memoryBudgetExtensionEnabled_ = false; // VK_EXT_memory_budget enabled on the logical device
 
     // VulkanDevice wrapper (owns logical device)
     std::shared_ptr<Vixen::Vulkan::Resources::VulkanDevice> vulkanDevice;
