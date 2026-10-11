@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-Product tree tip: `d3d7700f`; report and runner commits are on top through `69a67a8a`. The lane remains based on `origin/wave/authoring-convergence` at `a48a42df`.
+Product tree tip: `d3d7700f`; follow-up harness commit: `6d5d28f3`. The lane remains based on `origin/wave/authoring-convergence` at `a48a42df` (refetched and unchanged).
 
 ### Ordered merges
 
@@ -25,34 +25,33 @@ All merges were made in the requested order, with one merge commit each. The wav
 - The planetref pipeline and its 8 unit tests passed. Source EXR hashes stayed unchanged; the fit JSON varied with installed NumPy/SciPy versions, and generated drift was restored. Logs: `/home/liory/.local/state/undertow/undertow-box-logs/1791743606-test-vxtrain4:planetref-pipeline.log` and `1791743705-test-vxtrain4:planetref-unittest.log`.
 - The external inventory file change is not part of this repository commit: `VIXEN_COMPOSED_TRAVERSAL` is classified as planned/default-on composed traversal with CapabilityGraph ray query where available and DDA fallback otherwise; `VIXEN_BRICKMAP_TRAVERSAL` is retired as a standalone product switch.
 
-### Full RenderGraph/SVO suite
+### GPU suite and B1 attribution
 
-The wave-base report records 2,124 selected cases and exactly one accepted failure, `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes` (opcode 94): `/home/liory/.local/state/undertow/undertow-box-logs/1791736360-gpu-wave-base-rendergraph-svo-suite.log`.
+The first clean exclusive tip suite (`1791754627-gpu-vxtrain4:full-rgsvo-gpu-lock-lander.log`) selected 2,181 cases and completed in 994.35 seconds. Its only failing name was `B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical`. `vixen_hud_capture_producer` passed in 53.67 seconds, `vixen_multiinstance_cache_gate` passed in 446.78 seconds, and opcode 94 passed at the pinned kernel. This classifies the earlier HUD timeout and solo-app `-11` as contention; B1 remained reproducible under the exclusive GPU lock.
 
-The first full tip run was exposed to concurrent GPU tests and builds. It selected 2,181 cases and reported 15 failures, including fixture-dependent `Not Run` cases, a segfault, and producer/gate timeouts. Its N100 bucket took 253.87 seconds compared with 40.46 seconds in the published wave run. A second run using the standard test resource was explicitly interrupted at 654/2,181 after more concurrent GPU jobs began. These are not used as the final product result. Logs: `/home/liory/.local/state/undertow/undertow-box-logs/1791746135-gpu-vxtrain4:rendergraph-svo-final.log` and `1791748392-test-vxtrain4:rendergraph-svo-final-testqueue.log`.
+Per-merge B1 attribution used the same Dozen ICD and target: wave base `a48a42df`, R505 `6ead78d1`, and R485 `5f30e53b` passed; the failure first appeared at R506 `545f0026` and remained at R512 `26bfc844` and R507 `7066e37d`. The diagnosis was Vulkan validation rejecting SPIR-V 1.6 modules under Dozen's Vulkan 1.2 semantics. The B1 executable loads five CMake-built artifacts, so its ray-march variants, Hi-Z, instance cull, and shadow-trace targets now compile for Vulkan 1.2 (SPIR-V 1.5). The focused target builds passed; latest queued build log: `/home/liory/.local/state/undertow/undertow-box-logs/1791761244-build-vxtrain4:b1-all-shader-env-build.log`. The post-fix focused test and full suite are queued together as one `resource=gpu` job; the command records the focused result and runs the full suite even if that focused gate fails. The latest wave-base failing-name set is empty per the updated base result; opcode 94 passed on this pinned tip.
 
-The exclusive serial run completed all 2,181 selected cases in 1,404.98 seconds (queue log `/home/liory/.local/state/undertow/undertow-box-logs/1791750110-test-vxtrain4:rendergraph-svo-exclusive-recovery.log`). CTest reported 13 failures out of 2,179 run cases:
+### Dozen look-dev sheets
 
-- `vixen_hud_capture_producer` timed out at 180.51 seconds. Ten fixture-dependent cases were then `Not Run`: six `EditorToggleUndoCapture.*` cases, `EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget`, and three `HudRenderCapture.*` cases.
-- `B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical` segfaulted after 15.97 seconds.
-- `vixen_multiinstance_cache_gate` failed because `solo-app` exited `-11` (gate duration 56.04 seconds).
+The three fresh tip captures completed in one queued GPU job (`1791759637-gpu-vxtrain4:tip-midday-overcast-night-captures.log`). Each sheet has four angles across the top wave-base row and four across the bottom tip row:
 
-The accepted opcode-94 parity test passed. The editor capture producer passed in 290.18 seconds, and the AppFlow channel gate passed in 168.33 seconds. Thus the final failure set is not the wave-base set.
+- Midday: `reports/vxtrain4-visual/comparison/midday-wavebase-v-tip.png`
+- Overcast: `reports/vxtrain4-visual/comparison/overcast-wavebase-v-tip.png`
+- Night-service: `reports/vxtrain4-visual/comparison/night-service-wavebase-v-tip.png`
 
-Although this run held all 15 queue tokens, a separate direct `ctest -j4 --output-junit ... -L 'RenderGraph|SVO'` launched by `tools/classify-tests-gpu.py` in another worktree ran concurrently for most of it. I could not stop or modify that lane. The HUD timeout, B1 segfault, and multi-instance failure therefore remain unclassified; this is not a clean isolation witness and needs a rerun after other VIXEN CTest processes are routed through the shared queue or have finished. The first parallel run and interrupted standard-resource retry are documented above and in their logs.
+The DZN log resolves composed traversal to `grid-DDA`. Midday and overcast retain the same object layout and framing, while the tip shows strong new cast shadows from the R505 default path. They are not pixel-identical: midday changed 250,000/250,000 pixels in each view (maximum channel delta 190); overcast changed 244,048–250,000/250,000 pixels (maximum delta 171). Night-service keeps the same layout; the tip adds warm exterior light pools on the building wall and ground, consistent with R506 moving the lights outside the hull. Night changed 249,543–249,973/250,000 pixels (maximum delta 222). I opened and reviewed all three sheets.
 
-### Native performance and visual witnesses
+The system Python lacks Pillow (`from PIL import Image, ImageDraw` failed with `ModuleNotFoundError`), so I generated the paired sheets with the repository pixel-comparer's decoder and Python's standard PNG/zlib support. A consolidation proposal records the missing declared dependency.
 
-The previous `travdefault` lane measured Radeon 8060S look-dev at 1920×1080: whole-frame p50 composed→ESVO `22.760→42.962 ms` (+20.202 ms), traversal/shade `18.637→38.694 ms` (+20.057 ms). These are prior-lane results, not an A/B measurement on this merged tip. The current-tip native R6 request remained behind another GPU capture until the checkpoint; its queued wrapper was interrupted before the payload started (exit 130).
+### Native R6 and 1080p A/B/A
 
-Current-tip midday, overcast, and night-service capture sheets and pixel comparisons are pending. Expected attribution from the merged work is pixel-identical midday/overcast, with the intended night-only change from lightunify; R505 traversal default should not alter pixels.
+The first two queued native attempts exited 3 before CTest because `run_editor_script.bat` searched for `VIXEN\binaries\vixen_editor.exe`, while MSVC emitted the executable under `build\vxtrain4-native\binaries`. Commit `6d5d28f3` passes the configured executable path into the script. The corrected native R6 plus ESVO/default/ESVO 1080p A/B/A session is queued against that commit; no current-tip R6 budget or A/B/A timing has been witnessed yet. The earlier travdefault values (22.760 ms composed and 42.962 ms ESVO at 1080p) remain prior-lane reference values, not a replacement for this requested session.
 
 ## STOPs
 
-- No product compile or generation failure is established. The full Linux Release build and all generated checks passed.
-- The completed full RenderGraph/SVO run has extra failures compared with wave base; their cause is unclassified because a direct CTest classifier ran concurrently. Rerun the suite after that classifier and other GPU tests have stopped or are admitted through the global queue.
-- At the three-hour checkpoint, `2026-10-11 20:49 UTC`, the native R6 ≤2.0 ms witness, current-tip native 1080p A/B timings, and current-tip midday/overcast/night-service sheets and pixel comparisons were unfinished. The prior `travdefault` timing is reported above but is not a current-tip measurement.
-- While composing a proposal command, shell backticks inside a double-quoted body triggered an accidental unqueued `cmake --build build/wsl --parallel 4` for about 44 seconds. The processes were terminated when detected. This output was not used as evidence; all reported build/test evidence above came from the queue.
+- The full suite has not yet completed after the B1 shader-target correction. The queued GPU job is `vxtrain4:final-rgsvo-full-exclusive-vulkan12`; the exact final failing-name set remains pending.
+- Native R6 and the native 1080p A/B/A session remain queued. The previous exit-3 attempts are attributed to the launcher path and predate commit `6d5d28f3`.
+- At the three-hour checkpoint, stop the queued work, record the exact CTest progress/log state, and leave the pending full-suite/native witnesses for a follow-up lane if they have not completed.
 
 ## SPT DISPOSITION
 
@@ -63,3 +62,5 @@ No tracked SPT task IDs were attached.
 - proposed: Pin planetref numerical dependencies for reproducible fit witnesses
 - proposed: Add progress-preserving log capture for queued VIXEN builds
 - proposed: Make GPU-backed VIXEN correctness suites queue-exclusive
+- proposed: Fix look-dev contact-sheet row height
+- proposed: Provide a declared dependency for capture-sheet generation
