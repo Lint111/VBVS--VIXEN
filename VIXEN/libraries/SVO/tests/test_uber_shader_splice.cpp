@@ -105,6 +105,24 @@ TEST(UberShaderSplice, MarkerIsPresentInRealShaderSource) {
     EXPECT_NE(raw.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), std::string::npos);
 }
 
+TEST(UberShaderSplice, SharedTraversalConsumersCompileTheSameRegisteredFields) {
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry recipe{};
+    recipe.bytecode = {sphere({0, 0, 0}, 1.0f)};
+    ASSERT_EQ(registry.Register(100u, recipe), RecipeRegistry::RegisterResult::Ok);
+    for (const char* shader : {"ShadowVisibilityWave.comp", "ShadowRayTrace.comp",
+                              "DirectLighting.comp", "ProbeGather.comp", "HitAccumCellShade.comp"}) {
+        SCOPED_TRACE(shader);
+        const std::string raw = ReadFile(std::string(VIXEN_SHADERS_DIR)+"/"+shader);
+        ASSERT_FALSE(raw.empty());
+        const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry, nullptr);
+        EXPECT_NE(spliced.find("sdfRecipe_100"), std::string::npos);
+        EXPECT_NE(spliced.find("evalRecipeField"), std::string::npos);
+        const auto result = CompileSource(spliced);
+        EXPECT_TRUE(result.success) << result.errorMessage;
+    }
+}
+
 // --- N=1 registered recipe: splice compiles, macro + generated functions present ---------
 
 TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {

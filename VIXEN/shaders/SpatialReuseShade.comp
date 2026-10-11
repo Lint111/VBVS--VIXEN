@@ -39,6 +39,9 @@ layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 // getRayDir via SceneCommon.glsl); the VIXEN_SHADOW_DBG variant keeps the full
 // traversal seam for its own dedicated diagnostic ray (:431 arm).
 #ifdef VIXEN_SHADOW_DBG
+layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+#include "recipe/SdfCoreKernels.g.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
 #include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
 #else
 #include "SceneCommon.glsl"     // pc + camera rays only — NO traversal machinery

@@ -4432,9 +4432,11 @@ void VulkanGraphApplication::RecompileProceduralShader() {
                 }
             }
         }
-        renderGraph->MarkNodeNeedsRecompile(computeShaderLibNode_);
+        for (const auto handle : proceduralShaderLibNodes_)
+            renderGraph->MarkNodeNeedsRecompile(handle);
         if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked compute_shader_lib dirty");
+            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked " +
+                std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");
         }
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");

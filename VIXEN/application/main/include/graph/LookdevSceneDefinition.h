@@ -64,9 +64,9 @@ inline constexpr int kResolution = 64;
 inline constexpr int kBrickDepth = 3;
 inline constexpr float kWorldSpan = 10.0f;
 inline constexpr glm::vec3 kFloodlightGridPosition{39.0f, 36.0f, 25.0f};
-inline constexpr glm::vec3 kNightFloodlightGridPosition{40.6f, 36.0f, 32.0f};
-inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 24.75f};
-inline constexpr glm::vec3 kWorklightGridPosition{32.0f, 47.3f, 32.0f};
+inline constexpr glm::vec3 kNightFloodlightGridPosition{47.0f, 26.0f, 16.0f};
+inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 20.0f};
+inline constexpr glm::vec3 kWorklightGridPosition{17.0f, 26.0f, 46.0f};
 
 inline const std::array<LightingPreset, 4>& LightingPresets() {
     // Directions point from the scene toward the light source. Colors are the
@@ -247,6 +247,14 @@ inline glm::vec3 EmitterOrigin(Material material, bool serviceLightsEnabled) {
     }
 }
 
+inline Primitive PrimitiveForLighting(Primitive primitive, const LightingPreset& preset) {
+    if (ServiceLightsEnabled(preset) && primitive.material == Material::Lamp) {
+        primitive.center = kNightFloodlightGridPosition;
+        primitive.extent = {1.2f, 0.9f, 1.2f};
+    }
+    return primitive;
+}
+
 inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& preset) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
@@ -254,11 +262,7 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& pr
 
     std::array<std::vector<Primitive>, static_cast<size_t>(Material::Count)> primitivesByMaterial;
     auto gather = [&](const Primitive& sourcePrimitive) {
-        Primitive primitive = sourcePrimitive;
-        if (serviceLightsEnabled && primitive.material == Material::Lamp) {
-            primitive.center = kNightFloodlightGridPosition;
-            primitive.extent = {1.2f, 0.9f, 1.2f};
-        }
+        const Primitive primitive = PrimitiveForLighting(sourcePrimitive, preset);
         primitivesByMaterial[static_cast<size_t>(primitive.material)].push_back(primitive);
     };
     for (const Primitive& primitive : Primitives()) gather(primitive);
