@@ -21,4 +21,6 @@ The current-tip four-angle captures are saved under `tip/overcast` and `tip/nigh
 
 The wave-base overcast retry lost the DZN Vulkan device at `FrameSyncNode::vkWaitSemaphores` after writing angles 0–2. Those three saved originals match the corresponding tip angles by SHA-256; angle 3 is missing, so the state comparison is partial. See `wave-base/overcast-partial/capture-status.txt` and log `/home/liory/.local/state/undertow/undertow-box-logs/1791726216-gpu-wave-base-lookdev-overcast.log`.
 
+The wave-base late-afternoon retry also lost the DZN device after angles 0–1. Those two saved PNGs are byte-identical to their tip counterparts; angles 2–3 are missing. See `wave-base/late-afternoon/capture-status.txt` and log `/home/liory/.local/state/undertow/undertow-box-logs/1791728024-gpu-wave-base-late-afternoon-capture.log`.
+
 The wave-base night-service capture also lost the DZN device during the earlier retry (`/home/liory/.local/state/undertow/undertow-box-logs/1791726137-gpu-wave-base-lookdev-night-service.log`). No complete base night-service image set is available, so that comparison remains unverified. There are no observed pixel changes to explain; midday is fully attributed across every merge boundary, and the available overcast pixels match exactly.
