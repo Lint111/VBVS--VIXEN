@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1170" viewBox="0 0 1080 1170">
+  <style>
+    text { font-family: sans-serif; fill: #f4f4f4; }
+    .title { font-size: 25px; font-weight: 700; }
+    .subtitle { font-size: 15px; fill: #c6c6c6; }
+    .label { font-size: 16px; font-weight: 600; }
+  </style>
+  <rect width="1080" height="1170" fill="#202126"/>
+  <text class="title" x="32" y="42">Stage 1 baseline · midday · 500×500</text>
+  <text class="subtitle" x="32" y="70">WSL Dozen correctness capture · R/D 1.0 · 45° FOV · four camera yaws · repeated PNG hashes matched</text>
+  <g transform="translate(32 100)">
+    <image href="angle-0.png" width="500" height="500"/>
+    <text class="label" x="0" y="526">Yaw 0°</text>
+  </g>
+  <g transform="translate(548 100)">
+    <image href="angle-1.png" width="500" height="500"/>
+    <text class="label" x="0" y="526">Yaw 90°</text>
+  </g>
+  <g transform="translate(32 650)">
+    <image href="angle-2.png" width="500" height="500"/>
+    <text class="label" x="0" y="526">Yaw 180°</text>
+  </g>
+  <g transform="translate(548 650)">
+    <image href="angle-3.png" width="500" height="500"/>
+    <text class="label" x="0" y="526">Yaw 270°</text>
+  </g>
+</svg>
