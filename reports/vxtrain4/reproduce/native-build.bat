@@ -14,7 +14,7 @@ set "GIT_CONFIG_VALUE_0=//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fanta
 set "GIT_CONFIG_KEY_1=safe.directory"
 set "GIT_CONFIG_VALUE_1=//wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/vxtrain4"
 set "VULKAN_SDK=C:\VulkanSDK\1.4.350.0"
-set "PATH=C:\Program Files\CMake\bin;C:\Users\liory\AppData\Local\Microsoft\WinGet\Links;C:\Program Files\Git\cmd;%PATH%"
+set "PATH=C:\Program Files\CMake\bin;C:\Users\liory\AppData\Local\Microsoft\WindowsApps;C:\Users\liory\AppData\Local\Microsoft\WinGet\Links;C:\Program Files\Git\cmd;%PATH%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 copy /Y "%CD%\reports\vxtrain4\reproduce\CMakeUserPresets.json" "%CD%\VIXEN\CMakeUserPresets.json" >NUL
 if errorlevel 1 exit /b %errorlevel%
