@@ -43,7 +43,7 @@ Although this run held all 15 queue tokens, a separate direct `ctest -j4 --outpu
 
 ### Native performance and visual witnesses
 
-The previous `travdefault` lane measured Radeon 8060S look-dev at 1920×1080: whole-frame p50 composed→ESVO `22.760→42.962 ms` (+20.202 ms), traversal/shade `18.637→38.694 ms` (+20.057 ms). These are prior-lane results, not an A/B measurement on this merged tip. The current-tip native R6 request is queued as `vxtrain4:native-r6-final` behind other GPU jobs; it has not started.
+The previous `travdefault` lane measured Radeon 8060S look-dev at 1920×1080: whole-frame p50 composed→ESVO `22.760→42.962 ms` (+20.202 ms), traversal/shade `18.637→38.694 ms` (+20.057 ms). These are prior-lane results, not an A/B measurement on this merged tip. The current-tip native R6 request remained behind another GPU capture until the checkpoint; its queued wrapper was interrupted before the payload started (exit 130).
 
 Current-tip midday, overcast, and night-service capture sheets and pixel comparisons are pending. Expected attribution from the merged work is pixel-identical midday/overcast, with the intended night-only change from lightunify; R505 traversal default should not alter pixels.
 
@@ -51,7 +51,7 @@ Current-tip midday, overcast, and night-service capture sheets and pixel compari
 
 - No product compile or generation failure is established. The full Linux Release build and all generated checks passed.
 - The completed full RenderGraph/SVO run has extra failures compared with wave base; their cause is unclassified because a direct CTest classifier ran concurrently. Rerun the suite after that classifier and other GPU tests have stopped or are admitted through the global queue.
-- Native R6 ≤2.0 ms on this product tip, current-tip native 1080p A/B timings, and current-tip midday/overcast/night-service sheets and pixel comparisons remain unfinished at the lane checkpoint. The prior `travdefault` timing is reported above but is not a current-tip measurement.
+- At the three-hour checkpoint, `2026-10-11 20:49 UTC`, the native R6 ≤2.0 ms witness, current-tip native 1080p A/B timings, and current-tip midday/overcast/night-service sheets and pixel comparisons were unfinished. The prior `travdefault` timing is reported above but is not a current-tip measurement.
 - While composing a proposal command, shell backticks inside a double-quoted body triggered an accidental unqueued `cmake --build build/wsl --parallel 4` for about 44 seconds. The processes were terminated when detected. This output was not used as evidence; all reported build/test evidence above came from the queue.
 
 ## SPT DISPOSITION
