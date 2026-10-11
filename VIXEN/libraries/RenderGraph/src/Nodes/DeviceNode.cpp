@@ -212,47 +212,7 @@ bool DeviceNode::IsDiscreteGPU(VkPhysicalDevice gpu) {
 
 void DeviceNode::SelectPhysicalDevice() {
     std::string selectionReason;
-
-    if constexpr (Vixen::BuildCapabilities::kPersonalizedMode) {
-        bool matched = false;
-        std::string mismatchReason;
-        for (uint32_t i = 0; i < availableGPUs.size(); ++i) {
-            if (Vixen::CapabilityGraph::MatchesConfiguredPhysicalDevice(
-                    availableGPUs[i], &mismatchReason)) {
-                selectedGPUIndex = i;
-                selectionReason = "matched the device and driver recorded by this personalized build";
-                matched = true;
-                break;
-            }
-        }
-        if (!matched) {
-            throw std::runtime_error(
-                "This personalized VIXEN build cannot run on the detected device/driver (" +
-                mismatchReason + "). Rebuild this application for this device and driver.");
-        }
-    } else if (selectedGPUIndex == DeviceNodeConfig::GPU_INDEX_AUTO) {
-        // No explicit preference: prefer the first discrete GPU, if any.
-        selectedGPUIndex = 0;
-        bool foundDiscrete = false;
-        for (uint32_t i = 0; i < availableGPUs.size(); i++) {
-            if (IsDiscreteGPU(availableGPUs[i])) {
-                selectedGPUIndex = i;
-                foundDiscrete = true;
-                break;
-            }
-        }
-
-        selectionReason = foundDiscrete
-            ? "auto-selected discrete GPU"
-            : "auto-selected (no discrete GPU found; using first available)";
-    } else if (selectedGPUIndex >= availableGPUs.size()) {
-        NODE_LOG_WARNING("[DeviceNode] WARNING: Requested GPU index " + std::to_string(selectedGPUIndex)
-                    + " but only " + std::to_string(availableGPUs.size()) + " GPUs available. Using GPU 0.");
-        selectedGPUIndex = 0;
-        selectionReason = "auto-selected (requested index out of range)";
-    } else {
-        selectionReason = "using explicitly-requested GPU index " + std::to_string(selectedGPUIndex);
-    }
+    selectedGPUIndex = SelectPhysicalDeviceIndex(availableGPUs, selectedGPUIndex, &selectionReason);
 
     VkPhysicalDevice selectedGPU = availableGPUs[selectedGPUIndex];
 
@@ -267,6 +227,57 @@ void DeviceNode::SelectPhysicalDevice() {
     NODE_LOG_INFO("[DeviceNode]   API Version: " + std::to_string(VK_VERSION_MAJOR(props.apiVersion)) + "."
               + std::to_string(VK_VERSION_MINOR(props.apiVersion)) + "."
               + std::to_string(VK_VERSION_PATCH(props.apiVersion)));
+}
+
+uint32_t DeviceNode::SelectPhysicalDeviceIndex(
+    const std::vector<VkPhysicalDevice>& physicalDevices,
+    uint32_t requestedIndex,
+    std::string* selectionReason) {
+    if (physicalDevices.empty()) {
+        throw std::runtime_error("DeviceNode cannot select from an empty physical-device list");
+    }
+
+    std::string reason;
+    uint32_t selectedIndex = requestedIndex;
+    if constexpr (Vixen::BuildCapabilities::kPersonalizedMode) {
+        bool matched = false;
+        std::string mismatchReason;
+        for (uint32_t index = 0; index < physicalDevices.size(); ++index) {
+            if (Vixen::CapabilityGraph::MatchesConfiguredPhysicalDevice(
+                    physicalDevices[index], &mismatchReason)) {
+                selectedIndex = index;
+                reason = "matched the device and driver recorded by this personalized build";
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            throw std::runtime_error(
+                "This personalized VIXEN build cannot run on the detected device/driver (" +
+                mismatchReason + "). Rebuild this application for this device and driver.");
+        }
+    } else if (requestedIndex == DeviceNodeConfig::GPU_INDEX_AUTO) {
+        selectedIndex = 0;
+        bool foundDiscrete = false;
+        for (uint32_t index = 0; index < physicalDevices.size(); ++index) {
+            if (IsDiscreteGPU(physicalDevices[index])) {
+                selectedIndex = index;
+                foundDiscrete = true;
+                break;
+            }
+        }
+        reason = foundDiscrete
+            ? "auto-selected discrete GPU"
+            : "auto-selected (no discrete GPU found; using first available)";
+    } else if (requestedIndex >= physicalDevices.size()) {
+        selectedIndex = 0;
+        reason = "auto-selected (requested index out of range)";
+    } else {
+        reason = "using explicitly-requested GPU index " + std::to_string(requestedIndex);
+    }
+
+    if (selectionReason) *selectionReason = std::move(reason);
+    return selectedIndex;
 }
 
 void DeviceNode::CreateLogicalDevice() {

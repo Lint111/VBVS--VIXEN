@@ -249,7 +249,9 @@ void RenderGraph::ConnectNodes(
     NodeHandle from,
     uint32_t outputIdx,
     NodeHandle to,
-    uint32_t inputIdx
+    uint32_t inputIdx,
+    bool isVariadic,
+    SlotRole variadicRole
 ) {
     NodeInstance* fromNode = GetInstanceInternal(from);
     NodeInstance* toNode = GetInstanceInternal(to);
@@ -273,9 +275,14 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error(error);
     }
 
-    if (inputIdx >= toType->GetInputCount()) {
-        std::string error = "Invalid input index " + std::to_string(inputIdx) + 
-                          " (max: " + std::to_string(toType->GetInputCount()) + 
+    auto* variadicTarget = isVariadic ? dynamic_cast<IVariadicNode*>(toNode) : nullptr;
+    if (isVariadic && (!variadicTarget || !variadicTarget->GetVariadicSlotInfo(inputIdx))) {
+        throw std::runtime_error("Invalid variadic input index " + std::to_string(inputIdx) +
+                                 " for node: " + toNode->GetInstanceName());
+    }
+    if (!isVariadic && inputIdx >= toType->GetInputCount()) {
+        std::string error = "Invalid input index " + std::to_string(inputIdx) +
+                          " (max: " + std::to_string(toType->GetInputCount()) +
                           ") for node: " + toNode->GetInstanceName();
         throw std::runtime_error(error);
     }
@@ -283,7 +290,9 @@ void RenderGraph::ConnectNodes(
     // VALIDATION: Check if input slot is already connected
     // It's OK for one output to connect to many inputs (fan-out)
     // But NOT OK for many outputs to connect to one input (multiple drivers)
-    Resource* existingInput = toNode->GetInput(inputIdx, 0);
+    Resource* existingInput = isVariadic
+        ? variadicTarget->GetVariadicSlotInfo(inputIdx)->resource
+        : toNode->GetInput(inputIdx, 0);
     if (existingInput != nullptr) {
         // Recoverable, like the index-validation throws above: a bad Connect()
         // must be catchable by the host/mod wiring the graph, not process-fatal.
@@ -304,6 +313,9 @@ void RenderGraph::ConnectNodes(
     if (outputArraySize == 0) {
         outputArraySize = 1;
     }
+    if (isVariadic && outputArraySize != 1) {
+        throw std::runtime_error("Variadic graph-boundary input accepts one resource per slot");
+    }
 
     // Connect each array element
     for (size_t arrayIdx = 0; arrayIdx < outputArraySize; arrayIdx++) {
@@ -317,7 +329,20 @@ void RenderGraph::ConnectNodes(
         dependencyTracker.RegisterResourceProducer(resource, fromNode, outputIdx);
 
         // Connect to input at same array index
-        toNode->SetInput(inputIdx, static_cast<uint32_t>(arrayIdx), resource);
+        if (isVariadic) {
+            VariadicSlotInfo slotInfo = *variadicTarget->GetVariadicSlotInfo(inputIdx);
+            if (resource->GetType() != slotInfo.resourceType) {
+                throw std::runtime_error("Variadic graph-boundary resource type does not match " +
+                                         toNode->GetInstanceName());
+            }
+            slotInfo.resource = resource;
+            slotInfo.sourceNode = from;
+            slotInfo.sourceOutput = outputIdx;
+            slotInfo.slotRole = variadicRole;
+            variadicTarget->UpdateVariadicSlot(inputIdx, slotInfo);
+        } else {
+            toNode->SetInput(inputIdx, static_cast<uint32_t>(arrayIdx), resource);
+        }
     }
 
     // Add dependency (once per connection, not per array element)
@@ -331,6 +356,7 @@ void RenderGraph::ConnectNodes(
     edge.sourceOutputIndex = outputIdx;
     edge.target = toNode;
     edge.targetInputIndex = inputIdx;
+    edge.isVariadic = isVariadic;
     topology.AddEdge(edge);
     GRAPH_LOG_INFO("[RenderGraph::ConnectNodes] Added topology edge");
 

@@ -16,16 +16,18 @@
 #include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
 #include <cctype>    // std::isspace for whitespace-safe boolean env flags
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
-#include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
+#include <cstdlib>  // Environment switches used by the existing optional render paths.
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
 #include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
 #include <iostream> // Round-5 [ComposedBackend] boot print (mirrors VoxelGridNode.cpp's [FarFieldCount])
 #include <mutex>    // Baked-Perf M7 Task 7.1: serializes calls into Gaia's shared ChunkAllocator
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
-#include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
+#include "graph/CornellBoxSceneDefinition.h"
+#include "graph/UpscalerModules.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
@@ -33,7 +35,6 @@
 #include "ShaderFamily.h"               // Semantic-wiring S2 slice B: feature variants cached as shader families
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
-#include "Core/NodeRegistration.h"
 #include "MeshData.h"
 #include "merged/BodyInstanceRayMarch-SDI.g.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
 #include "merged/HiZDownsample-SDI.g.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
@@ -44,9 +45,6 @@
 #include "merged/ExposureTonemap-SDI.g.h"
 #include "merged/ExposureMeter-SDI.g.h"
 #include "merged/ExposureReduce-SDI.g.h"
-#include "merged/FsrInputAA-SDI.g.h"
-#include "merged/Fsr1Easu-SDI.g.h"
-#include "merged/Fsr1Rcas-SDI.g.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.g.h"
 #include "merged/ShadowRayTrace-SDI.g.h"
@@ -221,6 +219,30 @@ bool envFlagIsSet(const char* name, bool& value) {
         return true;
     }
     return false;
+}
+
+bool IsSelectedDeviceCapabilityAvailable(VkInstance instance, const char* capabilityName) {
+    uint32_t deviceCount = 0;
+    if (instance == VK_NULL_HANDLE ||
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr) != VK_SUCCESS ||
+        deviceCount == 0) {
+        return false;
+    }
+    std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
+    if (vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data()) != VK_SUCCESS) {
+        return false;
+    }
+    physicalDevices.resize(deviceCount);
+
+    // Use DeviceNode's policy so the pre-compile module decision observes the same adapter that
+    // the render graph will create a logical device for.
+    const uint32_t selectedIndex = DeviceNode::SelectPhysicalDeviceIndex(
+        physicalDevices, DeviceNodeConfig::GPU_INDEX_AUTO);
+    Vixen::CapabilityGraph capabilities;
+    capabilities.BuildStandardCapabilities();
+    capabilities.ObservePhysicalDevice(physicalDevices[selectedIndex]);
+    return capabilities.ResolveOptionalPath(capabilityName, true) ==
+           Vixen::CapabilityPath::CapabilityEnabled;
 }
 
 enum class RtLightingMode { Auto, Off, Force };
@@ -422,9 +444,11 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
     return bodies;
 }
 
-}  // namespace
+} // namespace
+
 
 void VulkanGraphApplication::BuildRenderGraph() {
+    upscalerPerfPasses_.clear();
     // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
     // swapchain. Keep ordinary app launches on the window presentation path.
     if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
@@ -434,8 +458,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
     const bool hdrExposureFixed = hdrExposureEnabled &&
                                  envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
-    const char* upscalerEnv = std::getenv("VIXEN_UPSCALER");
-    const bool fsr1UpscalerEnabled = upscalerEnv && std::string(upscalerEnv) == "fsr1";
+    const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
+    const bool fsr1UpscalerRequested = renderPathConfig.upscaler == UpscalerKind::Fsr1;
+    const bool fsr1UpscalerSelected = fsr1UpscalerRequested &&
+        IsSelectedDeviceCapabilityAvailable(instanceObj.instance, "Upscaler:Fsr1");
+    const bool linearUpscalerRequested = renderPathConfig.upscaler == UpscalerKind::Linear;
+    if (fsr1UpscalerRequested && !fsr1UpscalerSelected && mainLogger) {
+        mainLogger->Warning("[BuildRenderGraph] CapabilityGraph reports Upscaler:Fsr1 unavailable; "
+                            "leaving the typed upscaler slot empty and using the native render path");
+    }
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
@@ -665,35 +696,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // swapchain image, unchanged).
     NodeHandle blitNode = renderGraph->AddNode<BlitNodeType>("render_target_blit");
 
-    // The optional FSR1 route has its own intermediate targets and three explicit stages:
-    // VIXEN input AA -> AMD EASU -> AMD RCAS. Without VIXEN_UPSCALER=fsr1 these nodes are
-    // absent, preserving the existing native/linear graph and its scale-1 image path.
-    NodeHandle fsrInputAaTargetNode{};
-    NodeHandle fsrEasuTargetNode{};
-    NodeHandle fsrOutputTargetNode{};
-    NodeHandle fsrInputAaShaderLib{};
-    NodeHandle fsrEasuShaderLib{};
-    NodeHandle fsrRcasShaderLib{};
-    NodeHandle fsrInputAaNode{};
-    NodeHandle fsrEasuNode{};
-    NodeHandle fsrRcasNode{};
-    NodeHandle fsrInputReadGatherer{};
-    NodeHandle fsrEasuReadGatherer{};
-    NodeHandle fsrRcasReadGatherer{};
-    if (fsr1UpscalerEnabled) {
-        fsrInputAaTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr_input_aa_target");
-        fsrEasuTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr1_easu_target");
-        fsrOutputTargetNode = renderGraph->AddNode<RenderTargetNodeType>("fsr1_output_target");
-        fsrInputAaShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr_input_aa_shader_lib");
-        fsrEasuShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr1_easu_shader_lib");
-        fsrRcasShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("fsr1_rcas_shader_lib");
-        fsrInputAaNode = renderGraph->AddNode<ComputeStageNodeType>("fsr_input_aa");
-        fsrEasuNode = renderGraph->AddNode<ComputeStageNodeType>("fsr1_easu");
-        fsrRcasNode = renderGraph->AddNode<ComputeStageNodeType>("fsr1_rcas");
-        fsrInputReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr_input_read_gatherer");
-        fsrEasuReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr1_easu_read_gatherer");
-        fsrRcasReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("fsr1_rcas_read_gatherer");
-    }
+    // The optional upscaler is instantiated later into the typed UpscalerModulePorts slot,
+    // after render-target extent, shader providers, and stage-order inputs are available.
+    std::optional<SubGraphHandle> upscalerModule;
 
     // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
     // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
@@ -1478,41 +1483,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
     device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, usesWsi);
 
-    // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
-    // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.
-    // Default 1.0 = same resolution as the swapchain (render-scale disabled, byte-identical to pre-M4).
-    float renderScale = 1.0f;
-    if (const char* renderScaleEnv = std::getenv("VIXEN_RENDER_SCALE")) {
-        renderScale = std::strtof(renderScaleEnv, nullptr);
-        if (!(renderScale > 0.0f) || renderScale > 1.0f) {
-            if (mainLogger && mainLogger->IsEnabled()) {
-                mainLogger->Warning("[BuildRenderGraph] VIXEN_RENDER_SCALE=" + std::string(renderScaleEnv) +
-                                    " out of (0,1] — clamping to 1.0");
-            }
-            renderScale = 1.0f;
-        }
-    }
+    // Render scale belongs to the render-path configuration and affects the dispatch extent only.
+    const float renderScale = renderPathConfig.renderScale;
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
-    if (fsr1UpscalerEnabled) {
-        auto* aaTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrInputAaTargetNode));
-        aaTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
-        auto* easuTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrEasuTargetNode));
-        easuTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
-        auto* rcasTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(fsrOutputTargetNode));
-        rcasTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
-        for (auto* target : {aaTarget, easuTarget, rcasTarget}) {
-            target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT,
-                                 FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
-            target->SetParameter(RenderTargetNodeConfig::PARAM_FORMAT,
-                                 static_cast<uint32_t>(VK_FORMAT_R8G8B8A8_UNORM));
-        }
-    }
     const VkExtent2D renderExtent = RenderTargetNode::ComputeFollowExtent(
         {static_cast<uint32_t>(width), static_cast<uint32_t>(height)}, renderScale);
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
-                         " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
+        mainLogger->Info("[BuildRenderGraph] Render-path scale=" + std::to_string(renderScale) +
+                         " (1.0 = full resolution)");
     }
 
     // Sampled Lighting Inc4 M2: DDGI probe atlas dimensions/formats -- see kProbeIrradianceAtlas*/
@@ -2321,7 +2300,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lands directly after #version, before the provider's M10 inserts, where the old
     // LIFO hand order put TRACE last — same defines, different byte order, so that one
     // debug-debug combo mints a distinct cache entry (functionally identical GLSL).
-    const auto makeLightingFamily = [](const char* shaderName, const char* programName) {
+    const auto makeLightingFamily = [](const std::string& shaderName, const std::string& programName) {
         ShaderManagement::ShaderFamily::Config cfg;
         cfg.name = programName;
         cfg.stage = ShaderManagement::ShaderStage::Compute;
@@ -2527,31 +2506,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .EnableCaching(&shaderCacheManager_);
             return builder;
         });
-
-    if (fsr1UpscalerEnabled) {
-        const auto registerFsrFamily = [this](NodeHandle libHandle,
-                                               std::shared_ptr<ShaderManagement::ShaderFamily> family) {
-            auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
-            libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
-                auto builder = family->MakeBuilder({});
-                builder.SetTargetVulkanVersion(vulkanVer)
-                       .SetTargetSpirvVersion(spirvVer)
-                       .AddIncludePath("shaders")
-                       .AddIncludePath("../shaders")
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                       .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
-#endif
-                       .EnableCaching(&shaderCacheManager_);
-                return builder;
-            });
-        };
-        registerFsrFamily(fsrInputAaShaderLib,
-                          makeLightingFamily("FsrInputAA.comp", "FsrInputAA"));
-        registerFsrFamily(fsrEasuShaderLib,
-                          makeLightingFamily("Fsr1Easu.comp", "Fsr1Easu"));
-        registerFsrFamily(fsrRcasShaderLib,
-                          makeLightingFamily("Fsr1Rcas.comp", "Fsr1Rcas"));
-    }
 
     // W1a: the ProbeUpdate split's three compiled programs, each family-registered
     // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
@@ -2885,7 +2839,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // IMAGE_WRITE target. Set EXPLICITLY from the render-target's build-time extent instead —
     // mirrors ComputeDispatchNode's own march dispatch dims (set from `width`/`height`, static
     // since graph-build), NOT a regression: DirectLightingNode's own pre-M5 "live from
-    // IMAGE_WRITE" derivation existed to track VIXEN_RENDER_SCALE (fixed at process start, read
+    // IMAGE_WRITE" derivation existed to track render-path scale (fixed at graph build, read
     // once during this function), not live window-resize (the march's own dispatch dims have
     // never lived-resized either).
     // Ceiling-divide (NOT the March pass's floor-divided dispatchX/dispatchY above) — must
@@ -2916,7 +2870,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // pixel count. The measured swizzle variant permutes the 64 lanes within
     // each group, while waveSlot() preserves the same linear slot identity.
     // Same build-time-extent derivation as DirectLighting immediately above
-    // (VIXEN_RENDER_SCALE fixed at process start; dims never live-resize).
+    // (render-path scale fixed at graph build; dims never live-resize).
     // Dispatches unconditionally — the march always produces records, the
     // shade pass always consumes bits; there is no off-path.
     {
@@ -3051,7 +3005,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SpatialReuseNode (Sampled Lighting Inc3 M5): the second half of the pass split — NOW owns
     // IMAGE_WRITE (moved from DirectLightingNode), so it keeps the ORIGINAL live-derivation
     // (dims left at 0/0, RecordComputeCommands derives them from IMAGE_WRITE's renderTargetNode
-    // extent every Execute — the same VIXEN_RENDER_SCALE live-derivation DirectLightingNode used
+    // extent every Execute — the same render-path scale derivation DirectLightingNode used
     // to own pre-M5).
     auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetInstance(spatialReuseNode));
     spatialReuse->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
@@ -3132,12 +3086,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Read-side image gatherer: two DDGI atlases and the sky cache, all read by SpatialReuseShade.
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(3);
-
-    if (fsr1UpscalerEnabled) {
-        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrInputReadGatherer))->PreRegisterImageSlots(1);
-        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrEasuReadGatherer))->PreRegisterImageSlots(1);
-        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(fsrRcasReadGatherer))->PreRegisterImageSlots(1);
-    }
 
     // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
     // buffer entry on the cull's write side.
@@ -9030,7 +8978,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     connectPresentationImageIndex(computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
 
     // M4: render-scale decoupling. The offscreen render target follows the swapchain's extent
-    // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from VIXEN_RENDER_SCALE); it rides the
+    // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from RenderPathConfig); it rides the
     // standard resize->recompile cascade — no per-frame extent checks anywhere in this wiring.
     // Sampled Lighting Inc3 M1 (KI-018): computeDispatch (the march) is DELIBERATELY NOT wired to
     // RENDER_TARGET_INFO anymore — it no longer writes or blits the render target (DirectLighting
@@ -9041,14 +8989,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
     connectPresentationTargetInfo(renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
-    if (fsr1UpscalerEnabled) {
-        for (NodeHandle target : {fsrInputAaTargetNode, fsrEasuTargetNode, fsrOutputTargetNode}) {
-            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          target, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
-            connectPresentationTargetInfo(target, RenderTargetNodeConfig::EXTENT_SOURCE);
-        }
-    }
-
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
     // resize->recompile cascade as the render target itself.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
@@ -9406,51 +9346,66 @@ void VulkanGraphApplication::BuildRenderGraph() {
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
-    if (fsr1UpscalerEnabled) {
-        const auto makeFsrProviders = [&](NodeHandle inputTarget, NodeHandle outputTarget) {
-            SdiProviderRegistry providers = sceneProviders;
-            providers.Provide("InputTexture", inputTarget,
-                              RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-            providers.Provide("OutputTexture", outputTarget,
-                              RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-            return providers;
-        };
+    const auto registerModuleShaderFamily = [this, graph = renderGraph](
+        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
+        libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
+            auto builder = family->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    };
 
-        auto aaProviders = makeFsrProviders(renderTargetNode, fsrInputAaTargetNode);
-        const auto aaSynth = SynthesizeComputeStage<ShaderInterface::FsrInputAA::Metadata,
-                                                     ShaderInterface::FsrInputAA::MEMBERS>(
-            renderGraph, batch, "fsr_input_aa", fsrInputAaShaderLib, fsrInputAaNode,
-            lightingCommon, aaProviders, {});
-        (void)aaSynth;
-        auto* aaStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrInputAaNode));
-        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 7u) / 8u);
-        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 7u) / 8u);
-        aaStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    if (fsr1UpscalerSelected || linearUpscalerRequested) {
+        if (fsr1UpscalerSelected) {
+            Fsr1UpscalerParams params;
+            params.batch = &batch;
+            params.common = lightingCommon;
+            params.sceneProviders = sceneProviders;
+            params.sourceTarget = renderTargetNode;
+            params.renderExtent = renderExtent;
+            params.presentationWidth = static_cast<uint32_t>(width);
+            params.presentationHeight = static_cast<uint32_t>(height);
+            params.renderScale = renderScale;
+            params.makeShaderFamily = [&makeLightingFamily](const std::string& sourceFile,
+                                                            const std::string& familyName) {
+                return makeLightingFamily(sourceFile, familyName);
+            };
+            params.registerShaderFamily = registerModuleShaderFamily;
+            params.registerPassMetric = [this](std::string columnName,
+                                               GPUPerformanceLogger* logger) {
+                upscalerPerfPasses_.push_back({std::move(columnName), logger});
+            };
+            upscalerModule = renderGraph->InstantiateRegistered(
+                kFsr1UpscalerModuleTypeName, "render_path/upscaler", std::any(std::move(params)));
+        } else {
+            upscalerModule = renderGraph->InstantiateRegistered(
+                kLinearUpscalerModuleTypeName, "render_path/upscaler", std::any(LinearUpscalerParams{}));
+        }
 
-        auto easuProviders = makeFsrProviders(fsrInputAaTargetNode, fsrEasuTargetNode);
-        const auto easuSynth = SynthesizeComputeStage<ShaderInterface::Fsr1Easu::Metadata,
-                                                       ShaderInterface::Fsr1Easu::MEMBERS>(
-            renderGraph, batch, "fsr1_easu", fsrEasuShaderLib, fsrEasuNode,
-            lightingCommon, easuProviders, {});
-        (void)easuSynth;
-        auto* easuStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrEasuNode));
-        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (width + 7u) / 8u);
-        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (height + 7u) / 8u);
-        easuStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-
-        auto rcasProviders = makeFsrProviders(fsrEasuTargetNode, fsrOutputTargetNode);
-        const auto rcasSynth = SynthesizeComputeStage<ShaderInterface::Fsr1Rcas::Metadata,
-                                                       ShaderInterface::Fsr1Rcas::MEMBERS>(
-            renderGraph, batch, "fsr1_rcas", fsrRcasShaderLib, fsrRcasNode,
-            lightingCommon, rcasProviders, {});
-        (void)rcasSynth;
-        auto* rcasStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(fsrRcasNode));
-        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (width + 7u) / 8u);
-        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (height + 7u) / 8u);
-        rcasStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+        renderGraph->Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                             *upscalerModule, UpscalerModulePorts::SOURCE_TARGET);
+        const NodeHandle orderingSource = hdrExposureEnabled ? exposureNode : spatialReuseNode;
+        renderGraph->Connect(orderingSource, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                             *upscalerModule, UpscalerModulePorts::ORDERING_WAIT);
+        if (fsr1UpscalerSelected) {
+            renderGraph->Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                                 *upscalerModule, UpscalerModulePorts::DEVICE);
+            if (offscreenPresentation) {
+                renderGraph->Connect(offscreenTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                                     *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
+            } else {
+                renderGraph->Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                                     *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
+            }
+        }
     }
 
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
@@ -9570,41 +9525,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
         batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                       exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
     }
-    if (fsr1UpscalerEnabled) {
-        // Each pass declares its input read and output write independently. The array read
-        // slots make the image hazard visible to FrameSyncScheduler; the descriptor bindings
-        // themselves come from CURRENT_VIEW in the stage-local SDI provider registries above.
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrInputReadGatherer, 0,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(fsrInputReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      fsrInputAaNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(fsrInputAaTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrInputAaNode, ComputeStageNodeConfig::IMAGE_WRITE,
-                      SlotRoleModifier(SlotRole::Execute));
-
-        batch.Connect(fsrInputAaTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrEasuReadGatherer, 0,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(fsrEasuReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      fsrEasuNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(fsrEasuTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrEasuNode, ComputeStageNodeConfig::IMAGE_WRITE,
-                      SlotRoleModifier(SlotRole::Execute));
-
-        batch.Connect(fsrEasuTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrRcasReadGatherer, 0,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(fsrRcasReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      fsrRcasNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(fsrOutputTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      fsrRcasNode, ComputeStageNodeConfig::IMAGE_WRITE,
-                      SlotRoleModifier(SlotRole::Execute));
-    }
-
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
     // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
     // probe_update megakernel to the split's apply half), same two ProbeAtlasNode Resource*s
@@ -10209,10 +10129,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     }
-    const NodeHandle blitSourceTargetNode = fsr1UpscalerEnabled
-        ? fsrOutputTargetNode : renderTargetNode;
-    batch.Connect(blitSourceTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                  blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
+    if (upscalerModule.has_value()) {
+        renderGraph->Connect(*upscalerModule, UpscalerModulePorts::UPSCALED_TARGET,
+                             blitNode, BlitNodeConfig::UPSCALED_IMAGE_READ);
+        renderGraph->Connect(*upscalerModule, UpscalerModulePorts::RENDER_COMPLETE,
+                             blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    } else {
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
+    }
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
     // doc): establishes the SpatialReuse-before-Blit TOPOLOGY (Sampled Lighting Inc3 M5 — moved
     // from DirectLighting, which is no longer the render-target writer) so the scheduler's
@@ -10232,24 +10157,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
     }
-    if (fsr1UpscalerEnabled) {
-        if (hdrExposureEnabled) {
-            batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                          fsrInputAaNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
-        } else {
-            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                          fsrInputAaNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
-        }
-        batch.Connect(fsrInputAaNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      fsrEasuNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
-             .Connect(fsrEasuNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      fsrRcasNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
-             .Connect(fsrRcasNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
-    } else if (hdrExposureEnabled) {
+    if (!upscalerModule.has_value() && hdrExposureEnabled) {
         batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
-    } else {
+    } else if (!upscalerModule.has_value()) {
         batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
     }

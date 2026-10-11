@@ -285,10 +285,14 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
         gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
     }
 
-    Vixen::Vulkan::Resources::IRenderTarget* imageReadTarget = ctx.In(BlitNodeConfig::IMAGE_READ);
+    Vixen::Vulkan::Resources::IRenderTarget* imageReadTarget =
+        ctx.In(BlitNodeConfig::UPSCALED_IMAGE_READ);
+    if (!imageReadTarget) {
+        imageReadTarget = ctx.In(BlitNodeConfig::IMAGE_READ);
+    }
     Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo   = ctx.In(BlitNodeConfig::SWAPCHAIN_INFO);
     if (!imageReadTarget) {
-        throw std::runtime_error("[BlitNode::RecordBlitCommands] IMAGE_READ is null");
+        throw std::runtime_error("[BlitNode::RecordBlitCommands] no native or upscaled image input is connected");
     }
     if (!swapchainInfo) {
         throw std::runtime_error("[BlitNode::RecordBlitCommands] SWAPCHAIN_INFO is null");

@@ -19,6 +19,10 @@
 #include <utility>
 #include <vector>
 
+namespace {
+VulkanGraphApplication::RenderPathConfig gRenderPathConfig{};
+}
+
 namespace Vixen::RenderGraph {
 
 class LightingConfigNodeTestAccess {
@@ -80,6 +84,7 @@ public:
                               std::vector<CaptureScenario> scenarios)
         : outputDir_(std::move(outputDir)), scenarios_(std::move(scenarios)) {
         SetPresentationTarget(PresentationTarget::Offscreen);
+        SetRenderPathConfig(gRenderPathConfig);
     }
 
     void BuildRenderGraph() override {
@@ -261,3 +266,24 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
 }
 
 } // namespace
+
+int main(int argc, char** argv) {
+    int forwardedArgc = 1;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument(argv[index]);
+        if (argument.starts_with("--render-scale=")) {
+            gRenderPathConfig.renderScale = std::stof(argument.substr(15));
+        } else if (argument == "--upscaler=none") {
+            gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::None;
+        } else if (argument == "--upscaler=linear") {
+            gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::Linear;
+        } else if (argument == "--upscaler=fsr1") {
+            gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::Fsr1;
+        } else {
+            argv[forwardedArgc++] = argv[index];
+        }
+    }
+    argc = forwardedArgc;
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

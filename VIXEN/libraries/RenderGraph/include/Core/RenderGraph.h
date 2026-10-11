@@ -31,6 +31,7 @@
 #include "LockCensus.h"                         // Lock-free phase 0: per-frame mutex/wave census (no-op unless VIXEN_LOCK_CENSUS)
 #include "Core/SubmitChannel.h"                 // Lock-free phase 1: queue-owner submit channel (design §2.5)
 #include <atomic>
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
@@ -149,6 +150,11 @@ public:
     template<typename TSubGraph>
     SubGraphHandle Instantiate(const std::string& instanceName);
 
+    /** @brief Instantiate a registered node-group type by its NodeTypeRegistry name. */
+    SubGraphHandle InstantiateRegistered(const std::string& typeName,
+                                         const std::string& instanceName,
+                                         const std::any& params);
+
     /** @brief Connect a node output to every member slot bound to a group input port. */
     template<typename SourceSlot, typename Port>
     void Connect(NodeHandle source, SourceSlot sourceSlot,
@@ -185,10 +191,12 @@ public:
      * @param inputIdx Input index to target
      */
     void ConnectNodes(
-        NodeHandle from, 
+        NodeHandle from,
         uint32_t outputIdx,
-        NodeHandle to, 
-        uint32_t inputIdx
+        NodeHandle to,
+        uint32_t inputIdx,
+        bool isVariadic = false,
+        SlotRole variadicRole = SlotRole::Dependency
     );
 
     /**
@@ -1081,6 +1089,15 @@ struct SubGraphBinding {
     uint32_t port = 0;
     NodeHandle member;
     uint32_t memberSlot = 0;
+    bool forwardsInput = false;
+    uint32_t inputPort = 0;
+    bool isVariadic = false;
+    SlotRole role = SlotRole::Dependency;
+};
+
+struct SubGraphEndpoint {
+    NodeHandle node;
+    uint32_t slot = 0;
 };
 
 struct SubGraphState {
@@ -1089,6 +1106,8 @@ struct SubGraphState {
     std::vector<NodeHandle> members;
     std::vector<SubGraphBinding> inputBindings;
     std::vector<SubGraphBinding> outputBindings;
+    std::unordered_map<uint32_t, std::vector<SubGraphEndpoint>> forwardedInputs;
+    std::unordered_map<uint32_t, std::vector<SubGraphEndpoint>> forwardedTargets;
     size_t inputCount = 0;
     size_t outputCount = 0;
 };
@@ -1126,10 +1145,40 @@ private:
  * `Build(GraphScope&, const Params&)`. PortConfig is a normal constexpr node
  * configuration made with CONSTEXPR_NODE_CONFIG and INPUT_SLOT/OUTPUT_SLOT.
  */
-template<typename Derived>
-class SubGraphType {
+class RegisteredSubGraphType {
 public:
+    virtual ~RegisteredSubGraphType() = default;
+    virtual SubGraphHandle InstantiateRegistered(RenderGraph& graph,
+                                                  const std::string& instanceName,
+                                                  const std::any& params) const = 0;
+};
+
+/**
+ * @brief A registered node-group type, sharing NodeTypeRegistry with ordinary nodes.
+ *
+ * The group is expanded at graph construction; it is never added as an executable NodeInstance.
+ */
+template<typename Derived>
+class SubGraphType : public NodeType, public RegisteredSubGraphType {
+public:
+    explicit SubGraphType(std::string typeName) : NodeType(typeName) {
+        using PortConfig = typename Derived::PortConfig;
+        const PortConfig ports{};
+        SetInputSchema(ports.GetInputVector());
+        SetOutputSchema(ports.GetOutputVector());
+    }
     virtual ~SubGraphType() = default;
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string&) const override {
+        throw std::runtime_error("Node-group types must be instantiated through RenderGraph::InstantiateRegistered");
+    }
+
+    SubGraphHandle InstantiateRegistered(RenderGraph& graph,
+                                          const std::string& instanceName,
+                                          const std::any& params) const override {
+        using Params = typename Derived::Params;
+        return graph.Instantiate<Derived>(instanceName, std::any_cast<const Params&>(params));
+    }
 };
 
 /**
@@ -1144,6 +1193,13 @@ public:
         : graph_(&graph)
         , scopeName_(std::move(scopeName))
         , expansion_(std::make_shared<SubGraphExpansionContext>()) {}
+
+    RenderGraph* GetGraph() const noexcept { return graph_; }
+
+    template<typename TNode>
+    TNode* GetInstance(NodeHandle handle) const {
+        return static_cast<TNode*>(graph_->GetInstance(handle));
+    }
 
     template<typename TNodeType>
     NodeHandle AddNode(const std::string& localName) {
@@ -1187,6 +1243,17 @@ public:
                       "Sub-graph input port type must match its member input type");
         BindMember(member, SlotType::index);
         inputBindings_.push_back({PortType::index, member, SlotType::index});
+    }
+
+    /** Bind a typed group input to a variadic member slot (for example an SDI binding). */
+    template<typename Port>
+    void BindInputIndex(Port /*port*/, NodeHandle member, uint32_t memberSlot) {
+        using PortType = std::remove_cv_t<std::remove_reference_t<Port>>;
+        static_assert(requires { PortType::index; typename PortType::Type; },
+                      "GraphScope::BindInputIndex requires a constexpr group port");
+        BindMember(member, memberSlot);
+        inputBindings_.push_back({PortType::index, member, memberSlot, false, 0,
+                                  true, PortType::role});
     }
 
     template<typename Port, typename MemberSlot>
@@ -1266,6 +1333,27 @@ public:
                                    nestedOutput->memberSlot});
     }
 
+    /** Forward a typed input port directly to a typed output port without a wrapper resource. */
+    template<typename OutputPort, typename InputPort>
+    void BindOutput(OutputPort /*output*/, InputPort /*input*/) {
+        using OutputType = std::remove_cv_t<std::remove_reference_t<OutputPort>>;
+        using InputType = std::remove_cv_t<std::remove_reference_t<InputPort>>;
+        static_assert(requires { OutputType::index; typename OutputType::Type; } &&
+                      requires { InputType::index; typename InputType::Type; },
+                      "Direct sub-graph forwarding requires constexpr port types");
+        static_assert(std::is_same_v<typename OutputType::Type, typename InputType::Type>,
+                      "Forwarded sub-graph input and output types must match");
+        if (std::any_of(outputBindings_.begin(), outputBindings_.end(),
+                        [index = OutputType::index](const SubGraphBinding& binding) {
+                            return binding.port == index;
+                        })) {
+            throw std::runtime_error("Sub-graph output port " +
+                                     std::to_string(OutputType::index) +
+                                     " is bound more than once in " + scopeName_);
+        }
+        outputBindings_.push_back({OutputType::index, {}, 0, true, InputType::index});
+    }
+
     template<typename TSubGraph, typename Params>
     SubGraphHandle Instantiate(const std::string& localName, const Params& params) {
         const SubGraphHandle nested = graph_->InstantiateImpl<TSubGraph>(
@@ -1313,9 +1401,9 @@ private:
         }
     }
 
-    void Finalize(size_t inputCount, size_t outputCount) {
+    void Finalize(const std::vector<ResourceDescriptor>& inputs, size_t outputCount) {
         for (const SubGraphBinding& binding : inputBindings_) {
-            if (binding.port >= inputCount) {
+            if (binding.port >= inputs.size()) {
                 throw std::runtime_error("Sub-graph input port index " +
                                          std::to_string(binding.port) + " is out of range in " +
                                          scopeName_);
@@ -1328,10 +1416,14 @@ private:
                                          scopeName_);
             }
         }
-        for (size_t port = 0; port < inputCount; ++port) {
+        for (size_t port = 0; port < inputs.size(); ++port) {
             const bool bound = std::any_of(inputBindings_.begin(), inputBindings_.end(),
-                [port](const SubGraphBinding& binding) { return binding.port == port; });
-            if (!bound) {
+                [port](const SubGraphBinding& binding) { return binding.port == port; }) ||
+                std::any_of(outputBindings_.begin(), outputBindings_.end(),
+                    [port](const SubGraphBinding& binding) {
+                        return binding.forwardsInput && binding.inputPort == port;
+                    });
+            if (!bound && !inputs[port].nullable) {
                 throw std::runtime_error("Unbound sub-graph input port " +
                                          std::to_string(port) + " in " + scopeName_);
             }
@@ -1374,6 +1466,18 @@ SubGraphHandle RenderGraph::Instantiate(const std::string& instanceName) {
     return Instantiate<TSubGraph>(instanceName, Params{});
 }
 
+inline SubGraphHandle RenderGraph::InstantiateRegistered(
+    const std::string& typeName,
+    const std::string& instanceName,
+    const std::any& params) {
+    NodeType* nodeType = typeRegistry ? typeRegistry->GetNodeType(typeName) : nullptr;
+    auto* groupType = dynamic_cast<RegisteredSubGraphType*>(nodeType);
+    if (!groupType) {
+        throw std::runtime_error("Registered node-group type not found: " + typeName);
+    }
+    return groupType->InstantiateRegistered(*this, instanceName, params);
+}
+
 template<typename TSubGraph, typename Params>
 SubGraphHandle RenderGraph::InstantiateImpl(
     const std::string& instanceName,
@@ -1410,7 +1514,8 @@ SubGraphHandle RenderGraph::InstantiateImpl(
         TSubGraph definition;
         definition.Build(scope, params);
         using PortConfig = typename TSubGraph::PortConfig;
-        scope.Finalize(PortConfig::INPUT_COUNT, PortConfig::OUTPUT_COUNT);
+        const PortConfig portConfig{};
+        scope.Finalize(portConfig.GetInputVector(), PortConfig::OUTPUT_COUNT);
 
         auto state = std::make_shared<SubGraphState>();
         state->graph = this;
@@ -1449,7 +1554,17 @@ void RenderGraph::Connect(NodeHandle source, SourceSlot sourceSlot,
     for (const SubGraphBinding& binding : target.state_->inputBindings) {
         if (binding.port == PortType::index) {
             found = true;
-            ConnectNodes(source, SourceType::index, binding.member, binding.memberSlot);
+            ConnectNodes(source, SourceType::index, binding.member, binding.memberSlot,
+                         binding.isVariadic, binding.role);
+        }
+    }
+    for (const SubGraphBinding& output : target.state_->outputBindings) {
+        if (!output.forwardsInput || output.inputPort != PortType::index) continue;
+        found = true;
+        target.state_->forwardedInputs[PortType::index].push_back({source, SourceType::index});
+        auto& downstream = target.state_->forwardedTargets[PortType::index];
+        for (const SubGraphEndpoint& endpoint : downstream) {
+            ConnectNodes(source, SourceType::index, endpoint.node, endpoint.slot);
         }
     }
     if (!found) {
@@ -1475,7 +1590,16 @@ void RenderGraph::Connect(const SubGraphHandle& source, Port sourcePort,
     for (const SubGraphBinding& binding : source.state_->outputBindings) {
         if (binding.port == PortType::index) {
             ++count;
-            ConnectNodes(binding.member, binding.memberSlot, target, TargetType::index);
+            if (binding.forwardsInput) {
+                auto& incoming = source.state_->forwardedInputs[binding.inputPort];
+                auto& downstream = source.state_->forwardedTargets[binding.inputPort];
+                downstream.push_back({target, TargetType::index});
+                for (const SubGraphEndpoint& endpoint : incoming) {
+                    ConnectNodes(endpoint.node, endpoint.slot, target, TargetType::index);
+                }
+            } else {
+                ConnectNodes(binding.member, binding.memberSlot, target, TargetType::index);
+            }
         }
     }
     if (count != 1) {
@@ -1502,12 +1626,55 @@ void RenderGraph::Connect(const SubGraphHandle& source, SourcePort sourcePort,
     for (const SubGraphBinding& sourceBinding : source.state_->outputBindings) {
         if (sourceBinding.port != SourceType::index) continue;
         ++sourceCount;
+        if (sourceBinding.forwardsInput) {
+            const auto incoming = source.state_->forwardedInputs.find(sourceBinding.inputPort);
+            if (incoming == source.state_->forwardedInputs.end() || incoming->second.empty()) {
+                throw std::runtime_error("Forwarded sub-graph output has no connected input");
+            }
+            for (const SubGraphEndpoint& endpoint : incoming->second) {
+                bool targetFound = false;
+                for (const SubGraphBinding& targetBinding : target.state_->inputBindings) {
+                    if (targetBinding.port != TargetType::index) continue;
+                    targetFound = true;
+                    ConnectNodes(endpoint.node, endpoint.slot,
+                                 targetBinding.member, targetBinding.memberSlot,
+                                 targetBinding.isVariadic, targetBinding.role);
+                }
+                for (const SubGraphBinding& targetOutput : target.state_->outputBindings) {
+                    if (!targetOutput.forwardsInput || targetOutput.inputPort != TargetType::index) continue;
+                    targetFound = true;
+                    target.state_->forwardedInputs[TargetType::index].push_back(endpoint);
+                    for (const SubGraphEndpoint& downstream :
+                         target.state_->forwardedTargets[TargetType::index]) {
+                        ConnectNodes(endpoint.node, endpoint.slot,
+                                     downstream.node, downstream.slot);
+                    }
+                }
+                if (!targetFound) {
+                    throw std::runtime_error("Sub-graph input port " +
+                                             std::to_string(TargetType::index) +
+                                             " is not bound");
+                }
+            }
+            continue;
+        }
         bool targetFound = false;
         for (const SubGraphBinding& targetBinding : target.state_->inputBindings) {
             if (targetBinding.port != TargetType::index) continue;
             targetFound = true;
             ConnectNodes(sourceBinding.member, sourceBinding.memberSlot,
-                         targetBinding.member, targetBinding.memberSlot);
+                         targetBinding.member, targetBinding.memberSlot,
+                         targetBinding.isVariadic, targetBinding.role);
+        }
+        for (const SubGraphBinding& targetOutput : target.state_->outputBindings) {
+            if (!targetOutput.forwardsInput || targetOutput.inputPort != TargetType::index) continue;
+            targetFound = true;
+            target.state_->forwardedInputs[TargetType::index].push_back(
+                {sourceBinding.member, sourceBinding.memberSlot});
+            for (const SubGraphEndpoint& endpoint : target.state_->forwardedTargets[TargetType::index]) {
+                ConnectNodes(sourceBinding.member, sourceBinding.memberSlot,
+                             endpoint.node, endpoint.slot);
+            }
         }
         if (!targetFound) {
             throw std::runtime_error("Sub-graph input port " + std::to_string(TargetType::index) +

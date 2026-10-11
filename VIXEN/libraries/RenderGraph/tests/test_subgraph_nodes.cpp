@@ -38,6 +38,13 @@ CONSTEXPR_NODE_CONFIG(ChainPorts, 1, 1, SlotArrayMode::Single) {
 
 CONSTEXPR_NODE_CONFIG(EmptyPorts, 0, 0, SlotArrayMode::Single) {};
 
+CONSTEXPR_NODE_CONFIG(PassThroughPorts, 1, 1, SlotArrayMode::Single) {
+    INPUT_SLOT(PassInput, const VkBuffer, 0, SlotNullability::Required,
+               SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+    OUTPUT_SLOT(PassOutput, const VkBuffer, 0, SlotNullability::Required,
+                SlotMutability::WriteOnly);
+};
+
 class TestNode final : public NodeInstance {
 public:
     TestNode(const std::string& name, NodeType* type)
@@ -69,8 +76,23 @@ public:
 
 struct ChainParams {};
 
+struct PassThroughParams {};
+
+class RegisteredPassThroughSubGraph final
+    : public SubGraphType<RegisteredPassThroughSubGraph> {
+public:
+    RegisteredPassThroughSubGraph() : SubGraphType("Test.RegisteredPassThrough") {}
+    using PortConfig = PassThroughPorts;
+    using Params = PassThroughParams;
+
+    void Build(GraphScope& scope, const Params&) {
+        scope.BindOutput(PassThroughPorts::PassOutput, PassThroughPorts::PassInput);
+    }
+};
+
 class ChainSubGraph final : public SubGraphType<ChainSubGraph> {
 public:
+    ChainSubGraph() : SubGraphType("Test.Chain") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -83,6 +105,7 @@ public:
 
 class UnboundSubGraph final : public SubGraphType<UnboundSubGraph> {
 public:
+    UnboundSubGraph() : SubGraphType("Test.Unbound") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -94,6 +117,7 @@ public:
 
 class DoubleOutputSubGraph final : public SubGraphType<DoubleOutputSubGraph> {
 public:
+    DoubleOutputSubGraph() : SubGraphType("Test.DoubleOutput") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -107,6 +131,7 @@ public:
 
 class RecursiveSubGraph final : public SubGraphType<RecursiveSubGraph> {
 public:
+    RecursiveSubGraph() : SubGraphType("Test.Recursive") {}
     using PortConfig = EmptyPorts;
     using Params = ChainParams;
 
@@ -118,6 +143,7 @@ public:
 template<int Depth>
 class DepthSubGraph final : public SubGraphType<DepthSubGraph<Depth>> {
 public:
+    DepthSubGraph() : SubGraphType<DepthSubGraph<Depth>>("Test.Depth") {}
     using PortConfig = EmptyPorts;
     using Params = ChainParams;
 
@@ -226,6 +252,33 @@ TEST(SubGraphNodesTest, FlattenedSubGraphProducesTheHandWiredTaskPlan) {
     ASSERT_EQ(group.GetMembers().size(), 1u);
     EXPECT_EQ(grouped.graph.GetInstance(group.GetMembers()[0])->GetInstanceName(),
               "group/transform");
+}
+
+TEST(SubGraphNodesTest, RegisteredNodeGroupInstantiatesAndForwardsTheSameResourceEdge) {
+    GraphFixture fixture;
+    ASSERT_TRUE(fixture.registry.Register<RegisteredPassThroughSubGraph>());
+    const NodeHandle source = fixture.AddSource("source");
+    const NodeHandle sink = fixture.AddSink("sink");
+
+    const SubGraphHandle passThrough = fixture.graph.InstantiateRegistered(
+        "Test.RegisteredPassThrough", "registered", std::any(PassThroughParams{}));
+    ASSERT_TRUE(passThrough.IsValid());
+    EXPECT_TRUE(passThrough.GetMembers().empty());
+    const NodeType* registeredType = fixture.registry.GetNodeType("Test.RegisteredPassThrough");
+    ASSERT_NE(registeredType, nullptr);
+    EXPECT_EQ(registeredType->GetInputCount(), 1u);
+    EXPECT_EQ(registeredType->GetOutputCount(), 1u);
+
+    fixture.graph.Connect(source, SourceSlots::SourceOutput,
+                          passThrough, PassThroughPorts::PassInput);
+    fixture.graph.Connect(passThrough, PassThroughPorts::PassOutput,
+                          sink, SinkSlots::SinkInput);
+
+    const GraphTopology& topology = fixture.graph.GetTopology();
+    ASSERT_EQ(topology.GetEdgeCount(), 1u);
+    const auto edge = topology.GetEdges().front();
+    EXPECT_EQ(edge.source->GetInstanceName(), "source");
+    EXPECT_EQ(edge.target->GetInstanceName(), "sink");
 }
 
 TEST(SubGraphNodesTest, ExpansionRejectsUnboundAndDoublyBoundPorts) {

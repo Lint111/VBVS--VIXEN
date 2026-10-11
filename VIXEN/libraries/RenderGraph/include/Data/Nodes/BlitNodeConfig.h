@@ -18,7 +18,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace BlitNodeCounts {
-    static constexpr size_t INPUTS  = 12;
+    static constexpr size_t INPUTS  = 13;
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -177,6 +177,14 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /** @brief Optional module output; when empty, IMAGE_READ is the native render-path input. */
+    INPUT_SLOT_SYNC(UPSCALED_IMAGE_READ, Vixen::Vulkan::Resources::IRenderTarget*, 12,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::TransferRead);
+
     // ===== OUTPUTS (2) =====
 
     /** @brief renderComplete semaphore for Present to wait on. */
@@ -200,6 +208,7 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
 
         HandleDescriptor renderTargetDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(IMAGE_READ, "image_read", ResourceLifetime::Persistent, renderTargetDesc);
+        INIT_INPUT_DESC(UPSCALED_IMAGE_READ, "upscaled_image_read", ResourceLifetime::Persistent, renderTargetDesc);
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, renderTargetDesc);
         inputs[SWAPCHAIN_INFO.index].imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 

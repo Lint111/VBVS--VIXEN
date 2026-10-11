@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <stdexcept>
 #include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
 #include <utility>
 #include <vector>
@@ -85,6 +86,11 @@ ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig();
 class VulkanGraphApplication : public VulkanApplicationBase {
 public:
     enum class PresentationTarget { Window, Offscreen };
+    enum class UpscalerKind { None, Linear, Fsr1 };
+    struct RenderPathConfig {
+        float renderScale = 1.0f;
+        UpscalerKind upscaler = UpscalerKind::None;
+    };
     // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
     // constructs and owns the application directly. Only main.cpp ever created it, and no
     // library code reached for the global instance, so there is nothing else to re-thread.
@@ -152,6 +158,13 @@ public:
     // offscreen render-target/readback chain.
     void SetPresentationTarget(PresentationTarget target) { presentationTarget_ = target; }
     PresentationTarget GetPresentationTarget() const { return presentationTarget_; }
+    void SetRenderPathConfig(RenderPathConfig config) {
+        if (!(config.renderScale > 0.0f) || config.renderScale > 1.0f) {
+            throw std::invalid_argument("Render-path scale must be in (0, 1]");
+        }
+        renderPathConfig_ = config;
+    }
+    const RenderPathConfig& GetRenderPathConfig() const { return renderPathConfig_; }
 
     /**
      * @brief Build an isolated instanced-cube raster demo graph (AR#31). Gated by the
@@ -259,6 +272,7 @@ private:
     bool graphCompiled;                              // Graph compilation state
     int width, height;                               // Window dimensions
     PresentationTarget presentationTarget_ = PresentationTarget::Window;
+    RenderPathConfig renderPathConfig_{};
 
     // ====== Shutdown Management ======
     bool shutdownRequested = false;                  // User requested shutdown
@@ -520,6 +534,9 @@ private:
     // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
     // all cheap no-ops on every run that doesn't opt in.
     PerfCsvWriter perfCsvWriter_;
+    // Render-path modules publish their timed passes through the module build contract, so the
+    // per-frame recorder never looks up a module's private graph members by name.
+    std::vector<PerfCsvWriter::PassSource> upscalerPerfPasses_;
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's

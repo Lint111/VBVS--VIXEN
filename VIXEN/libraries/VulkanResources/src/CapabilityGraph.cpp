@@ -251,6 +251,9 @@ std::vector<std::string> CapabilityGraph::QuerySupportedDeviceFeatures(
     if (features2.features.fragmentStoresAndAtomics) {
         supported.emplace_back("fragmentStoresAndAtomics");
     }
+    if (features2.features.shaderStorageImageWriteWithoutFormat) {
+        supported.emplace_back("shaderStorageImageWriteWithoutFormat");
+    }
     if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0) {
         supported.emplace_back("subgroupComputeBallot");
     }
@@ -806,6 +809,13 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto fragmentStoresAndAtomics = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:fragmentStoresAndAtomics", "fragmentStoresAndAtomics");
 
+    // FSR1 is a compute-image module. Its RGBA8 storage images use core format support; the
+    // renderer's existing storage-image-write capability is the device requirement for selecting
+    // this implementation.
+    auto storageImageWriteWithoutFormat = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:shaderStorageImageWriteWithoutFormat",
+        "shaderStorageImageWriteWithoutFormat");
+
     // Subgroup properties are reported by VkPhysicalDeviceSubgroupProperties rather than
     // VkPhysicalDeviceFeatures2. They still belong in the same availability set so consumers
     // have one graph-owned answer for optional device behavior (rtperf S0/e2).
@@ -888,6 +898,10 @@ void CapabilityGraph::BuildStandardCapabilities() {
     subgroupCoopTraversal->AddDependency(subgroupComputeArithmetic);
     subgroupCoopTraversal->AddDependency(subgroupComputeShuffle);
     RegisterCapability(subgroupCoopTraversal);
+
+    auto fsr1Upscaler = std::make_shared<CompositeCapability>("Upscaler:Fsr1");
+    fsr1Upscaler->AddDependency(storageImageWriteWithoutFormat);
+    RegisterCapability(fsr1Upscaler);
 
     // SwapchainMaintenance1 - the VK_EXT_swapchain_maintenance1 extension for present fences
     // Note: This is VK_EXT_swapchain_maintenance1, NOT VK_KHR_maintenance1

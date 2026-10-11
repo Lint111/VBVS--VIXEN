@@ -182,18 +182,18 @@ inline void WireSdiPushPlumbing(ConnectionBatch& batch, NodeHandle shaderLib,
  * dimensions are the pass's own declarations); everything between them is
  * synthesized.
  */
-template<typename Meta, const auto& Members>
+template<typename Meta, const auto& Members, typename GraphBuilder>
 SynthesizedStage SynthesizeComputeStage(
-    RenderGraph* graph, ConnectionBatch& batch, const std::string& name,
+    GraphBuilder* graph, ConnectionBatch& batch, const std::string& name,
     NodeHandle shaderLib, NodeHandle stage, const SdiStageCommon& common,
     const SdiProviderRegistry& registry, const SdiFeatureSet& features,
     SdiWireSet wireSet = SdiWireSet::All)
 {
     SynthesizedStage s;
-    s.descGatherer  = graph->AddNode<DescriptorResourceGathererNodeType>(name + "_desc_gatherer");
-    s.pushGatherer  = graph->AddNode<PushConstantGathererNodeType>(name + "_push_gatherer");
-    s.descriptorSet = graph->AddNode<DescriptorSetNodeType>(name + "_descriptors");
-    s.pipeline      = graph->AddNode<ComputePipelineNodeType>(name + "_pipeline");
+    s.descGatherer  = graph->template AddNode<DescriptorResourceGathererNodeType>(name + "_desc_gatherer");
+    s.pushGatherer  = graph->template AddNode<PushConstantGathererNodeType>(name + "_push_gatherer");
+    s.descriptorSet = graph->template AddNode<DescriptorSetNodeType>(name + "_descriptors");
+    s.pipeline      = graph->template AddNode<ComputePipelineNodeType>(name + "_pipeline");
 
     Detail::WireSdiQuintetChain(batch, common, shaderLib, s.descGatherer,
                                 s.descriptorSet, s.pipeline);
@@ -221,17 +221,17 @@ SynthesizedStage SynthesizeComputeStage(
  * Descriptor members wire ONCE (against the shared gatherer); push members
  * wire per stage. Shared node names follow the `<name>_*` convention.
  */
-template<typename Meta, const auto& Members>
+template<typename Meta, const auto& Members, typename GraphBuilder>
 SynthesizedStageGroup SynthesizeComputeStageGroup(
-    RenderGraph* graph, ConnectionBatch& batch, const std::string& name,
+    GraphBuilder* graph, ConnectionBatch& batch, const std::string& name,
     NodeHandle shaderLib, const std::vector<SdiGroupStageDecl>& stages,
     const SdiStageCommon& common, const SdiProviderRegistry& registry,
     const SdiFeatureSet& features)
 {
     SynthesizedStageGroup g;
-    g.descGatherer  = graph->AddNode<DescriptorResourceGathererNodeType>(name + "_desc_gatherer");
-    g.descriptorSet = graph->AddNode<DescriptorSetNodeType>(name + "_descriptors");
-    g.pipeline      = graph->AddNode<ComputePipelineNodeType>(name + "_pipeline");
+    g.descGatherer  = graph->template AddNode<DescriptorResourceGathererNodeType>(name + "_desc_gatherer");
+    g.descriptorSet = graph->template AddNode<DescriptorSetNodeType>(name + "_descriptors");
+    g.pipeline      = graph->template AddNode<ComputePipelineNodeType>(name + "_pipeline");
 
     Detail::WireSdiQuintetChain(batch, common, shaderLib, g.descGatherer,
                                 g.descriptorSet, g.pipeline);
@@ -245,7 +245,7 @@ SynthesizedStageGroup SynthesizeComputeStageGroup(
     g.pushGatherers.reserve(stages.size());
     for (const auto& decl : stages) {
         NodeHandle pushGatherer =
-            graph->AddNode<PushConstantGathererNodeType>(decl.pushGathererName);
+            graph->template AddNode<PushConstantGathererNodeType>(decl.pushGathererName);
         g.pushGatherers.push_back(pushGatherer);
 
         Detail::WireSdiStageCommons(batch, common, shaderLib, g.descriptorSet,

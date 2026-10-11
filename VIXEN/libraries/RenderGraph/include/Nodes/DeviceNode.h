@@ -6,6 +6,7 @@
 #include "VulkanDevice.h"
 #include "DeviceIdentifier.h"  // For DeviceRegistry
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -50,6 +51,14 @@ public:
  */
 class DeviceNode : public TypedNode<DeviceNodeConfig> {
 public:
+
+    // Shared adapter policy for graph-time capability selection and node compilation.
+    // The renderer graph may select an optional module before DeviceNode::Compile creates
+    // the logical device, but must inspect the same physical adapter DeviceNode will use.
+    static uint32_t SelectPhysicalDeviceIndex(
+        const std::vector<VkPhysicalDevice>& physicalDevices,
+        uint32_t requestedIndex,
+        std::string* selectionReason = nullptr);
 
     DeviceNode(
         const std::string& instanceName,
