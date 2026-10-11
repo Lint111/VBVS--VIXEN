@@ -42,6 +42,9 @@
 #include <memory>
 #include <vector>
 #include <cstring>
+#include <filesystem>
+#include <ShaderCompiler.h>
+#include <SpirvReflector.h>
 
 // Use centralized Vulkan global names to avoid duplicate strong symbols
 #include <VulkanGlobalNames.h>
@@ -50,6 +53,47 @@ namespace VRG = Vixen::RenderGraph;  // Alias to avoid namespace collision
 using namespace RenderGraph::TestMocks;
 using ShaderManagement::TestFixtures::ShaderBundleDummyBuilder;
 using ShaderManagement::TestFixtures::MakeComplexPushConstantStruct;
+
+TEST(RayGenerationTileContract, CompiledShaderPreservesCameraPrefixAndReflectsTileFields) {
+    const auto source = std::filesystem::path(VIXEN_SHADER_SOURCE_DIR) / "VoxelRT.rgen";
+    SCOPED_TRACE(source.string());
+    ShaderManagement::ShaderCompiler compiler;
+    const auto compiled = compiler.CompileFile(ShaderManagement::ShaderStage::RayGen, source);
+    ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
+    ShaderManagement::SpirvReflector reflector;
+    const auto reflected = reflector.ReflectStage(compiled.spirv, ShaderManagement::ShaderStage::RayGen);
+    ASSERT_NE(reflected, nullptr);
+    ASSERT_EQ(reflected->pushConstants.size(), 1u);
+    const auto& range = reflected->pushConstants.front();
+    EXPECT_TRUE(range.stageFlags & VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+    const auto member = [&](const char* name) -> const ShaderManagement::SpirvStructMember* {
+        for (const auto& field : range.structDef.members) if (field.name == name) return &field;
+        return nullptr;
+    };
+    // The existing camera ABI occupies bytes 0..63. Tiling extends that contract.
+    const auto* camera = member("cameraPos");
+    const auto* debug = member("debugMode");
+    ASSERT_NE(camera, nullptr);
+    ASSERT_NE(debug, nullptr);
+    EXPECT_EQ(camera->offset, 0u);
+    EXPECT_EQ(debug->offset, 60u);
+    const auto* origin = member("tileOrigin");
+    const auto* extent = member("fullLaunchExtent");
+    ASSERT_NE(origin, nullptr);
+    ASSERT_NE(extent, nullptr);
+    for (const auto* field : {origin, extent}) {
+        EXPECT_EQ(field->type.baseType, ShaderManagement::SpirvTypeInfo::BaseType::UInt);
+        EXPECT_EQ(field->type.width, 32u);
+        EXPECT_EQ(field->type.vecSize, 3u);
+        EXPECT_EQ(field->type.arraySize, 0u);
+        EXPECT_EQ(field->type.sizeInBytes, 12u);
+        EXPECT_EQ(field->type.ToCppType(), "glm::uvec3");
+        EXPECT_EQ(field->type.ToGlslType(), "uvec3");
+        EXPECT_GE(field->offset, 64u);
+        EXPECT_LE(field->offset + 12u, range.offset + range.size);
+    }
+    EXPECT_GE(extent->offset, origin->offset + 12u);
+}
 
 // ============================================================================
 // Test Fixture

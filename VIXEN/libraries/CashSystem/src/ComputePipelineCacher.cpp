@@ -187,6 +187,7 @@ void ComputePipelineCacher::CreateComputePipeline(
     // Create compute pipeline
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
     pipelineInfo.stage = shaderStageInfo;
     pipelineInfo.layout = wrapper.pipelineLayoutWrapper->layout;
 

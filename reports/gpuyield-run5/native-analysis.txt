@@ -1,0 +1,49 @@
+wall/sha: {'native-final-1080-cold': (9.8, 'F489B784'), 'native-final-1080-warm': (9.6, 'F489B784'), 'native-final-1080-warm-no-trace': (9.6, 'F489B784'), 'native-final-cold': (9.6, 'F489B784'), 'native-final-warm': (9.6, 'F489B784'), 'native-final-warm-no-trace': (9.6, 'F489B784'), 'native-hardware-query': (9.6, 'F489B784'), 'native-unbounded': (2.8, '40333D59'), 'native-unbounded-1080': (3.4, '40333D59'), 'native-unbounded-1080-return': (3.4, '40333D59')}
+== 500x500
+pass | native-unbounded | native-final-cold | native-final-warm | native-final-warm-no-trace
+cpu_frame_time_ms 3.4132 | 17.0506 | 17.0656 | 17.0465
+whole_frame_gpu_span_ms 0.7747 | 0.9134 | 1.0041 | 0.8775
+esvo_traverse_shade_ms 0.3391 | 0.3871 | 0.3780 | 0.3852
+spatial_reuse_ms 0.0866 | 0.0910 | 0.0988 | 0.1101
+shadow_visibility_wave_ms 0.0561 | 0.0594 | 0.0624 | 0.0647
+render_target_blit_ms 0.0063 | 0.0080 | 0.0084 | 0.0080
+ui_composite_render_ms 0.0326 | 0.0381 | 0.0385 | 0.0385
+cpu_p99 4.242 | 17.345 | 17.328 | 17.371
+span_p99 0.939 | 1.221 | 5.752 | 1.135
+== 1920x1080
+pass | native-unbounded-1080 | native-unbounded-1080-return | native-final-1080-cold | native-final-1080-warm | native-final-1080-warm-no-trace
+cpu_frame_time_ms 4.6081 | 4.6105 | 17.0554 | 17.0618 | 17.0562
+whole_frame_gpu_span_ms 3.9052 | 3.9454 | 4.0529 | 4.1808 | 4.1507
+esvo_traverse_shade_ms 1.8662 | 1.8690 | 2.0141 | 2.0118 | 1.9990
+spatial_reuse_ms 0.7595 | 0.7584 | 0.7459 | 0.7493 | 0.7554
+shadow_visibility_wave_ms 0.8317 | 0.8305 | 0.8100 | 0.8210 | 0.8229
+render_target_blit_ms 0.0331 | 0.0341 | 0.0336 | 0.0337 | 0.0349
+ui_composite_render_ms 0.0370 | 0.0373 | 0.0389 | 0.0417 | 0.0398
+cpu_p99 5.063 | 5.519 | 17.347 | 17.338 | 17.332
+span_p99 4.011 | 4.088 | 5.110 | 9.117 | 9.080
+-- native-final-1080-cold: frames=500 subs/frame mean=7.520 steady-mean=4.012 max_sub p99=1.715 max=2.576 chunks=3784 chunk p99=1.70316 over2ms frames=2 [(72, 2.576), (287, 2.054)] host={'acquire': 0.064, 'chunk-retire': 1.613, 'submit': 0.129, 'present-and-idle': 0.181, 'frame-retire': 1.467, 'frame-execute-core': 10.025, 'frame-pace': 7.361}
+   calibration: ['extent=136x135 start=cold']
+   frames 1-4: chunks=400 subs=400 max mean=0.184 max=0.184 total mean=5.346
+   frames 5-8: chunks=49 subs=45 max mean=0.230 max=0.235 total mean=3.187
+   frames 9-12: chunks=9 subs=7 max mean=0.698 max=1.010 total mean=2.354
+   frames 13-500: chunks=4 subs=4 max mean=1.174 max=2.576 total mean=1.948
+-- native-final-1080-warm: frames=500 subs/frame mean=4.000 steady-mean=4.000 max_sub p99=1.006 max=1.895 chunks=2000 chunk p99=0.967 over2ms frames=0 [] host={'acquire': 0.067, 'chunk-retire': 1.363, 'submit': 0.089, 'present-and-idle': 0.201, 'frame-retire': 1.784, 'frame-execute-core': 8.473, 'frame-pace': 8.609}
+   calibration: ['extent=136x135 start=warm anchor_units=16384 unit_ns=208.873901 fixed_ns=1319195.954662']
+   frames 1-500: chunks=4 subs=4 max mean=0.947 max=1.895 total mean=1.959
+-- native-final-1080-warm-no-trace: frames=500 subs/frame mean=4.000 steady-mean=4.000 max_sub p99=0.970 max=1.703 chunks=0 chunk p99=n/a over2ms frames=0 [] host={}
+   calibration: ['extent=136x135 start=warm anchor_units=16384 unit_ns=231.008539 fixed_ns=1319195.954662']
+   frames 1-500: chunks=4 subs=4 max mean=0.942 max=1.703 total mean=1.954
+-- native-final-cold: frames=500 subs/frame mean=1.688 steady-mean=1.000 max_sub p99=0.398 max=0.407 chunks=852 chunk p99=0.39632 over2ms frames=0 [] host={'acquire': 0.068, 'chunk-retire': 0.018, 'submit': 0.065, 'present-and-idle': 0.148, 'frame-retire': 0.069, 'frame-execute-core': 5.711, 'frame-pace': 11.342}
+   calibration: ['extent=63x63 start=cold']
+   frames 1-4: chunks=81 subs=81 max mean=0.134 max=0.135 total mean=1.289
+   frames 5-8: chunks=9 subs=7 max mean=0.165 max=0.168 total mean=0.527
+   frames 9-500: chunks=1 subs=1 max mean=0.387 max=0.407 total mean=0.387
+-- native-final-warm: frames=500 subs/frame mean=1.000 steady-mean=1.000 max_sub p99=0.389 max=0.416 chunks=500 chunk p99=0.3892 over2ms frames=0 [] host={'acquire': 0.067, 'chunk-retire': 0.001, 'submit': 0.054, 'present-and-idle': 0.148, 'frame-retire': 0.22, 'frame-execute-core': 5.538, 'frame-pace': 11.544}
+   calibration: ['extent=63x63 start=warm anchor_units=3969 unit_ns=112.765934 fixed_ns=257753.524020']
+   frames 1-500: chunks=1 subs=1 max mean=0.379 max=0.416 total mean=0.379
+-- native-final-warm-no-trace: frames=500 subs/frame mean=1.000 steady-mean=1.000 max_sub p99=0.398 max=0.419 chunks=0 chunk p99=n/a over2ms frames=0 [] host={}
+   calibration: ['extent=63x63 start=warm anchor_units=3969 unit_ns=115.227012 fixed_ns=257753.524020']
+   frames 1-500: chunks=1 subs=1 max mean=0.386 max=0.419 total mean=0.386
+-- native-hardware-query: frames=500 subs/frame mean=1.000 steady-mean=1.000 max_sub p99=0.416 max=0.457 chunks=500 chunk p99=0.41612 over2ms frames=0 [] host={'acquire': 0.1, 'chunk-retire': 0.001, 'submit': 0.057, 'present-and-idle': 0.193, 'frame-retire': 0.324, 'frame-execute-core': 5.874, 'frame-pace': 11.166}
+   calibration: ['extent=63x63 start=warm anchor_units=3969 unit_ns=116.169315 fixed_ns=257753.524020']
+   frames 1-500: chunks=1 subs=1 max mean=0.395 max=0.457 total mean=0.395

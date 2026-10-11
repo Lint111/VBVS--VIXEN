@@ -1,0 +1,30 @@
+[box:flow] final-cost-and-submit-cpu cpu=35% target=90% depth=5 free=1 baseline=2 granted=1 mode=static
+[box:flow] final-cost-and-submit-cpu cpu=27% target=90% admit
+[box:flow] final-cost-and-submit-cpu memory=admit avail=70743MB projected=3693MB estimate=class-p91 samples=1337 reserved=16160MB total=80425MB reserve=4096MB disk=519884MB
+[box:flow] final-cost-and-submit-cpu passed token-blocked queue head pid=3850425 (2/3)
+[box:flow] final-cost-and-submit-cpu granted tokens=13 mask=26,27
+[box:flow] final-cost-and-submit-cpu running on cores 26,27 (test)
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+    Start 1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+1/7 Test #1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork ..............   Passed    0.01 sec
+    Start 1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+2/7 Test #1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission ...   Passed    0.01 sec
+    Start 1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+3/7 Test #1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree ....   Passed    0.01 sec
+    Start 1681: GpuChunkCost.ClippedLatencyDoesNotAmplifyThroughputCost
+4/7 Test #1681: GpuChunkCost.ClippedLatencyDoesNotAmplifyThroughputCost .....................   Passed    0.01 sec
+    Start 1682: GpuChunkCost.LargerLaunchRetainsEveryEarlierSampleBound
+5/7 Test #1682: GpuChunkCost.LargerLaunchRetainsEveryEarlierSampleBound .....................   Passed    0.01 sec
+    Start 1683: GpuChunkCost.FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget
+6/7 Test #1683: GpuChunkCost.FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget ....   Passed    0.01 sec
+    Start 1684: GpuChunkCost.NearBudgetFixedLatencyDoesNotCollapseIntoThousandsOfCommands
+7/7 Test #1684: GpuChunkCost.NearBudgetFixedLatencyDoesNotCollapseIntoThousandsOfCommands ...   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+RenderGraph    =   0.08 sec*proc (7 tests)
+
+Total Test time (real) =   1.09 sec
+UT_JOB_DONE test final-cost-and-submit-cpu exit=0 state=OK

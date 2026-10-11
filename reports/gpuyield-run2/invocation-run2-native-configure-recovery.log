@@ -1,0 +1,54 @@
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.14.41
+** Copyright (c) 2025 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+[configure] Waiting for the machine-wide configure lock (another worktree may be configuring)...
+[configure] Configure lock acquired (was free).
+-- VIXEN: expected Vulkan SDK 1.4.350.0 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: //wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: external Vulkan SDK loader: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib
+-- VIXEN: found Vulkan SDK 1.4.350.0 — expected version matches.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.0; found SDK 1.4.350.0; API headers 1.4.0; glslang 16.2.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: )
+-- Attempting auto locate Vulkan using CMake......
+-- Found Vulkan: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib (found version "1.4.350") found components: glslc glslangValidator
+-- Vulkan SDK found: C:/VulkanSDK/1.4.350.0
+-- The C compiler identification is MSVC 19.44.35229.0
+-- The CXX compiler identification is MSVC 19.44.35229.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - failed
+-- Check for working C compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe
+-- Check for working C compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - broken
+CMake Error at C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:67 (message):
+  The C compiler
+
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
+
+  is not able to compile a simple test program.
+
+  It fails with the following output:
+
+    Change Dir: '//wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield-native/CMakeFiles/CMakeScratch/TryCompile-p3vb8i'
+    
+    Run Build Command(s): C:/PROGRA~2/MICROS~2/2022/BUILDT~1/Common7/IDE/COMMON~1/MICROS~1/CMake/Ninja/ninja.exe -v cmTC_8e0b9
+    [1/2] C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo -D_MBCS  /DWIN32 /D_WINDOWS  /Ob0 /Od /RTC1 -MDd -Z7 /showIncludes /FoCMakeFiles\cmTC_8e0b9.dir\testCCompiler.c.obj /FdCMakeFiles\cmTC_8e0b9.dir\ /FS -c \\wsl.localhost\Ubuntu\home\liory\projects\VBVS--VIXEN\.claude-worktrees\gpuyield\build\gpuyield-native\CMakeFiles\CMakeScratch\TryCompile-p3vb8i\testCCompiler.c
+    [2/2] C:\Windows\system32\cmd.exe /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\cmTC_8e0b9.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\rc.exe --mt=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\mt.exe --manifests  -- C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\link.exe /nologo CMakeFiles\cmTC_8e0b9.dir\testCCompiler.c.obj  /out:cmTC_8e0b9.exe /implib:cmTC_8e0b9.lib /pdb:cmTC_8e0b9.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+    FAILED: cmTC_8e0b9.exe 
+    C:\Windows\system32\cmd.exe /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\cmTC_8e0b9.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\rc.exe --mt=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\mt.exe --manifests  -- C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\link.exe /nologo CMakeFiles\cmTC_8e0b9.dir\testCCompiler.c.obj  /out:cmTC_8e0b9.exe /implib:cmTC_8e0b9.lib /pdb:cmTC_8e0b9.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+    '\\wsl.localhost\Ubuntu\home\liory\projects\VBVS--VIXEN\.claude-worktrees\gpuyield\build\gpuyield-native\CMakeFiles\CMakeScratch\TryCompile-p3vb8i'
+    CMD.EXE was started with the above path as the current directory.
+    UNC paths are not supported.  Defaulting to Windows directory.
+    ninja: build stopped: subcommand failed.
+    
+    
+
+
+
+  CMake will not be able to correctly generate this project.
+Call Stack (most recent call first):
+  CMakeLists.txt:402 (project)
+
+
+-- Configuring incomplete, errors occurred!
+[configure] Configure lock released.

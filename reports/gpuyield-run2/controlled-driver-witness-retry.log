@@ -1,0 +1,804 @@
+[box:flow] run2-controlled-driver-witness-retry cpu=14% target=90% depth=2 free=5 baseline=15 granted=15 mode=static
+[box:flow] run2-controlled-driver-witness-retry queued — need=15 tokens projected=57MB estimate=step samples=1
+[box:flow] run2-controlled-driver-witness-retry cpu=22% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71760MB projected=57MB estimate=step samples=1 reserved=17439MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=21% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72874MB projected=57MB estimate=step samples=1 reserved=17439MB total=80425MB reserve=4096MB disk=537108MB
+[box:flow] run2-controlled-driver-witness-retry cpu=24% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72830MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=26% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72838MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=20% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72852MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=18% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72866MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=20% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72823MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537089MB
+[box:flow] run2-controlled-driver-witness-retry cpu=18% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=72816MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537088MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71946MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537075MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71386MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537074MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70998MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537072MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70779MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537073MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70709MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537072MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70601MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537072MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70411MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537070MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70386MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537070MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70305MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537065MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70116MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537062MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70102MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537062MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70103MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537059MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70192MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537060MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70020MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=537000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70008MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536942MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69975MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536924MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69813MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536924MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69670MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536923MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70057MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536928MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70086MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536928MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70082MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536928MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70352MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536874MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70377MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536808MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70105MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536741MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70097MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536651MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69914MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536563MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69889MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536421MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69776MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536327MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69964MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536250MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69803MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536222MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70243MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536184MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69661MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536184MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70237MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536148MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70337MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=536148MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70562MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536156MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70719MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536151MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70372MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536151MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70025MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536150MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70008MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536150MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70182MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536147MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70218MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536124MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70252MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536054MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70537MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536016MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70132MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69979MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536002MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69885MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536002MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69957MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536003MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70097MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536003MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70111MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536003MB
+[box:flow] run2-controlled-driver-witness-retry cpu=48% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70070MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536003MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70171MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536001MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70154MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536001MB
+[box:flow] run2-controlled-driver-witness-retry cpu=58% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70248MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70096MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70069MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70081MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70321MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70179MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70226MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70134MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70100MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70044MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=536000MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70324MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535999MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70281MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535999MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70198MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535992MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70146MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535999MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70174MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535988MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69934MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535988MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69806MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535987MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69754MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535982MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69628MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535982MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69439MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535982MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69307MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535982MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69186MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535916MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69158MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535845MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69522MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535836MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69521MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69348MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69265MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69096MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69473MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=48% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69553MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69536MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=57% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69452MB projected=57MB estimate=step samples=1 reserved=4287MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69239MB projected=57MB estimate=step samples=1 reserved=4305MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69492MB projected=57MB estimate=step samples=1 reserved=4305MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69207MB projected=57MB estimate=step samples=1 reserved=4305MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69307MB projected=57MB estimate=step samples=1 reserved=4305MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69222MB projected=57MB estimate=step samples=1 reserved=4305MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69021MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68967MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69337MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535813MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69342MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535812MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69175MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535812MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69007MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535812MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68971MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535812MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69482MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535815MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69224MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535814MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69196MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535814MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69045MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535808MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68962MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535799MB
+[box:flow] run2-controlled-driver-witness-retry cpu=54% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68826MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535795MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68640MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535795MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68499MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535792MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69593MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535759MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69391MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535759MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69725MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535763MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69626MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535763MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69559MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535763MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69529MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535762MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69446MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535762MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69472MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535763MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69433MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535762MB
+[box:flow] run2-controlled-driver-witness-retry cpu=28% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69414MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535762MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69398MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535762MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69341MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535761MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69301MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535761MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69072MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535761MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68849MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535760MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68658MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535760MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68550MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535760MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68445MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535751MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68988MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535758MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70141MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535758MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69930MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535756MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69594MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535718MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69409MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535662MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69228MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535649MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69061MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535649MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68995MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535649MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69075MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535650MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68877MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535650MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68917MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535648MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68834MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535648MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69220MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535637MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69302MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535639MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69284MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535639MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69356MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535639MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69170MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535641MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69250MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535644MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69235MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535638MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68763MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535638MB
+[box:flow] run2-controlled-driver-witness-retry cpu=53% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68407MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535634MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69109MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535634MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68952MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535634MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68873MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69146MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68893MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68860MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68657MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68518MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68447MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68601MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535633MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68673MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535635MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68563MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535634MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70018MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535634MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70530MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535628MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70446MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535630MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70118MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535630MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70027MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535630MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69985MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535625MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69883MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535625MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70134MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535624MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70364MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535627MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70368MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535627MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70354MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535627MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70358MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535627MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70417MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535566MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70503MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535498MB
+[box:flow] run2-controlled-driver-witness-retry cpu=57% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70603MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535475MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70634MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535458MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70909MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535457MB
+[box:flow] run2-controlled-driver-witness-retry cpu=52% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71012MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535457MB
+[box:flow] run2-controlled-driver-witness-retry cpu=58% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71255MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535456MB
+[box:flow] run2-controlled-driver-witness-retry cpu=62% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70805MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535456MB
+[box:flow] run2-controlled-driver-witness-retry cpu=66% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70530MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535455MB
+[box:flow] run2-controlled-driver-witness-retry cpu=67% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70567MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535454MB
+[box:flow] run2-controlled-driver-witness-retry cpu=50% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70365MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535453MB
+[box:flow] run2-controlled-driver-witness-retry cpu=66% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70140MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535453MB
+[box:flow] run2-controlled-driver-witness-retry cpu=64% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70060MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535446MB
+[box:flow] run2-controlled-driver-witness-retry cpu=76% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70032MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535443MB
+[box:flow] run2-controlled-driver-witness-retry cpu=64% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69921MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535442MB
+[box:flow] run2-controlled-driver-witness-retry cpu=52% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69847MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535442MB
+[box:flow] run2-controlled-driver-witness-retry cpu=52% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69833MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535442MB
+[box:flow] run2-controlled-driver-witness-retry cpu=53% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70095MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535426MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70292MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535426MB
+[box:flow] run2-controlled-driver-witness-retry cpu=50% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70253MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535426MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70441MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535426MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70448MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535426MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70448MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535425MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70506MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535425MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70451MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535424MB
+[box:flow] run2-controlled-driver-witness-retry cpu=48% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70283MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535424MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70184MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535424MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70138MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535423MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70240MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535423MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70261MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535423MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70191MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535422MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70174MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535422MB
+[box:flow] run2-controlled-driver-witness-retry cpu=51% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69896MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535412MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69262MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535412MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69224MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535411MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69183MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535408MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68904MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535407MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68737MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535407MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68692MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535406MB
+[box:flow] run2-controlled-driver-witness-retry cpu=50% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68896MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535407MB
+[box:flow] run2-controlled-driver-witness-retry cpu=54% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68768MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535403MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68954MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535406MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68824MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535401MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68618MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535401MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68801MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535404MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68658MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535404MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68696MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535404MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68689MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535403MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68564MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535403MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69217MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535406MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68945MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535405MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68865MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535398MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69093MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535398MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69324MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535403MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68974MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535399MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68778MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535399MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68613MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535398MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68544MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535398MB
+[box:flow] run2-controlled-driver-witness-retry cpu=53% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68501MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535398MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68642MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535399MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68569MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68992MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68625MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=54% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68509MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68774MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68762MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535394MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68968MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535368MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68803MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535367MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=68602MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535366MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69583MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535371MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69482MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535372MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69684MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535376MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69569MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535376MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69725MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535365MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70003MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535349MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70050MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535364MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69853MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535368MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69911MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535350MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70189MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535343MB
+[box:flow] run2-controlled-driver-witness-retry cpu=25% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70850MB projected=57MB estimate=step samples=1 reserved=4012MB total=80425MB reserve=4096MB disk=535343MB
+[box:flow] run2-controlled-driver-witness-retry cpu=26% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70607MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535341MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70476MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535221MB
+[box:flow] run2-controlled-driver-witness-retry cpu=24% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70546MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535141MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70839MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535142MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70650MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535138MB
+[box:flow] run2-controlled-driver-witness-retry cpu=28% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70484MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535138MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70776MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535138MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70872MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71145MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71250MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70908MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=25% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70712MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70606MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=49% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70502MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71038MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535143MB
+[box:flow] run2-controlled-driver-witness-retry cpu=67% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71060MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535134MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70727MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=28% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70445MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70851MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535139MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70461MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=24% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70487MB projected=57MB estimate=step samples=1 reserved=1293MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70338MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=24% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70231MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70170MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=25% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71000MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70679MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=28% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70437MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71752MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71221MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=24% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71084MB projected=57MB estimate=step samples=1 reserved=961MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70891MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70623MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70586MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70533MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71204MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535139MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70914MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71058MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70728MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=43% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70419MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71129MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535136MB
+[box:flow] run2-controlled-driver-witness-retry cpu=48% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71560MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=49% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71463MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71035MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70741MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70388MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70642MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535129MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70950MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535134MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70430MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=53% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70219MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69902MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69673MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70205MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70587MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535133MB
+[box:flow] run2-controlled-driver-witness-retry cpu=52% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70137MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69990MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=55% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69797MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69580MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70267MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535132MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71165MB projected=57MB estimate=step samples=1 reserved=4262MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70568MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535126MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70561MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535126MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70381MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535126MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70236MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535126MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71478MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535135MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70917MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70532MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70367MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70132MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70980MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70555MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535124MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70742MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535124MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70281MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535124MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70038MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535124MB
+[box:flow] run2-controlled-driver-witness-retry cpu=48% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69858MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535123MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70524MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535131MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70724MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69946MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69715MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=45% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69532MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69772MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70455MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70261MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70024MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69755MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69523MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70221MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=31% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69968MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69628MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69446MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69188MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69763MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70324MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69984MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=29% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69750MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69544MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=30% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70472MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535123MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70199MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535123MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70786MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535122MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70405MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535122MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70238MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535122MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70407MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70123MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70821MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535126MB
+[box:flow] run2-controlled-driver-witness-retry cpu=34% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70380MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70076MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69893MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69665MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69506MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69310MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69250MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69133MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70011MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=41% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69819MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69689MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71446MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71692MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71266MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71127MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70840MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70638MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70489MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70762MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=38% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70463MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70313MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70135MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70300MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69936MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=39% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=69864MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70666MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70340MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70226MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70550MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535118MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71052MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535117MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70793MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=42% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70559MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70346MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=44% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70117MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535119MB
+[box:flow] run2-controlled-driver-witness-retry cpu=36% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70678MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=33% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70471MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535121MB
+[box:flow] run2-controlled-driver-witness-retry cpu=46% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71151MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535128MB
+[box:flow] run2-controlled-driver-witness-retry cpu=35% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70864MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535120MB
+[box:flow] run2-controlled-driver-witness-retry cpu=47% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71178MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535127MB
+[box:flow] run2-controlled-driver-witness-retry cpu=49% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71483MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535125MB
+[box:flow] run2-controlled-driver-witness-retry cpu=37% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=71061MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535117MB
+[box:flow] run2-controlled-driver-witness-retry cpu=40% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70852MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535117MB
+[box:flow] run2-controlled-driver-witness-retry cpu=32% target=90% admit
+[box:flow] run2-controlled-driver-witness-retry memory=admit avail=70667MB projected=57MB estimate=step samples=1 reserved=3945MB total=80425MB reserve=4096MB disk=535117MB

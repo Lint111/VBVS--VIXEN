@@ -1,0 +1,293 @@
+[box:flow] final-22-generation-contracts cpu=64% target=90% depth=3 free=0 baseline=3 granted=4 mode=static
+[box:turn] gpuyield yielding to its queued native-final-and-ray-build (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] final-22-generation-contracts cpu=39% target=90% depth=0 free=0 baseline=3 granted=4 mode=static
+[box:flow] final-22-generation-contracts cpu=29% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66693MB projected=3457MB estimate=class-p91 samples=2208 reserved=17202MB total=80425MB reserve=4096MB disk=523511MB
+[box:flow] final-22-generation-contracts queued — need=4 tokens projected=3457MB estimate=class-p91 samples=2208
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66653MB projected=3457MB estimate=class-p91 samples=2208 reserved=17202MB total=80425MB reserve=4096MB disk=523511MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66662MB projected=3457MB estimate=class-p91 samples=2208 reserved=17202MB total=80425MB reserve=4096MB disk=523511MB
+[box:flow] final-22-generation-contracts cpu=32% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66631MB projected=3457MB estimate=class-p91 samples=2208 reserved=17202MB total=80425MB reserve=4096MB disk=523510MB
+[box:flow] final-22-generation-contracts cpu=27% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66595MB projected=3457MB estimate=class-p91 samples=2208 reserved=17202MB total=80425MB reserve=4096MB disk=523509MB
+[box:flow] final-22-generation-contracts cpu=51% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68962MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523501MB
+[box:flow] final-22-generation-contracts cpu=54% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68574MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523501MB
+[box:flow] final-22-generation-contracts cpu=50% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68405MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523501MB
+[box:flow] final-22-generation-contracts cpu=58% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68011MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523507MB
+[box:flow] final-22-generation-contracts cpu=45% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68022MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523506MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68128MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523506MB
+[box:flow] final-22-generation-contracts cpu=40% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67826MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523563MB
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67508MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523568MB
+[box:flow] final-22-generation-contracts cpu=39% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67434MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523624MB
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67351MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523623MB
+[box:flow] final-22-generation-contracts cpu=36% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67197MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523626MB
+[box:flow] final-22-generation-contracts cpu=33% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67523MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523693MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67520MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523700MB
+[box:flow] final-22-generation-contracts cpu=42% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67468MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523708MB
+[box:flow] final-22-generation-contracts cpu=44% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67273MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523745MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67272MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523770MB
+[box:flow] final-22-generation-contracts cpu=45% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67229MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523821MB
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67304MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523905MB
+[box:flow] final-22-generation-contracts cpu=44% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67732MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523906MB
+[box:flow] final-22-generation-contracts cpu=40% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67563MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523915MB
+[box:flow] final-22-generation-contracts cpu=39% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67602MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523976MB
+[box:flow] final-22-generation-contracts cpu=46% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67499MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523976MB
+[box:flow] final-22-generation-contracts cpu=46% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67393MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523976MB
+[box:flow] final-22-generation-contracts cpu=40% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67259MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523975MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67175MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523975MB
+[box:flow] final-22-generation-contracts cpu=45% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67462MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523975MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67903MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523975MB
+[box:flow] final-22-generation-contracts cpu=45% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67767MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523974MB
+[box:flow] final-22-generation-contracts cpu=41% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67916MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523973MB
+[box:flow] final-22-generation-contracts cpu=49% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67981MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523972MB
+[box:flow] final-22-generation-contracts cpu=52% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67675MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523972MB
+[box:flow] final-22-generation-contracts cpu=35% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67844MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523968MB
+[box:flow] final-22-generation-contracts cpu=34% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67787MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523968MB
+[box:flow] final-22-generation-contracts cpu=39% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67980MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523971MB
+[box:flow] final-22-generation-contracts cpu=36% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67843MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523971MB
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67586MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523971MB
+[box:flow] final-22-generation-contracts cpu=30% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67963MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523971MB
+[box:flow] final-22-generation-contracts cpu=31% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67694MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523971MB
+[box:flow] final-22-generation-contracts cpu=38% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67409MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=32% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67876MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=29% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68247MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=25% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68236MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=32% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=68123MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=27% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67994MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=45% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67942MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=28% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67814MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=29% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67726MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=30% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67621MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=27% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67532MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=28% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67466MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=27% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67798MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523931MB
+[box:flow] final-22-generation-contracts cpu=36% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67981MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523929MB
+[box:flow] final-22-generation-contracts cpu=30% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67996MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523928MB
+[box:flow] final-22-generation-contracts cpu=24% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67999MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523928MB
+[box:flow] final-22-generation-contracts cpu=27% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67980MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523921MB
+[box:flow] final-22-generation-contracts cpu=31% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67856MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523918MB
+[box:flow] final-22-generation-contracts cpu=37% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67695MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523918MB
+[box:flow] final-22-generation-contracts cpu=33% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67265MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523918MB
+[box:flow] final-22-generation-contracts cpu=26% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67138MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523909MB
+[box:flow] final-22-generation-contracts cpu=29% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67663MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523902MB
+[box:flow] final-22-generation-contracts cpu=39% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67673MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523900MB
+[box:flow] final-22-generation-contracts cpu=22% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67547MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523900MB
+[box:flow] final-22-generation-contracts cpu=26% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67475MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523900MB
+[box:flow] final-22-generation-contracts cpu=22% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67452MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523900MB
+[box:flow] final-22-generation-contracts cpu=21% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67359MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523899MB
+[box:flow] final-22-generation-contracts cpu=22% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67300MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523899MB
+[box:flow] final-22-generation-contracts cpu=24% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67290MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523899MB
+[box:flow] final-22-generation-contracts cpu=21% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67218MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523899MB
+[box:flow] final-22-generation-contracts cpu=22% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67098MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523899MB
+[box:flow] final-22-generation-contracts cpu=19% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67054MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523898MB
+[box:flow] final-22-generation-contracts cpu=25% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67021MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523898MB
+[box:flow] final-22-generation-contracts cpu=20% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66964MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523898MB
+[box:flow] final-22-generation-contracts cpu=19% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66924MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523898MB
+[box:flow] final-22-generation-contracts cpu=23% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=66884MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523898MB
+[box:flow] final-22-generation-contracts cpu=19% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67544MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523897MB
+[box:flow] final-22-generation-contracts cpu=21% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67443MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523897MB
+[box:flow] final-22-generation-contracts cpu=21% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67611MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523895MB
+[box:flow] final-22-generation-contracts cpu=20% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67566MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523894MB
+[box:flow] final-22-generation-contracts cpu=21% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67469MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523894MB
+[box:flow] final-22-generation-contracts cpu=19% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67279MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523894MB
+[box:flow] final-22-generation-contracts cpu=22% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67165MB projected=3457MB estimate=class-p91 samples=2208 reserved=18627MB total=80425MB reserve=4096MB disk=523893MB
+[box:flow] final-22-generation-contracts cpu=25% target=90% admit
+[box:flow] final-22-generation-contracts memory=admit avail=67313MB projected=3457MB estimate=class-p91 samples=2208 reserved=15186MB total=80425MB reserve=4096MB disk=523893MB
+[box:flow] final-22-generation-contracts granted tokens=4 5 6 12 mask=8,9,10,11,12,13,24,25
+[box:flow] final-22-generation-contracts running on cores 8,9,10,11,12,13,24,25 (build)
+[0/2] Re-checking globbed directories...
+[1/99] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 835 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[2/99] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_windowedcapture.dir/Nodes/test_editor_toggle_undo_capture.cpp.o
+[3/99] [codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)
+[4/99] [codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)
+[5/99] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:514:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  514 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from ../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+../../VIXEN/libraries/CashSystem/include/MainCacher.h:570:10: note: declared here
+  570 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[6/99] Linking CXX static library lib/libRenderGraphCore.a
+[7/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[8/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[9/99] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[10/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[11/99] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[12/99] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[13/99] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[14/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[15/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[16/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[17/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[18/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[19/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[20/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[21/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[22/99] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[23/99] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[24/99] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[25/99] [codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations
+[26/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[27/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[28/99] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[29/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[30/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[31/99] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[32/99] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[33/99] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[34/99] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[35/99] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[36/99] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[37/99] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[38/99] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[39/99] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[40/99] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[41/99] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[42/99] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[43/99] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[44/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[45/99] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[46/99] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[47/99] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[48/99] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[49/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[50/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[51/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[52/99] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[53/99] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[54/99] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[55/99] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[56/99] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[57/99] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[58/99] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[59/99] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[60/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[61/99] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[62/99] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[63/99] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[64/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[65/99] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[66/99] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[67/99] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[68/99] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[69/99] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[70/99] Linking CXX executable binaries/VIXEN
+[71/99] Linking CXX executable application/main/test_app_run_tick
+[72/99] Linking CXX executable application/main/test_hud_view
+[73/99] Linking CXX executable application/main/test_view_blob_equiv
+[74/99] Linking CXX executable application/main/test_headless_ui_graph
+[75/99] Linking CXX executable application/main/test_headless_cornell_graph
+[76/99] Linking CXX executable application/main/test_headless_starfield_graph
+[77/99] Linking CXX executable application/main/vixen_lookdev_capture
+[78/99] Linking CXX executable application/main/test_cel_shading_graph
+[79/99] Linking CXX executable binaries/vixen_editor
+[80/99] [codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels
+[81/99] [codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes
+[82/99] [codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)
+[83/99] [codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)
+[84/99] [codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)
+[85/99] [codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)
+[86/99] [codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)
+[87/99] [codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)
+[88/99] [codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)
+[89/99] [codegen] golden check: MiningBeamBuffer.g.h/.glsl match canonical schema
+[90/99] [codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)
+[91/99] [codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)
+[92/99] [codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)
+[93/99] [codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)
+[94/99] [codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema
+[95/99] [codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)
+[96/99] [codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema
+[97/99] [codegen] golden check: ViewNounId.g.h matches the [View] schema nouns
+[98/99] [codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema
+UT_JOB_DONE build final-22-generation-contracts exit=0 state=OK

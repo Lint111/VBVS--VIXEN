@@ -1,0 +1,1429 @@
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% depth=1 free=6 baseline=15 granted=15 mode=static
+[box:flow] affine-native-and-dozen-driver-matrix queued — need=15 tokens projected=1388MB estimate=class-p91 samples=99
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71979MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518541MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71768MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518541MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71759MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518539MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71696MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518539MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71810MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518539MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71619MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518539MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71688MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518462MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71629MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518451MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71528MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518458MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71649MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518502MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71878MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518517MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72059MB projected=1388MB estimate=class-p91 samples=99 reserved=17547MB total=80425MB reserve=4096MB disk=518516MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72095MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518516MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72232MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518513MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72238MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72154MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72249MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72163MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518480MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71935MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518479MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71964MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518479MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72156MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518477MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72190MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518476MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72403MB projected=1388MB estimate=class-p91 samples=99 reserved=14087MB total=80425MB reserve=4096MB disk=518476MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72302MB projected=1388MB estimate=class-p91 samples=99 reserved=15475MB total=80425MB reserve=4096MB disk=518437MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72274MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518432MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71843MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518432MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71531MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518431MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71453MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518431MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71420MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518431MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71532MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518404MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71357MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518318MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71577MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518299MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71421MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518143MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71524MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518031MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71372MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518022MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71382MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518003MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71313MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518003MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71139MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518003MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71357MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=518002MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71171MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517875MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71065MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71002MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70875MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70999MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70926MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70819MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70740MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517802MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70670MB projected=1388MB estimate=class-p91 samples=99 reserved=13033MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70819MB projected=1388MB estimate=class-p91 samples=99 reserved=13033MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70500MB projected=1388MB estimate=class-p91 samples=99 reserved=13033MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70795MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71083MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71123MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517801MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70956MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70929MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70888MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70816MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517800MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70809MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517799MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70765MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517799MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70667MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517799MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70831MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517798MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70581MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517798MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70463MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70564MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517797MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70388MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517796MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70029MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517793MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69915MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517787MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69634MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517785MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=59% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69486MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517784MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=63% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69492MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517785MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=60% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69470MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517784MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=84% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69386MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517784MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=53% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69379MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517784MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=55% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69251MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517784MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69319MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517783MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69264MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517783MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69247MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517781MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69223MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517759MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69246MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517703MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69224MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517659MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69222MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517626MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69266MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517566MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=66% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69189MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517513MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69171MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517512MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=48% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69199MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517511MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69151MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517511MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69662MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517519MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=40% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69597MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517518MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69548MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517518MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69415MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517517MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69207MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517517MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69215MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517516MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69170MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517515MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69007MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69161MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69100MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69049MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69095MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517497MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69104MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517496MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69181MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517496MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69175MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517495MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69285MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517493MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69225MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517488MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69152MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517484MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69189MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517483MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69024MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517476MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69545MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517476MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69545MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517472MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69449MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517519MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69480MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517517MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=49% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69313MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517514MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69182MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517512MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=52% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70319MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517516MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=44% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70123MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517512MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69931MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517509MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69718MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517507MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69602MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517505MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69536MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517504MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69529MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517487MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69442MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517469MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=47% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69467MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517416MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69313MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517344MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=66% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69399MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517251MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69835MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517168MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=54% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69719MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517120MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=58% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69567MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70422MB projected=1388MB estimate=class-p91 samples=99 reserved=25091MB total=80425MB reserve=4096MB disk=517087MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70269MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517075MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70344MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517075MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70257MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517075MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70246MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517074MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70167MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517073MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70268MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517073MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70440MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517072MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70492MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517072MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70532MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517072MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70571MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517072MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70478MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517071MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70522MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517071MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70524MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517071MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70412MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517070MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70310MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517069MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70477MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517069MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70544MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517068MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70505MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517068MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70399MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517067MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70592MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517067MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70568MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517067MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70435MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517067MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70367MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517066MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70382MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517066MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70469MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517066MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70277MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70370MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70273MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70352MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70433MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70338MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70273MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70135MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70081MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69957MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=48% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69853MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69963MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69870MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=40% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69764MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517042MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=40% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69730MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=46% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69880MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69838MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69760MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69788MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517031MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70266MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517016MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70328MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517015MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70332MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517015MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70489MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517014MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70456MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517014MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70605MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517013MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70738MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517013MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71391MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517013MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72505MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517012MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72329MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517026MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72260MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517023MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72049MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517022MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71921MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517020MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71783MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517020MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71586MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517020MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71412MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=517006MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71291MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516935MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70910MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516910MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71009MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516893MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70834MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516893MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=42% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70708MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516893MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70629MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516893MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=50% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70655MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516892MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70526MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516884MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70374MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516825MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70216MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516765MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=51% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70067MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516715MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69931MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516641MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=43% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=69813MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516613MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70490MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516587MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70013MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516574MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70561MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516583MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=39% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70541MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516583MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70828MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516582MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70668MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516582MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70579MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516582MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=41% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70549MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516581MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70360MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516581MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70269MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516566MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70372MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516565MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70404MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516565MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70236MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516565MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70650MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516564MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70412MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516564MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70213MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516564MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70087MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516563MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70174MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516563MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70192MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516562MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70449MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516561MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70430MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516561MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70432MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516561MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70447MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516561MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70451MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516560MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70457MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516560MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70480MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516560MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70504MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516560MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70506MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516559MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70523MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516559MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70677MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516558MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70835MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516558MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70916MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516557MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70885MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516557MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70910MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516556MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71010MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516556MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71017MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516555MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71014MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516555MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70957MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516554MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70939MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516554MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70956MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516554MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70969MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516553MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70950MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516552MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72066MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516552MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71904MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516534MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71555MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516534MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71405MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516534MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71270MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516534MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71203MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516533MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71139MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516533MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71047MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516532MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70934MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516531MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71229MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516531MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71242MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516531MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71880MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516530MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71977MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516525MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71985MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516525MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71975MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516525MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71976MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516525MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71997MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516524MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71970MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516524MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72001MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516524MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71996MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516523MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71995MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516523MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73219MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516520MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73050MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516520MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73033MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516520MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73010MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516520MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72999MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516520MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72989MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516519MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73360MB projected=1388MB estimate=class-p91 samples=99 reserved=12015MB total=80425MB reserve=4096MB disk=516504MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73313MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73204MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73130MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73119MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73118MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73149MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516479MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73067MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516301MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73038MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516301MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73044MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516301MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73034MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73009MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72999MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72979MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516500MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72953MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72963MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72973MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72971MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516499MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72995MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73000MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73017MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73024MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516498MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73031MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516497MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74625MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516508MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74273MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74016MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73894MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516503MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73813MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516445MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73802MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516373MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73292MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516367MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73052MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516367MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72735MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516367MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72343MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516367MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72152MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516367MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72690MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516366MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72767MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516366MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72593MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73210MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73754MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516366MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73530MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73348MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73117MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73262MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73600MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73324MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73382MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73599MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73388MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73395MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516365MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73340MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516364MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73523MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516364MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73987MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516363MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74366MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516361MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74330MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516361MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74373MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516355MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74345MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516225MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74070MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516213MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74318MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516204MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74062MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516209MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73639MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516209MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73487MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516230MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73540MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516230MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73332MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516230MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73100MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516230MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73067MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516229MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73333MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516229MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73712MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516229MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73398MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516229MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73100MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516229MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72802MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=35% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73107MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72933MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72607MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72715MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=36% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72471MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516228MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72844MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516227MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73428MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516227MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=38% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73426MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516227MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73844MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516227MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73885MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516227MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73877MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516226MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74290MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516224MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74150MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516223MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74091MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516223MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74102MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516223MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74261MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516124MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74143MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516072MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73879MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73710MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73699MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=37% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73222MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72994MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72871MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72761MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73028MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72753MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73181MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72766MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73009MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72810MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73056MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72720MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72669MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73480MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73234MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72927MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72665MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72642MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72700MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72387MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72188MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71929MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72390MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516062MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72227MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516061MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72060MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516061MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73023MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516060MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73174MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516061MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73617MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516061MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73631MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516060MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73995MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73612MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73267MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72842MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72547MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72439MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516058MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72520MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516057MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72259MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516057MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72622MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516057MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72263MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72756MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72306MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72143MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71974MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72439MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72616MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72145MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71726MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516056MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71494MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71785MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71545MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71274MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71008MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516055MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70850MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516054MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71589MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72705MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72326MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71943MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71577MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71417MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71255MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516053MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71054MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516052MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72077MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516052MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71704MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516052MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71514MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71929MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72354MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72396MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71957MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72117MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71658MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516051MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72018MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71578MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71290MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71726MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71344MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71768MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516050MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71384MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72004MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71571MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71960MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71552MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516049MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71941MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71650MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71955MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71737MB projected=1388MB estimate=class-p91 samples=99 reserved=10627MB total=80425MB reserve=4096MB disk=516048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72555MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516048MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73070MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72668MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73158MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72879MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73291MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516047MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73637MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73396MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72894MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73187MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72766MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516046MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73117MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72675MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72457MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72208MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72740MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72228MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71893MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516045MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72321MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516044MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72518MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516044MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73445MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516044MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73049MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516044MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72740MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516044MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72570MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72369MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72093MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71868MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516042MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72511MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516043MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=34% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72229MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516042MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72775MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72404MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73924MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73515MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73276MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73314MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73123MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72895MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516041MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72709MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516040MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72837MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516040MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73295MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516040MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72990MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516040MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72814MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516039MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73095MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73668MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516039MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73284MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72898MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72660MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73948MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516038MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73510MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516037MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73838MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516037MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73886MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516037MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73558MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516037MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73140MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516037MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72978MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516036MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73239MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516036MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73427MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516036MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73089MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73178MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73001MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72721MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73118MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72786MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516035MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72447MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516034MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=32% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72902MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516034MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72496MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516034MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72269MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516033MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72751MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516033MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73313MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516033MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72975MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516033MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72571MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516033MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72357MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72979MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73412MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73145MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73281MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72897MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72671MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72267MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72083MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71987MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516032MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72562MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516031MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72584MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72288MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73063MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72626MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=26% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72499MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72259MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516030MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=25% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72123MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516029MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72395MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516029MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72505MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516028MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72659MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516028MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72530MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516028MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72511MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72393MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72224MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73475MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73382MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74072MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74083MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74959MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74853MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516027MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74690MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516025MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74709MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516025MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74719MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=516025MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74707MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515903MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74694MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515851MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74469MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515847MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74226MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515847MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73981MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73354MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72839MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72664MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72569MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72368MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72084MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=31% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72437MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72168MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71990MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72267MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=72073MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71860MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71578MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515869MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=30% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71279MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515824MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71038MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515667MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=70922MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515667MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71408MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515837MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=23% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71349MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515867MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71863MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515867MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71790MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515867MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=29% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71656MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515866MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71412MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515866MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=33% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71523MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515865MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71324MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515864MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71374MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515863MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71265MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515863MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71238MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515862MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71232MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515862MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71222MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515861MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=28% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71373MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515861MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71403MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515861MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71408MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515861MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71454MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515861MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71488MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=27% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71451MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71383MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71410MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71429MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71455MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71489MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515859MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71517MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515858MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71549MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515857MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71570MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=19% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71581MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71609MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515855MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=71628MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515854MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73570MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515857MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73560MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515857MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73566MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515857MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73574MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=45% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73613MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73687MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73642MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73634MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73645MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73632MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73631MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73621MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73571MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73414MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73428MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=14% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73443MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73470MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73485MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=22% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73475MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73492MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73491MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73487MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73484MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=20% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73493MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73514MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73531MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=73558MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515856MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=15% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=75605MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515853MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=18% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=75424MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74951MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74846MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=10% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74726MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=21% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74641MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74527MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=16% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74424MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=13% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74389MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=12% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74940MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=24% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74716MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515833MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=9% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74693MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515814MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=17% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74666MB projected=1388MB estimate=class-p91 samples=99 reserved=7167MB total=80425MB reserve=4096MB disk=515793MB
+[box:flow] affine-native-and-dozen-driver-matrix cpu=11% target=90% admit
+[box:flow] affine-native-and-dozen-driver-matrix memory=admit avail=74705MB projected=1388MB estimate=class-p91 samples=99 reserved=0MB total=80425MB reserve=4096MB disk=515793MB
+[box:flow] affine-native-and-dozen-driver-matrix granted tokens=0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 mask=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+[box:flow] affine-native-and-dozen-driver-matrix running on cores 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29 (gpu)
+Native full producer: native-unbounded
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  4.8964957,
+    "binary_sha256":  "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+    "hardware_query":  false,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  25320,
+    "height":  500
+}
+Native full producer: native-before
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\.tmp\\bounded-before-runtime\\vixen_editor.exe",
+    "wall_seconds":  29.394726799999997,
+    "binary_sha256":  "301CDE957AC022D5326ECAF2FB0CB6756F12F0662C35B8054F326B4119A023DA",
+    "hardware_query":  false,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  26880,
+    "height":  500
+}
+Native full producer: native-final
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  27.6183643,
+    "binary_sha256":  "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+    "hardware_query":  false,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  16188,
+    "height":  500
+}
+Native full producer: native-unbounded-1080
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  3.8577630999999997,
+    "binary_sha256":  "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+    "hardware_query":  false,
+    "width":  1920,
+    "scale":  1,
+    "frames":  500,
+    "pid":  26944,
+    "height":  1080
+}
+Native full producer: native-final-1080
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  17.0522032,
+    "binary_sha256":  "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+    "hardware_query":  false,
+    "width":  1920,
+    "scale":  1,
+    "frames":  500,
+    "pid":  26964,
+    "height":  1080
+}
+Native full producer: native-bucketed-unbounded
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  7.3016087,
+    "binary_sha256":  "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+    "hardware_query":  false,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  15564,
+    "height":  500
+}
+Native full producer: native-bucketed
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  20.6667038,
+    "binary_sha256":  "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+    "hardware_query":  false,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  4320,
+    "height":  500
+}
+Native full producer: native-hardware-query
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  23.9312,
+    "binary_sha256":  "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+    "hardware_query":  true,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  9592,
+    "height":  500
+}
+Running main() from C:\vixen-native\gpuyield\.tmp\native-fetch\googletest-src\googletest\src\gtest_main.cc
+Note: Google Test filter = RayQueryFeasibilityTest.*
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from RayQueryFeasibilityTest
+[ RUN      ] RayQueryFeasibilityTest.GpuRayQueryMatchesCpuBruteForce
+[       OK ] RayQueryFeasibilityTest.GpuRayQueryMatchesCpuBruteForce (2682 ms)
+[ RUN      ] RayQueryFeasibilityTest.BrickmapDdaMatchesCpuBruteForce
+[       OK ] RayQueryFeasibilityTest.BrickmapDdaMatchesCpuBruteForce (251 ms)
+[ RUN      ] RayQueryFeasibilityTest.Microbench_RtQueryVsBruteForce
+[RT_QUERY]   min ns/dispatch=410200  median ns/dispatch=440600  min ns/ray=0.41  median ns/ray=0.44  (rays=1000000, dispatches=10)
+[BRUTE_AABB] min ns/dispatch=837900  median ns/dispatch=915200  min ns/ray=0.84  median ns/ray=0.92  (rays=1000000, dispatches=10)
+[BRICKMAP_DDA] min ns/dispatch=336300  median ns/dispatch=345500  min ns/ray=0.34  median ns/ray=0.35  (rays=1000000, dispatches=10)
+[       OK ] RayQueryFeasibilityTest.Microbench_RtQueryVsBruteForce (977 ms)
+[ RUN      ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes
+[R486_RT_DEVICE] name=AMD Radeon(TM) 8060S Graphics driver=8388967 width=500 height=500 frames=500
+[R486_RT_TILES] samples=40500 full_ms=0.016320 p99_ms=0.003640 max_ms=0.016400 aggregate_max_ms=0.344840 bytes=1000000 identical=1
+[       OK ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes (2846 ms)
+[----------] 4 tests from RayQueryFeasibilityTest (6759 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (6759 ms total)
+[  PASSED  ] 4 tests.
+.tmp/gpuyield-run3/dozen-final.sh: line 6: 274485 Segmentation fault         VIXEN_RENDER_SCALE=1.0 VIXEN_WINDOW_WIDTH=500 VIXEN_WINDOW_HEIGHT=500 VIXEN_GPUYIELD_TRACE=1 VIXEN_EDITOR_TEST_CAMERA=top-down VIXEN_EXIT_AFTER_FRAMES=500 VIXEN_PERF_CSV="$out/vixen-perf.csv" timeout 240 build/gpuyield/binaries/vixen_editor > "$out/vixen.log" 2> "$out/host.log"
+native_matrix_exit=0 dozen_exit=139
+UT_JOB_FAILED gpu affine-native-and-dozen-driver-matrix exit=1 log=/home/liory/.local/state/undertow/undertow-box-logs/1791661010-gpu-affine-native-and-dozen-driver-matrix.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | [       OK ] RayQueryFeasibilityTest.Microbench_RtQueryVsBruteForce (977 ms)
+  | [ RUN      ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes
+  | [R486_RT_DEVICE] name=AMD Radeon(TM) 8060S Graphics driver=8388967 width=500 height=500 frames=500
+  | [R486_RT_TILES] samples=40500 full_ms=0.016320 p99_ms=0.003640 max_ms=0.016400 aggregate_max_ms=0.344840 bytes=1000000 identical=1
+  | [       OK ] RayQueryFeasibilityTest.ProductionRayGenerationTilesMatchFullLaunchBytes (2846 ms)
+  | [----------] 4 tests from RayQueryFeasibilityTest (6759 ms total)
+  | 
+  | [----------] Global test environment tear-down
+  | [==========] 4 tests from 1 test suite ran. (6759 ms total)
+  | [  PASSED  ] 4 tests.
+  | .tmp/gpuyield-run3/dozen-final.sh: line 6: 274485 Segmentation fault         VIXEN_RENDER_SCALE=1.0 VIXEN_WINDOW_WIDTH=500 VIXEN_WINDOW_HEIGHT=500 VIXEN_GPUYIELD_TRACE=1 VIXEN_EDITOR_TEST_CAMERA=top-down VIXEN_EXIT_AFTER_FRAMES=500 VIXEN_PERF_CSV="$out/vixen-perf.csv" timeout 240 build/gpuyield/binaries/vixen_editor > "$out/vixen.log" 2> "$out/host.log"
+  | native_matrix_exit=0 dozen_exit=139
+------------------------------
+UT_JOB_DONE gpu affine-native-and-dozen-driver-matrix exit=1 state=PAYLOAD_FAIL

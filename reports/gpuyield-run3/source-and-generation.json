@@ -1,0 +1,32 @@
+{
+  "implementation_tip": "23037fa9",
+  "wave": "4ddea47390880152d35371193e10c7ac722101d9",
+  "pin": "c3fb3847979e3f9eef04783510c42b70d7058ae7",
+  "generation_checks": [
+    "build/gpuyield/codegen/checks/accumulationconfig_check.stamp",
+    "build/gpuyield/codegen/checks/appflow_check.stamp",
+    "build/gpuyield/codegen/checks/callables_check.stamp",
+    "build/gpuyield/codegen/checks/lightingconfig_check.stamp",
+    "build/gpuyield/codegen/checks/lighttreebuffer_check.stamp",
+    "build/gpuyield/codegen/checks/miningbeambuffer_check.stamp",
+    "build/gpuyield/codegen/checks/octreeconfig_check.stamp",
+    "build/gpuyield/codegen/checks/prevcameraconfig_check.stamp",
+    "build/gpuyield/codegen/checks/probegridconfig_check.stamp",
+    "build/gpuyield/codegen/checks/recipe_opcode_mirror_check.stamp",
+    "build/gpuyield/codegen/checks/recipe_simd_check.stamp",
+    "build/gpuyield/codegen/checks/recipeparams_check.stamp",
+    "build/gpuyield/codegen/checks/reservoirconfig_check.stamp",
+    "build/gpuyield/codegen/checks/reservoirrecord_check.stamp",
+    "build/gpuyield/codegen/checks/sdf_core_kernels_check.stamp",
+    "build/gpuyield/codegen/checks/shadowconfig_check.stamp",
+    "build/gpuyield/codegen/checks/view_editor_layers_check.stamp",
+    "build/gpuyield/codegen/checks/view_hud_blob_check.stamp",
+    "build/gpuyield/codegen/checks/view_hud_check.stamp",
+    "build/gpuyield/codegen/checks/view_hud_markup_check.stamp",
+    "build/gpuyield/codegen/checks/view_hud_writer_check.stamp",
+    "build/gpuyield/codegen/checks/view_noun_enum_check.stamp"
+  ],
+  "generation_log": "final-22-generation-contracts.log",
+  "scope_note": "Later changes touch only C++ runtime consumers and tests, not generator inputs.",
+  "metric_tip": "1ece70bd"
+}

@@ -1,0 +1,651 @@
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% depth=2 free=6 baseline=3 granted=2 mode=static
+[box:turn] gpuyield yielding to its queued run3-native-baselines-owned-process (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% depth=0 free=1 baseline=3 granted=2 mode=static
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72709MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build queued — need=2 tokens projected=6855MB estimate=step-p90 samples=5
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72512MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72032MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71963MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71712MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71624MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71572MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71466MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71322MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71177MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71193MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71203MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71162MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71026MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70848MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70754MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70677MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70645MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71647MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72617MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72679MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=23% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72271MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71899MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71807MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71632MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71466MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526136MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72415MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72381MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72364MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72302MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72207MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72077MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72014MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72053MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72073MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72052MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72097MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73056MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72837MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72646MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72437MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72245MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72157MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72382MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72335MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72332MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72283MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72212MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72136MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72076MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72005MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71972MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71967MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71956MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71934MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71824MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71698MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71621MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71559MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71467MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71436MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71295MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71210MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71126MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71556MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71474MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526131MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71370MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526130MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71383MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526130MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71376MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526130MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71206MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71199MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71201MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71220MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71254MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71281MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71303MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71289MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71275MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71271MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71220MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71166MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71135MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71132MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71134MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71064MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71057MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71051MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71063MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71073MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71083MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71094MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71102MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71094MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71132MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71204MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526127MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71090MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=525966MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71014MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=525926MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70988MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=525926MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70902MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526075MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70914MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70930MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70936MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70944MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70918MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70924MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70939MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70954MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70949MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70976MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71006MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70893MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70919MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526126MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=70963MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72948MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526128MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72783MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72667MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72621MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=23% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72448MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=29% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72245MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72091MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72012MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71967MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71972MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71855MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71863MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71857MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526125MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71850MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526124MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72379MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526124MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72277MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526124MB
+[box:flow] run3-hardware-ray-witness-build cpu=25% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72098MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72017MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72022MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71951MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71879MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71865MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71836MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71828MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71819MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71789MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71779MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526123MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71773MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71668MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71642MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72261MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72166MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72091MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72070MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72007MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71874MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71744MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71712MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71716MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71678MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71695MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71745MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71482MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71507MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526122MB
+[box:flow] run3-hardware-ray-witness-build cpu=12% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71627MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72057MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72221MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=25% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72227MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72186MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72201MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72093MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72039MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71946MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71729MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71737MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=26% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71730MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=26% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71733MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71719MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=23% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71694MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=71630MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72946MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73698MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526121MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74368MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74161MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74077MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74090MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74079MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74338MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526120MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74295MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74139MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73951MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73966MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73912MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73900MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73710MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73479MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73400MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73263MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73219MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73115MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72981MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72912MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72738MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73502MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73450MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73319MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526119MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73185MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74073MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73955MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73924MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73878MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73796MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73717MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73560MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73318MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73202MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73768MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73910MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73750MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73686MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73534MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73426MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73349MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526118MB
+[box:flow] run3-hardware-ray-witness-build cpu=23% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73146MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73032MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72981MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72922MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72915MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72820MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73633MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74471MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=20% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74341MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74283MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=23% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73969MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73760MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73671MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73522MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=35% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73438MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73396MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73310MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73192MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526117MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73059MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72902MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72764MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72726MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72631MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72633MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72603MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72556MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72521MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73557MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526116MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74323MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=74126MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73845MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73609MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=24% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73410MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=26% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73292MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73210MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73125MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73352MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73530MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73378MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73096MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=21% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73009MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72746MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72792MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=19% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72712MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72685MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72881MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73316MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73016MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=25% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=73003MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=13% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72987MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526115MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72811MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72757MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=15% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72784MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=16% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72767MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72678MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=22% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72522MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=18% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72489MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=17% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72507MB projected=6855MB estimate=step-p90 samples=5 reserved=11380MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build cpu=14% target=90% admit
+[box:flow] run3-hardware-ray-witness-build memory=admit avail=72525MB projected=6855MB estimate=step-p90 samples=5 reserved=7966MB total=80425MB reserve=4096MB disk=526114MB
+[box:flow] run3-hardware-ray-witness-build granted tokens=9 10 mask=18,19,20,21
+[box:flow] run3-hardware-ray-witness-build running on cores 18,19,20,21 (build)
+[0/2] Re-checking globbed directories...
+[1/90] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShellRevalidateNode.dir/src/Nodes/ShellRevalidateNode.cpp.o
+[2/90] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MultiDispatchNode.dir/src/Nodes/MultiDispatchNode.cpp.o
+[3/90] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[4/90] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[5/90] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_shell_revalidate_node.dir/Nodes/test_shell_revalidate_node.cpp.o
+[6/90] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_dispatch.dir/test_group_dispatch.cpp.o
+[7/90] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_bucketing_perf.dir/Nodes/test_recipe_bucketing_perf.cpp.o
+[8/90] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_dispatch.dir/test_multidispatch_integration.cpp.o
+[9/90] Linking CXX static library lib/libVixenApp.a
+[10/90] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 835 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[11/90] Building CXX object libraries/SVO/tests/CMakeFiles/test_rayquery_feasibility.dir/test_rayquery_feasibility.cpp.o
+[12/90] Linking CXX executable libraries/SVO/tests/test_rayquery_feasibility
+[13/90] [codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema
+[14/90] Linking CXX executable binaries/VIXEN
+[15/90] Linking CXX executable application/main/test_app_run_tick
+[16/90] Linking CXX executable application/main/test_hud_view
+[17/90] Linking CXX executable application/main/test_view_blob_equiv
+[18/90] Linking CXX executable application/main/test_headless_ui_graph
+[19/90] Linking CXX executable application/main/test_headless_cornell_graph
+[20/90] Linking CXX executable application/main/test_headless_starfield_graph
+[21/90] Linking CXX executable application/main/vixen_lookdev_capture
+[22/90] [codegen] golden check: ViewNounId.g.h matches the [View] schema nouns
+[23/90] Linking CXX executable application/main/test_cel_shading_graph
+[24/90] Linking CXX executable binaries/vixen_editor
+[25/90] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[26/90] Linking CXX static library lib/libRenderGraphNodes.a
+[27/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[28/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[29/90] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[30/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[31/90] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[32/90] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[33/90] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[34/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[35/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[36/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[37/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[38/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[39/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[40/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[41/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[42/90] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[43/90] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[44/90] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[45/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[46/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[47/90] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[48/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[49/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[50/90] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[51/90] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[52/90] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[53/90] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[54/90] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[55/90] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[56/90] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[57/90] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[58/90] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[59/90] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[60/90] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[61/90] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[62/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[63/90] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[64/90] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[65/90] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[66/90] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[67/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[68/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[69/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[70/90] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[71/90] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[72/90] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[73/90] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[74/90] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[75/90] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[76/90] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[77/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[78/90] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[79/90] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[80/90] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[81/90] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[82/90] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[83/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[84/90] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[85/90] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[86/90] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[87/90] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[88/90] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_multi_bucket_compositing.dir/Nodes/test_recipe_multi_bucket_compositing.cpp.o
+[89/90] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+UT_JOB_DONE build run3-hardware-ray-witness-build exit=0 state=OK

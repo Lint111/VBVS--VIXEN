@@ -11,6 +11,7 @@
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
 
 #include <vector>
+#include "GPUTimestampQuery.h"
 #include <map>  // Sprint 6.1: For groupedDispatches_ (deterministic ordering)
 #include <memory>  // Sprint 6.3: For shared_ptr
 
@@ -35,7 +36,7 @@ public:
 /**
  * @brief Node that queues and executes multiple compute dispatches
  *
- * Records multiple vkCmdDispatch calls to a single command buffer with
+ * Records bounded primary commands for the existing bucket/tile partition with
  * optional automatic barrier insertion between passes. Designed for
  * multi-pass compute sequences like:
  *
@@ -92,12 +93,12 @@ public:
     /**
      * @brief Queue a compute dispatch for execution (backward compatible)
      *
-     * Adds a dispatch pass to the queue with zero-cost estimate (no budget checking).
+     * Adds mandatory work without admission rejection, charging one frame for unknown cost.
      * All queued passes are recorded to the command buffer during ExecuteImpl, then
      * the queue is cleared.
      *
-     * **Backward Compatibility:** Sprint 6.1 code uses this method. Zero-cost tasks
-     * always accepted regardless of budget. Use TryQueueDispatch() for budget awareness.
+     * **Backward Compatibility:** mandatory passes remain accepted regardless of budget.
+     * Unknown work still consumes budget; use TryQueueDispatch() for admission checking.
      *
      * @param pass Dispatch pass descriptor (moved)
      * @return Index of the queued pass (for barrier insertion)
@@ -113,7 +114,7 @@ public:
      * (lenient mode).
      *
      * @param pass Dispatch pass descriptor (moved)
-     * @param estimatedCostNs Estimated GPU time in nanoseconds
+     * @param estimatedCostNs Estimated GPU time in nanoseconds; zero reserves one frame
      * @param priority Execution priority (0=lowest, 255=highest)
      * @return true if task accepted, false if rejected (strict mode only)
      */
@@ -248,7 +249,8 @@ private:
     /**
      * @brief Record all queued dispatches to command buffer
      */
-    void RecordDispatches(VkCommandBuffer cmdBuffer);
+    std::vector<VkCommandBuffer> RecordDispatches(VkCommandBuffer cmdBuffer, uint32_t currentFrameIndex, uint32_t slot);
+    void CollectChunkTiming(uint32_t slot);
 
     /**
      * @brief Insert automatic UAV barrier between passes
@@ -270,6 +272,9 @@ private:
 
     // Per-swapchain-image command buffers
     StatefulContainer<VkCommandBuffer> commandBuffers_;
+    std::vector<std::vector<VkCommandBuffer>> chunkBuffers_;
+    std::vector<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>> chunkQueries_;
+    std::vector<uint32_t> chunkCounts_;
 
     // Sprint 6.2: Budget-aware task queue (replaces dispatchQueue_)
     TaskQueue<DispatchPass> taskQueue_;
@@ -278,7 +283,7 @@ private:
     std::vector<std::pair<size_t, DispatchBarrier>> barrierQueue_;
 
     // Sprint 6.1: Group-based dispatch support
-    // Maps group ID -> vector of dispatch passes for that group
+    // Execute-time partition of the accumulation slot by its existing group ID
     // Empty map means no GROUP_INPUTS connected (fall back to taskQueue_)
     // Using std::map (not unordered_map) for deterministic group execution order
     std::map<uint32_t, std::vector<DispatchPass>> groupedDispatches_;

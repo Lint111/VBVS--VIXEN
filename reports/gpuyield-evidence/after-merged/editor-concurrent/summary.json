@@ -1,0 +1,37 @@
+{
+  "measurement": "second Vulkan compute client completion (no present)",
+  "period_ns": 16666666,
+  "command": [
+    "./vixen_editor"
+  ],
+  "wall_seconds": 90.45254177699826,
+  "heavy_process_lifetime_ms": 68183.27613199835,
+  "render_started_monotonic_ns": 15626022313369,
+  "heavy_finished_monotonic_ns": 15689117835548,
+  "render_marker_poll_interval_ms": 50,
+  "service_ms": {
+    "samples": 3780,
+    "mean": 3.1891332219576722,
+    "p50": 3.00189,
+    "p95": 6.26772,
+    "p99": 9.73962,
+    "max": 24.8112
+  },
+  "cadence_ms": {
+    "samples": 3780,
+    "mean": 16.686705224867726,
+    "p50": 16.6285,
+    "p95": 21.0683,
+    "p99": 25.0942,
+    "max": 40.6373
+  },
+  "deadline_lateness_ms": {
+    "samples": 3780,
+    "mean": 3.5594331275132274,
+    "p50": 3.25418,
+    "p95": 7.39925,
+    "p99": 11.1354,
+    "max": 33.0804
+  },
+  "frames_over_two_periods": 2
+}

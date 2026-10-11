@@ -266,6 +266,7 @@ public:
         // =========================================================================
 
         uint64_t gpuTimeBudgetNs = 16'666'666;      ///< Frame budget (16.67ms = 60 FPS)
+        uint64_t gpuSubmissionBudgetNs = 2'000'000; ///< R494 maximum uninterrupted submission
         float adaptiveThreshold = 0.90f;            ///< Utilization threshold for scheduling
 
         // =========================================================================

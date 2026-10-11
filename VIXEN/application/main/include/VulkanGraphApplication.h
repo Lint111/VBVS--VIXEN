@@ -407,6 +407,8 @@ private:
         std::vector<VkDescriptorSet> descriptorSets; // one immutable set per frame-in-flight slot
         VkPipelineLayout      pipelineLayout = VK_NULL_HANDLE;
         VkPipeline            pipeline = VK_NULL_HANDLE;
+        uint32_t tileOriginOffset = 0;
+        uint32_t pushSize = 0;
 
         VkDescriptorSet DescriptorSetForFrame(uint32_t frameIndex) const {
             if (!descriptorSets.empty()) return descriptorSets[frameIndex % descriptorSets.size()];

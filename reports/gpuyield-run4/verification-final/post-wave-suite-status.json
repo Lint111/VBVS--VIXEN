@@ -1,0 +1,8 @@
+{
+  "ctest_exit_status": 8,
+  "failing_tests": [
+    "1200:EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget",
+    "2588:RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes"
+  ],
+  "matches_permitted_opcode_94_only": false
+}

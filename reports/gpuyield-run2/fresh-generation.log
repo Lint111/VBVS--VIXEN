@@ -1,0 +1,47 @@
+[0/2] Re-checking globbed directories...
+[1/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/DirectConnectionRule.cpp.o
+[2/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/VariadicConnectionRule.cpp.o
+[3/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphLifecycleHooks.cpp.o
+[4/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeInstance.cpp.o
+[5/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/SubmitChannel.cpp.o
+[6/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceDependencyTracker.cpp.o
+[7/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BlitNode.dir/src/Nodes/BlitNode.cpp.o
+[8/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/EngineContext.cpp.o
+[9/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:514:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  514 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from ../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+../../VIXEN/libraries/CashSystem/include/MainCacher.h:570:10: note: declared here
+  570 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[10/38] Linking CXX static library lib/libRenderGraphCore.a
+[11/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ConstantNode.dir/src/Nodes/ConstantNode.cpp.o
+[12/38] [codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)
+[13/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CommandPoolNode.dir/src/Nodes/CommandPoolNode.cpp.o
+[14/38] [codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)
+[15/38] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[16/38] Linking CXX static library lib/libVixenApp.a
+[17/38] Linking CXX executable binaries/vixen_editor
+[18/38] [codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations
+[19/38] [codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels
+[20/38] [codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes
+[21/38] [codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)
+[22/38] [codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)
+[23/38] [codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)
+[24/38] [codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)
+[25/38] [codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)
+[26/38] [codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)
+[27/38] [codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)
+[28/38] [codegen] golden check: MiningBeamBuffer.g.h/.glsl match canonical schema
+[29/38] [codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)
+[30/38] [codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)
+[31/38] [codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)
+[32/38] [codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)
+[33/38] [codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema
+[34/38] [codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)
+[35/38] [codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema
+[36/38] [codegen] golden check: ViewNounId.g.h matches the [View] schema nouns
+[37/38] [codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema

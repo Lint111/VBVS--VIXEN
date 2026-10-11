@@ -78,6 +78,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -393,4 +394,58 @@ TEST(EditorToggleUndoCapture, BackButtonReachesReturnInRunningEditor) {
     EXPECT_EQ(*afterBack, kFlowStateIdEditing)
         << "back-button did not pop the FSM back to Editing (afterBack=" << *afterBack << ") -- "
            "the running editor's back-button->Return wiring is broken";
+}
+
+// R477: validate measured submission durations against the budget carried by the
+// live graph. No pinned timing constant; missing/zero samples cannot pass this gate.
+// R503 (controller, R394.1): the budget is asserted only on native devices
+// (integrated/discrete). On a translated or CPU device (Dozen) the line must still
+// carry live samples and no unbounded marker, but its timing is not the project's.
+TEST(EditorToggleUndoCapture, GpuSubmissionsRespectDeclaredBudget) {
+    std::ifstream log(LogPath());
+    ASSERT_TRUE(log.is_open()) << LogPath();
+    const auto field = [](const std::string& line, const char* key) -> std::optional<double> {
+        const auto at = line.find(std::string(key) + "=");
+        if (at == std::string::npos) return std::nullopt;
+        std::istringstream input(line.substr(at + std::string(key).size() + 1));
+        double value;
+        if (!(input >> value) || !std::isfinite(value)) return std::nullopt;
+        return value;
+    };
+    const auto deviceClass = [](const std::string& line) -> std::optional<std::string> {
+        const auto at = line.find("device_class=");
+        if (at == std::string::npos) return std::nullopt;
+        std::istringstream input(line.substr(at + std::string("device_class=").size()));
+        std::string value;
+        if (!(input >> value) || value.empty()) return std::nullopt;
+        return value;
+    };
+    size_t samples = 0, nativeSamples = 0, translatedOverBudget = 0;
+    std::string line;
+    while (std::getline(log, line)) {
+        EXPECT_EQ(line.find("[GPUYIELD_UNBOUNDED]"), std::string::npos) << line;
+        if (line.find("[GPUYIELD]") == std::string::npos) continue;
+        const auto maximum = field(line, "max_submission_ms");
+        const auto budget = field(line, "budget_ms");
+        const auto submissions = field(line, "submissions");
+        const auto device = deviceClass(line);
+        ASSERT_TRUE(maximum && budget && submissions && device) << line;
+        ASSERT_GT(*maximum, 0.0) << line;
+        ASSERT_GT(*budget, 0.0) << line;
+        // A calibrated pass may fit in one bounded submission (R494).
+        EXPECT_GE(*submissions, 1.0) << line;
+        if (*device == "integrated" || *device == "discrete") {
+            EXPECT_LE(*maximum, *budget) << line;
+            ++nativeSamples;
+        } else if (*maximum > *budget) {
+            ++translatedOverBudget;
+        }
+        ++samples;
+    }
+    EXPECT_GT(samples, 0u) << "live timestamp-query samples are required";
+    if (nativeSamples == 0) {
+        std::printf("[GPUYIELD_GATE] device=non-native samples=%zu over_budget=%zu "
+                    "(timing not asserted off integrated/discrete native drivers, R503)\n",
+                    samples, translatedOverBudget);
+    }
 }

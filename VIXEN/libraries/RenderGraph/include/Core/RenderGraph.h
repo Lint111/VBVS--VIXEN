@@ -935,6 +935,9 @@ private:
     // (so a node outside the lowered path submits directly). See SubmitChannel.h.
     SubmitChannel submitChannel_;
     bool submitChannelDraining_ = false;
+    // R503: batches submitted since the drain last retired each queue; SubmitRecord::Submit
+    // keeps it at or under SubmitRecord::kOutstandingBatchCap across records.
+    std::unordered_map<VkQueue, uint32_t> outstandingBatches_;
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).

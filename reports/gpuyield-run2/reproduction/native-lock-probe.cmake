@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.21)
+message(STATUS "Native lock probe path: ${CMAKE_CURRENT_LIST_DIR}")
+file(LOCK "${CMAKE_CURRENT_LIST_DIR}/native-lock-probe.lock" GUARD PROCESS TIMEOUT 5 RESULT_VARIABLE lock_result)
+message(STATUS "Native lock probe result: ${lock_result}")
+if(NOT lock_result STREQUAL "0")
+    message(FATAL_ERROR "Native lock unavailable: ${lock_result}")
+endif()

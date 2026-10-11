@@ -1,0 +1,12 @@
+[box:flow] final-no-op-rebuild cpu=37% target=90% depth=4 free=8 baseline=3 granted=1 mode=static
+[box:turn] gpuyield yielding to its queued affine-native-and-dozen-driver-matrix (fair interleaving)
+[box:turn] gpuyield — my turn now
+grep: /tmp/undertow-box-queue.wait.4002784: No such file or directory
+[box:flow] final-no-op-rebuild cpu=49% target=90% depth=2 free=4 baseline=3 granted=1 mode=static
+[box:flow] final-no-op-rebuild cpu=54% target=90% admit
+[box:flow] final-no-op-rebuild memory=admit avail=74831MB projected=6712MB estimate=step-p90 samples=10 reserved=7022MB total=80425MB reserve=4096MB disk=515746MB
+[box:flow] final-no-op-rebuild granted tokens=14 mask=28,29
+[box:flow] final-no-op-rebuild running on cores 28,29 (build)
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+UT_JOB_DONE build final-no-op-rebuild exit=0 state=OK

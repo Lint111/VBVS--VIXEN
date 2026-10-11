@@ -1,0 +1,44 @@
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SubmitRecord.*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+[       OK ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 3 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = MultiDispatchIntegration.ActualNode*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MultiDispatchIntegration
+[ RUN      ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+[       OK ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+[       OK ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+[       OK ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree (0 ms)
+[----------] 3 tests from MultiDispatchIntegration (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = RayGenerationTileContract.*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RayGenerationTileContract
+[ RUN      ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+[       OK ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields (109 ms)
+[----------] 1 test from RayGenerationTileContract (109 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (109 ms total)
+[  PASSED  ] 1 test.
+All seven required contract tests were discovered and executed.
+Timing smoke checks: completed frames, budget boundary, query availability, empty/invalid peer rows PASS

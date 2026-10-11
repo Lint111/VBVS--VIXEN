@@ -1,0 +1,27 @@
+{
+  "run_status": "FAILED: producer exceeded 240 second timeout; 500 frames not completed",
+  "selection": "all probe intervals after first; no completed producer-overlap summary",
+  "samples": 1585,
+  "service_ms": {
+    "mean": 42.69122932365931,
+    "p50": 2.72757,
+    "p95": 44.1979,
+    "p99": 1088.18,
+    "max": 1143.82
+  },
+  "cadence_ms": {
+    "mean": 56.9909497917981,
+    "p50": 16.6976,
+    "p95": 61.0213,
+    "p99": 1104.95,
+    "max": 1160.6
+  },
+  "deadline_lateness_ms": {
+    "mean": 42.861570174132495,
+    "p50": 2.87052,
+    "p95": 44.3546,
+    "p99": 1088.29,
+    "max": 1143.94
+  },
+  "frames_over_two_periods": 105
+}

@@ -1,0 +1,1384 @@
+{
+  "warmup_frames_excluded": 10,
+  "steady_frames": 490,
+  "scale": 1.0,
+  "runs": {
+    "native-unbounded": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 4.8964957,
+        "binary_sha256": "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+        "hardware_query": false,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 25320,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 4.388762448979591,
+          "p99_ms": 7.4429,
+          "max_ms": 23.9076
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 0.9450427346938776,
+          "p99_ms": 1.47832,
+          "max_ms": 22.4248
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 0.33708685714285713,
+          "p99_ms": 0.35904,
+          "max_ms": 0.3736
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028032653061224486,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.06522391836734694,
+          "p99_ms": 0.0748,
+          "max_ms": 0.08164
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002797551020408163,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.05260922448979592,
+          "p99_ms": 0.05756,
+          "max_ms": 0.0598
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028016326530612244,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028057142857142853,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.006420734693877551,
+          "p99_ms": 0.00812,
+          "max_ms": 0.03368
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.03268669387755102,
+          "p99_ms": 0.04008,
+          "max_ms": 0.14764
+        }
+      },
+      "nodes": {},
+      "host": {},
+      "host_totals_ms_per_frame": {}
+    },
+    "native-before": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\.tmp\\bounded-before-runtime\\vixen_editor.exe",
+        "wall_seconds": 29.394726799999997,
+        "binary_sha256": "301CDE957AC022D5326ECAF2FB0CB6756F12F0662C35B8054F326B4119A023DA",
+        "hardware_query": false,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 26880,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 31.43343163265306,
+          "p99_ms": 32.5236,
+          "max_ms": 55.3692
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 4.145033734693878,
+          "p99_ms": 5.70848,
+          "max_ms": 6.19255
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 2.926508285714286,
+          "p99_ms": 4.16262,
+          "max_ms": 4.40905
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002786938775510204,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.08444024489795919,
+          "p99_ms": 0.09176,
+          "max_ms": 0.0972
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027951020408163263,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.0805574693877551,
+          "p99_ms": 0.08364,
+          "max_ms": 0.08888
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028008163265306124,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002796734693877551,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.007590530612244898,
+          "p99_ms": 0.00816,
+          "max_ms": 0.00828
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.03759420408163265,
+          "p99_ms": 0.04072,
+          "max_ms": 0.04224
+        }
+      },
+      "nodes": {
+        "test_dispatch": {
+          "gpu_measurement": "elapsed GPU clock, including any preemption",
+          "chunks": {
+            "samples": 32000,
+            "mean_ms": 0.017520855000000002,
+            "p99_ms": 0.1348,
+            "max_ms": 0.13568
+          },
+          "dispatch_intervals": {
+            "samples": 32000,
+            "mean_ms": 0.0172240575,
+            "p99_ms": 0.13452,
+            "max_ms": 0.1354
+          },
+          "frame_maxima": {
+            "samples": 500,
+            "mean_ms": 0.13491264,
+            "p99_ms": 0.13556,
+            "max_ms": 0.13568
+          },
+          "host_calls": {
+            "acquire": {
+              "samples": 500,
+              "mean_ms": 0.1543618,
+              "p99_ms": 0.3368,
+              "max_ms": 0.5535
+            },
+            "chunk-retire": {
+              "samples": 32000,
+              "mean_ms": 0.023476668750000002,
+              "p99_ms": 0.1403,
+              "max_ms": 0.344
+            },
+            "submit": {
+              "samples": 32000,
+              "mean_ms": 0.016336321875,
+              "p99_ms": 0.0618,
+              "max_ms": 7.7519
+            },
+            "present-and-idle": {
+              "samples": 500,
+              "mean_ms": 0.2594366,
+              "p99_ms": 0.4508,
+              "max_ms": 1.142
+            },
+            "frame-retire": {
+              "samples": 500,
+              "mean_ms": 0.012570399999999999,
+              "p99_ms": 0.0311,
+              "max_ms": 0.0995
+            }
+          },
+          "invalid_timestamp_pairs": 0,
+          "zero_resolution_dispatch_pairs": 0,
+          "submissions": null,
+          "submissions_per_frame": {
+            "samples": 500,
+            "mean": 64.0,
+            "p99": 64,
+            "max": 64
+          },
+          "aggregate_gpu_ms": {
+            "samples": 500,
+            "mean_ms": 1.1213347200000001,
+            "p99_ms": 1.46676,
+            "max_ms": 1.53116
+          },
+          "node": "test_dispatch",
+          "aggregate_budget_ms": 6.0,
+          "aggregate_budget_pass": true,
+          "expected_frames": 500,
+          "observed_frames": 500,
+          "budget_ms": 16.666666,
+          "budget_pass": true
+        }
+      },
+      "host": {
+        "acquire": {
+          "samples": 500,
+          "mean_ms": 0.1543618,
+          "p99_ms": 0.3368,
+          "max_ms": 0.5535
+        },
+        "chunk-retire": {
+          "samples": 32000,
+          "mean_ms": 0.023476668750000002,
+          "p99_ms": 0.1403,
+          "max_ms": 0.344
+        },
+        "submit": {
+          "samples": 32000,
+          "mean_ms": 0.016336321875,
+          "p99_ms": 0.0618,
+          "max_ms": 7.7519
+        },
+        "present-and-idle": {
+          "samples": 500,
+          "mean_ms": 0.2594366,
+          "p99_ms": 0.4508,
+          "max_ms": 1.142
+        },
+        "frame-retire": {
+          "samples": 500,
+          "mean_ms": 0.012570399999999999,
+          "p99_ms": 0.0311,
+          "max_ms": 0.0995
+        }
+      },
+      "host_totals_ms_per_frame": {
+        "acquire": 0.1543618,
+        "chunk-retire": 1.5025068000000001,
+        "submit": 1.0455246,
+        "present-and-idle": 0.2594366,
+        "frame-retire": 0.012570399999999999
+      }
+    },
+    "native-final": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 27.6183643,
+        "binary_sha256": "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+        "hardware_query": false,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 16188,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 31.43669081632653,
+          "p99_ms": 32.5369,
+          "max_ms": 32.9619
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 1.1932706326530613,
+          "p99_ms": 1.93528,
+          "max_ms": 3.38625
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 0.3665882653061225,
+          "p99_ms": 0.51534,
+          "max_ms": 1.76673
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002798367346938775,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.07823151020408164,
+          "p99_ms": 0.08504,
+          "max_ms": 0.0904
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027959183673469383,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.06757175510204082,
+          "p99_ms": 0.07108,
+          "max_ms": 0.08688
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027959183673469383,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002796734693877551,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00028
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.008051673469387755,
+          "p99_ms": 0.00868,
+          "max_ms": 0.00916
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.039848408163265306,
+          "p99_ms": 0.04288,
+          "max_ms": 0.04348
+        }
+      },
+      "nodes": {
+        "test_dispatch": {
+          "gpu_measurement": "elapsed GPU clock, including any preemption",
+          "chunks": {
+            "samples": 864,
+            "mean_ms": 0.21778634259259258,
+            "p99_ms": 0.36976,
+            "max_ms": 0.77328
+          },
+          "dispatch_intervals": {
+            "samples": 864,
+            "mean_ms": 0.21573851851851852,
+            "p99_ms": 0.3684,
+            "max_ms": 0.77196
+          },
+          "frame_maxima": {
+            "samples": 500,
+            "mean_ms": 0.35873504,
+            "p99_ms": 0.37088,
+            "max_ms": 0.77328
+          },
+          "host_calls": {
+            "acquire": {
+              "samples": 500,
+              "mean_ms": 0.1559846,
+              "p99_ms": 0.3326,
+              "max_ms": 0.4158
+            },
+            "chunk-retire": {
+              "samples": 852,
+              "mean_ms": 0.016623004694835682,
+              "p99_ms": 0.2997,
+              "max_ms": 0.9325
+            },
+            "submit": {
+              "samples": 852,
+              "mean_ms": 0.04749835680751174,
+              "p99_ms": 0.11,
+              "max_ms": 8.3331
+            },
+            "present-and-idle": {
+              "samples": 500,
+              "mean_ms": 0.2493432,
+              "p99_ms": 0.4193,
+              "max_ms": 1.2077
+            },
+            "frame-retire": {
+              "samples": 500,
+              "mean_ms": 0.011696,
+              "p99_ms": 0.0224,
+              "max_ms": 0.2867
+            },
+            "frame-execute-core": {
+              "samples": 500,
+              "mean_ms": 7.5589616,
+              "p99_ms": 10.8532,
+              "max_ms": 509.1436
+            },
+            "frame-pace": {
+              "samples": 500,
+              "mean_ms": 24.6015406,
+              "p99_ms": 26.4276,
+              "max_ms": 26.5232
+            }
+          },
+          "invalid_timestamp_pairs": 0,
+          "zero_resolution_dispatch_pairs": 0,
+          "submissions": {
+            "samples": 852,
+            "mean_ms": 0.21971403755868543,
+            "p99_ms": 0.36976,
+            "max_ms": 0.77328
+          },
+          "submissions_per_frame": {
+            "samples": 500,
+            "mean": 1.704,
+            "p99": 7,
+            "max": 81
+          },
+          "aggregate_gpu_ms": {
+            "samples": 500,
+            "mean_ms": 0.37439272,
+            "p99_ms": 1.1244,
+            "max_ms": 1.27024
+          },
+          "node": "test_dispatch",
+          "aggregate_budget_ms": 6.0,
+          "aggregate_budget_pass": true,
+          "expected_frames": 500,
+          "observed_frames": 500,
+          "budget_ms": 2.0,
+          "budget_pass": true
+        }
+      },
+      "host": {
+        "acquire": {
+          "samples": 500,
+          "mean_ms": 0.1559846,
+          "p99_ms": 0.3326,
+          "max_ms": 0.4158
+        },
+        "chunk-retire": {
+          "samples": 852,
+          "mean_ms": 0.016623004694835682,
+          "p99_ms": 0.2997,
+          "max_ms": 0.9325
+        },
+        "submit": {
+          "samples": 852,
+          "mean_ms": 0.04749835680751174,
+          "p99_ms": 0.11,
+          "max_ms": 8.3331
+        },
+        "present-and-idle": {
+          "samples": 500,
+          "mean_ms": 0.2493432,
+          "p99_ms": 0.4193,
+          "max_ms": 1.2077
+        },
+        "frame-retire": {
+          "samples": 500,
+          "mean_ms": 0.011696,
+          "p99_ms": 0.0224,
+          "max_ms": 0.2867
+        },
+        "frame-execute-core": {
+          "samples": 500,
+          "mean_ms": 7.5589616,
+          "p99_ms": 10.8532,
+          "max_ms": 509.1436
+        },
+        "frame-pace": {
+          "samples": 500,
+          "mean_ms": 24.6015406,
+          "p99_ms": 26.4276,
+          "max_ms": 26.5232
+        }
+      },
+      "host_totals_ms_per_frame": {
+        "acquire": 0.1559846,
+        "chunk-retire": 0.028325600000000003,
+        "submit": 0.0809372,
+        "present-and-idle": 0.2493432,
+        "frame-retire": 0.011696,
+        "frame-execute-core": 7.5589616,
+        "frame-pace": 24.6015406
+      }
+    },
+    "native-unbounded-1080": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 3.8577630999999997,
+        "binary_sha256": "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+        "hardware_query": false,
+        "width": 1920,
+        "scale": 1,
+        "frames": 500,
+        "pid": 26944,
+        "height": 1080
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 5.079638163265306,
+          "p99_ms": 7.8264,
+          "max_ms": 8.363
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 3.934912551020408,
+          "p99_ms": 4.14654,
+          "max_ms": 16.9543
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 1.838277306122449,
+          "p99_ms": 1.87824,
+          "max_ms": 1.88784
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028032653061224486,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.7458201632653062,
+          "p99_ms": 0.77756,
+          "max_ms": 0.78812
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028122448979591834,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.843662693877551,
+          "p99_ms": 0.8742,
+          "max_ms": 0.90712
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.000280734693877551,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002804897959183673,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.0326014693877551,
+          "p99_ms": 0.03712,
+          "max_ms": 0.041
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.038272,
+          "p99_ms": 0.04228,
+          "max_ms": 0.04628
+        }
+      },
+      "nodes": {},
+      "host": {},
+      "host_totals_ms_per_frame": {}
+    },
+    "native-final-1080": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 17.0522032,
+        "binary_sha256": "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+        "hardware_query": false,
+        "width": 1920,
+        "scale": 1,
+        "frames": 500,
+        "pid": 26964,
+        "height": 1080
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 31.404069183673467,
+          "p99_ms": 32.5986,
+          "max_ms": 33.1387
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 4.54044781632653,
+          "p99_ms": 5.493,
+          "max_ms": 6.94011
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 2.205454897959184,
+          "p99_ms": 2.65063,
+          "max_ms": 4.63064
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002791836734693877,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.7751382857142858,
+          "p99_ms": 0.80536,
+          "max_ms": 0.81512
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027959183673469383,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.8382124897959184,
+          "p99_ms": 0.86308,
+          "max_ms": 0.86924
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002799183673469387,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002797551020408163,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.03363812244897959,
+          "p99_ms": 0.03564,
+          "max_ms": 0.037
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.0427134693877551,
+          "p99_ms": 0.04536,
+          "max_ms": 0.06048
+        }
+      },
+      "nodes": {
+        "test_dispatch": {
+          "gpu_measurement": "elapsed GPU clock, including any preemption",
+          "chunks": {
+            "samples": 3789,
+            "mean_ms": 0.2742346476642914,
+            "p99_ms": 0.808,
+            "max_ms": 0.96724
+          },
+          "dispatch_intervals": {
+            "samples": 3789,
+            "mean_ms": 0.27343830034309846,
+            "p99_ms": 0.80668,
+            "max_ms": 0.96092
+          },
+          "frame_maxima": {
+            "samples": 500,
+            "mean_ms": 0.78608232,
+            "p99_ms": 0.82036,
+            "max_ms": 0.96724
+          },
+          "host_calls": {
+            "acquire": {
+              "samples": 500,
+              "mean_ms": 0.1552312,
+              "p99_ms": 0.341,
+              "max_ms": 0.3838
+            },
+            "chunk-retire": {
+              "samples": 3762,
+              "mean_ms": 0.24853003721424774,
+              "p99_ms": 0.8642,
+              "max_ms": 1.1842
+            },
+            "submit": {
+              "samples": 3762,
+              "mean_ms": 0.030269138755980862,
+              "p99_ms": 0.0924,
+              "max_ms": 12.1056
+            },
+            "present-and-idle": {
+              "samples": 500,
+              "mean_ms": 0.4406366,
+              "p99_ms": 0.759,
+              "max_ms": 1.8212
+            },
+            "frame-retire": {
+              "samples": 500,
+              "mean_ms": 0.8745168,
+              "p99_ms": 1.2154,
+              "max_ms": 1.2781
+            },
+            "frame-execute-core": {
+              "samples": 500,
+              "mean_ms": 10.9980436,
+              "p99_ms": 16.7998,
+              "max_ms": 141.5755
+            },
+            "frame-pace": {
+              "samples": 500,
+              "mean_ms": 20.5432222,
+              "p99_ms": 22.6352,
+              "max_ms": 23.0834
+            }
+          },
+          "invalid_timestamp_pairs": 0,
+          "zero_resolution_dispatch_pairs": 1,
+          "submissions": {
+            "samples": 3762,
+            "mean_ms": 0.2758256034024455,
+            "p99_ms": 0.808,
+            "max_ms": 0.96724
+          },
+          "submissions_per_frame": {
+            "samples": 500,
+            "mean": 7.524,
+            "p99": 45,
+            "max": 400
+          },
+          "aggregate_gpu_ms": {
+            "samples": 500,
+            "mean_ms": 2.07531184,
+            "p99_ms": 2.89628,
+            "max_ms": 5.27264
+          },
+          "node": "test_dispatch",
+          "aggregate_budget_ms": 6.0,
+          "aggregate_budget_pass": true,
+          "expected_frames": 500,
+          "observed_frames": 500,
+          "budget_ms": 2.0,
+          "budget_pass": true
+        }
+      },
+      "host": {
+        "acquire": {
+          "samples": 500,
+          "mean_ms": 0.1552312,
+          "p99_ms": 0.341,
+          "max_ms": 0.3838
+        },
+        "chunk-retire": {
+          "samples": 3762,
+          "mean_ms": 0.24853003721424774,
+          "p99_ms": 0.8642,
+          "max_ms": 1.1842
+        },
+        "submit": {
+          "samples": 3762,
+          "mean_ms": 0.030269138755980862,
+          "p99_ms": 0.0924,
+          "max_ms": 12.1056
+        },
+        "present-and-idle": {
+          "samples": 500,
+          "mean_ms": 0.4406366,
+          "p99_ms": 0.759,
+          "max_ms": 1.8212
+        },
+        "frame-retire": {
+          "samples": 500,
+          "mean_ms": 0.8745168,
+          "p99_ms": 1.2154,
+          "max_ms": 1.2781
+        },
+        "frame-execute-core": {
+          "samples": 500,
+          "mean_ms": 10.9980436,
+          "p99_ms": 16.7998,
+          "max_ms": 141.5755
+        },
+        "frame-pace": {
+          "samples": 500,
+          "mean_ms": 20.5432222,
+          "p99_ms": 22.6352,
+          "max_ms": 23.0834
+        }
+      },
+      "host_totals_ms_per_frame": {
+        "acquire": 0.1552312,
+        "chunk-retire": 1.8699400000000002,
+        "submit": 0.227745,
+        "present-and-idle": 0.4406366,
+        "frame-retire": 0.8745168,
+        "frame-execute-core": 10.9980436,
+        "frame-pace": 20.5432222
+      }
+    },
+    "native-bucketed-unbounded": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\.tmp\\unbounded-base\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 7.3016087,
+        "binary_sha256": "40333D59AC2DD9C010422AC1F552C8D3B25D4413FC541B3995BEBE1B8F021B86",
+        "hardware_query": false,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 15564,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 4.69438612244898,
+          "p99_ms": 8.0137,
+          "max_ms": 25.5367
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 1.2123124081632655,
+          "p99_ms": 2.17001,
+          "max_ms": 24.5302
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 0.46320824489795914,
+          "p99_ms": 0.49768,
+          "max_ms": 0.50244
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002799183673469387,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.06021281632653062,
+          "p99_ms": 0.07236,
+          "max_ms": 0.07476
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002798367346938775,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.05041216326530612,
+          "p99_ms": 0.05852,
+          "max_ms": 0.0672
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028065306122448974,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002798367346938775,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.006437469387755102,
+          "p99_ms": 0.00852,
+          "max_ms": 0.03432
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.03413338775510204,
+          "p99_ms": 0.04204,
+          "max_ms": 0.15488
+        }
+      },
+      "nodes": {},
+      "host": {},
+      "host_totals_ms_per_frame": {}
+    },
+    "native-bucketed": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 20.6667038,
+        "binary_sha256": "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+        "hardware_query": false,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 4320,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 31.452769591836734,
+          "p99_ms": 32.5997,
+          "max_ms": 33.0013
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 1.404970469387755,
+          "p99_ms": 2.56385,
+          "max_ms": 4.16315
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 0.4962779795918367,
+          "p99_ms": 0.90433,
+          "max_ms": 2.02991
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027951020408163263,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.06746106122448979,
+          "p99_ms": 0.07464,
+          "max_ms": 0.07592
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.00028016326530612244,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.053612734693877555,
+          "p99_ms": 0.056,
+          "max_ms": 0.05932
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.00027951020408163263,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002797551020408163,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.007836081632653062,
+          "p99_ms": 0.0086,
+          "max_ms": 0.00908
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.041486693877551016,
+          "p99_ms": 0.04384,
+          "max_ms": 0.0494
+        }
+      },
+      "nodes": {
+        "test_dispatch": {
+          "gpu_measurement": "elapsed GPU clock, including any preemption",
+          "chunks": {
+            "samples": 907,
+            "mean_ms": 0.2785664388092613,
+            "p99_ms": 0.49948,
+            "max_ms": 0.78864
+          },
+          "dispatch_intervals": {
+            "samples": 907,
+            "mean_ms": 0.2771854024255788,
+            "p99_ms": 0.49812,
+            "max_ms": 0.78732
+          },
+          "frame_maxima": {
+            "samples": 500,
+            "mean_ms": 0.48507328,
+            "p99_ms": 0.50264,
+            "max_ms": 0.78864
+          },
+          "host_calls": {
+            "acquire": {
+              "samples": 500,
+              "mean_ms": 0.15879580000000001,
+              "p99_ms": 0.322,
+              "max_ms": 0.3752
+            },
+            "chunk-retire": {
+              "samples": 1388,
+              "mean_ms": 0.012477737752161383,
+              "p99_ms": 0.2384,
+              "max_ms": 0.805
+            },
+            "submit": {
+              "samples": 1388,
+              "mean_ms": 0.04279034582132565,
+              "p99_ms": 0.1029,
+              "max_ms": 11.9861
+            },
+            "present-and-idle": {
+              "samples": 500,
+              "mean_ms": 0.24826240000000002,
+              "p99_ms": 0.4403,
+              "max_ms": 1.2357
+            },
+            "frame-retire": {
+              "samples": 500,
+              "mean_ms": 0.011071600000000001,
+              "p99_ms": 0.023,
+              "max_ms": 0.0631
+            },
+            "frame-execute-core": {
+              "samples": 500,
+              "mean_ms": 7.039724199999999,
+              "p99_ms": 13.5023,
+              "max_ms": 85.7787
+            },
+            "frame-pace": {
+              "samples": 500,
+              "mean_ms": 24.2699782,
+              "p99_ms": 26.3162,
+              "max_ms": 27.0023
+            }
+          },
+          "invalid_timestamp_pairs": 0,
+          "zero_resolution_dispatch_pairs": 3,
+          "submissions": {
+            "samples": 888,
+            "mean_ms": 0.2840210810810811,
+            "p99_ms": 0.49952,
+            "max_ms": 0.78864
+          },
+          "submissions_per_frame": {
+            "samples": 500,
+            "mean": 1.776,
+            "p99": 13,
+            "max": 81
+          },
+          "aggregate_gpu_ms": {
+            "samples": 500,
+            "mean_ms": 0.50442144,
+            "p99_ms": 1.22676,
+            "max_ms": 1.65708
+          },
+          "node": "test_dispatch",
+          "aggregate_budget_ms": 6.0,
+          "aggregate_budget_pass": true,
+          "expected_frames": 500,
+          "observed_frames": 500,
+          "budget_ms": 2.0,
+          "budget_pass": true
+        }
+      },
+      "host": {
+        "acquire": {
+          "samples": 500,
+          "mean_ms": 0.15879580000000001,
+          "p99_ms": 0.322,
+          "max_ms": 0.3752
+        },
+        "chunk-retire": {
+          "samples": 1388,
+          "mean_ms": 0.012477737752161383,
+          "p99_ms": 0.2384,
+          "max_ms": 0.805
+        },
+        "submit": {
+          "samples": 1388,
+          "mean_ms": 0.04279034582132565,
+          "p99_ms": 0.1029,
+          "max_ms": 11.9861
+        },
+        "present-and-idle": {
+          "samples": 500,
+          "mean_ms": 0.24826240000000002,
+          "p99_ms": 0.4403,
+          "max_ms": 1.2357
+        },
+        "frame-retire": {
+          "samples": 500,
+          "mean_ms": 0.011071600000000001,
+          "p99_ms": 0.023,
+          "max_ms": 0.0631
+        },
+        "frame-execute-core": {
+          "samples": 500,
+          "mean_ms": 7.039724199999999,
+          "p99_ms": 13.5023,
+          "max_ms": 85.7787
+        },
+        "frame-pace": {
+          "samples": 500,
+          "mean_ms": 24.2699782,
+          "p99_ms": 26.3162,
+          "max_ms": 27.0023
+        }
+      },
+      "host_totals_ms_per_frame": {
+        "acquire": 0.15879580000000001,
+        "chunk-retire": 0.0346382,
+        "submit": 0.118786,
+        "present-and-idle": 0.24826240000000002,
+        "frame-retire": 0.011071600000000001,
+        "frame-execute-core": 7.039724199999999,
+        "frame-pace": 24.2699782
+      }
+    },
+    "native-hardware-query": {
+      "status": {
+        "exit": 0,
+        "binary": "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+        "wall_seconds": 23.9312,
+        "binary_sha256": "76A9931DB4EEFEE37183FAB714A0A2766ADDC1A40D5084F99C105064B7746587",
+        "hardware_query": true,
+        "width": 500,
+        "scale": 1,
+        "frames": 500,
+        "pid": 9592,
+        "height": 500
+      },
+      "csv_frames": 500,
+      "per_pass_ms": {
+        "cpu_frame_time_ms": {
+          "samples": 490,
+          "mean_ms": 31.42069142857143,
+          "p99_ms": 32.6071,
+          "max_ms": 33.0108
+        },
+        "whole_frame_gpu_span_ms": {
+          "samples": 490,
+          "mean_ms": 1.204881306122449,
+          "p99_ms": 1.86008,
+          "max_ms": 3.34891
+        },
+        "esvo_traverse_shade_ms": {
+          "samples": 490,
+          "mean_ms": 0.37609802040816326,
+          "p99_ms": 0.39208,
+          "max_ms": 0.82264
+        },
+        "direct_lighting_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002791836734693877,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "spatial_reuse_ms": {
+          "samples": 490,
+          "mean_ms": 0.06698506122448979,
+          "p99_ms": 0.07508,
+          "max_ms": 0.08596
+        },
+        "probe_gather_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002790204081632653,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00028
+        },
+        "shadow_visibility_wave_ms": {
+          "samples": 490,
+          "mean_ms": 0.05484204081632653,
+          "p99_ms": 0.05824,
+          "max_ms": 0.1032
+        },
+        "shadow_ray_trace_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002799183673469387,
+          "p99_ms": 0.00032,
+          "max_ms": 0.00032
+        },
+        "probe_apply_ms": {
+          "samples": 490,
+          "mean_ms": 0.0002791836734693877,
+          "p99_ms": 0.00028,
+          "max_ms": 0.00032
+        },
+        "render_target_blit_ms": {
+          "samples": 490,
+          "mean_ms": 0.008155183673469388,
+          "p99_ms": 0.00876,
+          "max_ms": 0.00884
+        },
+        "ui_composite_render_ms": {
+          "samples": 490,
+          "mean_ms": 0.03970138775510204,
+          "p99_ms": 0.04192,
+          "max_ms": 0.04904
+        }
+      },
+      "nodes": {
+        "test_dispatch": {
+          "gpu_measurement": "elapsed GPU clock, including any preemption",
+          "chunks": {
+            "samples": 852,
+            "mean_ms": 0.22596145539906104,
+            "p99_ms": 0.38936,
+            "max_ms": 0.40948
+          },
+          "dispatch_intervals": {
+            "samples": 852,
+            "mean_ms": 0.22487389671361502,
+            "p99_ms": 0.388,
+            "max_ms": 0.40804
+          },
+          "frame_maxima": {
+            "samples": 500,
+            "mean_ms": 0.37180344000000004,
+            "p99_ms": 0.39148,
+            "max_ms": 0.40948
+          },
+          "host_calls": {
+            "acquire": {
+              "samples": 500,
+              "mean_ms": 0.168682,
+              "p99_ms": 0.3343,
+              "max_ms": 0.371
+            },
+            "chunk-retire": {
+              "samples": 848,
+              "mean_ms": 0.012095283018867925,
+              "p99_ms": 0.142,
+              "max_ms": 0.2953
+            },
+            "submit": {
+              "samples": 848,
+              "mean_ms": 0.04919893867924528,
+              "p99_ms": 0.1119,
+              "max_ms": 5.2607
+            },
+            "present-and-idle": {
+              "samples": 500,
+              "mean_ms": 0.2663318,
+              "p99_ms": 0.4445,
+              "max_ms": 1.2121
+            },
+            "frame-retire": {
+              "samples": 500,
+              "mean_ms": 0.0124546,
+              "p99_ms": 0.0426,
+              "max_ms": 0.2749
+            },
+            "frame-execute-core": {
+              "samples": 500,
+              "mean_ms": 6.8486764,
+              "p99_ms": 9.7693,
+              "max_ms": 81.1342
+            },
+            "frame-pace": {
+              "samples": 500,
+              "mean_ms": 24.4365,
+              "p99_ms": 26.3438,
+              "max_ms": 26.8195
+            }
+          },
+          "invalid_timestamp_pairs": 0,
+          "zero_resolution_dispatch_pairs": 0,
+          "submissions": {
+            "samples": 848,
+            "mean_ms": 0.22685561320754716,
+            "p99_ms": 0.38936,
+            "max_ms": 0.40948
+          },
+          "submissions_per_frame": {
+            "samples": 500,
+            "mean": 1.696,
+            "p99": 8,
+            "max": 81
+          },
+          "aggregate_gpu_ms": {
+            "samples": 500,
+            "mean_ms": 0.38474712,
+            "p99_ms": 0.5414,
+            "max_ms": 1.4154
+          },
+          "node": "test_dispatch",
+          "aggregate_budget_ms": 6.0,
+          "aggregate_budget_pass": true,
+          "expected_frames": 500,
+          "observed_frames": 500,
+          "budget_ms": 2.0,
+          "budget_pass": true
+        }
+      },
+      "host": {
+        "acquire": {
+          "samples": 500,
+          "mean_ms": 0.168682,
+          "p99_ms": 0.3343,
+          "max_ms": 0.371
+        },
+        "chunk-retire": {
+          "samples": 848,
+          "mean_ms": 0.012095283018867925,
+          "p99_ms": 0.142,
+          "max_ms": 0.2953
+        },
+        "submit": {
+          "samples": 848,
+          "mean_ms": 0.04919893867924528,
+          "p99_ms": 0.1119,
+          "max_ms": 5.2607
+        },
+        "present-and-idle": {
+          "samples": 500,
+          "mean_ms": 0.2663318,
+          "p99_ms": 0.4445,
+          "max_ms": 1.2121
+        },
+        "frame-retire": {
+          "samples": 500,
+          "mean_ms": 0.0124546,
+          "p99_ms": 0.0426,
+          "max_ms": 0.2749
+        },
+        "frame-execute-core": {
+          "samples": 500,
+          "mean_ms": 6.8486764,
+          "p99_ms": 9.7693,
+          "max_ms": 81.1342
+        },
+        "frame-pace": {
+          "samples": 500,
+          "mean_ms": 24.4365,
+          "p99_ms": 26.3438,
+          "max_ms": 26.8195
+        }
+      },
+      "host_totals_ms_per_frame": {
+        "acquire": 0.168682,
+        "chunk-retire": 0.0205136,
+        "submit": 0.0834414,
+        "present-and-idle": 0.2663318,
+        "frame-retire": 0.0124546,
+        "frame-execute-core": 6.8486764,
+        "frame-pace": 24.4365
+      }
+    }
+  }
+}

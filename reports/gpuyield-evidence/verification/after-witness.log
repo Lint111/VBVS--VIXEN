@@ -1,0 +1,292 @@
+[box:flow] gpuyield-after-witness cpu=28% target=90% depth=1 free=3 baseline=2 granted=1 mode=static
+[box:flow] gpuyield-after-witness cpu=28% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69333MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-after-witness queued — need=1 tokens projected=698MB estimate=class samples=37
+[box:flow] gpuyield-after-witness cpu=30% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69207MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551403MB
+[box:flow] gpuyield-after-witness cpu=27% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69560MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551403MB
+[box:flow] gpuyield-after-witness cpu=26% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69288MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551403MB
+[box:flow] gpuyield-after-witness cpu=29% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=68995MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551403MB
+[box:flow] gpuyield-after-witness cpu=27% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69785MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551403MB
+[box:flow] gpuyield-after-witness cpu=27% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70076MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551419MB
+[box:flow] gpuyield-after-witness cpu=29% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70276MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=26% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69951MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=33% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70347MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=29% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70128MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=33% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69734MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=26% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=69565MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551402MB
+[box:flow] gpuyield-after-witness cpu=29% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71510MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551418MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71156MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551401MB
+[box:flow] gpuyield-after-witness cpu=22% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71717MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551401MB
+[box:flow] gpuyield-after-witness cpu=23% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71256MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551401MB
+[box:flow] gpuyield-after-witness cpu=23% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71625MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71124MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71477MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=20% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70951MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=22% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70714MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=23% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71138MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551400MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70836MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551399MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71521MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551399MB
+[box:flow] gpuyield-after-witness cpu=20% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71068MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551399MB
+[box:flow] gpuyield-after-witness cpu=21% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71408MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551399MB
+[box:flow] gpuyield-after-witness cpu=20% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70964MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=28% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71300MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=20% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71051MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=22% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70752MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=24% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71299MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=22% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71014MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=22% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71448MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551398MB
+[box:flow] gpuyield-after-witness cpu=26% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71230MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=25% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71651MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=25% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71293MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=27% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71648MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=25% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=71214MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=23% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70920MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=25% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70677MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551397MB
+[box:flow] gpuyield-after-witness cpu=26% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70465MB projected=698MB estimate=class samples=37 reserved=13832MB total=80425MB reserve=4096MB disk=551396MB
+[box:flow] gpuyield-after-witness cpu=27% target=90% admit
+[box:flow] gpuyield-after-witness memory=admit avail=70611MB projected=698MB estimate=class samples=37 reserved=13662MB total=80425MB reserve=4096MB disk=551396MB
+[box:flow] gpuyield-after-witness granted tokens=9 mask=18,19
+[box:flow] gpuyield-after-witness running on cores 18,19 (gpu)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount:SubmitRecord.*
+[==========] Running 3 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from GraphTaskLoweringTest
+[ RUN      ] GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount
+[       OK ] GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount (97 ms)
+[----------] 1 test from GraphTaskLoweringTest (97 ms total)
+
+[----------] 2 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 2 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 2 test suites ran. (97 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = DispatchBaseEligibility.*:BakedVsVirtualParityTest.RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from BakedVsVirtualParityTest
+[ RUN      ] BakedVsVirtualParityTest.RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[2026-10-10 15:30:35] [INFO] [Builder] Preprocessing shader source with 2 include paths
+[2026-10-10 15:30:35] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 15:30:36] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/BodyInstanceRayMarch_ParityTestNames.g.h
+[2026-10-10 15:30:36] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch_ParityTest (288ms)
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=8088 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1671168 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1296 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[MipPoolSize] n=1
+[BrickDataHash] nodes=6215a47bc50b6843 pool=cbf29ce484222325 lookup=cbf29ce484222325 configs=0a2c8e8202491b7b
+[BrickDataHash] sizes: nodes=8088B pool=0B lookup=0B configs=1296B
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[2026-10-10 15:30:38] [INFO] [Builder] Preprocessing shader source with 2 include paths
+[2026-10-10 15:30:38] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 15:30:38] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/BodyInstanceRayMarch_ParityTestNames.g.h
+[2026-10-10 15:30:38] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch_ParityTest (163ms)
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=8088 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1671168 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1296 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[MipPoolSize] n=1
+[BrickDataHash] nodes=6215a47bc50b6843 pool=cbf29ce484222325 lookup=cbf29ce484222325 configs=0a2c8e8202491b7b
+[BrickDataHash] sizes: nodes=8088B pool=0B lookup=0B configs=1296B
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[R464_EDITOR_ANALYTIC] opening=7820 cylinderWall=4858 trueEscape=2962 total=250000 boundsRadius=1.73205078 cameraDistance=5.20497608 occupancyGrid=none
+[R464_EDITOR_MASK] analyticMismatches=0 guardedMisses=0 guardedFalseHits=0 falseHitSdf=[inf,-inf] guardVsOraclePixels=0 rgbaPixelDifferences=0 hitRecordFieldDifferences=0 averageSteps=4.33703 maximumSteps=474
+[R464_EDITOR_TRACE] hole-center-escape pixel=(249,249) analyticSurface=0 hit=0 steps=13 termination=2 sdf=0.625681281 p=(-0.00566902151,-1.62568128,-0.203047678) grad=(0,-0.00200009346,0) t=6.84328365 span=(3.47293282,6.93701172) gridDim=0 gridBound=1.00000002e+30 lastStep=0.563113153 voxel=NA brick=NA hitPos=NA normal=NA
+[R464_EDITOR_TRACE] hole-cavity-wall pixel=(243,228) analyticSurface=3 hit=1 steps=35 termination=1 sdf=2.98023224e-08 p=(-0.0670724064,-0.988813519,-0.343513131) grad=(0.000383257866,0,0.00196290016) t=6.23228979 span=(3.48017502,6.92257595) gridDim=0 gridBound=1.00000002e+30 lastStep=0.002458164 voxel=NA brick=NA hitPos=(-0.0670724064,-0.988813519,-0.343513131) normal=(0.191632196,0,0.98146677) keyNdotL=0
+[R464_EDITOR_TRACE] hole-rim-wall pixel=(241,184) analyticSurface=3 hit=1 steps=4 termination=1 sdf=5.96046448e-08 p=(-0.0599792637,0.994866371,-0.344822347) grad=(0.000342726707,0,0.00197038054) t=4.28433752 span=(3.53720164,6.81097031) gridDim=0 gridBound=1.00000002e+30 lastStep=0.00992664043 voxel=NA brick=NA hitPos=(-0.0599792637,0.994866371,-0.344822347) normal=(0.171366319,0,0.985207379) keyNdotL=0
+[R464_EDITOR_TRACE] black-crescent-left pixel=(210,260) analyticSurface=3 hit=1 steps=180 termination=1 sdf=2.98023224e-08 p=(-0.336417615,0.0533217415,0.0965565965) grad=(0.0019223392,0,-0.000551760197) t=5.15218067 span=(3.49710822,6.88905621) gridDim=0 gridBound=1.00000002e+30 lastStep=0.000283133966 voxel=NA brick=NA hitPos=(-0.336417615,0.0533217415,0.0965565965) normal=(0.961190343,0,-0.275886059) keyNdotL=0.714226365
+[R464_EDITOR_TRACE] black-crescent-right pixel=(289,260) analyticSurface=3 hit=1 steps=180 termination=1 sdf=-0 p=(0.336417496,0.0533264726,0.0965570882) grad=(-0.0019223392,0,-0.000551730394) t=5.1521759 span=(3.49710822,6.88905621) gridDim=0 gridBound=1.00000002e+30 lastStep=0.000283133966 voxel=NA brick=NA hitPos=(0.336417496,0.0533264726,0.0965570882) normal=(-0.961194277,0,-0.27587229) keyNdotL=0
+[R464_EDITOR_TRACE] white-strip pixel=(206,255) analyticSurface=3 hit=1 steps=155 termination=1 sdf=5.96046448e-08 p=(-0.329787284,0.619634092,0.117219076) grad=(0.00188449025,0,-0.000669807196) t=4.58779049 span=(3.50080037,6.88179111) gridDim=0 gridBound=1.00000002e+30 lastStep=0.00023230612 voxel=NA brick=NA hitPos=(-0.329787284,0.619634092,0.117219076) normal=(0.942251563,0,-0.334905893) keyNdotL=0.737367213
+[R464_EDITOR_TRACE] black-crescent-left-unguarded pixel=(210,260) analyticSurface=3 hit=1 steps=180 termination=1 sdf=2.98023224e-08 p=(-0.336417615,0.0533217415,0.0965565965) grad=(0.0019223392,0,-0.000551760197) t=5.15218067 span=(3.49710822,6.88905621) gridDim=0 gridBound=1.00000002e+30 lastStep=0.000283133966 voxel=NA brick=NA hitPos=(-0.336417615,0.0533217415,0.0965565965) normal=(0.961190343,0,-0.275886059) keyNdotL=0.714226365
+[R464_EDITOR_TRACE] black-crescent-right-unguarded pixel=(289,260) analyticSurface=3 hit=1 steps=180 termination=1 sdf=-0 p=(0.336417496,0.0533264726,0.0965570882) grad=(-0.0019223392,0,-0.000551730394) t=5.1521759 span=(3.49710822,6.88905621) gridDim=0 gridBound=1.00000002e+30 lastStep=0.000283133966 voxel=NA brick=NA hitPos=(0.336417496,0.0533264726,0.0965570882) normal=(-0.961194277,0,-0.27587229) keyNdotL=0
+[R464_EDITOR_TRACE] white-strip-unguarded pixel=(206,255) analyticSurface=3 hit=1 steps=155 termination=1 sdf=5.96046448e-08 p=(-0.329787284,0.619634092,0.117219076) grad=(0.00188449025,0,-0.000669807196) t=4.58779049 span=(3.50080037,6.88179111) gridDim=0 gridBound=1.00000002e+30 lastStep=0.00023230612 voxel=NA brick=NA hitPos=(-0.329787284,0.619634092,0.117219076) normal=(0.[2026-10-10 15:30:39] [INFO] [Builder] Preprocessing shader source with 2 include paths
+[2026-10-10 15:30:40] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 15:30:40] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/BodyInstanceRayMarch_ParityTestNames.g.h
+[2026-10-10 15:30:40] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch_ParityTest (149ms)
+942251563,0,-0.334905893) keyNdotL=0.737367213
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=8088 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1671168 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1296 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[MipPoolSize] n=1
+[BrickDataHash] nodes=6215a47bc50b6843 pool=cbf29ce484222325 lookup=cbf29ce484222325 configs=0a2c8e8202491b7b
+[BrickDataHash] sizes: nodes=8088B pool=0B lookup=0B configs=1296B
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[2026-10-10 15:30:42] [INFO] [Builder] Preprocessing shader source with 2 include paths
+[2026-10-10 15:30:42] [INFO] [Compiler] Compiling stage: Compute
+[2026-10-10 15:30:42] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/BodyInstanceRayMarch_ParityTestNames.g.h
+[2026-10-10 15:30:42] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch_ParityTest (165ms)
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GPUYIELD_TILES] device=Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics) extent=500x500 groups=8 submissions=64 budget_ms=16.666666 total_gpu_ms=86.463920 p50_ms=1.357200 p95_ms=1.459240 p99_ms=1.545760 max_ms=1.545760 identity=rgba,hit-record,sdf-trace
+[RIMLEAK_COST] scene=editor-frame5 version=run2-cone gpu_ms=79.608040 pixels=250000 active=142524 mean_steps=4.337028 p50=4 p99=37 max=474
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[GaiaVoxelWorld] ECS world initialized
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=8088 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1671168 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1296 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[MipPoolSize] n=1
+[BrickDataHash] nodes=6215a47bc50b6843 pool=cbf29ce484222325 lookup=cbf29ce484222325 configs=0a2c8e8202491b7b
+[BrickDataHash] sizes: nodes=8088B pool=0B lookup=0B configs=1296B
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[GaiaVoxelWorld] ECS world destroyed
+[RIMLEAK_COST] scene=heavy-twist-sphere version=run2-cone gpu_ms=50.004520 pixels=160000 active=58844 mean_steps=2.248256 p50=0 p99=18 max=1004
+[       OK ] BakedVsVirtualParityTest.RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle (8092 ms)
+[----------] 1 test from BakedVsVirtualParityTest (8092 ms total)
+
+[----------] 1 test from DispatchBaseEligibility
+[ RUN      ] DispatchBaseEligibility.PreservesGlobalIdsAndRejectsWorkgroupCountDependence
+[       OK ] DispatchBaseEligibility.PreservesGlobalIdsAndRejectsWorkgroupCountDependence (99 ms)
+[----------] 1 test from DispatchBaseEligibility (99 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (8192 ms total)
+[  PASSED  ] 2 tests.
+Native VIXEN captures written to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/reports/gpuyield-evidence/after/windowed (DISPLAY=:0)
+{
+  "measurement": "second Vulkan compute client completion (no present)",
+  "period_ns": 16666666,
+  "command": [
+    "./vixen_editor"
+  ],
+  "wall_seconds": 90.26482517699878,
+  "heavy_process_lifetime_ms": 55932.408118998865,
+  "render_started_monotonic_ns": 12500431232623,
+  "heavy_finished_monotonic_ns": 12552164583181,
+  "render_marker_poll_interval_ms": 50,
+  "service_ms": {
+    "samples": 3103,
+    "mean": 1.6050827782790849,
+    "p50": 1.29015,
+    "p95": 3.68671,
+    "p99": 6.08268,
+    "max": 10.2621
+  },
+  "cadence_ms": {
+    "samples": 3103,
+    "mean": 16.666684785691267,
+    "p50": 16.5902,
+    "p95": 19.5007,
+    "p99": 21.777,
+    "max": 29.95
+  },
+  "deadline_lateness_ms": {
+    "samples": 3103,
+    "mean": 1.8022702594263618,
+    "p50": 1.45444,
+    "p95": 4.18933,
+    "p99": 6.99154,
+    "max": 15.0641
+  },
+  "frames_over_two_periods": 0
+}
+UT_JOB_DONE gpu gpuyield-after-witness exit=0 state=OK

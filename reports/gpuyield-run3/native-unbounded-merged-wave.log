@@ -1,0 +1,261 @@
+[box:flow] native-unbounded-merged-wave cpu=22% target=90% depth=2 free=0 baseline=3 granted=4 mode=static
+[box:flow] native-unbounded-merged-wave queued — need=4 tokens projected=3457MB estimate=class-p91 samples=2208
+[box:flow] native-unbounded-merged-wave cpu=34% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=69894MB projected=3457MB estimate=class-p91 samples=2208 reserved=20156MB total=80425MB reserve=4096MB disk=523845MB
+[box:flow] native-unbounded-merged-wave cpu=34% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=69843MB projected=3457MB estimate=class-p91 samples=2208 reserved=19132MB total=80425MB reserve=4096MB disk=523845MB
+[box:flow] native-unbounded-merged-wave cpu=30% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=69654MB projected=3457MB estimate=class-p91 samples=2208 reserved=19132MB total=80425MB reserve=4096MB disk=523845MB
+[box:flow] native-unbounded-merged-wave cpu=33% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=69630MB projected=3457MB estimate=class-p91 samples=2208 reserved=19132MB total=80425MB reserve=4096MB disk=523845MB
+[box:flow] native-unbounded-merged-wave cpu=24% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=70220MB projected=3457MB estimate=class-p91 samples=2208 reserved=15689MB total=80425MB reserve=4096MB disk=523843MB
+[box:flow] native-unbounded-merged-wave cpu=26% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=70059MB projected=3457MB estimate=class-p91 samples=2208 reserved=16699MB total=80425MB reserve=4096MB disk=523843MB
+[box:flow] native-unbounded-merged-wave cpu=31% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=70017MB projected=3457MB estimate=class-p91 samples=2208 reserved=16699MB total=80425MB reserve=4096MB disk=523843MB
+[box:flow] native-unbounded-merged-wave cpu=23% target=90% admit
+[box:flow] native-unbounded-merged-wave memory=admit avail=69959MB projected=3457MB estimate=class-p91 samples=2208 reserved=15675MB total=80425MB reserve=4096MB disk=523843MB
+[box:flow] native-unbounded-merged-wave granted tokens=2 6 8 9 mask=4,5,12,13,16,17,18,19
+[box:flow] native-unbounded-merged-wave running on cores 4,5,12,13,16,17,18,19 (build)
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.14.41
+** Copyright (c) 2025 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+[configure] Waiting for the machine-wide configure lock (another worktree may be configuring)...
+[configure] Configure lock acquired (was free).
+-- VIXEN: expected Vulkan SDK 1.4.350.1 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: C:/vixen-native/gpuyield/.tmp/unbounded-base/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: external Vulkan SDK loader: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib
+-- VIXEN: Vulkan SDK patch variation accepted: expected 1.4.350.1, found 1.4.350.0; validating API and tool capabilities.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.1; found SDK 1.4.350.0; API headers 1.4.0; glslang 16.2.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: )
+-- Attempting auto locate Vulkan using CMake......
+-- Found Vulkan: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib (found version "1.4.350") found components: glslc glslangValidator
+-- Vulkan SDK found: C:/VulkanSDK/1.4.350.0
+-- [CapabilityGraph] FULL mode; generated C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/generated/CapabilityGraphBuildConfig.h
+-- Capping concurrent link jobs at 8 (override with VIXEN_MAX_PARALLEL_LINKS)
+-- MSVC multi-processor compilation enabled
+-- MSVC linker warnings suppressed (LNK4099: missing PDB files)
+-- MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)
+-- FetchContent base directory: C:/vixen-native/gpuyield/.tmp/native-fetch
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- *************************************************************
+-- gaia-ecs v1.0.0 (Release)
+-- Copyright (c) 2021-2026 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: MSVC
+-- CompPath: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe
+-- CompSim: 
+-- CPU: AMD64
+-- *************************************************************
+-- VIXEN: Gaia source verified at a2e62491b56a8589c31da97128f0658088050a70
+-- IPO enabled
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- KernelDispatch library configured (E7 dispatch D1: Tier-A extraction + data-only ABI)
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from C:/vixen-native/gpuyield/.tmp/native-fetch/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- Including Win32 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: C:/vixen-native/gpuyield/.tmp/unbounded-base/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- [RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)
+-- [RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)
+-- [RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)
+-- [RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)
+-- ✓ test_sdi_stage_wiring configured (Semantic Wiring S2)
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)
+-- ✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)
+-- [RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)
+-- ✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)
+-- ✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)
+-- ✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)
+-- ✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)
+-- ✓ test_view_container_builder configured (native UTVC container decode)
+-- ✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)
+-- [CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- [codegen] using discovered Undertow schema catalogue: //wsl$/Ubuntu/home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json
+-- [codegen] using tracked Yeroket kernel pin: c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- [codegen] reusing pinned kernel snapshot: C:/vixen-native/gpuyield/.tmp/native-kernel-cache/sources/yeroket-c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- no-new-mutex gate skipped: bash/python3 not found (run scripts/check-no-new-mutex.sh from WSL/CI)
+-- vixen_generate_node_manifest: wrote 65 node type(s) to C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/generated/node_manifest.cmake
+-- vixen_link_used_nodes: VixenApp scoped-linked 65 node OBJECT librar(y/ies) (whole-archived) from C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/generated/node_manifest.cmake
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from C:/vixen-native/gpuyield/.tmp/unbounded-base/VIXEN/shaders
+-- VIXEN: Generated shader files output to C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/application/main/generated/shaders
+-- VIXEN: SDI headers output to C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- [Application Tests] Added: test_headless_ui_graph (offscreen UI render/readback)
+-- [Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)
+-- [Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)
+-- [Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)
+-- [Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)
+-- Application configured - all executables defined
+-- RenderGraph/SVO verification target available: rendergraph_svo_tests
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (36.2s)
+-- Generating done (2.9s)
+-- Build files have been written to: C:/vixen-native/gpuyield/.tmp/unbounded-base/build/gpuyield-native
+[configure] Configure lock released.
+[build] BuildId   : gpuyield-unbounded-merged-wave  (note this - it's how you find this build's log/status among concurrent builds)
+[build] Waiting for the machine-wide build lock (another build may be running)...
+[build] Build lock acquired (was free).
+[build] Max parallel jobs: 4 (of 32 logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)
+[build] Target    : vixen_editor (scoped build, not the full 'all' graph)
+[14/517] Building CXX object C:\vixen-native\gpuyield\.tmp\native-fetch\tbb-build\src\tbb\CMakeFiles\tbb.dir\main.cpp.obj
+[44/517] Building C object C:\vixen-native\gpuyield\.tmp\native-fetch\glfw-build\src\CMakeFiles\glfw.dir\window.c.obj
+[68/517] Building C object C:\vixen-native\gpuyield\.tmp\native-fetch\spirv_reflect-build\CMakeFiles\spirv-reflect-static.dir\spirv_reflect.c.obj
+[81/517] Building CXX object libraries\ShaderManagement\CMakeFiles\ShaderManagement.dir\src\SdiDiscoveryScanner.cpp.obj
+[98/517] Building CXX object libraries\VulkanResources\CMakeFiles\VulkanResources.dir\src\VulkanLayerAndExtension.cpp.obj
+[107/517] Building CXX object libraries\CashSystem\CMakeFiles\CashSystem.dir\cmake_pch.cxx.obj
+[109/517] Building CXX object libraries\SVO\CMakeFiles\SVO.dir\src\ContourBuilder.cpp.obj
+[111/517] Building CXX object libraries\SVO\CMakeFiles\SVO.dir\src\AttributeIntegrator.cpp.obj
+[116/517] Building CXX object libraries\SVO\CMakeFiles\SVO.dir\src\SceneGenerator.cpp.obj
+[153/517] Building C object C:\vixen-native\gpuyield\.tmp\native-fetch\freetype-build\CMakeFiles\freetype.dir\src\sdf\sdf.c.obj
+[171/517] Building CXX object libraries\CashSystem\CMakeFiles\CashSystem.dir\src\ComputePipelineCacher.cpp.obj
+[177/517] Building CXX object libraries\SVO\CMakeFiles\SVO.dir\src\BulkMaterialization.cpp.obj
+[183/517] Building CXX object libraries\CashSystem\CMakeFiles\CashSystem.dir\src\descriptor_cacher.cpp.obj
+[187/517] Building CXX object libraries\CashSystem\CMakeFiles\CashSystem.dir\src\shader_compilation_cacher.cpp.obj
+[232/517] Building CXX object C:\vixen-native\gpuyield\.tmp\native-fetch\rmlui-build\Source\Core\CMakeFiles\rmlui_core.dir\ElementEffects.cpp.obj
+[300/517] Building CXX object C:\vixen-native\gpuyield\.tmp\native-fetch\rmlui-build\Source\Core\CMakeFiles\rmlui_core.dir\Spritesheet.cpp.obj
+[363/517] Building CXX object C:\vixen-native\gpuyield\.tmp\native-fetch\rmlui-build\Source\Core\CMakeFiles\rmlui_core.dir\Layout\ContainerBox.cpp.obj
+[389/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphCore.dir\src\Core\GPUPerformanceLogger.cpp.obj
+[394/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphCore.dir\src\Connection\Rules\VariadicConnectionRule.cpp.obj
+[401/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphCore.dir\src\Core\SubmitChannel.cpp.obj
+[405/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphCore.dir\src\Core\GraphTaskLowering.cpp.obj
+[408/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphCore.dir\src\Core\ResourceAccessTracker.cpp.obj
+[420/517] Linking CXX static library lib\RenderGraphCore.lib
+[428/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphUiSupport.dir\src\Ui\BlobView.cpp.obj
+[430/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_BufferSyncGathererNode.dir\src\Nodes\BufferSyncGathererNode.cpp.obj
+[432/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ConstantNode.dir\src\Nodes\ConstantNode.cpp.obj
+[434/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_CommandPoolNode.dir\src\Nodes\CommandPoolNode.cpp.obj
+[436/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ComputeStageNode.dir\src\Nodes\ComputeStageNode.cpp.obj
+[437/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ProxyRasterStageNode.dir\src\Nodes\ProxyRasterStageNode.cpp.obj
+[440/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_MultiDispatchNode.dir\src\Nodes\MultiDispatchNode.cpp.obj
+[441/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_DepthBufferNode.dir\src\Nodes\DepthBufferNode.cpp.obj
+[444/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_PickIdTargetNode.dir\src\Nodes\PickIdTargetNode.cpp.obj
+[446/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_DynamicInstanceBufferNode.dir\src\Nodes\DynamicInstanceBufferNode.cpp.obj
+[448/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ShadowConfigNode.dir\src\Nodes\ShadowConfigNode.cpp.obj
+[450/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_AccumulationHistoryNode.dir\src\Nodes\AccumulationHistoryNode.cpp.obj
+[452/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_DepthTargetNode.dir\src\Nodes\DepthTargetNode.cpp.obj
+[454/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_HitAccumParamsConfigNode.dir\src\Nodes\HitAccumParamsConfigNode.cpp.obj
+[455/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ReservoirConfigNode.dir\src\Nodes\ReservoirConfigNode.cpp.obj
+[458/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_ProbeAtlasNode.dir\src\Nodes\ProbeAtlasNode.cpp.obj
+[460/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_SkySphereNode.dir\src\Nodes\SkySphereNode.cpp.obj
+[462/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_DescriptorResourceGathererNode.dir\src\Nodes\DescriptorResourceGathererNode.cpp.obj
+[464/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_DeviceNode.dir\src\Nodes\DeviceNode.cpp.obj
+[466/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_FramebufferNode.dir\src\Nodes\FramebufferNode.cpp.obj
+[468/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_GeometryRenderNode.dir\src\Nodes\GeometryRenderNode.cpp.obj
+[470/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_GraphicsPipelineNode.dir\src\Nodes\GraphicsPipelineNode.cpp.obj
+[474/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_VoxelSelectionProviderNode.dir\src\Nodes\VoxelSelectionProviderNode.cpp.obj
+[475/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_UISelectionProviderNode.dir\src\Nodes\UISelectionProviderNode.cpp.obj
+[478/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_PassGroupNode.dir\src\Nodes\PassGroupNode.cpp.obj
+[479/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_RenderPassNode.dir\src\Nodes\RenderPassNode.cpp.obj
+[482/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_TextureLoaderNode.dir\src\Nodes\TextureLoaderNode.cpp.obj
+[484/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_VertexBufferNode.dir\src\Nodes\VertexBufferNode.cpp.obj
+[487/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_VoxelGridNode.dir\src\Nodes\VoxelGridNode.cpp.obj
+[490/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_PhotonCellFoldNode.dir\src\Nodes\PhotonCellFoldNode.cpp.obj
+[493/517] Building CXX object application\main\CMakeFiles\VixenApp.dir\source\VulkanApplicationBase.cpp.obj
+[495/517] Building CXX object libraries\RenderGraph\CMakeFiles\RenderGraphNode_UIRenderNode.dir\src\Nodes\UIRenderNode.cpp.obj
+[496/517] Building CXX object application\main\CMakeFiles\VixenApp.dir\source\graph\BuildUIGraph.cpp.obj
+[497/517] Building CXX object application\main\CMakeFiles\VixenApp.dir\source\graph\BuildInstancingDemoGraph.cpp.obj
+[501/517] Building CXX object application\main\CMakeFiles\VixenApp.dir\source\graph\BuildingInspectorView.cpp.obj
+[507/517] Building CXX object application\main\CMakeFiles\VixenApp.dir\source\graph\BuildingInspectorBridge.cpp.obj
+[511/517] Building CXX object application\editor\CMakeFiles\vixen_editor.dir\source\AppFlowChannel.cpp.obj
+[513/517] Building CXX object application\editor\CMakeFiles\vixen_editor.dir\source\main.cpp.obj
+[514/517] Building CXX object application\editor\CMakeFiles\vixen_editor.dir\source\EditorLayersViewBridge.cpp.obj
+[516/517] Linking CXX executable binaries\vixen_editor.exe; Copying TBB DLL for vixen_editor
+
+[build] ============================== BUILD SUMMARY ==============================
+[build] BuildId  : gpuyield-unbounded-merged-wave
+[build] All targets built successfully.
+[build] ==============================================================================
+[build] Log file (this build's own, unambiguous by BuildId): C:\vixen-native\gpuyield\.tmp\native-temp\vixen_build_gpuyield-unbounded-merged-wave.log
+[build] Status file (shared across builds - match build_id: gpuyield-unbounded-merged-wave to find yours): C:\vixen-native\gpuyield\.tmp\native-temp\base-status.txt
+[build] Build lock released.
+UT_JOB_DONE build native-unbounded-merged-wave exit=0 state=OK

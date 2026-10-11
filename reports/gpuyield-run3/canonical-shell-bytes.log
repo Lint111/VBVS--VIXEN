@@ -1,0 +1,569 @@
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% depth=1 free=1 baseline=2 granted=2 mode=static
+[box:turn] gpuyield yielding to its queued run3-batching-contracts (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% depth=1 free=0 baseline=2 granted=2 mode=static
+[box:flow] run3-canonical-shell-bytes queued — need=2 tokens projected=357MB estimate=class samples=85
+[box:flow] run3-canonical-shell-bytes cpu=20% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71017MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71021MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71108MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71116MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71085MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71097MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71117MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71074MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70853MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533120MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70991MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533119MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70800MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533119MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70681MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533117MB
+[box:flow] run3-canonical-shell-bytes cpu=33% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70512MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533117MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70263MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533117MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70246MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533117MB
+[box:flow] run3-canonical-shell-bytes cpu=35% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70019MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533113MB
+[box:flow] run3-canonical-shell-bytes cpu=37% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69918MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533110MB
+[box:flow] run3-canonical-shell-bytes cpu=36% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69878MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533107MB
+[box:flow] run3-canonical-shell-bytes cpu=38% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69717MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533107MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69652MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533107MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69571MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533102MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69921MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533092MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=69948MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533092MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70588MB projected=357MB estimate=class samples=85 reserved=31242MB total=80425MB reserve=4096MB disk=533092MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70456MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533092MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71022MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533066MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70997MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533066MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71036MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533065MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71047MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533065MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70977MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533064MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70930MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533064MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70946MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533064MB
+[box:flow] run3-canonical-shell-bytes cpu=19% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70940MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533049MB
+[box:flow] run3-canonical-shell-bytes cpu=21% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70945MB projected=357MB estimate=class samples=85 reserved=18445MB total=80425MB reserve=4096MB disk=533049MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70904MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533048MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70799MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533048MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70733MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533047MB
+[box:flow] run3-canonical-shell-bytes cpu=20% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70699MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533047MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70703MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533046MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71050MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=533046MB
+[box:flow] run3-canonical-shell-bytes cpu=18% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71032MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533046MB
+[box:flow] run3-canonical-shell-bytes cpu=14% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70940MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533045MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70960MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533045MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70940MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533045MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72520MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533044MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72329MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533035MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71843MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533034MB
+[box:flow] run3-canonical-shell-bytes cpu=14% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71701MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533034MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71634MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533033MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71608MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=533029MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71516MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532965MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71452MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532903MB
+[box:flow] run3-canonical-shell-bytes cpu=18% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71405MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532882MB
+[box:flow] run3-canonical-shell-bytes cpu=32% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70953MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70797MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70693MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70514MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=26% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70342MB projected=357MB estimate=class samples=85 reserved=17815MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70230MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532881MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70187MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532880MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70029MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532880MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70103MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532880MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70443MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532879MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71430MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532879MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71107MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532878MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70929MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532878MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70708MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532877MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70443MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532877MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70880MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532877MB
+[box:flow] run3-canonical-shell-bytes cpu=34% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=71150MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532887MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=70939MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532887MB
+[box:flow] run3-canonical-shell-bytes cpu=21% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72745MB projected=357MB estimate=class samples=85 reserved=18175MB total=80425MB reserve=4096MB disk=532884MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72487MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=533187MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73262MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=533026MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73239MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73329MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=21% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73210MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=33% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73138MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73019MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73022MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532985MB
+[box:flow] run3-canonical-shell-bytes cpu=17% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73938MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532983MB
+[box:flow] run3-canonical-shell-bytes cpu=11% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73856MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532983MB
+[box:flow] run3-canonical-shell-bytes cpu=7% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74143MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533183MB
+[box:flow] run3-canonical-shell-bytes cpu=5% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74044MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533182MB
+[box:flow] run3-canonical-shell-bytes cpu=7% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74025MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533182MB
+[box:flow] run3-canonical-shell-bytes cpu=8% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74033MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533152MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73980MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532982MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73965MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532982MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73968MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532982MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73996MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532982MB
+[box:flow] run3-canonical-shell-bytes cpu=14% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74092MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532982MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74124MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=11% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74118MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74095MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=11% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74024MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=8% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74066MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=14% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74058MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74013MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=10% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74038MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74057MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=8% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74084MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=10% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74053MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74015MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73877MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73868MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=10% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73884MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532967MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73912MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=10% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73894MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=10% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73891MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73806MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73847MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=9% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73849MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74378MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532966MB
+[box:flow] run3-canonical-shell-bytes cpu=20% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74554MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532960MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74679MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533051MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74469MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533051MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74401MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533017MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74368MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=533051MB
+[box:flow] run3-canonical-shell-bytes cpu=12% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=74043MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532987MB
+[box:flow] run3-canonical-shell-bytes cpu=13% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73996MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532902MB
+[box:flow] run3-canonical-shell-bytes cpu=14% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73861MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532834MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73880MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532786MB
+[box:flow] run3-canonical-shell-bytes cpu=16% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73769MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532786MB
+[box:flow] run3-canonical-shell-bytes cpu=15% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73704MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532786MB
+[box:flow] run3-canonical-shell-bytes cpu=18% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73508MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532769MB
+[box:flow] run3-canonical-shell-bytes cpu=18% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73325MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532599MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73511MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73440MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73431MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73299MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73213MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=19% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73158MB projected=357MB estimate=class samples=85 reserved=13784MB total=80425MB reserve=4096MB disk=532585MB
+[box:flow] run3-canonical-shell-bytes cpu=20% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73746MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73504MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=26% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73498MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73336MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=43% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73494MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73571MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73299MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532584MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72987MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532583MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72972MB projected=357MB estimate=class samples=85 reserved=14523MB total=80425MB reserve=4096MB disk=532583MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73022MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532583MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72983MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72897MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72876MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72642MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72701MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73074MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72786MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72643MB projected=357MB estimate=class samples=85 reserved=14144MB total=80425MB reserve=4096MB disk=532582MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73172MB projected=357MB estimate=class samples=85 reserved=17430MB total=80425MB reserve=4096MB disk=532566MB
+[box:flow] run3-canonical-shell-bytes cpu=19% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73605MB projected=357MB estimate=class samples=85 reserved=17430MB total=80425MB reserve=4096MB disk=532566MB
+[box:flow] run3-canonical-shell-bytes cpu=21% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73488MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532566MB
+[box:flow] run3-canonical-shell-bytes cpu=19% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73462MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532566MB
+[box:flow] run3-canonical-shell-bytes cpu=21% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73528MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532566MB
+[box:flow] run3-canonical-shell-bytes cpu=19% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73595MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532565MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73524MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532565MB
+[box:flow] run3-canonical-shell-bytes cpu=32% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73460MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532565MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73384MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532565MB
+[box:flow] run3-canonical-shell-bytes cpu=37% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73865MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532562MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73876MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532562MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73676MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532561MB
+[box:flow] run3-canonical-shell-bytes cpu=32% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73575MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532561MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73509MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532560MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73283MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532560MB
+[box:flow] run3-canonical-shell-bytes cpu=29% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73180MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532560MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73197MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532538MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73046MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532466MB
+[box:flow] run3-canonical-shell-bytes cpu=34% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73044MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532409MB
+[box:flow] run3-canonical-shell-bytes cpu=35% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72751MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532409MB
+[box:flow] run3-canonical-shell-bytes cpu=33% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73037MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532387MB
+[box:flow] run3-canonical-shell-bytes cpu=35% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72974MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532387MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73127MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532387MB
+[box:flow] run3-canonical-shell-bytes cpu=36% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73122MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532387MB
+[box:flow] run3-canonical-shell-bytes cpu=33% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73144MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532387MB
+[box:flow] run3-canonical-shell-bytes cpu=34% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73076MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=35% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73092MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=32% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73175MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=32% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73227MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=33% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73210MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73200MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532386MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73162MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72974MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72805MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72774MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72813MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73302MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=26% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73261MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73146MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=73007MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532385MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72969MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72797MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72629MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72443MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72676MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=27% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72414MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=22% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72479MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532384MB
+[box:flow] run3-canonical-shell-bytes cpu=31% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72489MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=23% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72206MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=25% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72612MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72484MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72418MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=30% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72425MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532377MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72370MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532376MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72710MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532376MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72511MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532376MB
+[box:flow] run3-canonical-shell-bytes cpu=24% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72321MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532376MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72059MB projected=357MB estimate=class samples=85 reserved=17070MB total=80425MB reserve=4096MB disk=532361MB
+[box:flow] run3-canonical-shell-bytes cpu=28% target=90% admit
+[box:flow] run3-canonical-shell-bytes memory=admit avail=72280MB projected=357MB estimate=class samples=85 reserved=16713MB total=80425MB reserve=4096MB disk=532361MB
+[box:flow] run3-canonical-shell-bytes granted tokens=0 1 mask=0,1,2,3
+[box:flow] run3-canonical-shell-bytes running on cores 0,1,2,3 (gpu)
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+    Start 1216: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0
+1/4 Test #1216: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0 ...***Exception: SegFault  0.55 sec
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CanonicalDilation/ShellRevalidateNodeTest
+[ RUN      ] CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[ device ] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[GaiaVoxelWorld] ECS world initialized
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[0].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[1].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[2].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[3].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[4].dstSet is VK_NULL_HANDLE.
+
+
+    Start 1217: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1
+2/4 Test #1217: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1 ...***Exception: SegFault  0.48 sec
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CanonicalDilation/ShellRevalidateNodeTest
+[ RUN      ] CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[ device ] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[GaiaVoxelWorld] ECS world initialized
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[0].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[1].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[2].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[3].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[4].dstSet is VK_NULL_HANDLE.
+
+
+    Start 1218: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2
+3/4 Test #1218: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2 ...***Exception: SegFault  0.49 sec
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CanonicalDilation/ShellRevalidateNodeTest
+[ RUN      ] CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[ device ] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[GaiaVoxelWorld] ECS world initialized
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[0].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[1].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[2].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[3].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[4].dstSet is VK_NULL_HANDLE.
+
+
+    Start 1219: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3
+4/4 Test #1219: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3 ...***Exception: SegFault  0.49 sec
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CanonicalDilation/ShellRevalidateNodeTest
+[ RUN      ] CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[ device ] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[GaiaVoxelWorld] ECS world initialized
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[0].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[1].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[2].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[3].dstSet is VK_NULL_HANDLE.
+
+Validation Error: [ UNASSIGNED-GeneralParameterError-RequiredHandle ] | MessageID = 0x8fdcb17b
+vkUpdateDescriptorSets(): pDescriptorWrites[4].dstSet is VK_NULL_HANDLE.
+
+
+
+0% tests passed, 4 tests failed out of 4
+
+Label Time Summary:
+RenderGraph    =   2.01 sec*proc (4 tests)
+
+Total Test time (real) =   2.11 sec
+
+The following tests FAILED:
+	1216 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0 (SEGFAULT) RenderGraph
+	1217 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1 (SEGFAULT) RenderGraph
+	1218 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2 (SEGFAULT) RenderGraph
+	1219 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3 (SEGFAULT) RenderGraph
+Errors while running CTest
+UT_JOB_FAILED gpu run3-canonical-shell-bytes exit=8 log=/home/liory/.local/state/undertow/undertow-box-logs/1791655547-gpu-run3-canonical-shell-bytes.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | 
+  | Label Time Summary:
+  | RenderGraph    =   2.01 sec*proc (4 tests)
+  | 
+  | Total Test time (real) =   2.11 sec
+  | 
+  | The following tests FAILED:
+  | 	1216 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0 (SEGFAULT) RenderGraph
+  | 	1217 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1 (SEGFAULT) RenderGraph
+  | 	1218 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2 (SEGFAULT) RenderGraph
+  | 	1219 - CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3 (SEGFAULT) RenderGraph
+  | Errors while running CTest
+------------------------------
+UT_JOB_DONE gpu run3-canonical-shell-bytes exit=8 state=PAYLOAD_FAIL

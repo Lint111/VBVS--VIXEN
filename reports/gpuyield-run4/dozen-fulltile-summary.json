@@ -1,0 +1,47 @@
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 40466,
+    "mean_ms": 1.9244446463697917,
+    "p99_ms": 3.01772,
+    "max_ms": 4.0204
+  },
+  "dispatch_intervals": {
+    "samples": 40466,
+    "mean_ms": 1.921825879009539,
+    "p99_ms": 3.0136,
+    "max_ms": 4.0162
+  },
+  "frame_maxima": {
+    "samples": 500,
+    "mean_ms": 2.68890608,
+    "p99_ms": 3.92916,
+    "max_ms": 4.0204
+  },
+  "host_calls": {},
+  "invalid_timestamp_pairs": 0,
+  "zero_resolution_dispatch_pairs": 0,
+  "submissions": {
+    "samples": 40466,
+    "mean_ms": 1.9244446463697917,
+    "p99_ms": 3.01772,
+    "max_ms": 4.0204
+  },
+  "submissions_per_frame": {
+    "samples": 500,
+    "mean": 80.932,
+    "p99": 81,
+    "max": 81
+  },
+  "aggregate_gpu_ms": {
+    "samples": 500,
+    "mean_ms": 155.74915411,
+    "p99_ms": 232.27076,
+    "max_ms": 232.710442
+  },
+  "node": "test_dispatch",
+  "expected_frames": 500,
+  "observed_frames": 500,
+  "budget_ms": 2.0,
+  "budget_pass": false
+}

@@ -16,8 +16,8 @@
 //     crossing test (NOT a |sd|<band proximity band).
 //   Pass 2 (mode 1): one dilation layer. For each brick already in the shell,
 //     mark every allocated 26-neighbour (via brickGridLookup) as shell too.
-//     Host dispatches this `shellDilation` times (double-buffered frontier in
-//     shellFlags bits) to grow N brick-layers.
+//     Host dispatches this `shellDilation` times with immutable previous flags
+//     and disjoint next flags, matching DeriveShell's canonical frontier.
 //
 // Compaction (shellSlot -> sourceBrickId + restrided pool) is intentionally
 // NOT done here — §H defers GPU-side compaction / append-only lookup to a
@@ -42,6 +42,7 @@ layout(std430, binding = 2) buffer ShellFlagsBuffer { uint shellFlags[]; };
 
 // Octree-0 config (single element for increment 1).
 layout(std430, binding = 3) readonly buffer ConfigBuffer { OctreeConfig cfg; };
+layout(std430, binding = 4) readonly buffer PreviousShellFlagsBuffer { uint previousFlags[]; };
 
 // Derivation parameters.
 layout(push_constant) uniform Push {
@@ -90,14 +91,12 @@ void main() {
         return;
     }
 
-    // ---- Pass 2: one dilation layer. A brick on the current frontier marks each
-    //      allocated 26-neighbour as shell + next-frontier. We read the frontier
-    //      bit, clear it, and set neighbours' shell/frontier bits. To find this
-    //      brick's grid coordinate we scan the lookup (increment 1: bpa is small,
-    //      typically <= 8, so bpa^3 <= 512; acceptable. A follow-up passes an
-    //      inverse table to avoid the scan).
-    uint self = shellFlags[bi];
-    if ((self & FRONTIER_BIT) == 0u) return;
+    // Canonical pull: each output brick reads only the completed previous layer.
+    // Existing shell members keep their bits 0/1 and leave the frontier. Newly
+    // reached members form the next frontier; dispatch order cannot affect it.
+    uint self = previousFlags[bi] & ~FRONTIER_BIT;
+    shellFlags[bi] = self;
+    if ((self & SHELL_BIT) != 0u) return;
 
     // Locate this brick's grid cell by scanning the lookup for value == bi.
     uint bpa = pc.bpa;
@@ -118,11 +117,9 @@ void main() {
             uint nflat = uint(nx) + uint(ny) * bpa + uint(nz) * bpa * bpa;
             uint nb = brickLookup[nflat];
             if (nb == 0xFFFFFFFFu || nb >= pc.brickCount) continue;
-            // Set neighbour shell + frontier (races benign: idempotent OR of bits;
-            // the host re-dispatches per layer, so a missed same-pass update is
-            // picked up next layer — the fixed-point converges regardless).
-            atomicOr(shellFlags[nb], SHELL_BIT | FRONTIER_BIT);
+            if ((previousFlags[nb] & FRONTIER_BIT) != 0u) {
+                shellFlags[bi] = self | SHELL_BIT | FRONTIER_BIT;
+                return;
+            }
         }
-    // This brick is done propagating for this layer.
-    atomicAnd(shellFlags[bi], ~FRONTIER_BIT);
 }

@@ -1,0 +1,20 @@
+{
+  "stopped_utc": "2026-10-10 20:16:50 UTC",
+  "scheduled_checkpoint_utc": "2026-10-10 20:17:15 UTC",
+  "elapsed_seconds": 10775,
+  "reason": "Owner three-hour checkpoint; no new items",
+  "final_queue_label": "recovered-final-gpu-serialized-shared-host",
+  "wrapper_pid": 1860893,
+  "wrapper_exit": 143,
+  "payload_launched": false,
+  "native_recovery_build_exit": 0,
+  "linux_recovery_build_exit": 0,
+  "remaining": [
+    "Latest native pacing and logging-disabled producer measurements",
+    "Latest Dozen 500-frame recovery and 2 ms timing gate",
+    "Full RenderGraph/SVO recovery, cache gate and R6",
+    "Nine fresh fixture PNG byte comparisons",
+    "Separate shell/indirect/grouped timing-max exports",
+    "Full production TraceRaysNode graph/hit-shader witness"
+  ]
+}

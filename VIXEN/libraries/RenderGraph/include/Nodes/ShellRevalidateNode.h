@@ -7,6 +7,9 @@
 
 #include <vulkan/vulkan.h>
 #include <cstdint>
+#include <array>
+#include <memory>
+#include "GPUTimestampQuery.h"
 
 namespace Vixen::RenderGraph {
 
@@ -25,8 +28,8 @@ public:
 /**
  * @brief GPU compute dispatch of shaders/ShellDerive.comp (mode 0 = surface classify,
  * mode 1 = one dilation layer). Owns its own compute pipeline + descriptor set, built
- * from the shipped ShellDerive.comp SPIR-V at Compile time, and records the mode-0 pass
- * followed by SHELL_DILATION mode-1 passes into ONE command buffer at Execute time.
+ * from the shipped ShellDerive.comp SPIR-V at Compile time. Each canonical phase
+ * reads an immutable frontier and retires bounded brick ranges before continuing.
  *
  * This is a minimal, standalone node: it does NOT replace BodyOctreeSceneNode's existing
  * CPU-side DeriveShell path (which remains the committed cache); it exists to prove the
@@ -64,10 +67,10 @@ private:
     void BuildPipeline();
     void DestroyPipeline();
     void BuildDescriptorSet(VkBuffer sourcePool, VkBuffer brickLookup,
-                             VkBuffer shellFlags, VkBuffer config);
+                             VkBuffer config);
     void EnsureShellFlagsBuffer(uint32_t brickCount);
     void RecordDispatch(VkCommandBuffer cmd, uint32_t brickCount, uint32_t bpa,
-                         uint32_t dilationLayers);
+                         uint32_t mode, uint32_t firstGroup, uint32_t groups, uint32_t output);
 
     VulkanDevice*  vulkanDevice_ = nullptr;
     VkCommandPool  commandPool_  = VK_NULL_HANDLE;
@@ -78,6 +81,7 @@ private:
     VkPipeline            pipeline_            = VK_NULL_HANDLE;
     VkDescriptorPool      descriptorPool_      = VK_NULL_HANDLE;
     VkDescriptorSet       descriptorSet_       = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, 2> descriptorSets_{};
 
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
 
@@ -85,6 +89,9 @@ private:
     VkBuffer       shellFlagsBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory shellFlagsMemory_   = VK_NULL_HANDLE;
     VkDeviceSize   shellFlagsCapacity_ = 0;
+    VkBuffer previousFlagsBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory previousFlagsMemory_ = VK_NULL_HANDLE;
+    std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery> chunkQuery_;
 };
 
 } // namespace Vixen::RenderGraph

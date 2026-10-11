@@ -1,0 +1,28 @@
+[box:flow] gpuyield-post-wave-submit-and-pacing cpu=51% target=90% depth=2 free=3 baseline=2 granted=1 mode=static
+[box:flow] gpuyield-post-wave-submit-and-pacing queued — need=1 tokens projected=285MB estimate=class samples=1335
+[box:flow] gpuyield-post-wave-submit-and-pacing cpu=43% target=90% admit
+[box:flow] gpuyield-post-wave-submit-and-pacing memory=admit avail=70038MB projected=285MB estimate=class samples=1335 reserved=8380MB total=80425MB reserve=4096MB disk=555224MB
+[box:flow] gpuyield-post-wave-submit-and-pacing cpu=39% target=90% admit
+[box:flow] gpuyield-post-wave-submit-and-pacing memory=admit avail=70492MB projected=285MB estimate=class samples=1335 reserved=8095MB total=80425MB reserve=4096MB disk=555224MB
+[box:flow] gpuyield-post-wave-submit-and-pacing granted tokens=12 mask=24,25
+[box:flow] gpuyield-post-wave-submit-and-pacing running on cores 24,25 (test)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount:SubmitRecord.*
+[==========] Running 3 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from GraphTaskLoweringTest
+[ RUN      ] GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount
+[       OK ] GraphTaskLoweringTest.CompletedFramesHonorConfiguredBudgetAndKeepTheirCount (98 ms)
+[----------] 1 test from GraphTaskLoweringTest (98 ms total)
+
+[----------] 2 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 2 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 2 test suites ran. (98 ms total)
+[  PASSED  ] 3 tests.
+UT_JOB_DONE test gpuyield-post-wave-submit-and-pacing exit=0 state=OK

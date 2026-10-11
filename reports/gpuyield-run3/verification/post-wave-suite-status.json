@@ -1,0 +1,21 @@
+{
+  "ctest_exit_status": 8,
+  "failing_tests": [
+    "1194:EditorToggleUndoCapture.ToggleUndoRedoStateTrailThroughWindowedRun",
+    "1195:EditorToggleUndoCapture.ParameterEditReachesRenderPipeline",
+    "1196:EditorToggleUndoCapture.LayerEditReachesRenderPipeline",
+    "1197:EditorToggleUndoCapture.ParameterSnapshotAndSaveReopenStayCanonical",
+    "1198:EditorToggleUndoCapture.UndoRedoRestoresRenderByteExact",
+    "1199:EditorToggleUndoCapture.BackButtonReachesReturnInRunningEditor",
+    "1200:EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget",
+    "1201:HudRenderCapture.BaselineIsNonEmpty",
+    "1202:HudRenderCapture.PayloadSwapProducesRealPixelDifference",
+    "1203:HudRenderCapture.SameFrameDeterministic",
+    "2583:RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes",
+    "2933:vixen_editor_capture_producer",
+    "2934:vixen_hud_capture_producer",
+    "2936:vixen_editor_appflow_channel_gate",
+    "2937:vixen_multiinstance_cache_gate"
+  ],
+  "matches_permitted_opcode_94_only": false
+}

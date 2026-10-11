@@ -1,0 +1,19 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "gpuyield-native",
+      "inherits": "vixen-ninja",
+      "binaryDir": "${sourceDir}/../build/gpuyield-native-mapped",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "USE_CCACHE": "OFF",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF",
+        "YEROKET_ROOT": "//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy",
+        "VIXEN_KERNEL_CACHE_DIR": "${sourceDir}/../.tmp/gpuyield-run2/native-kernel-cache"
+      }
+    }
+  ]
+}
