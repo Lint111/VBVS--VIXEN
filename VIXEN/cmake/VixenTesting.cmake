@@ -66,7 +66,7 @@ function(vixen_gtest_discover_tests suite target)
             list(APPEND _gtest_arguments "${_option}")
         endif()
     endforeach()
-    foreach(_argument DISCOVERY_MODE DISCOVERY_TIMEOUT WORKING_DIRECTORY TEST_LIST TEST_PREFIX TEST_SUFFIX XML_OUTPUT_DIR)
+    foreach(_argument DISCOVERY_MODE DISCOVERY_TIMEOUT WORKING_DIRECTORY TEST_PREFIX TEST_SUFFIX XML_OUTPUT_DIR)
         if(DEFINED VGT_${_argument})
             list(APPEND _gtest_arguments "${_argument}" "${VGT_${_argument}}")
         endif()
@@ -75,17 +75,24 @@ function(vixen_gtest_discover_tests suite target)
         list(APPEND _gtest_arguments EXTRA_ARGS ${VGT_EXTRA_ARGS})
     endif()
 
-    # The class is a generator expression: the target's link-closure class is only known once the
-    # whole tree is configured (vixen_finalize_test_classes), and GoogleTest writes PROPERTIES
-    # through file(GENERATE).
+    # GoogleTest leaves every discovered case name in a TEST_LIST variable (default <target>_TESTS);
+    # the class stub reads it at CTest load time to label each case gpu or cpu.
+    set(_test_list_variable "${target}_TESTS")
+    if(VGT_TEST_LIST)
+        set(_test_list_variable "${VGT_TEST_LIST}")
+        list(APPEND _gtest_arguments TEST_LIST "${VGT_TEST_LIST}")
+    elseif(VGT_GPU_TESTS)
+        set(_test_list_variable "_vixen_gpu_tests_${target}")
+        list(APPEND _gtest_arguments TEST_LIST "${_test_list_variable}")
+    endif()
     if(VGT_GPU)
         vixen_test_class_declare(${target} GPU FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
     else()
         vixen_test_class_declare(${target} FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
     endif()
-    vixen_test_class_environment_modification(_class_modification "$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>")
+    vixen_test_class_environment_modification(_class_modification)
 
-    set(_properties LABELS "${suite}\\\\;$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>\\\\;classified-by-link")
+    set(_properties LABELS "${suite}")
     set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
     if(_environment)
         string(JOIN ";" _environment_value ${_environment})
@@ -112,13 +119,10 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     if(VGT_GPU_TESTS)
-        set(_gpu_test_list "_vixen_gpu_tests_${target}")
-        list(APPEND _gtest_arguments TEST_LIST "${_gpu_test_list}")
-
         # PRE_TEST discovery creates cases at CTest run time. Its TEST_LIST variable
         # is available to TEST_INCLUDE_FILES, which can apply locks per discovered case.
         set(_gpu_test_lock_script "${CMAKE_CURRENT_BINARY_DIR}/vixen_gpu_test_locks_${target}.cmake")
-        set(_gpu_test_lock_content "foreach(_vixen_gpu_test IN LISTS ${_gpu_test_list})\n")
+        set(_gpu_test_lock_content "foreach(_vixen_gpu_test IN LISTS ${_test_list_variable})\n")
         foreach(_pattern IN LISTS VGT_GPU_TESTS)
             string(APPEND _gpu_test_lock_content
                 "  if(_vixen_gpu_test MATCHES [==[${_pattern}]==])\n"
@@ -131,6 +135,7 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
+    vixen_test_class_register(${target} "${_test_list_variable}")
 
     if(VGT_GPU_TESTS)
         # GoogleTest appends its discovery include while registering the target.

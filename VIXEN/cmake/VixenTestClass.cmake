@@ -10,7 +10,8 @@
 #   2. Runtime manifest (tests/gpu-class-manifest.tsv, written by tools/classify-tests-gpu.py). A test
 #      the manifest knows, and whose executable sources are unchanged since the manifest was written,
 #      takes the manifest's class: what the test did when it ran. VixenTestClassApply.cmake applies
-#      it when CTest loads each directory. Tests the manifest does not know keep the link guess.
+#      it when CTest loads each directory (GoogleTest cases do not exist before then). Tests the
+#      manifest does not know, or whose sources changed, keep the link guess.
 #
 # Every test ends up with a `gpu` or `cpu` label, a `classified-by-run` or `classified-by-link`
 # label, and VIXEN_TEST_CLASS in its environment. With the Vulkan witness layer enabled (Linux), a
@@ -25,16 +26,29 @@ set(_VIXEN_TEST_CLASS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(_VIXEN_DEVICE_CALL_REGEX "^[^/]*(vkCreateInstance|vkCreateDevice|vkAllocateMemory|vkQueueSubmit|vmaCreateAllocator)[ \t]*\\(")
 
-# Environment entries that load the witness layer and tell it a test's class; used by every test.
-function(vixen_test_class_environment_modification output_variable class_expression)
+# Environment entries that load the witness layer into every test process (Linux).
+function(vixen_test_class_environment_modification output_variable)
     set(_entries)
     if(UNIX AND NOT APPLE AND TARGET vixen_gpu_witness_layer)
         list(APPEND _entries
             "VIXEN_GPU_WITNESS=set:1"
             "VK_ADD_IMPLICIT_LAYER_PATH=path_list_prepend:${VIXEN_GPU_WITNESS_LAYER_DIR}")
     endif()
-    list(APPEND _entries "VIXEN_TEST_CLASS=set:${class_expression}")
     set(${output_variable} "${_entries}" PARENT_SCOPE)
+endfunction()
+
+# Labels every case in `list_variable` (set by the target's GoogleTest discovery include) when CTest
+# loads the directory.
+function(vixen_test_class_register target list_variable)
+    file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake" CONTENT
+"set(VIXEN_CLASS_TARGET [==[${target}]==])
+set(VIXEN_CLASS_LINK [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>]==])
+set(VIXEN_CLASS_FINGERPRINT [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_SOURCE_FP>]==])
+set(VIXEN_CLASS_TESTS \"\${${list_variable}}\")
+set(VIXEN_CLASS_MANIFEST [==[${VIXEN_TEST_CLASS_MANIFEST}]==])
+include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
+")
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake")
 endfunction()
 
 # Declared by the registration helpers (GPU / GPU_TESTS flags and FIXTURES_REQUIRED) on test targets.
@@ -261,6 +275,8 @@ function(vixen_finalize_test_classes)
         endif()
         set_property(TARGET ${_exe} PROPERTY VIXEN_TEST_CLASS "${_class}")
         set_property(TARGET ${_exe} PROPERTY VIXEN_TEST_CLASS_EVIDENCE "${_evidence}")
+        _vixen_source_fingerprint(${_exe} _fingerprint)
+        set_property(TARGET ${_exe} PROPERTY VIXEN_TEST_SOURCE_FP "${_fingerprint}")
     endforeach()
 
     # 2. Plain add_test entries: class from the executable they launch.
@@ -272,6 +288,11 @@ function(vixen_finalize_test_classes)
             _vixen_command_executables(_launched ${_command})
             set(_class cpu)
             set(_evidence "link: command launches no project executable")
+            set(_first_exe "")
+            if(_launched)
+                list(GET _launched 0 _first_exe)
+            endif()
+            set_property(GLOBAL PROPERTY VIXEN_PLAIN_EXE_${_directory}|${_test} "${_first_exe}")
             foreach(_exe IN LISTS _launched)
                 _vixen_target_class(${_exe} _exe_class)
                 get_target_property(_exe_evidence ${_exe} VIXEN_TEST_CLASS_EVIDENCE)
@@ -309,51 +330,55 @@ function(vixen_finalize_test_classes)
         endforeach()
     endforeach()
 
-    # 4. Apply the link class to plain add_test entries, and record the table.
-    set(_environment_class_gpu)
+    # 4. Plain add_test entries exist now, so they take the manifest class (when fresh) or the link
+    #    class here; GoogleTest cases are labelled by their stub when CTest loads the directory.
+    set(_manifest "\n")
+    if(EXISTS "${VIXEN_TEST_CLASS_MANIFEST}")
+        file(READ "${VIXEN_TEST_CLASS_MANIFEST}" _manifest_text)
+        string(APPEND _manifest "${_manifest_text}")
+    endif()
     foreach(_entry IN LISTS _plain_tests)
         string(REPLACE "|" ";" _parts "${_entry}")
         list(GET _parts 0 _directory)
         list(GET _parts 1 _test)
         get_property(_class GLOBAL PROPERTY VIXEN_PLAIN_CLASS_${_directory}|${_test})
+        get_property(_exe GLOBAL PROPERTY VIXEN_PLAIN_EXE_${_directory}|${_test})
         get_property(_required TEST ${_test} DIRECTORY "${_directory}" PROPERTY FIXTURES_REQUIRED)
         foreach(_fixture IN LISTS _required)
             if(_fixture IN_LIST _gpu_fixtures)
                 set(_class gpu)
             endif()
         endforeach()
-        vixen_test_class_environment_modification(_modification "${_class}")
-        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY LABELS "${_class}" classified-by-link)
-        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY ENVIRONMENT_MODIFICATION ${_modification})
+        set(_source classified-by-link)
+        string(FIND "${_manifest}" "\n${_test}\t" _position)
+        if(NOT _position EQUAL -1 AND _exe)
+            math(EXPR _position "${_position} + 1")
+            string(SUBSTRING "${_manifest}" ${_position} 4096 _tail)
+            get_target_property(_current_fp ${_exe} VIXEN_TEST_SOURCE_FP)
+            if(_tail MATCHES "^[^\t\n]*\t(gpu|cpu)\t${_exe}\t${_current_fp}\t")
+                set(_class ${CMAKE_MATCH_1})
+                set(_source classified-by-run)
+            endif()
+        endif()
+        vixen_test_class_environment_modification(_modification)
+        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY LABELS "${_class}" "${_source}")
+        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            ${_modification} "VIXEN_TEST_CLASS=set:${_class}")
+        if(_class STREQUAL "gpu")
+            set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY RESOURCE_LOCK vixen_gpu_device)
+        endif()
     endforeach()
 
-    # 5. Generated tables: executable -> class, fingerprint, evidence (read by the classifier tool
-    #    and by the manifest apply step).
+    # 5. Executable table: target, file, link class, source fingerprint, evidence. The classifier
+    #    tool maps test commands to targets with it and diffs its link class against measurements.
     set(_table "# target<TAB>file<TAB>class<TAB>source-fingerprint<TAB>evidence (generated)\n")
     foreach(_exe IN LISTS _executables)
-        _vixen_source_fingerprint(${_exe} _fingerprint)
+        get_target_property(_fingerprint ${_exe} VIXEN_TEST_SOURCE_FP)
         get_target_property(_class ${_exe} VIXEN_TEST_CLASS)
         get_target_property(_evidence ${_exe} VIXEN_TEST_CLASS_EVIDENCE)
         string(APPEND _table "${_exe}\t$<TARGET_FILE:${_exe}>\t${_class}\t${_fingerprint}\t${_evidence}\n")
     endforeach()
     file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/exe-classes.tsv" CONTENT "${_table}")
-
-    set(_apply_content
-        "set(VIXEN_CLASS_MANIFEST [==[${VIXEN_TEST_CLASS_MANIFEST}]==])\n"
-        "set(VIXEN_CLASS_EXE_TABLE [==[${VIXEN_TEST_CLASS_DIR}/exe-classes.tsv]==])\n"
-        "include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])\n")
-    string(CONCAT _apply_content ${_apply_content})
-    file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/apply-generated.cmake" CONTENT "${_apply_content}")
-
-    # 6. Run the apply step in every directory that registers tests.
-    foreach(_directory IN LISTS _directories)
-        get_property(_tests DIRECTORY "${_directory}" PROPERTY TESTS)
-        get_property(_includes DIRECTORY "${_directory}" PROPERTY TEST_INCLUDE_FILES)
-        if(_tests OR _includes)
-            set_property(DIRECTORY "${_directory}" APPEND PROPERTY TEST_INCLUDE_FILES
-                "${VIXEN_TEST_CLASS_DIR}/apply-generated.cmake")
-        endif()
-    endforeach()
 endfunction()
 
 function(vixen_schedule_test_class_finalize)
