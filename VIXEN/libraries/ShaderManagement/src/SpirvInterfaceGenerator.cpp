@@ -257,14 +257,20 @@ const char* AccessConstName(SpirvResourceAccess a) {
 // a raw byte array of the member's size.
 std::string PushMemberCppType(const SpirvTypeInfo& t) {
     using B = SpirvTypeInfo::BaseType;
-    const uint32_t lanes = t.baseType == B::Vector  ? t.vecSize
-                         : t.baseType == B::Matrix  ? t.columns * t.rows
-                                                    : 1;
+    const bool integerVector =
+        (t.baseType == B::Int || t.baseType == B::UInt) && t.vecSize > 1;
+    const uint32_t lanes = t.baseType == B::Vector || integerVector ? t.vecSize
+                         : t.baseType == B::Matrix                  ? t.columns * t.rows
+                                                                    : 1;
     if (lanes == 0 || t.sizeInBytes != 4 * lanes) return "";
     switch (t.baseType) {
         case B::Float: return "float";
-        case B::Int:   return "int32_t";
-        case B::UInt:  return "uint32_t";
+        case B::Int:
+            return t.vecSize > 1 ? "glm::ivec" + std::to_string(t.vecSize)
+                                 : "int32_t";
+        case B::UInt:
+            return t.vecSize > 1 ? "glm::uvec" + std::to_string(t.vecSize)
+                                 : "uint32_t";
         case B::Vector: {
             const char* prefix = t.componentType == B::Float ? ""
                                : t.componentType == B::Int   ? "i"

@@ -100,10 +100,10 @@ TEST(RecipeBaker, GenericRegistryBakeUsesEntryParameterSnapshot) {
     };
 
     RecipeRegistry smallRegistry;
-    RecipeRegistry::RecipeEntry small{};
-    small.bytecode = parameterizedSphere();
-    small.parameterValues = {0.5f};
-    ASSERT_EQ(smallRegistry.Register(1u, small), RecipeRegistry::RegisterResult::Ok);
+    RecipeRegistry::RecipeEntry smallEntry{};
+    smallEntry.bytecode = parameterizedSphere();
+    smallEntry.parameterValues = {0.5f};
+    ASSERT_EQ(smallRegistry.Register(1u, smallEntry), RecipeRegistry::RegisterResult::Ok);
 
     RecipeRegistry largeRegistry;
     RecipeRegistry::RecipeEntry large{};

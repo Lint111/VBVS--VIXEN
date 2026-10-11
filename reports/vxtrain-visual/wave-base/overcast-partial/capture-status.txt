@@ -1,0 +1,4 @@
+Wave-base overcast capture was interrupted by VK_ERROR_DEVICE_LOST at FrameSyncNode::vkWaitSemaphores.
+Angles 0, 1, and 2 were written before the device loss; angle 3 was not written.
+The available three PNGs are byte-identical to the corresponding current-tip overcast PNGs.
+Capture log: /home/liory/.local/state/undertow/undertow-box-logs/1791726216-gpu-wave-base-lookdev-overcast.log

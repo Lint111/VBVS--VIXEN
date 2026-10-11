@@ -37,6 +37,7 @@
 #include "ShellDerive.h"
 #include "MipBake.h"
 #include "SdfRecipes.h"
+#include "KernelDispatch/TaskExecutor.h"
 
 using namespace Vixen::SVO;
 
@@ -408,11 +409,10 @@ TEST(ShellDerive, ShellSupersetOfSurface) {
 }
 
 // ---------------------------------------------------------------------------
-// DoubleBufferSwapIdentical — the ping-pong bootstrap derives both slots from
-// the same source, so their bytes are identical (frame N reads [N&1], frame N+1
-// reads [(N+1)&1]; both must show the same committed cache for a static doc).
+// RepeatedDeriveIsByteIdentical — deriving a static source twice must produce
+// identical bytes regardless of which generation later publishes the result.
 // ---------------------------------------------------------------------------
-TEST(ShellDerive, DoubleBufferSwapIdentical) {
+TEST(ShellDerive, RepeatedDeriveIsByteIdentical) {
     ShellFixture f;
     ShellDeriveResult slotA = DeriveShell(f.cat, 0);
     ShellDeriveResult slotB = DeriveShell(f.cat, 0);
@@ -421,7 +421,7 @@ TEST(ShellDerive, DoubleBufferSwapIdentical) {
     ASSERT_EQ(slotA.shellLookup.size(), slotB.shellLookup.size());
     EXPECT_EQ(0, std::memcmp(slotA.shellData.data(), slotB.shellData.data(),
                              slotA.shellData.size()))
-        << "double-buffer slots must be byte-identical on bootstrap";
+        << "repeated derives of the same source must be byte-identical";
     EXPECT_EQ(slotA.shellLookup, slotB.shellLookup);
 }
 
@@ -780,6 +780,37 @@ TEST(ShellDerive, NormalBakeIsByteIdenticalAtWorkerCountsOneTwoAndDefault) {
                                   reference.shellData.size()), 0)
                 << "workerCount=" << workers << " run=" << run;
         }
+    }
+
+    // The live node now derives on TaskExecutor::RunAsync. Exercise that admission
+    // path for every worker budget too, then compare its complete result to the
+    // synchronous CPU oracle above (including the baked normal tail bytes).
+    for (uint32_t workers : {1u, 2u, 0u}) {
+        ShellDeriveParams params = serial;
+        params.workerCount = workers;
+        auto result = std::make_shared<std::optional<ShellDeriveResult>>();
+        Vixen::KernelDispatch::TaskExecutor executor;
+        const Vixen::KernelDispatch::TaskId id{0x5348454c4c444552ULL, workers + 1u};
+        Vixen::KernelDispatch::VirtualTask task;
+        task.id = id;
+        task.execute = [&f, result, params] {
+            result->emplace(DeriveShell(f.cat, 0, params));
+        };
+        std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
+        tasks.push_back(std::move(task));
+        auto completion = executor.RunAsync(std::move(tasks), {{id}},
+            workers == 0u ? 0 : static_cast<int>(workers));
+        const auto status = completion.get();
+        ASSERT_TRUE(status.succeeded) << "RunAsync shell derive workerCount=" << workers;
+        ASSERT_TRUE(result->has_value());
+        const auto& candidate = result->value();
+        EXPECT_EQ(candidate.shellLookup, reference.shellLookup);
+        EXPECT_EQ(candidate.surface, reference.surface);
+        EXPECT_EQ(candidate.shell, reference.shell);
+        ASSERT_EQ(candidate.shellData.size(), reference.shellData.size());
+        EXPECT_EQ(std::memcmp(candidate.shellData.data(), reference.shellData.data(),
+                              reference.shellData.size()), 0)
+            << "RunAsync workerCount=" << workers;
     }
 }
 

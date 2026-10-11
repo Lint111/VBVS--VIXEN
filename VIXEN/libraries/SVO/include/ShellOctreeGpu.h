@@ -283,6 +283,19 @@ inline void setNormalMipPoolDescriptor(OctreeConfig& c, uint32_t baseMipSamples,
     c._tailPad[4] = baseMipSamples;
     c._tailPad[5] = enabled ? 1u : 0u;
 }
+
+// R502.2 sparse emitter power lane (EmitterPower.h) rides the same MipSample stream after the
+// normal mips. Word seven is a separate ready bit because a valid first-tree base is zero.
+inline uint32_t emitterPowerPoolBaseOf(const OctreeConfig& c) {
+    return c._tailPad[6];
+}
+inline bool emitterPowerPoolBakedOf(const OctreeConfig& c) {
+    return c._tailPad[7] != 0u;
+}
+inline void setEmitterPowerPoolDescriptor(OctreeConfig& c, uint32_t baseMipSamples, bool enabled) {
+    c._tailPad[6] = baseMipSamples;
+    c._tailPad[7] = enabled ? 1u : 0u;
+}
 /// Read traceBoundsMin (Baked-Perf M5 Task 5.1) from OctreeConfig (byte 32).
 /// Conservative allocated-brick AABB minimum, in this octree's OWN normalized
 /// [0,1]^3 local grid space (NOT world space). See the field's own schema doc
@@ -356,6 +369,10 @@ struct SerializedOctree {
     // and w is the filtered coverage.  It is appended into the same GPU
     // binding as mipPool so the descriptor interface remains unchanged.
     std::vector<uint8_t> normalMipPool;
+    // R502.2 sparse emitter power lane (EmitterPower.h): per-node emitted power plus
+    // per-emissive-brick octant sums, appended after normalMipPool in the mip stream. Empty
+    // for trees with no emissive voxel (zero cost, far-field bytes unchanged).
+    std::vector<uint8_t> emitterPowerPool;
 
     // Deep-Field Mip Policy — anisotropic coarse mips (MipAnisoPool.h): a
     // fully ADDITIVE side pool, same SoA addressing as mipPool

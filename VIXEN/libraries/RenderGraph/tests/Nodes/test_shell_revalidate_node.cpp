@@ -11,18 +11,16 @@
  *      shellFlags[], and asserts the SURFACE and SHELL bits match the CPU oracle for
  *      EVERY source brick.
  *
- *  (b) Zero-barrier double-buffer parallelism: assembles a real PassGroupNode from two
- *      ComputePassSteps — a "shell read" pass (reads shell slot N's data+lookup, the
- *      double-buffered Resources BodyOctreeSceneNode publishes at SHELL_DATA_BUFFER/
- *      SHELL_LOOKUP_BUFFER) and a "revalidate" pass (this node's dispatch, which writes
- *      a DISTINCT Resource — shell slot N+1) — and asserts PassGroupNode's baked
+ *  (b) Zero-barrier generation isolation: assembles a real PassGroupNode from two
+ *      ComputePassSteps — a "shell read" pass (reads the published generation's data+lookup)
+ *      and a "revalidate" pass (this node's dispatch, which writes a DISTINCT candidate
+ *      generation Resource) — and asserts PassGroupNode's baked
  *      intraSchedule_ contains ZERO entry barriers between the two groups, because the
  *      passes touch disjoint Resource objects (the FrameSyncScheduler hazard-tracks by
  *      Resource* pointer identity, not by binding number).
  *
- *  (c) Dirty-brick slot coherence: a value edit rewrites only the pending shell slot,
- *      refreshes that same slot's proxy AABB upload, and publishes its buffer + exact
- *      live count when the ping-pong read index advances -- without a full shell derive.
+ *  (c) Edit-generation coherence: a value edit derives a complete candidate off-thread,
+ *      then publishes its shell and proxy AABB buffers together after the safe point.
  *
  * DEVICE SELECTION: identical contract to test_body_octree_lifetime.cpp / test_recipe_
  * pool_render.cpp — via VixenSelectWslGpuIcd(), a real discrete/integrated GPU is
@@ -41,10 +39,15 @@
 #include "Core/PassGroupSchedule.h"   // BuildPassGroupSchedule
 #include "Data/Core/CompileTimeResourceSystem.h"  // Resource
 #include "Core/NodeContext.h"          // CleanupReason
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
+#include "MainCacher.h"
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"
 #include "ShellDerive.h"
+#include "MipBake.h"
+#include "EmitterPower.h"
 #include "SdfBake.h"
 #include "SdfRecipes.h"
 #include "TestVkValidation.h"
@@ -55,7 +58,10 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <chrono>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifndef SHELLDERIVE_SPV
@@ -420,19 +426,18 @@ TEST_P(ShellRevalidateNodeTest, GpuDispatchMatchesCanonicalFlagsAndCompactedByte
 INSTANTIATE_TEST_SUITE_P(CanonicalDilation, ShellRevalidateNodeTest, ::testing::Values(0u, 1u, 2u, 3u));
 
 // ---------------------------------------------------------------------------
-// (b) Zero-barrier double-buffer parallelism via a REAL PassGroupNode.
+// (b) Zero-barrier published/candidate generation isolation via a REAL PassGroupNode.
 //
 // Assembles two ComputePassSteps carrying REAL pipeline/descriptor-set handles (this
 // node's own, reused for both — only the `accesses` Resource* identity matters to the
 // scheduler) whose `accesses` declare DISJOINT Resource objects: a "shell read" pass
-// touching shell-slot-N Resources, and a "revalidate" pass touching shell-slot-(N+1)
-// Resources (mirroring BodyOctreeSceneNode's double-buffered SHELL_DATA_BUFFER/
-// SHELL_LOOKUP_BUFFER: the render always reads slot [frame&1] while a revalidate writes
-// slot [(frame+1)&1]). BuildPassGroupSchedule is exercised directly (it is the exact
+// touching published-generation Resources, and a "revalidate" pass touching candidate
+// generation Resources (mirroring the disjoint handles before and after publication).
+// BuildPassGroupSchedule is exercised directly (it is the exact
 // function PassGroupNode::CompileImpl calls) to bake intraSchedule_ and assert it has
 // ZERO entry barriers between the two pass groups.
 // ---------------------------------------------------------------------------
-TEST_F(ShellRevalidateNodeTest, DoubleBufferedShellPassesGetZeroBarriers) {
+TEST_F(ShellRevalidateNodeTest, DisjointShellGenerationPassesGetZeroBarriers) {
     std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
 
     // ---- Bring up a real ShellRevalidateNode (Compile only — we need a real pipeline/
@@ -503,25 +508,23 @@ TEST_F(ShellRevalidateNodeTest, DoubleBufferedShellPassesGetZeroBarriers) {
     ASSERT_NE(node->GetDescriptorSet(), VK_NULL_HANDLE);
 
     // ---- Assemble two ComputePassSteps with DISJOINT Resource* identities ----
-    // "Shell read" pass: reads shell-slot-N's data + lookup (as a render pass would).
-    // "Revalidate" pass: this node's dispatch, writing shell-slot-(N+1) — modeled here as
-    // touching a DISTINCT Resource identity from slot N's, exactly like BodyOctreeSceneNode's
-    // shellDataBuffer_[0] vs shellDataBuffer_[1] (two separate VkBuffer objects, two separate
-    // Resource wrappers if wired into a graph).
+    // "Shell read" pass reads the active generation's data + lookup as a render pass would.
+    // "Revalidate" writes a candidate generation through a DISTINCT Resource identity, so
+    // the schedule cannot infer a false read/write dependency between generations.
     Resource shellSlotNData;
     Resource shellSlotNLookup;
     Resource shellSlotNPlus1Data;   // what the revalidate pass writes (distinct object)
     Resource shellSlotNPlus1SourcePool;  // the revalidate pass's read (also distinct)
 
     ComputePassStep shellReadPass;
-    shellReadPass.debugName = "shell_read_slotN";
+    shellReadPass.debugName = "shell_read_published_generation";
     shellReadPass.accesses = {
         {&shellSlotNData,   AccessKind::ComputeStorageRead, false},
         {&shellSlotNLookup, AccessKind::ComputeStorageRead, false},
     };
 
     ComputePassStep revalidatePass;
-    revalidatePass.debugName = "shell_revalidate_slotNplus1";
+    revalidatePass.debugName = "shell_revalidate_candidate_generation";
     revalidatePass.pipeline = node->GetPipeline();
     revalidatePass.layout   = node->GetPipelineLayout();
     revalidatePass.descriptorSets = {node->GetDescriptorSet()};
@@ -582,10 +585,10 @@ TEST_F(ShellRevalidateNodeTest, DoubleBufferedShellPassesGetZeroBarriers) {
 }
 
 // ---------------------------------------------------------------------------
-// (c) Dirty-brick revalidation refreshes shell data AND the slot-coherent proxy
-// publication without taking the full-derive path.
+// (c) A value edit publishes a fresh complete generation without writing into
+// the shell buffer that an in-flight frame may still be reading.
 // ---------------------------------------------------------------------------
-TEST_F(ShellRevalidateNodeTest, DirtyBrickRefreshesShellAndProxyWriteSlotWithoutFullDerive) {
+TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
     std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
 
     using namespace Vixen::SVO;
@@ -599,10 +602,14 @@ TEST_F(ShellRevalidateNodeTest, DirtyBrickRefreshesShellAndProxyWriteSlotWithout
     std::vector<const SdfBodyOctree*> octrees{&body};
     ConcatenatedOctrees pool = ConcatenateSdf(octrees);
 
+    CashSystem::MainCacher mainCacher;
+    NodeTypeRegistry registry;
+    RenderGraph asyncGraph(&registry, nullptr, nullptr, &mainCacher);
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
     auto nodeBase = nodeType.CreateInstance("dirty_shell_proxy_slot_test");
     auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
     ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&asyncGraph);
 
     Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
     Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
@@ -615,71 +622,155 @@ TEST_F(ShellRevalidateNodeTest, DirtyBrickRefreshesShellAndProxyWriteSlotWithout
 
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "initial shell generation must be published before Compile exposes its buffers";
     ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
-    ASSERT_EQ(node->ProxyAabbUploadCount(0), 1u);
-    ASSERT_EQ(node->ProxyAabbUploadCount(1), 1u);
+    const uint64_t proxyUploadsBeforeEdit = node->ProxyAabbUploadCount();
+    ASSERT_GT(proxyUploadsBeforeEdit, 0u);
 
-    const ShellDeriveResult& writeShellBefore = node->ShellCacheSlot(1);
-    ASSERT_FALSE(writeShellBefore.shellLookup.empty());
-    const uint32_t dirtyBrick = writeShellBefore.shellLookup.front();
-    ASSERT_LT(dirtyBrick, writeShellBefore.sourceToShellSlot.size());
-    const uint32_t shellSlot = writeShellBefore.sourceToShellSlot[dirtyBrick];
-    ASSERT_NE(shellSlot, UINT32_MAX);
-
-    const uint32_t stride = pool.configs[0].brickStrideFloats;
-    ASSERT_GT(stride, 0u);
-    const size_t byteOffset = static_cast<size_t>(shellSlot) * stride * sizeof(float);
-    const size_t byteCount = static_cast<size_t>(stride) * sizeof(float);
-    ASSERT_LE(byteOffset + byteCount, node->ShellPoolSlot(1).compact.channelPool.size());
-    std::vector<uint8_t> shellBytesBefore(byteCount);
-    std::memcpy(shellBytesBefore.data(),
-                node->ShellPoolSlot(1).compact.channelPool.data() + byteOffset,
-                byteCount);
-    const auto proxiesBefore = writeShellBefore.proxyAabbs;
-
-    // Publish slot 1 once before the edit so the test can pin its stable buffer handle.
-    SetHandleVal<uint32_t>(frameRes, 1u);
-    ASSERT_NO_THROW(node->Execute());
+    const uint64_t oldGeneration = node->PublishedShellGeneration();
+    Resource* shellBufferOut = node->GetOutput(C::SHELL_DATA_BUFFER_Slot::index, 0);
     Resource* proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
-    Resource* proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(shellBufferOut, nullptr);
     ASSERT_NE(proxyBufferOut, nullptr);
-    ASSERT_NE(proxyCountOut, nullptr);
-    const VkBuffer slot1ProxyBuffer = proxyBufferOut->GetHandle<VkBuffer>();
-    ASSERT_NE(slot1ProxyBuffer, VK_NULL_HANDLE);
-    ASSERT_EQ(proxyCountOut->GetHandle<uint32_t>(), proxiesBefore.size());
+    const VkBuffer oldShellBuffer = shellBufferOut->GetHandle<VkBuffer>();
+    const VkBuffer oldProxyBuffer = proxyBufferOut->GetHandle<VkBuffer>();
+    ASSERT_NE(oldShellBuffer, VK_NULL_HANDLE);
+    ASSERT_NE(oldProxyBuffer, VK_NULL_HANDLE);
+
+    const ShellDeriveResult oldShell = node->ShellCache();
+    ASSERT_FALSE(oldShell.shellLookup.empty());
+    const uint32_t dirtyBrick = oldShell.shellLookup.front();
+    ASSERT_LT(dirtyBrick, oldShell.sourceToShellSlot.size());
+    const uint32_t shellSlot = oldShell.sourceToShellSlot[dirtyBrick];
+    ASSERT_NE(shellSlot, UINT32_MAX);
+    const uint32_t shellStride = oldShell.shellBrickStrideFloats;
+    ASSERT_GT(shellStride, 0u);
+    const size_t byteOffset = static_cast<size_t>(shellSlot) * shellStride * sizeof(float);
+    const size_t byteCount = static_cast<size_t>(shellStride) * sizeof(float);
+    ASSERT_LE(byteOffset + byteCount, node->ShellPool().compact.channelPool.size());
+    std::vector<uint8_t> oldShellBytes(byteCount);
+    std::memcpy(oldShellBytes.data(),
+                node->ShellPool().compact.channelPool.data() + byteOffset,
+                byteCount);
 
     std::vector<float> editedSdf(SerializedOctree::kVoxelsPerBrick, 37.0f);
     ASSERT_TRUE(node->EditSourceBrickSdf(dirtyBrick, editedSdf));
 
-    // Frame 0 renders slot 0 while the dirty path rewrites slot 1.
-    SetHandleVal<uint32_t>(frameRes, 0u);
-    ASSERT_NO_THROW(node->Execute());
-    EXPECT_EQ(node->ShellFullDeriveCount(), 1u)
-        << "an SDF value edit must not rebuild shell membership";
-    EXPECT_EQ(node->ShellRevalidateCount(), 1u);
-    EXPECT_EQ(node->ProxyAabbUploadCount(0), 1u);
-    EXPECT_EQ(node->ProxyAabbUploadCount(1), 2u)
-        << "the proxy upload must advance with the rewritten shell slot";
+    // Four frame executions must keep the old published handles stable while the
+    // producer works. The old parity-indexed path rewrote a buffer during this window.
+    for (uint32_t frame = 0; frame < 4u; ++frame) {
+        SetHandleVal<uint32_t>(frameRes, frame % 2u);
+        ASSERT_NO_THROW(node->Execute());
+        if (node->PublishedShellGeneration() == oldGeneration) {
+            shellBufferOut = node->GetOutput(C::SHELL_DATA_BUFFER_Slot::index, 0);
+            ASSERT_NE(shellBufferOut, nullptr);
+            EXPECT_EQ(shellBufferOut->GetHandle<VkBuffer>(), oldShellBuffer);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for (uint32_t frame = 0; frame < 1000u &&
+         node->PublishedShellGeneration() == oldGeneration; ++frame) {
+        SetHandleVal<uint32_t>(frameRes, frame % 2u);
+        ASSERT_NO_THROW(node->Execute());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_GT(node->PublishedShellGeneration(), oldGeneration) << "edited generation timed out";
+    EXPECT_EQ(node->ShellFullDeriveCount(), 2u);
+    EXPECT_EQ(node->ProxyAabbUploadCount(), proxyUploadsBeforeEdit + 1u);
+    EXPECT_EQ(node->ShellRevalidateCount(), 0u)
+        << "edits now publish complete generations instead of mutating the published payload";
 
-    const auto& shellPoolAfter = node->ShellPoolSlot(1).compact.channelPool;
-    EXPECT_NE(0, std::memcmp(shellBytesBefore.data(), shellPoolAfter.data() + byteOffset, byteCount))
-        << "the dirty shell brick payload was not refreshed";
-    const auto& proxiesAfter = node->ShellCacheSlot(1).proxyAabbs;
-    ASSERT_EQ(proxiesAfter.size(), proxiesBefore.size());
-    EXPECT_EQ(0, std::memcmp(proxiesAfter.data(), proxiesBefore.data(),
-                             proxiesBefore.size() * sizeof(ShellProxyAabb)))
-        << "an SDF-only edit refreshes, but must not geometrically move, proxy boxes";
-
-    // Advancing the read index must publish the refreshed proxy buffer and its LIVE
-    // element count from the same slot; grow-only allocation capacity is never a count.
-    SetHandleVal<uint32_t>(frameRes, 1u);
-    ASSERT_NO_THROW(node->Execute());
+    shellBufferOut = node->GetOutput(C::SHELL_DATA_BUFFER_Slot::index, 0);
     proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
-    proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(shellBufferOut, nullptr);
     ASSERT_NE(proxyBufferOut, nullptr);
-    ASSERT_NE(proxyCountOut, nullptr);
-    EXPECT_EQ(proxyBufferOut->GetHandle<VkBuffer>(), slot1ProxyBuffer);
-    EXPECT_EQ(proxyCountOut->GetHandle<uint32_t>(), proxiesBefore.size());
+    const VkBuffer newShellBuffer = shellBufferOut->GetHandle<VkBuffer>();
+    const VkBuffer newProxyBuffer = proxyBufferOut->GetHandle<VkBuffer>();
+    EXPECT_NE(newShellBuffer, oldShellBuffer);
+    EXPECT_NE(newProxyBuffer, oldProxyBuffer);
+
+    const auto& newPoolBytes = node->ShellPool().compact.channelPool;
+    EXPECT_TRUE(newPoolBytes.empty() || byteOffset + byteCount > newPoolBytes.size() ||
+                std::memcmp(oldShellBytes.data(), newPoolBytes.data() + byteOffset, byteCount) != 0)
+        << "the edited source brick should change the new generation's shell payload";
+    const uint64_t newGeneration = node->PublishedShellGeneration();
+    const auto stableBytes = newPoolBytes;
+    // Four more frames after the flip must keep the generation and its CPU payload
+    // stable while the retired handles remain outside the active publication.
+    for (uint32_t frame = 0; frame < 4u; ++frame) {
+        SetHandleVal<uint32_t>(frameRes, frame % 2u);
+        ASSERT_NO_THROW(node->Execute());
+        EXPECT_EQ(node->PublishedShellGeneration(), newGeneration);
+        EXPECT_EQ(node->ShellPool().compact.channelPool, stableBytes);
+    }
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+TEST_F(ShellRevalidateNodeTest, AsyncProducerPublishesEmitterPowerWithItsGeneration) {
+    using namespace Vixen::SVO;
+    using C = BodyOctreeSceneNodeConfig;
+
+    constexpr int n = 32;
+    const glm::vec3 center{16.0f, 16.0f, 16.0f};
+    const auto emission = [](const glm::vec3& p) {
+        return p.x > p.y ? 1.5f + 0.01f * p.z : 0.0f;
+    };
+    RecipeParams params{12.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult baked = BakeRecipeToSdfWorldWithEmission(
+        RECIPE_SPHERE, center, params, n, 2.0f, emission);
+    auto body = std::make_shared<SdfBodyOctree>(BuildSdfBodyOctree(baked, 3));
+
+    CashSystem::MainCacher mainCacher;
+    NodeTypeRegistry registry;
+    RenderGraph asyncGraph(&registry, nullptr, nullptr, &mainCacher);
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("async_emitter_generation_test");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&asyncGraph);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes; SetHandleVal<uint32_t>(frameRes, 0u);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index, 0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index, 0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    BodyInstanceGpu instance{};
+    SetInstanceTranslationScale(instance, glm::vec3(0.0f), 1.0f);
+    instance.material.providerKind = PROVIDER_STORED;
+    instance.material.octreeIndex = 0u;
+    node->SetInstances({instance});
+    node->SetRecipePoolProducer([body] {
+        const std::vector<const SdfBodyOctree*> sources{body.get()};
+        // The initial compile and later async generations both use this complete
+        // bake, including the emitter power lane alongside the mip stream.
+        return ConcatenateSdfWithMips(sources);
+    });
+
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ASSERT_TRUE(node->HasPublishedShellGeneration())
+        << "emissive shell generation must be published before Compile exposes its buffers";
+    ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
+
+    const ConcatenatedOctrees& generation = node->ShellPool().compact;
+    ASSERT_EQ(generation.count, 1u);
+    ASSERT_TRUE(emitterPowerPoolBakedOf(generation.configs[0]));
+    const std::vector<float> rootPowers = EmitterRootPowers(generation);
+    ASSERT_EQ(rootPowers.size(), 1u);
+    ASSERT_GT(rootPowers[0], 0.0f);
+
+    const EmitterTable& emitterTable = node->GetEmitterTable();
+    ASSERT_EQ(emitterTable.sparse.size(), 1u);
+    EXPECT_EQ(emitterTable.totals.sparseEntryCount, 1u);
+    EXPECT_NEAR(emitterTable.sparse[0].phi,
+                kEmitterPi * rootPowers[0] * kEmitterWorldGridSize * kEmitterWorldGridSize,
+                1e-4f * emitterTable.sparse[0].phi);
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

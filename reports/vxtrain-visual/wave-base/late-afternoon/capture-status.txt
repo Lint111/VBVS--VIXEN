@@ -1,0 +1,4 @@
+Wave-base late-afternoon capture was interrupted by VK_ERROR_DEVICE_LOST at FrameSyncNode::vkWaitSemaphores.
+Angles 0 and 1 were written before device loss; angles 2 and 3 are missing.
+The available two PNGs are byte-identical to the corresponding current-tip late-afternoon PNGs.
+Capture log: /home/liory/.local/state/undertow/undertow-box-logs/1791728024-gpu-wave-base-late-afternoon-capture.log

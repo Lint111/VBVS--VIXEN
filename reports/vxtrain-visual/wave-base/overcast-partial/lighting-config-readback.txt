@@ -1,0 +1,4 @@
+frame_slot=0 offset=200 bytes=00 00 60 c0 value=-3.5 expected=-3.5
+frame_slot=1 offset=200 bytes=00 00 60 c0 value=-3.5 expected=-3.5
+frame_slot=2 offset=200 bytes=00 00 60 c0 value=-3.5 expected=-3.5
+frame_slot=3 offset=200 bytes=00 00 60 c0 value=-3.5 expected=-3.5

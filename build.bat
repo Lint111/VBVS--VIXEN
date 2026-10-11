@@ -110,7 +110,7 @@ if not exist "%VSWHERE%" (
     exit /b 1
 )
 set "VSINSTALL="
-for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
 if "%VSINSTALL%"=="" (
     echo [build] ERROR: no Visual Studio install with the C++ x64 toolchain was found.
     echo [build] Install the "Desktop development with C++" workload.
