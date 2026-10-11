@@ -116,6 +116,10 @@ public:
                              Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                 scenarios_.front().lighting.exposureCompensationEV);
+        Vixen::App::ApplySceneLook(
+            *lighting_,
+            graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
+            Vixen::App::Lookdev::SceneLookDeclaration());
         SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
             recipes, scenarios_.front().lighting));
         if (std::getenv("VIXEN_LOOKDEV_READBACK")) {

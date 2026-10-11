@@ -3,6 +3,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "ShellOctreeGpu.h"
 #include "Generated/LightingConfig.g.h"
+#include "graph/SceneLook.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -47,11 +48,48 @@ inline constexpr double kProbeLead = 2000.0;
 inline constexpr double kPatchCameraHeight = 1.7;
 inline constexpr double kPatchSunElevation = 14.0 * kDegrees;
 inline constexpr float kSunLightRadiance = 1.0f;     // 1.0 = solar irradiance at 1 AU (planetref D7)
-// The 1x1 exposure meter reads the top-left 16x16 tile only. Over the hard-coded sky that tile
-// meters 5.453984 EV; compensating by -meter plus the target puts a white diffuse surface in full
-// sun (radiance 1/pi) near display white.
-inline constexpr double kSkyCornerEv100 = 5.453984;
+// The 1x1 exposure meter reads the top-left 16x16 tile only, and a black pixel counts as luminance 1
+// (log2 = 0, ExposureMeter.comp:20-25), so a black-sky corner meters 0 EV. Compensating by -meter plus
+// the target puts a white diffuse surface in full sun (radiance 1/pi) near display white.
+inline constexpr double kSkyCornerEv100 = 0.0;
 inline constexpr double kExposureTargetEV = 1.585;    // exposure 3
+// Scene-declared look (R507.3): an airless world under a black sky with the T-1138 starfield, and a
+// cel profile whose dim band keeps a grazing sun from rendering black. Each number below names the
+// reference or principle it follows (details and the swatch arithmetic: sn-planetsky-report.md).
+inline SceneLook SceneLookDeclaration() {
+    SceneLook look;
+    // Sky: planetref section 3 ("airless", no sky colour; C7 "zero sky light"), Gundam 0083 hull-against-
+    // black framing, and bible T15 (starfield, qualitative). Solid black plus the stars.
+    look.environment.background = EnvironmentDeclaration::Background::Solid;
+    look.environment.color[0] = 0.0f;
+    look.environment.color[1] = 0.0f;
+    look.environment.color[2] = 0.0f;
+    look.environment.gradientSlope = 0.0f;
+    // Stars: planetref section 3.5 enables T-1138 "at its default brightness for the background"
+    // (peak radiance 0.135 at 0.45, starfield.md). At the pinned net exposure of 2^1.585 = 3 that is
+    // a 0.40 peak display value: stars read as points and never rival the 1/pi white-diffuse sun lit
+    // hull (planetref D7/D8 exposure model).
+    look.environment.starfield = true;
+    look.environment.starfieldSeed = 0x5a17f13du;
+    look.environment.starfieldBrightness = 0.45f;
+    // Thresholds keep the R432 defaults (3 bands, softness 0.08): the references fix band VALUES,
+    // not the N.L edges, and nothing in them argues for moving the edges.
+    look.cel.shadowThreshold = 0.16f;
+    look.cel.litThreshold = 0.86f;
+    look.cel.rampSoftness = 0.08f;
+    // Dim band: band 0 renders at 20% of the lit band, mid band at ~45% (geometric ramp floor^(1-t)).
+    //  * Linear luminance ratios on the reference swatches (bible S51/S55 hulls, Gundam response):
+    //    shadow step 1 / lit = 0.207, shadow step 2 / lit = 0.084, mid / lit = 0.462, hull S55 / S51
+    //    = 0.143 / 0.290 (geometric mean 0.204). 0.2 sits on the first shadow step and the hull pair.
+    //  * Gundam response: hard bands with a coloured, not black, shadow step.
+    //  * Bible night ambient ("raise the ambient shadow floor"): grazing light must not be a void.
+    //  * Ghibli cool shadows: the dim band carries the -18 degree shadow hue shift (already in the cel
+    //    path, unchanged).
+    //  A 14 degree sun gives flat ground N.L = 0.242, ramp 0.117, which is band 0: without the floor
+    //  C7 ground rendered black.
+    look.cel.dimBandFloor = 0.2f;
+    return look;
+}
 inline float ExposureFor(double meterEv100) { return static_cast<float>(kExposureTargetEV - meterEv100); }
 inline constexpr float kSunEmission = 1.5e4f;        // scene-unit radiance, planetref 3.1
 inline constexpr float kStationLampEmission = 6.0f;
@@ -383,10 +421,11 @@ inline std::optional<ResolvedState> ResolveState(const std::string& name) {
         return std::nullopt;
     }
 
-    // Corner-tile meter readings measured on Dozen: sky in most states, the unlit planet (0) in C2,
-    // and a steeper sky gradient across the 128 px C9 frame.
-    const double cornerEv100 = (name == "C2" || name == "C2-term") ? 0.0
-                             : (name == "C9" ? 5.486432 : kSkyCornerEv100);
+    // Corner-tile meter readings measured on Dozen over the black sky (R507.3): 0 EV in most states,
+    // 4.058953 where the planet's grazing dim band fills the corner (C2-term), and 0.029280 across the
+    // 128 px C9 frame, where a star lands in the tile.
+    const double cornerEv100 = name == "C2-term" ? 4.058953
+                             : (name == "C9" ? 0.029280 : kSkyCornerEv100);
     s.exposureCompensationEV = ExposureFor(cornerEv100);
     s.timeSeconds = timeSeconds;
     s.stationPhaseDegrees = stationPhase / kDegrees;

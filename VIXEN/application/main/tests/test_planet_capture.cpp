@@ -104,6 +104,9 @@ public:
         lighting_->SetLights(Planet::Lights(state_), Planet::kAmbient, Planet::CelSpillPurposeScales());
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                 state_.exposureCompensationEV);
+        Vixen::App::ApplySceneLook(
+            *lighting_, dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")),
+            Planet::SceneLookDeclaration());
         const char* shading = std::getenv("VIXEN_PLANET_SHADING");
         shadingLambert_ = shading && std::string(shading) == "lambert";
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_SHADING_MODE,
