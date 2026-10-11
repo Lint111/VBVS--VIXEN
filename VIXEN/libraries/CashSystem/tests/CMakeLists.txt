@@ -15,7 +15,7 @@ endif()
 # Visual Studio solution folder organization
 set_target_properties(test_registration_api PROPERTIES FOLDER "Tests/CashSystem Tests")
 
-gtest_discover_tests(test_registration_api)
+vixen_gtest_discover_tests(CashSystem test_registration_api)
 
 # Pipeline blend-state cache-key tests (AR#32)
 add_executable(test_pipeline_blend_key
@@ -28,7 +28,7 @@ else()
     target_link_libraries(test_pipeline_blend_key PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_pipeline_blend_key PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_pipeline_blend_key)
+vixen_gtest_discover_tests(CashSystem test_pipeline_blend_key)
 
 # Phase 3 TLAS Lifecycle tests (Sprint 5)
 add_executable(test_tlas_phase3
@@ -42,7 +42,7 @@ else()
 endif()
 
 set_target_properties(test_tlas_phase3 PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_tlas_phase3)
+vixen_gtest_discover_tests(CashSystem test_tlas_phase3)
 
 # Phase 5.1 Lifetime/Safety tests (Sprint 5)
 add_executable(test_lifetime_safety
@@ -56,7 +56,7 @@ else()
 endif()
 
 set_target_properties(test_lifetime_safety PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_lifetime_safety)
+vixen_gtest_discover_tests(CashSystem test_lifetime_safety)
 
 # Phase 5.3 Cacher Chain Integration tests (Sprint 5)
 add_executable(test_cacher_chain_integration
@@ -70,7 +70,7 @@ else()
 endif()
 
 set_target_properties(test_cacher_chain_integration PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_cacher_chain_integration)
+vixen_gtest_discover_tests(CashSystem test_cacher_chain_integration)
 
 # TypedCacher concurrency regression tests (P0 / AR#51 deadlock)
 add_executable(test_typed_cacher_concurrency
@@ -84,7 +84,7 @@ else()
 endif()
 
 set_target_properties(test_typed_cacher_concurrency PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_typed_cacher_concurrency)
+vixen_gtest_discover_tests(CashSystem test_typed_cacher_concurrency)
 
 # VoxelSceneCreateInfo cache-key tests (P0 / AR#52 custom-generator identity)
 add_executable(test_voxel_scene_key
@@ -98,7 +98,7 @@ else()
 endif()
 
 set_target_properties(test_voxel_scene_key PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_voxel_scene_key)
+vixen_gtest_discover_tests(CashSystem test_voxel_scene_key)
 
 # Shared bounds-checked cache codec tests (audit V-M5..M8, N6, N7)
 add_executable(test_cache_codec
@@ -111,7 +111,7 @@ else()
     target_link_libraries(test_cache_codec PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_cache_codec PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_cache_codec)
+vixen_gtest_discover_tests(CashSystem test_cache_codec)
 
 # SPIR-V loader hardening tests (audit V-M7)
 add_executable(test_spirv_loader
@@ -124,7 +124,7 @@ else()
     target_link_libraries(test_spirv_loader PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_spirv_loader PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_spirv_loader)
+vixen_gtest_discover_tests(CashSystem test_spirv_loader)
 
 # Pipeline-cache blob header/UUID validation tests (audit V-M8)
 add_executable(test_pipeline_cache_header
@@ -137,7 +137,7 @@ else()
     target_link_libraries(test_pipeline_cache_header PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_pipeline_cache_header PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_pipeline_cache_header)
+vixen_gtest_discover_tests(CashSystem test_pipeline_cache_header)
 
 # Basic CashSystem functionality tests
 # TODO: Update these tests to use new registration-by-type API
@@ -227,7 +227,7 @@ else()
     target_link_libraries(test_recipe_content_hash PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_recipe_content_hash PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_recipe_content_hash)
+vixen_gtest_discover_tests(CashSystem test_recipe_content_hash)
 
 # Recipe-content cacher tests (Recipe Pipeline Cache Inc1, M2)
 add_executable(test_recipe_content_cacher
@@ -240,7 +240,7 @@ else()
     target_link_libraries(test_recipe_content_cacher PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_recipe_content_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_recipe_content_cacher)
+vixen_gtest_discover_tests(CashSystem test_recipe_content_cacher)
 
 # Generation-keyed recipe bucket table cacher and dirty-range publication tests (Row A / 0eb.3)
 add_executable(test_recipe_bucket_data_cacher
@@ -253,4 +253,4 @@ else()
     target_link_libraries(test_recipe_bucket_data_cacher PRIVATE GTest::gtest_main Logger)
 endif()
 set_target_properties(test_recipe_bucket_data_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
-gtest_discover_tests(test_recipe_bucket_data_cacher)
+vixen_gtest_discover_tests(CashSystem test_recipe_bucket_data_cacher)

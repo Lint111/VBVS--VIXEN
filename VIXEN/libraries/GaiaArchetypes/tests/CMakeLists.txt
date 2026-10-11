@@ -16,4 +16,4 @@ target_link_libraries(test_gaia_archetypes
 set_target_properties(test_gaia_archetypes PROPERTIES FOLDER "Tests")
 
 include(GoogleTest)
-gtest_discover_tests(test_gaia_archetypes)
+vixen_gtest_discover_tests(GaiaArchetypes test_gaia_archetypes)

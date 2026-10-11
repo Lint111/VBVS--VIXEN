@@ -4,6 +4,8 @@
 # gtest_discover_tests() creates one CTest entry per case, so labels, fixtures and environment
 # belong in its PROPERTIES rather than on the executable target.
 
+include("${CMAKE_CURRENT_LIST_DIR}/VixenTestClass.cmake")
+
 function(vixen_configure_ctest_gpu_environment output_variable)
     set(_environment)
     set(_library_dirs)
@@ -73,7 +75,17 @@ function(vixen_gtest_discover_tests suite target)
         list(APPEND _gtest_arguments EXTRA_ARGS ${VGT_EXTRA_ARGS})
     endif()
 
-    set(_properties LABELS "${suite}")
+    # The class is a generator expression: the target's link-closure class is only known once the
+    # whole tree is configured (vixen_finalize_test_classes), and GoogleTest writes PROPERTIES
+    # through file(GENERATE).
+    if(VGT_GPU)
+        vixen_test_class_declare(${target} GPU FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
+    else()
+        vixen_test_class_declare(${target} FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
+    endif()
+    vixen_test_class_environment_modification(_class_modification "$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>")
+
+    set(_properties LABELS "${suite}\\\\;$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>\\\\;classified-by-link")
     set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
     if(_environment)
         string(JOIN ";" _environment_value ${_environment})
@@ -82,8 +94,9 @@ function(vixen_gtest_discover_tests suite target)
         string(REPLACE ";" "\\\\;" _environment_value "${_environment_value}")
         list(APPEND _properties ENVIRONMENT "${_environment_value}")
     endif()
-    if(VGT_TEST_ENVIRONMENT_MODIFICATION)
-        string(JOIN ";" _environment_modification ${VGT_TEST_ENVIRONMENT_MODIFICATION})
+    set(_modification_entries ${_class_modification} ${VGT_TEST_ENVIRONMENT_MODIFICATION})
+    if(_modification_entries)
+        string(JOIN ";" _environment_modification ${_modification_entries})
         string(REPLACE ";" "\\\\;" _environment_modification "${_environment_modification}")
         list(APPEND _properties ENVIRONMENT_MODIFICATION "${_environment_modification}")
     endif()

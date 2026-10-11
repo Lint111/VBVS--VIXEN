@@ -29,7 +29,7 @@ target_link_libraries(test_gaia_voxel_world PRIVATE
 
 set_target_properties(test_gaia_voxel_world PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
-gtest_discover_tests(test_gaia_voxel_world)
+vixen_gtest_discover_tests(GaiaVoxelWorld test_gaia_voxel_world)
 
 # ===========================================================================
 # VoxelInjector Tests
@@ -52,7 +52,7 @@ target_link_libraries(test_voxel_injector PRIVATE
 
 set_target_properties(test_voxel_injector PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
-gtest_discover_tests(test_voxel_injector)
+vixen_gtest_discover_tests(GaiaVoxelWorld test_voxel_injector)
 
 # NOTE: EntityBrickView tests moved to SVO/tests/ (Phase H.3)
 # EntityBrickView is a spatial view pattern - belongs with spatial indexing (SVO)
@@ -81,7 +81,7 @@ target_link_libraries(test_gaia_voxel_world_coverage PRIVATE
 
 set_target_properties(test_gaia_voxel_world_coverage PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
-gtest_discover_tests(test_gaia_voxel_world_coverage)
+vixen_gtest_discover_tests(GaiaVoxelWorld test_gaia_voxel_world_coverage)
 
 add_executable(benchmark_voxel_batch benchmark_voxel_batch.cpp)
 target_link_libraries(benchmark_voxel_batch PRIVATE GaiaVoxelWorld VoxelData)
@@ -113,4 +113,4 @@ target_link_libraries(test_voxeldata_integration PRIVATE
 
 set_target_properties(test_voxeldata_integration PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
-gtest_discover_tests(test_voxeldata_integration)
+vixen_gtest_discover_tests(GaiaVoxelWorld test_voxeldata_integration)
