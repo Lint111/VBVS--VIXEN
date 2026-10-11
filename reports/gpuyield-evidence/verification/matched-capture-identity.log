@@ -1,0 +1,16 @@
+[box:flow] gpuyield-matched-capture-identity cpu=43% target=90% depth=1 free=0 baseline=1 granted=1 mode=static
+[box:turn] gpuyield yielding to its queued gpuyield-offscreen-baseline-candidate-recovery (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] gpuyield-matched-capture-identity cpu=56% target=90% depth=0 free=1 baseline=1 granted=1 mode=static
+[box:flow] gpuyield-matched-capture-identity cpu=57% target=90% admit
+[box:flow] gpuyield-matched-capture-identity memory=admit avail=67665MB projected=16MB estimate=step samples=1 reserved=7898MB total=80425MB reserve=4096MB disk=545757MB
+[box:flow] gpuyield-matched-capture-identity granted tokens=0 mask=0,1
+[box:flow] gpuyield-matched-capture-identity running on cores 0,1 (light)
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+UT_JOB_DONE light gpuyield-matched-capture-identity exit=0 state=OK

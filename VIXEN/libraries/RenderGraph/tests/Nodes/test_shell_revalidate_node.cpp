@@ -75,7 +75,7 @@ constexpr uint32_t SHELL_BIT    = 2u;
 // (no debug-utils messenger; validation layer enabled when the SDK is present, but not
 // required to run — same as the sibling render-gate tests).
 // ---------------------------------------------------------------------------
-class ShellRevalidateNodeTest : public ::testing::Test {
+class ShellRevalidateNodeTest : public ::testing::Test, public ::testing::WithParamInterface<uint32_t> {
 protected:
     VkInstance       instance_       = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -245,7 +245,7 @@ protected:
 // ---------------------------------------------------------------------------
 // (a) GPU-vs-CPU classification parity.
 // ---------------------------------------------------------------------------
-TEST_F(ShellRevalidateNodeTest, GpuDispatchMatchesCpuDeriveShellClassification) {
+TEST_P(ShellRevalidateNodeTest, GpuDispatchMatchesCanonicalFlagsAndCompactedBytes) {
     std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
 
     // ---- Bake a sphere (same fixture shape as test_shell_derive.cpp's ShellFixture) ----
@@ -262,7 +262,7 @@ TEST_F(ShellRevalidateNodeTest, GpuDispatchMatchesCpuDeriveShellClassification) 
     ASSERT_GT(cat.brickCounts[0], 0u);
     ASSERT_FALSE(cat.channelPool.empty());
 
-    const uint32_t shellDilation = 1u;
+    const uint32_t shellDilation = GetParam();
     ShellDeriveResult oracle = DeriveShell(cat, 0, ShellDeriveParams{shellDilation});
     ASSERT_GT(oracle.surfaceBrickCount, 0u) << "a sphere must have surface bricks";
 
@@ -384,6 +384,28 @@ TEST_F(ShellRevalidateNodeTest, GpuDispatchMatchesCpuDeriveShellClassification) 
     EXPECT_EQ(surfaceMismatches, 0u);
     EXPECT_EQ(shellMismatches, 0u);
 
+    // FRONTIER is observable in this node's flags contract, but not consumed by
+    // the production cache. Define it as the canonical final layer's new bricks.
+    const uint32_t effectiveLayers = std::max(1u, shellDilation);
+    const auto previousShell = effectiveLayers == 1 ? oracle.surface
+        : DeriveShell(cat, 0, ShellDeriveParams{effectiveLayers - 1}).shell;
+    std::vector<uint32_t> expectedFlags(brickCount);
+    std::vector<uint32_t> gpuLookup;
+    std::vector<uint8_t> gpuData;
+    for (uint32_t bi = 0; bi < brickCount; ++bi) {
+        expectedFlags[bi] = (oracle.surface[bi] ? 1u : 0u) | (oracle.shell[bi] ? 2u : 0u)
+            | (oracle.shell[bi] && !previousShell[bi] ? 4u : 0u);
+        if ((shellFlags[bi] & SHELL_BIT) == 0) continue;
+        gpuLookup.push_back(bi);
+        const size_t offset = (cfg0.poolBrickBase + bi * cfg0.brickStrideFloats) * sizeof(float);
+        const auto* begin = reinterpret_cast<const uint8_t*>(cat.channelPool.data()) + offset;
+        gpuData.insert(gpuData.end(), begin, begin + cfg0.brickStrideFloats * sizeof(float));
+    }
+    EXPECT_EQ(shellFlags, expectedFlags); // all 32 bits, no masked parity claim
+    EXPECT_EQ(gpuLookup, oracle.shellLookup);
+    ASSERT_EQ(gpuData.size(), oracle.shellData.size());
+    EXPECT_EQ(std::memcmp(gpuData.data(), oracle.shellData.data(), gpuData.size()), 0);
+
     // Cleanup (device teardown happens in TearDown; free what we own here).
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);
@@ -394,6 +416,8 @@ TEST_F(ShellRevalidateNodeTest, GpuDispatchMatchesCpuDeriveShellClassification) 
     vkDestroyBuffer(logicalDevice_, brickLookupBuf, nullptr); vkFreeMemory(logicalDevice_, brickLookupMem, nullptr);
     vkDestroyBuffer(logicalDevice_, configBuf, nullptr); vkFreeMemory(logicalDevice_, configMem, nullptr);
 }
+
+INSTANTIATE_TEST_SUITE_P(CanonicalDilation, ShellRevalidateNodeTest, ::testing::Values(0u, 1u, 2u, 3u));
 
 // ---------------------------------------------------------------------------
 // (b) Zero-barrier double-buffer parallelism via a REAL PassGroupNode.

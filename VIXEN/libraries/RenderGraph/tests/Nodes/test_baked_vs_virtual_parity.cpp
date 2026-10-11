@@ -95,6 +95,9 @@
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
+#include "Core/TimelineCapacityTracker.h"
+#include "SpirvReflector.h"
+#include "ShaderCompiler.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
 #include "Core/NodeContext.h"
 #include "VulkanDevice.h"
@@ -956,7 +959,9 @@ protected:
                       std::vector<uint8_t>& rgba, double& ms,
                       std::vector<HitRecordCpu>* outHitRecords = nullptr,
                       std::vector<SdfTraceCpu>* outSdfTraces = nullptr,
-                      double* outGpuMs = nullptr) {
+                      double* outGpuMs = nullptr,
+                      uint32_t tileGroups = 0,
+                      std::vector<double>* outSubmissionGpuMs = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         VkBuffer traceBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE;
@@ -1076,6 +1081,7 @@ protected:
         cpci.stage.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         cpci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT; cpci.stage.module=sm; cpci.stage.pName="main";
         cpci.layout=pl;
+        if (tileGroups != 0) cpci.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
         VkPipeline pipeline = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_,VK_NULL_HANDLE,1,&cpci,nullptr,&pipeline), VK_SUCCESS);
 
@@ -1128,14 +1134,19 @@ protected:
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
+        const uint32_t groupsX = (w + 7) / 8, groupsY = (h + 7) / 8;
+        const uint32_t edgeX = tileGroups == 0 ? groupsX : tileGroups;
+        const uint32_t edgeY = tileGroups == 0 ? groupsY : tileGroups;
+        const uint32_t submissionCount = ((groupsX + edgeX - 1) / edgeX) *
+                                         ((groupsY + edgeY - 1) / edgeY);
         VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
-        if (outGpuMs != nullptr) {
+        if (outGpuMs != nullptr || outSubmissionGpuMs != nullptr) {
             ASSERT_GT(timestampValidBits_, 0u)
                 << "selected Vulkan compute queue does not expose timestamp queries";
             VkQueryPoolCreateInfo queryInfo{};
             queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
             queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-            queryInfo.queryCount = 2;
+            queryInfo.queryCount = submissionCount * 2;
             ASSERT_EQ(vkCreateQueryPool(logicalDevice_, &queryInfo, nullptr,
                                         &timestampQueryPool), VK_SUCCESS);
         }
@@ -1158,18 +1169,42 @@ protected:
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,0,nullptr,1,&b);
         };
         toGeneral(colorImg); toGeneral(idImg); toGeneral(historyImg);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
-        vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
-        if (timestampQueryPool != VK_NULL_HANDLE) {
-            vkCmdResetQueryPool(cmd, timestampQueryPool, 0, 2);
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                timestampQueryPool, 0);
-        }
-        vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
+        const auto t0 = std::chrono::steady_clock::now();
         if (timestampQueryPool != VK_NULL_HANDLE)
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                timestampQueryPool, 1);
+            vkCmdResetQueryPool(cmd, timestampQueryPool, 0, submissionCount * 2);
+        uint32_t submissionIndex = 0;
+        for (uint32_t baseY = 0; baseY < groupsY; baseY += edgeY) {
+            for (uint32_t baseX = 0; baseX < groupsX; baseX += edgeX) {
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
+                vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+                if (timestampQueryPool != VK_NULL_HANDLE)
+                    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                        timestampQueryPool, submissionIndex * 2);
+                if (tileGroups == 0) {
+                    vkCmdDispatch(cmd, groupsX, groupsY, 1);
+                } else {
+                    vkCmdDispatchBase(cmd, baseX, baseY, 0,
+                                      std::min(edgeX, groupsX - baseX),
+                                      std::min(edgeY, groupsY - baseY), 1);
+                }
+                if (timestampQueryPool != VK_NULL_HANDLE)
+                    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                        timestampQueryPool, submissionIndex * 2 + 1);
+                ++submissionIndex;
+                if (submissionIndex != submissionCount) {
+                    ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+                    VkSubmitInfo tileSubmit{};
+                    tileSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                    tileSubmit.commandBufferCount = 1;
+                    tileSubmit.pCommandBuffers = &cmd;
+                    ASSERT_EQ(vkQueueSubmit(queue_, 1, &tileSubmit, VK_NULL_HANDLE), VK_SUCCESS);
+                    ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+                    ASSERT_EQ(vkResetCommandBuffer(cmd, 0), VK_SUCCESS);
+                    ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+                }
+            }
+        }
 
         // KI-032 fix: barrier the HitRecord SSBO (shader write -> host read) before the host
         // reads it below -- same pattern test_recipe_pool_render.cpp's identical fix uses.
@@ -1209,21 +1244,28 @@ protected:
         ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
 
         VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd;
-        const auto t0 = std::chrono::steady_clock::now();
         ASSERT_EQ(vkQueueSubmit(queue_,1,&si,VK_NULL_HANDLE), VK_SUCCESS);
         ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
         const auto t1 = std::chrono::steady_clock::now();
         ms = double(std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count());
         if (timestampQueryPool != VK_NULL_HANDLE) {
-            uint64_t timestamps[2]{};
-            ASSERT_EQ(vkGetQueryPoolResults(logicalDevice_, timestampQueryPool, 0, 2,
-                        sizeof(timestamps), timestamps, sizeof(uint64_t),
+            std::vector<uint64_t> timestamps(submissionCount * 2);
+            ASSERT_EQ(vkGetQueryPoolResults(logicalDevice_, timestampQueryPool, 0,
+                        submissionCount * 2, timestamps.size() * sizeof(uint64_t),
+                        timestamps.data(), sizeof(uint64_t),
                         VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), VK_SUCCESS);
             const uint64_t validMask = timestampValidBits_ >= 64u
                 ? std::numeric_limits<uint64_t>::max()
                 : ((uint64_t(1) << timestampValidBits_) - 1u);
-            const uint64_t elapsedTicks = (timestamps[1] - timestamps[0]) & validMask;
-            *outGpuMs = static_cast<double>(elapsedTicks) * timestampPeriodNs_ / 1.0e6;
+            double totalGpuMs = 0;
+            if (outSubmissionGpuMs) outSubmissionGpuMs->clear();
+            for (uint32_t i = 0; i < submissionCount; ++i) {
+                const uint64_t ticks = (timestamps[i * 2 + 1] - timestamps[i * 2]) & validMask;
+                const double gpuMs = static_cast<double>(ticks) * timestampPeriodNs_ / 1.0e6;
+                totalGpuMs += gpuMs;
+                if (outSubmissionGpuMs) outSubmissionGpuMs->push_back(gpuMs);
+            }
+            if (outGpuMs) *outGpuMs = totalGpuMs;
         }
 
         void* mapped=nullptr; ASSERT_EQ(vkMapMemory(logicalDevice_,rbMem,0,rbSz,0,&mapped), VK_SUCCESS);
@@ -1397,7 +1439,9 @@ protected:
                        const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords,
                        bool useOccupancyGrid = true,
                        std::vector<SdfTraceCpu>* outSdfTraces = nullptr,
-                       double* outGpuMs = nullptr) {
+                       double* outGpuMs = nullptr,
+                      uint32_t tileGroups = 0,
+                      std::vector<double>* outSubmissionGpuMs = nullptr) {
         using C = BodyOctreeSceneNodeConfig;
 
         Vixen::SVO::RecipeRegistry registry;
@@ -1487,7 +1531,8 @@ protected:
             buf(C::OCTREE_SDF_BUFFER_Slot::index),
             buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
             buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index), buf(C::OCTREE_OCCUPANCYGRID_BUFFER_Slot::index),
-            pc, kW, kH, rgba, ms, &hitRecords, outSdfTraces, outGpuMs));
+            pc, kW, kH, rgba, ms, &hitRecords, outSdfTraces, outGpuMs,
+            tileGroups, outSubmissionGpuMs));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -2095,6 +2140,37 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
     EXPECT_EQ(hitRecordFieldDifferences, 0u)
         << "guarded and unguarded observable hit fields must agree; this sample has no grid";
 
+    // R477 feasibility gate: the test renderer uses native dispatch-base submissions.
+    // This does not certify the production graph's submission channel or other shaders.
+    std::vector<uint8_t> tiledRgba;
+    std::vector<HitRecordCpu> tiledHits;
+    std::vector<SdfTraceCpu> tiledTraces;
+    std::vector<double> tileGpuMs;
+    double tiledGpuMs = 0;
+    ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, tiledRgba, kW, kH, pc, tiledHits,
+        true, &tiledTraces, &tiledGpuMs, 8, &tileGpuMs));
+    EXPECT_EQ(tiledRgba, guardedRgba);
+    ASSERT_EQ(tiledHits.size(), guardedHits.size());
+    EXPECT_EQ(std::memcmp(tiledHits.data(), guardedHits.data(),
+                         tiledHits.size() * sizeof(HitRecordCpu)), 0);
+    ASSERT_EQ(tiledTraces.size(), traces.size());
+    EXPECT_EQ(std::memcmp(tiledTraces.data(), traces.data(),
+                         tiledTraces.size() * sizeof(SdfTraceCpu)), 0);
+    ASSERT_EQ(tileGpuMs.size(), 64u);
+    auto sortedTileMs = tileGpuMs;
+    std::sort(sortedTileMs.begin(), sortedTileMs.end());
+    const double budgetMs = TimelineCapacityTracker::Config{}.gpuTimeBudgetNs / 1.0e6;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physicalDevice_, &properties);
+    // Device performance is certified only on the measured Dozen device class.
+    if (std::string(properties.deviceName).find("Direct3D12") != std::string::npos)
+        EXPECT_LE(sortedTileMs.back(), budgetMs);
+    std::printf("[GPUYIELD_TILES] device=%s extent=%ux%u groups=8 submissions=%zu "
+                "budget_ms=%.6f total_gpu_ms=%.6f p50_ms=%.6f p95_ms=%.6f "
+                "p99_ms=%.6f max_ms=%.6f identity=rgba,hit-record,sdf-trace\n",
+                properties.deviceName, kW, kH, tileGpuMs.size(), budgetMs, tiledGpuMs,
+                sortedTileMs[31], sortedTileMs[60], sortedTileMs[63], sortedTileMs.back());
+
     if (benchmark) {
         PrintRimleakCost("editor-frame5", "run2-cone", traces, editorGpuMs);
 
@@ -2122,6 +2198,22 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
             heavyPc, heavyHits, true, &heavyTraces, &heavyGpuMs));
         PrintRimleakCost("heavy-twist-sphere", "run2-cone", heavyTraces, heavyGpuMs);
     }
+}
+
+TEST(DispatchBaseEligibility, PreservesGlobalIdsAndRejectsWorkgroupCountDependence) {
+    ShaderManagement::ShaderCompiler compiler;
+    for (const auto builtin : {"gl_GlobalInvocationID", "gl_NumWorkGroups"}) {
+        const std::string source = std::string(R"(
+            #version 450
+            layout(local_size_x = 8) in;
+            layout(set=0, binding=0, std430) buffer Output { uvec3 values[]; };
+            void main() { values[gl_GlobalInvocationID.x] = )") + builtin + "; }";
+        const auto result = compiler.Compile(ShaderManagement::ShaderStage::Compute, source);
+        ASSERT_TRUE(result.success) << result.GetFullLog();
+        EXPECT_EQ(ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(result.spirv),
+                  std::string(builtin) == "gl_GlobalInvocationID");
+    }
+    EXPECT_FALSE(ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled({}));
 }
 
 TEST(ParityCorpusTest, ReadParamSnapshotsFollowProgramCoordinateSpaces) {

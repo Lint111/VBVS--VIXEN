@@ -1,0 +1,15 @@
+{
+  "runtime_tip": "23037fa9",
+  "metric_tip": "1ece70bd",
+  "native_checkout": "1ece70bd1b81885d2365e62b619106fa87033d0a",
+  "binaries": {
+    "linux": {
+      "sha256": "39e1fcd023a2620e90d5ab212ae102015fe8f0a78a9a28b21823e771aba5e8cd",
+      "path": "build/gpuyield/binaries/vixen_editor"
+    },
+    "native": {
+      "sha256": "5e85ecab99b2511e8cb4bc3f802852a4c9d7972c4dc92e326a3789bbe0e85454",
+      "path": "/mnt/c/vixen-native/gpuyield/build/gpuyield-native/binaries/vixen_editor.exe"
+    }
+  }
+}

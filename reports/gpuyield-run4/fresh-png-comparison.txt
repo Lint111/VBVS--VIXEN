@@ -1,0 +1,9 @@
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_115.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_25.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none

@@ -1,0 +1,14 @@
+[box:flow] gpuyield-windowed-byte-identity cpu=27% target=90% depth=2 free=1 baseline=1 granted=1 mode=dynamic
+[box:flow] gpuyield-windowed-byte-identity cpu=33% target=90% admit
+[box:flow] gpuyield-windowed-byte-identity memory=admit avail=68521MB projected=60MB estimate=class samples=1307 reserved=14890MB total=80425MB reserve=4096MB disk=551288MB
+[box:flow] gpuyield-windowed-byte-identity passed token-blocked queue head pid=9629 (1/3)
+[box:flow] gpuyield-windowed-byte-identity granted tokens=13 mask=26,27
+[box:flow] gpuyield-windowed-byte-identity running on cores 26,27 (light)
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+UT_JOB_DONE light gpuyield-windowed-byte-identity exit=0 state=OK

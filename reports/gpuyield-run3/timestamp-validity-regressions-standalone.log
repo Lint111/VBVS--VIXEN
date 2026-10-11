@@ -1,0 +1,12 @@
+[box:flow] timestamp-validity-regressions cpu=36% target=90% depth=7 free=1 baseline=2 granted=1 mode=static
+[box:flow] timestamp-validity-regressions cpu=40% target=90% admit
+[box:flow] timestamp-validity-regressions memory=admit avail=64283MB projected=3678MB estimate=class-p91 samples=1337 reserved=23830MB total=80425MB reserve=4096MB disk=519909MB
+[box:flow] timestamp-validity-regressions passed token-blocked queue head pid=3831995 (2/3)
+[box:flow] timestamp-validity-regressions granted tokens=14 mask=28,29
+[box:flow] timestamp-validity-regressions running on cores 28,29 (test)
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK
+UT_JOB_DONE test timestamp-validity-regressions exit=0 state=OK

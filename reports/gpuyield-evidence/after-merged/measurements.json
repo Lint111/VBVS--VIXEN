@@ -1,0 +1,347 @@
+{
+  "editor-concurrent/vixen-perf.csv": {
+    "whole_frame_gpu_span_ms": {
+      "samples": 492,
+      "mean": 112.41645731707317,
+      "p50": 111.066,
+      "p95": 123.238,
+      "p99": 140.446,
+      "max": 160.544
+    },
+    "esvo_traverse_shade_ms": {
+      "samples": 492,
+      "mean": 105.40309512195122,
+      "p50": 103.956,
+      "p95": 116.072,
+      "p99": 132.2,
+      "max": 152.334
+    },
+    "direct_lighting_ms": {
+      "samples": 492,
+      "mean": 0.0005863414634146341,
+      "p50": 0.0006,
+      "p95": 0.00064,
+      "p99": 0.00068,
+      "max": 0.00068
+    },
+    "spatial_reuse_ms": {
+      "samples": 492,
+      "mean": 0.15929463414634146,
+      "p50": 0.15808,
+      "p95": 0.17128,
+      "p99": 0.1762,
+      "max": 0.17828
+    },
+    "probe_gather_ms": {
+      "samples": 492,
+      "mean": 0.0005865040650406503,
+      "p50": 0.0006,
+      "p95": 0.00064,
+      "p99": 0.00068,
+      "max": 0.00072
+    },
+    "shadow_visibility_wave_ms": {
+      "samples": 492,
+      "mean": 5.6997709756097565,
+      "p50": 5.69028,
+      "p95": 5.96028,
+      "p99": 6.08592,
+      "max": 6.32904
+    },
+    "shadow_ray_trace_ms": {
+      "samples": 492,
+      "mean": 0.0005858536585365853,
+      "p50": 0.0006,
+      "p95": 0.00064,
+      "p99": 0.00068,
+      "max": 0.00072
+    },
+    "probe_apply_ms": {
+      "samples": 492,
+      "mean": 0.0005851219512195122,
+      "p50": 0.0006,
+      "p95": 0.00064,
+      "p99": 0.00068,
+      "max": 0.00072
+    },
+    "render_target_blit_ms": {
+      "samples": 492,
+      "mean": 0.01170089430894309,
+      "p50": 0.01032,
+      "p95": 0.01144,
+      "p99": 0.0386,
+      "max": 0.45392
+    },
+    "ui_composite_render_ms": {
+      "samples": 492,
+      "mean": 0.07075796747967479,
+      "p50": 0.05652,
+      "p95": 0.0634,
+      "p99": 0.49296,
+      "max": 0.61464
+    }
+  },
+  "hud-profile/vixen-perf.csv": {
+    "whole_frame_gpu_span_ms": {
+      "samples": 77,
+      "mean": 235.43175324675326,
+      "p50": 232.827,
+      "p95": 260.617,
+      "p99": 272.681,
+      "max": 272.681
+    },
+    "esvo_traverse_shade_ms": {
+      "samples": 77,
+      "mean": 231.27306493506492,
+      "p50": 228.925,
+      "p95": 256.469,
+      "p99": 268.98,
+      "max": 268.98
+    },
+    "direct_lighting_ms": {
+      "samples": 77,
+      "mean": 0.0005516883116883116,
+      "p50": 0.00056,
+      "p95": 0.0006,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "spatial_reuse_ms": {
+      "samples": 77,
+      "mean": 0.15019012987012986,
+      "p50": 0.14904,
+      "p95": 0.15972,
+      "p99": 0.1706,
+      "max": 0.1706
+    },
+    "probe_gather_ms": {
+      "samples": 77,
+      "mean": 0.0005501298701298701,
+      "p50": 0.00056,
+      "p95": 0.0006,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "shadow_visibility_wave_ms": {
+      "samples": 77,
+      "mean": 2.8658488311688313,
+      "p50": 2.8694,
+      "p95": 2.95012,
+      "p99": 3.17428,
+      "max": 3.17428
+    },
+    "shadow_ray_trace_ms": {
+      "samples": 77,
+      "mean": 0.0005527272727272727,
+      "p50": 0.00056,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "probe_apply_ms": {
+      "samples": 77,
+      "mean": 0.0005532467532467532,
+      "p50": 0.00056,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "render_target_blit_ms": {
+      "samples": 77,
+      "mean": 0.010005714285714286,
+      "p50": 0.01,
+      "p95": 0.0108,
+      "p99": 0.01164,
+      "max": 0.01164
+    },
+    "ui_composite_render_ms": {
+      "samples": 77,
+      "mean": 0.028997402597402598,
+      "p50": 0.02924,
+      "p95": 0.03228,
+      "p99": 0.0366,
+      "max": 0.0366
+    }
+  },
+  "editor-concurrent/vixen.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 500,
+      "mean": 97.640731292,
+      "p50": 96.22692,
+      "p95": 106.126,
+      "p99": 120.61904,
+      "max": 151.113
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 500,
+      "mean": 1.96985808,
+      "p50": 1.8726,
+      "p95": 2.35048,
+      "p99": 3.10012,
+      "max": 5.81224
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 62.22099999999773
+  },
+  "fixtures/editor/appflow-channel-transcript.editor.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 45,
+      "mean": 84.3152942,
+      "p50": 84.23,
+      "p95": 86.51268,
+      "p99": 88.85576,
+      "max": 88.85576
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 45,
+      "mean": 1.7370977777777779,
+      "p50": 1.71976,
+      "p95": 2.19852,
+      "p99": 2.20424,
+      "max": 2.20424
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0
+  },
+  "fixtures/editor/run_editor_script.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 140,
+      "mean": 98.52563199285714,
+      "p50": 89.63848,
+      "p95": 153.42672,
+      "p99": 164.94992,
+      "max": 169.87976
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 140,
+      "mean": 2.1708945714285712,
+      "p50": 1.99628,
+      "p95": 3.41172,
+      "p99": 3.95604,
+      "max": 3.96516
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 23.33400000000256
+  },
+  "fixtures/hud/run_hud_script.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 85,
+      "mean": 198.51204607058824,
+      "p50": 193.49952,
+      "p95": 216.212801,
+      "p99": 291.184999,
+      "max": 291.184999
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 85,
+      "mean": 3.8846752941176472,
+      "p50": 3.69396,
+      "p95": 5.01056,
+      "p99": 7.31432,
+      "max": 7.31432
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 19.31500000000233
+  },
+  "hud-profile/vixen.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 85,
+      "mean": 222.8209007882353,
+      "p50": 219.17692,
+      "p95": 252.71848,
+      "p99": 289.411881,
+      "max": 289.411881
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 85,
+      "mean": 4.391566117647058,
+      "p50": 4.09172,
+      "p95": 7.2178,
+      "p99": 7.53104,
+      "max": 7.53104
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 22.764999999999418
+  },
+  "windowed/editor.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 120,
+      "mean": 115.94106265,
+      "p50": 104.41976,
+      "p95": 163.686601,
+      "p99": 166.034679,
+      "max": 166.600639
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 120,
+      "mean": 2.423785,
+      "p50": 2.14224,
+      "p95": 3.67268,
+      "p99": 3.98924,
+      "max": 4.31484
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 29.28399999999965
+  },
+  "windowed/hud.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 85,
+      "mean": 235.1095293882353,
+      "p50": 226.436999,
+      "p95": 294.069561,
+      "p99": 297.949641,
+      "max": 297.949641
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 85,
+      "mean": 5.007934588235294,
+      "p50": 4.45428,
+      "p95": 7.46268,
+      "p99": 7.599,
+      "max": 7.599
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0,
+    "render_loop_wall_seconds": 25.66399999999703
+  }
+}

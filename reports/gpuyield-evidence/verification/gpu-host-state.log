@@ -1,0 +1,63 @@
+[box:flow] gpuyield-readonly-gpu-host-state cpu=27% target=90% depth=4 free=2 baseline=1 granted=1 mode=static
+[box:flow] gpuyield-readonly-gpu-host-state cpu=34% target=90% admit
+[box:flow] gpuyield-readonly-gpu-host-state memory=admit avail=73500MB projected=57MB estimate=class samples=1299 reserved=2002MB total=80425MB reserve=4096MB disk=551404MB
+[box:flow] gpuyield-readonly-gpu-host-state passed token-blocked queue head pid=1486813 (3/3)
+[box:flow] gpuyield-readonly-gpu-host-state granted tokens=12 mask=24,25
+[box:flow] gpuyield-readonly-gpu-host-state running on cores 24,25 (light)
+{
+    "utc":  "2026-10-10T13:48:51.4260507Z",
+    "processes":  [
+
+                  ],
+    "counters":  [
+                     {
+                         "InstanceName":  "pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  111.75710675144489
+                     },
+                     {
+                         "InstanceName":  "pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  108.20711604989555
+                     },
+                     {
+                         "InstanceName":  "pid_15688_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.054478449284744435
+                     },
+                     {
+                         "InstanceName":  "pid_15688_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.036017878791570673
+                     },
+                     {
+                         "InstanceName":  "pid_2704_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.015143936412547441
+                     },
+                     {
+                         "InstanceName":  "pid_2704_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.012908420989730699
+                     },
+                     {
+                         "InstanceName":  "pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.0019761595712111087
+                     },
+                     {
+                         "InstanceName":  "pid_2144_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.0019761595712111087
+                     },
+                     {
+                         "InstanceName":  "pid_2144_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.001895168924334994
+                     },
+                     {
+                         "InstanceName":  "pid_17724_luid_0x00000000_0x000101d8_phys_0_eng_0_engtype_3d",
+                         "CookedValue":  0.0014600536100744087
+                     },
+                     {
+                         "InstanceName":  "pid_16524_luid_0x00000000_0x00011f9f_phys_0_eng_32_engtype_3d",
+                         "CookedValue":  0
+                     },
+                     {
+                         "InstanceName":  "pid_16524_luid_0x00000000_0x00011f9f_phys_0_eng_6_engtype_3d",
+                         "CookedValue":  0
+                     }
+                 ]
+}
+UT_JOB_DONE light gpuyield-readonly-gpu-host-state exit=0 state=OK

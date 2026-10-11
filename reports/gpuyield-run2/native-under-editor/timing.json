@@ -1,0 +1,99 @@
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 32000,
+    "mean_ms": 1.29515369875,
+    "p99_ms": 1.77104,
+    "max_ms": 2.2496
+  },
+  "dispatch_intervals": {
+    "samples": 32000,
+    "mean_ms": 1.29421658125,
+    "p99_ms": 1.76332,
+    "max_ms": 2.24196
+  },
+  "frame_maxima": {
+    "samples": 500,
+    "mean_ms": 1.8682518399999999,
+    "p99_ms": 2.18712,
+    "max_ms": 2.2496
+  },
+  "host_calls": {
+    "acquire": {
+      "samples": 500,
+      "mean_ms": 0.004509482,
+      "p99_ms": 0.00838,
+      "max_ms": 0.047693
+    },
+    "chunk-retire": {
+      "samples": 32000,
+      "mean_ms": 1.60792751190625,
+      "p99_ms": 2.312471,
+      "max_ms": 3.168866
+    },
+    "submit": {
+      "samples": 32000,
+      "mean_ms": 0.03253469784375,
+      "p99_ms": 0.079575,
+      "max_ms": 104.527659
+    },
+    "present-and-idle": {
+      "samples": 500,
+      "mean_ms": 5.260559668,
+      "p99_ms": 5.888221,
+      "max_ms": 6.171306
+    },
+    "frame-retire": {
+      "samples": 500,
+      "mean_ms": 0.132701008,
+      "p99_ms": 0.282104,
+      "max_ms": 0.443099
+    }
+  },
+  "invalid_timestamp_pairs": 0,
+  "expected_frames": 500,
+  "observed_frames": 500,
+  "budget_ms": 16.666666,
+  "budget_pass": true,
+  "peer_invalid_rows": 0,
+  "peer_sample_count": 886,
+  "peer_valid": true,
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 886,
+      "mean_ms": 0.00133372460496614,
+      "p99_ms": 0.0076,
+      "max_ms": 0.008
+    },
+    "submit_call_ms": {
+      "samples": 886,
+      "mean_ms": 0.09454198645598194,
+      "p99_ms": 0.2612,
+      "max_ms": 0.4563
+    },
+    "fence_wait_ms": {
+      "samples": 886,
+      "mean_ms": 0.6351926636568849,
+      "p99_ms": 3.565,
+      "max_ms": 4.9204
+    },
+    "service_ms": {
+      "samples": 886,
+      "mean_ms": 0.7297346501128668,
+      "p99_ms": 3.6615,
+      "max_ms": 5.0208
+    },
+    "cadence_ms": {
+      "samples": 886,
+      "mean_ms": 16.935218397291194,
+      "p99_ms": 32.2698,
+      "max_ms": 33.6289
+    },
+    "query_read_ms": {
+      "samples": 886,
+      "mean_ms": 0.012196049661399548,
+      "p99_ms": 0.0342,
+      "max_ms": 0.1435
+    }
+  }
+}

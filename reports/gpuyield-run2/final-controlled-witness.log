@@ -1,0 +1,556 @@
+[box:flow] run2-final-controlled-witness cpu=38% target=90% depth=4 free=1 baseline=15 granted=15 mode=static
+[box:flow] run2-final-controlled-witness queued — need=15 tokens projected=57MB estimate=step samples=1
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74926MB projected=57MB estimate=step samples=1 reserved=313MB total=80425MB reserve=4096MB disk=534981MB
+[box:flow] run2-final-controlled-witness cpu=20% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74883MB projected=57MB estimate=step samples=1 reserved=313MB total=80425MB reserve=4096MB disk=534981MB
+[box:flow] run2-final-controlled-witness cpu=10% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74649MB projected=57MB estimate=step samples=1 reserved=313MB total=80425MB reserve=4096MB disk=534980MB
+[box:flow] run2-final-controlled-witness cpu=30% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75283MB projected=57MB estimate=step samples=1 reserved=15544MB total=80425MB reserve=4096MB disk=536885MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74962MB projected=57MB estimate=step samples=1 reserved=15271MB total=80425MB reserve=4096MB disk=536885MB
+[box:flow] run2-final-controlled-witness cpu=40% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74742MB projected=57MB estimate=step samples=1 reserved=15271MB total=80425MB reserve=4096MB disk=536885MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74620MB projected=57MB estimate=step samples=1 reserved=15271MB total=80425MB reserve=4096MB disk=536885MB
+[box:flow] run2-final-controlled-witness cpu=36% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74602MB projected=57MB estimate=step samples=1 reserved=15271MB total=80425MB reserve=4096MB disk=536884MB
+[box:flow] run2-final-controlled-witness cpu=35% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74571MB projected=57MB estimate=step samples=1 reserved=15271MB total=80425MB reserve=4096MB disk=536884MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74600MB projected=57MB estimate=step samples=1 reserved=14976MB total=80425MB reserve=4096MB disk=536884MB
+[box:flow] run2-final-controlled-witness cpu=21% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74510MB projected=57MB estimate=step samples=1 reserved=14976MB total=80425MB reserve=4096MB disk=536884MB
+[box:flow] run2-final-controlled-witness cpu=24% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74464MB projected=57MB estimate=step samples=1 reserved=14976MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74402MB projected=57MB estimate=step samples=1 reserved=14976MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=23% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74375MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=24% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74342MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=21% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74286MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=27% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74034MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=34% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73760MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=22% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73844MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=13% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73833MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=21% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73863MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=18% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73964MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=21% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73922MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=73880MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=13% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74911MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74929MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74938MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=21% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74964MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74871MB projected=57MB estimate=step samples=1 reserved=15361MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74962MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74963MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74973MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74948MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74830MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=18% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74800MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74794MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=17% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74764MB projected=57MB estimate=step samples=1 reserved=13812MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75151MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75133MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=28% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75134MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=27% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75121MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75135MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75141MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75143MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74988MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74799MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75011MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75022MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75029MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=16% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75036MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=16% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75089MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=13% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75087MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75085MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=12% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75088MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75047MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=22% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75107MB projected=57MB estimate=step samples=1 reserved=13719MB total=80425MB reserve=4096MB disk=536883MB
+[box:flow] run2-final-controlled-witness cpu=33% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75067MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75019MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=35% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75044MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75049MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74992MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=33% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74989MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=34% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74961MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=32% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74959MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=33% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74971MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=41% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74892MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=33% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74855MB projected=57MB estimate=step samples=1 reserved=13586MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74905MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=37% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74927MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=25% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74956MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=24% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74959MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=28% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74978MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74898MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74921MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=39% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74879MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74898MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=27% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74924MB projected=57MB estimate=step samples=1 reserved=13522MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75004MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=34% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75021MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=30% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75031MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=31% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75032MB projected=57MB estimate=step samples=1 reserved=13427MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=25% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75036MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=47% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74812MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=40% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74782MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=38% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74585MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=37% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74565MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=33% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74528MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=30% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74503MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74444MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=30% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74438MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536882MB
+[box:flow] run2-final-controlled-witness cpu=32% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74420MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=29% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74424MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=32% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74393MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74284MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74253MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=19% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74241MB projected=57MB estimate=step samples=1 reserved=14494MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75017MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536881MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75016MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=12% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74936MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=10% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74800MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74774MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=12% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74788MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74769MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=22% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74676MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74675MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=10% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74694MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74705MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74703MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74711MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74785MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=9% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75190MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=4% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75216MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75199MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536877MB
+[box:flow] run2-final-controlled-witness cpu=9% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75199MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=22% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75107MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75115MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75053MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74996MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75019MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=13% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=75013MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=26% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74964MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=8% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74857MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74692MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=11% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74502MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=13% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74408MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=14% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74902MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536880MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74882MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536879MB
+[box:flow] run2-final-controlled-witness cpu=7% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74729MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536879MB
+[box:flow] run2-final-controlled-witness cpu=15% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74648MB projected=57MB estimate=step samples=1 reserved=1067MB total=80425MB reserve=4096MB disk=536879MB
+[box:flow] run2-final-controlled-witness cpu=6% target=90% admit
+[box:flow] run2-final-controlled-witness memory=admit avail=74922MB projected=57MB estimate=step samples=1 reserved=0MB total=80425MB reserve=4096MB disk=536879MB
+[box:flow] run2-final-controlled-witness granted tokens=0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 mask=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+[box:flow] run2-final-controlled-witness running on cores 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29 (gpu)
+{
+  "measurement": "second Vulkan compute client completion (no present)",
+  "period_ns": 16666666,
+  "command": [
+    "./vixen_editor"
+  ],
+  "wall_seconds": 90.21801598100137,
+  "heavy_process_lifetime_ms": 61612.42058700009,
+  "render_started_monotonic_ns": 28952020902269,
+  "heavy_finished_monotonic_ns": 29011215309300,
+  "render_marker_poll_interval_ms": 50,
+  "service_ms": {
+    "samples": 3549,
+    "mean": 0.8646965514229361,
+    "p50": 0.746622,
+    "p95": 1.74524,
+    "p99": 4.30272,
+    "max": 9.06832
+  },
+  "cadence_ms": {
+    "samples": 3549,
+    "mean": 16.673011859678784,
+    "p50": 16.6691,
+    "p95": 17.9775,
+    "p99": 20.3585,
+    "max": 38.327
+  },
+  "deadline_lateness_ms": {
+    "samples": 3549,
+    "mean": 0.9747844060298676,
+    "p50": 0.846391,
+    "p95": 1.84462,
+    "p99": 4.51132,
+    "max": 22.3351
+  },
+  "frames_over_two_periods": 1
+}
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 32000,
+    "mean_ms": 1.2952677537500001,
+    "p99_ms": 1.741,
+    "max_ms": 2.25748
+  },
+  "dispatch_intervals": {
+    "samples": 32000,
+    "mean_ms": 1.29433091625,
+    "p99_ms": 1.7344,
+    "max_ms": 2.2498
+  },
+  "frame_maxima": {
+    "samples": 500,
+    "mean_ms": 1.84767048,
+    "p99_ms": 2.17432,
+    "max_ms": 2.25748
+  },
+  "host_calls": {
+    "acquire": {
+      "samples": 500,
+      "mean_ms": 0.004190824,
+      "p99_ms": 0.008081,
+      "max_ms": 0.053233
+    },
+    "chunk-retire": {
+      "samples": 32000,
+      "mean_ms": 1.6096982498125,
+      "p99_ms": 2.30178,
+      "max_ms": 12.970326
+    },
+    "submit": {
+      "samples": 32000,
+      "mean_ms": 0.0314602323125,
+      "p99_ms": 0.073715,
+      "max_ms": 90.412037
+    },
+    "present-and-idle": {
+      "samples": 500,
+      "mean_ms": 5.379499492,
+      "p99_ms": 6.083045,
+      "max_ms": 9.988977
+    },
+    "frame-retire": {
+      "samples": 500,
+      "mean_ms": 0.132882906,
+      "p99_ms": 0.313019,
+      "max_ms": 0.418167
+    }
+  },
+  "invalid_timestamp_pairs": 0,
+  "expected_frames": 500,
+  "observed_frames": 500,
+  "budget_ms": 16.666666,
+  "budget_pass": true,
+  "peer_invalid_rows": 0,
+  "peer_sample_count": 5399,
+  "peer_valid": true,
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 5399,
+      "mean_ms": 0.003288972031857751,
+      "p99_ms": 0.0066,
+      "max_ms": 0.0106
+    },
+    "submit_call_ms": {
+      "samples": 5399,
+      "mean_ms": 0.06039998962770883,
+      "p99_ms": 0.15721,
+      "max_ms": 0.489062
+    },
+    "fence_wait_ms": {
+      "samples": 5399,
+      "mean_ms": 0.668626968697907,
+      "p99_ms": 3.69215,
+      "max_ms": 8.96759
+    },
+    "service_ms": {
+      "samples": 5399,
+      "mean_ms": 0.7290269937025375,
+      "p99_ms": 3.79494,
+      "max_ms": 9.06832
+    },
+    "cadence_ms": {
+      "samples": 5399,
+      "mean_ms": 16.67074556214114,
+      "p99_ms": 19.8286,
+      "max_ms": 38.327
+    },
+    "query_read_ms": {
+      "samples": 5399,
+      "mean_ms": 0.20257780329690683,
+      "p99_ms": 0.486973,
+      "max_ms": 0.985211
+    }
+  }
+}
+Native VIXEN captures written to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/reports/gpuyield-run2/captures-after (DISPLAY=:0)
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": null,
+  "dispatch_intervals": null,
+  "frame_maxima": null,
+  "host_calls": {},
+  "invalid_timestamp_pairs": 0,
+  "peer_invalid_rows": 0,
+  "peer_sample_count": 897,
+  "peer_valid": true,
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 897,
+      "mean_ms": 0.00685551839464883,
+      "p99_ms": 0.00808,
+      "max_ms": 0.00812
+    },
+    "submit_call_ms": {
+      "samples": 897,
+      "mean_ms": 0.13540836120401337,
+      "p99_ms": 0.2972,
+      "max_ms": 0.4856
+    },
+    "fence_wait_ms": {
+      "samples": 897,
+      "mean_ms": 0.20171616499442588,
+      "p99_ms": 0.4305,
+      "max_ms": 0.8171
+    },
+    "service_ms": {
+      "samples": 897,
+      "mean_ms": 0.3371245261984392,
+      "p99_ms": 0.6782,
+      "max_ms": 0.9694
+    },
+    "cadence_ms": {
+      "samples": 897,
+      "mean_ms": 16.74130011148272,
+      "p99_ms": 31.6127,
+      "max_ms": 32.8296
+    },
+    "query_read_ms": {
+      "samples": 897,
+      "mean_ms": 0.01690936454849498,
+      "p99_ms": 0.0336,
+      "max_ms": 0.1578
+    }
+  }
+}
+{
+  "gpu_measurement": "elapsed GPU clock, including any preemption",
+  "chunks": {
+    "samples": 32000,
+    "mean_ms": 1.29515369875,
+    "p99_ms": 1.77104,
+    "max_ms": 2.2496
+  },
+  "dispatch_intervals": {
+    "samples": 32000,
+    "mean_ms": 1.29421658125,
+    "p99_ms": 1.76332,
+    "max_ms": 2.24196
+  },
+  "frame_maxima": {
+    "samples": 500,
+    "mean_ms": 1.8682518399999999,
+    "p99_ms": 2.18712,
+    "max_ms": 2.2496
+  },
+  "host_calls": {
+    "acquire": {
+      "samples": 500,
+      "mean_ms": 0.004509482,
+      "p99_ms": 0.00838,
+      "max_ms": 0.047693
+    },
+    "chunk-retire": {
+      "samples": 32000,
+      "mean_ms": 1.60792751190625,
+      "p99_ms": 2.312471,
+      "max_ms": 3.168866
+    },
+    "submit": {
+      "samples": 32000,
+      "mean_ms": 0.03253469784375,
+      "p99_ms": 0.079575,
+      "max_ms": 104.527659
+    },
+    "present-and-idle": {
+      "samples": 500,
+      "mean_ms": 5.260559668,
+      "p99_ms": 5.888221,
+      "max_ms": 6.171306
+    },
+    "frame-retire": {
+      "samples": 500,
+      "mean_ms": 0.132701008,
+      "p99_ms": 0.282104,
+      "max_ms": 0.443099
+    }
+  },
+  "invalid_timestamp_pairs": 0,
+  "expected_frames": 500,
+  "observed_frames": 500,
+  "budget_ms": 16.666666,
+  "budget_pass": true,
+  "peer_invalid_rows": 0,
+  "peer_sample_count": 886,
+  "peer_valid": true,
+  "peer": {
+    "gpu_elapsed_ms": {
+      "samples": 886,
+      "mean_ms": 0.00133372460496614,
+      "p99_ms": 0.0076,
+      "max_ms": 0.008
+    },
+    "submit_call_ms": {
+      "samples": 886,
+      "mean_ms": 0.09454198645598194,
+      "p99_ms": 0.2612,
+      "max_ms": 0.4563
+    },
+    "fence_wait_ms": {
+      "samples": 886,
+      "mean_ms": 0.6351926636568849,
+      "p99_ms": 3.565,
+      "max_ms": 4.9204
+    },
+    "service_ms": {
+      "samples": 886,
+      "mean_ms": 0.7297346501128668,
+      "p99_ms": 3.6615,
+      "max_ms": 5.0208
+    },
+    "cadence_ms": {
+      "samples": 886,
+      "mean_ms": 16.935218397291194,
+      "p99_ms": 32.2698,
+      "max_ms": 33.6289
+    },
+    "query_read_ms": {
+      "samples": 886,
+      "mean_ms": 0.012196049661399548,
+      "p99_ms": 0.0342,
+      "max_ms": 0.1435
+    }
+  }
+}

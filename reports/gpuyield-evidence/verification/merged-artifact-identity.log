@@ -1,0 +1,48 @@
+[box:flow] gpuyield-merged-artifact-identity cpu=52% target=90% depth=1 free=0 baseline=1 granted=1 mode=static
+[box:turn] gpuyield yielding to its queued gpuyield-matched-final-witness (fair interleaving)
+[box:turn] gpuyield joins the line beside its queued gpuyield-matched-final-witness: free=3 covers need=1 + line=1
+[box:turn] gpuyield — my turn now
+[box:flow] gpuyield-merged-artifact-identity cpu=48% target=90% depth=1 free=3 baseline=1 granted=1 mode=static
+[box:flow] gpuyield-merged-artifact-identity cpu=52% target=90% admit
+[box:flow] gpuyield-merged-artifact-identity memory=admit avail=65592MB projected=59MB estimate=class samples=1300 reserved=23102MB total=80425MB reserve=4096MB disk=549242MB
+[box:flow] gpuyield-merged-artifact-identity granted tokens=0 mask=0,1
+[box:flow] gpuyield-merged-artifact-identity running on cores 0,1 (light)
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_105.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_115.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_25.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+editor/editor_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_45.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_5.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+hud/hud_capture_75.png: byte_equal=yes byte_diff=0 pixels=500x500 pixel_diff=0 max_channel_delta=0 bbox=none
+fixtures/editor/editor_capture_105.png: byte_equal=True, bytes=23802
+fixtures/editor/editor_capture_115.png: byte_equal=True, bytes=23802
+fixtures/editor/editor_capture_25.png: byte_equal=True, bytes=23329
+fixtures/editor/editor_capture_45.png: byte_equal=True, bytes=23802
+fixtures/editor/editor_capture_5.png: byte_equal=True, bytes=10304
+fixtures/editor/editor_capture_75.png: byte_equal=True, bytes=23329
+fixtures/editor/sample_tri_layer.edited.vxd: byte_equal=True, bytes=916
+fixtures/editor/sample_tri_layer.vxd: byte_equal=True, bytes=916
+fixtures/hud/hud_capture_45.png: byte_equal=True, bytes=35684
+fixtures/hud/hud_capture_5.png: byte_equal=True, bytes=33116
+fixtures/hud/hud_capture_75.png: byte_equal=True, bytes=34623
+windowed/editor/editor_capture_105.png: byte_equal=True, bytes=8313
+windowed/editor/editor_capture_45.png: byte_equal=True, bytes=8313
+windowed/editor/editor_capture_5.png: byte_equal=True, bytes=9139
+windowed/editor/editor_capture_75.png: byte_equal=True, bytes=9139
+windowed/hud/hud_capture_45.png: byte_equal=True, bytes=35684
+windowed/hud/hud_capture_5.png: byte_equal=True, bytes=33116
+windowed/hud/hud_capture_75.png: byte_equal=True, bytes=34623
+windowed/hud.log: brick_hash_rows=2/2, equal_trace=True
+windowed/editor.log: brick_hash_rows=8/8, equal_trace=True
+fixtures/editor/run_editor_script.log: brick_hash_rows=18/18, equal_trace=True
+fixtures/hud/run_hud_script.log: brick_hash_rows=2/2, equal_trace=True
+UT_JOB_DONE light gpuyield-merged-artifact-identity exit=0 state=OK

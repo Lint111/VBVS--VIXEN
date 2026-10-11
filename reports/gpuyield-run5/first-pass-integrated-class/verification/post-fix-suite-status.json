@@ -1,0 +1,19 @@
+{
+  "ctest_exit_status": 8,
+  "failing_tests": [
+    "1200:EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget",
+    "2593:RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes"
+  ],
+  "opcode_94_signature_present": true,
+  "only_opcode94_and_r6_dozen_timing": true,
+  "r6_maxima": [
+    "2.02664",
+    "2.0418",
+    "2.03632",
+    "2.0062",
+    "2.04096",
+    "2.03444",
+    "2.00668",
+    "2.03412"
+  ]
+}

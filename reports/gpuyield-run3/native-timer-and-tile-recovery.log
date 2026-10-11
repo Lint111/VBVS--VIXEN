@@ -1,0 +1,4 @@
+[box:flow] native-timer-and-tile-recovery cpu=40% target=90% depth=4 free=1 baseline=3 granted=4 mode=static
+[box:flow] native-timer-and-tile-recovery queued — need=4 tokens projected=20MB estimate=step-p90 samples=3
+[box:flow] native-timer-and-tile-recovery cpu=52% target=90% admit
+[box:flow] native-timer-and-tile-recovery memory=admit avail=63025MB projected=20MB estimate=step-p90 samples=3 reserved=23830MB total=80425MB reserve=4096MB disk=519967MB

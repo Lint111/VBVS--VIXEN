@@ -1,0 +1,285 @@
+[box:flow] affine-cost-recovery-build cpu=7% target=90% depth=0 free=8 baseline=3 granted=4 mode=static
+[box:flow] affine-cost-recovery-build cpu=7% target=90% admit
+[box:flow] affine-cost-recovery-build memory=admit avail=74564MB projected=6855MB estimate=step-p90 samples=9 reserved=4119MB total=80425MB reserve=4096MB disk=521936MB
+[box:flow] affine-cost-recovery-build granted tokens=0 1 2 10 mask=0,1,2,3,4,5,20,21
+[box:flow] affine-cost-recovery-build running on cores 0,1,2,3,4,5,20,21 (build)
+[0/2] Re-checking globbed directories...
+-- GLOB mismatch!
+[1/2] Re-running CMake...
+-- Using system ccache: /home/liory/.local/bin/ccache
+-- VIXEN: expected Vulkan SDK 1.4.350.1 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: found Vulkan SDK 1.4.350.1 — expected version matches.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.1; found SDK 1.4.350.1; API headers 1.4.0; glslang 16.3.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d)
+-- [ProvisionWslVulkan] Vulkan SDK setting: expected 1.4.350.1 (override with VIXEN_VULKAN_SDK_VERSION).
+-- [ProvisionWslVulkan] cache hit: /home/liory/.cache/vixen/wsl-vulkan/mesa/build/src/microsoft/vulkan/libvulkan_dzn.so
+-- VIXEN: gdb not found (set -DVIXEN_AUTO_PROVISION_GDB=ON to auto-fetch, no sudo required) — no debugger target available.
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64
+-- [CapabilityGraph] FULL mode; generated /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/CapabilityGraphBuildConfig.h
+-- FetchContent base directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- *************************************************************
+-- gaia-ecs v1.0.0 (Release)
+-- Copyright (c) 2021-2026 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: GNU
+-- CompPath: /usr/bin/g++
+-- CompSim: 
+-- CPU: x86_64
+-- *************************************************************
+-- VIXEN: Gaia source verified at a2e62491b56a8589c31da97128f0658088050a70
+-- Checking for one of the modules 'hwloc'
+-- IPO enabled
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- KernelDispatch library configured (E7 dispatch D1: Tier-A extraction + data-only ABI)
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- VIXEN: wayland-scanner not found; GLFW Wayland backend disabled (X11 only).
+-- VIXEN: X11 dev provisioned at /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.windowing-deps; GLFW X11 backend enabled.
+-- Including X11 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- [RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)
+-- [RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)
+-- [RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)
+-- [RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)
+-- ✓ test_sdi_stage_wiring configured (Semantic Wiring S2)
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)
+-- ✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)
+-- [RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)
+-- ✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)
+-- ✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)
+-- ✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)
+-- ✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)
+-- ✓ test_view_container_builder configured (native UTVC container decode)
+-- ✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)
+-- [CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- [codegen] using discovered Undertow schema catalogue: /home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json
+-- [codegen] using tracked Yeroket kernel pin: c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- [codegen] reusing pinned kernel snapshot: /home/liory/.cache/vixen/kernel-codegen/sources/yeroket-c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- vixen_generate_node_manifest: wrote 65 node type(s) to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- vixen_link_used_nodes: VixenApp scoped-linked 65 node OBJECT librar(y/ies) (whole-archived) from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- VIXEN: Generated shader files output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/shaders
+-- VIXEN: SDI headers output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- [Application Tests] Added: test_headless_ui_graph (offscreen UI render/readback)
+-- [Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)
+-- [Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)
+-- [Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)
+-- [Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)
+-- Application configured - all executables defined
+-- RenderGraph/SVO verification target available: rendergraph_svo_tests
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (3.6s)
+-- Generating done (0.5s)
+-- Build files have been written to: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+[0/4] Re-checking globbed directories...
+[1/111] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/GPUTimestampQuery.cpp.o
+[2/111] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/CapabilityGraph.cpp.o
+[3/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProxyRasterStageNode.dir/src/Nodes/ProxyRasterStageNode.cpp.o
+[4/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DeviceNode.dir/src/Nodes/DeviceNode.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp: In member function ‘void Vixen::RenderGraph::DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry&)’:
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:637:36: warning: ‘void CashSystem::DeviceRegistry::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  637 |     deviceRegistry.SetBudgetManager(budgetManager.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Nodes/DeviceNode.h:7,
+                 from ../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:4:
+../../VIXEN/libraries/CashSystem/include/DeviceIdentifier.h:197:10: note: declared here
+  197 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+      |          ^~~~~~~~~~~~~~~~
+[5/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SwapChainNode.dir/src/Nodes/SwapChainNode.cpp.o
+[6/111] Linking CXX static library lib/libVulkanResources.a
+[7/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BodyOctreeSceneNode.dir/src/Nodes/BodyOctreeSceneNode.cpp.o
+[8/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[9/111] Building CXX object libraries/VulkanResources/tests/CMakeFiles/test_vulkanresources_basic.dir/test_vulkanresources_basic.cpp.o
+[10/111] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[11/111] Linking CXX static library lib/libRenderGraphNodes.a
+[12/111] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_compute_dispatch_node.cpp.o
+[13/111] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 836 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[14/111] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[15/111] Linking CXX executable libraries/VulkanResources/tests/test_vulkanresources_basic
+[16/111] Linking CXX executable libraries/VulkanResources/tests/test_vulkan_global_names_policy
+[17/111] Linking CXX executable libraries/CashSystem/tests/test_registration_api
+[18/111] Linking CXX executable libraries/CashSystem/tests/test_pipeline_blend_key
+[19/111] Linking CXX executable libraries/CashSystem/tests/test_tlas_phase3
+[20/111] Linking CXX executable libraries/CashSystem/tests/test_lifetime_safety
+[21/111] Linking CXX executable libraries/CashSystem/tests/test_cacher_chain_integration
+[22/111] Linking CXX executable libraries/CashSystem/tests/test_typed_cacher_concurrency
+[23/111] Linking CXX executable libraries/CashSystem/tests/test_voxel_scene_key
+[24/111] Linking CXX executable libraries/CashSystem/tests/test_cache_codec
+[25/111] Linking CXX executable libraries/CashSystem/tests/test_spirv_loader
+[26/111] Linking CXX executable libraries/CashSystem/tests/test_pipeline_cache_header
+[27/111] Linking CXX executable libraries/CashSystem/tests/test_recipe_content_hash
+[28/111] Linking CXX executable libraries/CashSystem/tests/test_recipe_content_cacher
+[29/111] Linking CXX executable libraries/CashSystem/tests/test_recipe_bucket_data_cacher
+[30/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[31/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[32/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[33/111] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[34/111] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[35/111] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[36/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[37/111] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_tracking.dir/test_graph_task_lowering.cpp.o
+[38/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[39/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[40/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[41/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[42/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[43/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[44/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[45/111] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[46/111] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[47/111] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[48/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[49/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[50/111] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[51/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[52/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[53/111] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[54/111] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[55/111] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[56/111] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[57/111] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[58/111] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[59/111] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[60/111] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[61/111] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[62/111] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[63/111] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[64/111] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[65/111] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[66/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[67/111] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[68/111] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[69/111] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[70/111] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[71/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[72/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[73/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[74/111] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[75/111] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[76/111] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[77/111] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[78/111] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[79/111] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[80/111] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[81/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[82/111] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[83/111] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[84/111] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[85/111] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[86/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[87/111] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[88/111] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[89/111] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[90/111] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[91/111] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[92/111] Linking CXX executable libraries/SVO/tests/test_recipe_glsl_numerical_parity
+[93/111] Linking CXX executable libraries/SVO/tests/test_recipe_nested_invocation
+[94/111] Linking CXX executable libraries/SVO/tests/test_rayquery_feasibility
+[95/111] Linking CXX executable libraries/SVO/tests/test_recipe_declared_position_render
+[96/111] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[97/111] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[98/111] Linking CXX static library lib/libVixenApp.a
+[99/111] Linking CXX executable application/main/test_hud_view
+[100/111] Linking CXX executable application/main/test_view_blob_equiv
+[101/111] Linking CXX executable application/main/test_app_run_tick
+[102/111] Linking CXX executable binaries/VIXEN
+[103/111] Linking CXX executable application/main/test_headless_starfield_graph
+[104/111] Linking CXX executable application/main/test_headless_ui_graph
+[105/111] Linking CXX executable application/main/test_headless_cornell_graph
+[106/111] Linking CXX executable application/main/vixen_lookdev_capture
+[107/111] Linking CXX executable binaries/vixen_editor
+[108/111] Linking CXX executable application/main/test_cel_shading_graph
+UT_JOB_DONE build affine-cost-recovery-build exit=0 state=OK

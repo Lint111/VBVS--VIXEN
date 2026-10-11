@@ -1,0 +1,108 @@
+[box:flow] gpuyield-final-merged-build cpu=48% target=90% depth=1 free=2 baseline=3 granted=1 mode=static
+[box:turn] gpuyield joins the line beside its queued gpuyield-targeted-tile-and-pacing-tests: free=2 covers need=1 + line=1
+[box:flow] gpuyield-final-merged-build queued — need=1 tokens projected=11970MB estimate=class-max samples=1003
+[box:flow] gpuyield-final-merged-build cpu=20% target=90% admit
+[box:flow] gpuyield-final-merged-build memory=admit avail=74067MB projected=11970MB estimate=class-max samples=1003 reserved=7928MB total=80425MB reserve=4096MB disk=553522MB
+[box:flow] gpuyield-final-merged-build granted tokens=9 mask=18,19
+[box:flow] gpuyield-final-merged-build running on cores 18,19 (build)
+[0/2] Re-checking globbed directories...
+[1/97] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[2/97] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[3/97] Linking CXX static library lib/libRenderGraphNodes.a
+[4/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_subgraph.dir/test_subgraph_nodes.cpp.o
+[5/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sampling_compile_gate.dir/test_sampling_compile_gate.cpp.o
+[6/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_slot_task.dir/test_slot_task.cpp.o
+[7/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_a.dir/Core/test_recompile_dedup.cpp.o
+[8/97] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[9/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_render_target_node.cpp.o
+[10/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_compute_dispatch_node.cpp.o
+[11/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Nodes/test_push_constant_gatherer_node.cpp.o
+[12/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_descriptorgatherer.dir/Nodes/test_descriptor_resource_gatherer_node.cpp.o
+[13/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_octree_config_sdi_parity.cpp.o
+[14/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2b.dir/Nodes/test_shadow_correctness.cpp.o
+[15/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_lightingconfig_sdi_parity.cpp.o
+[16/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_hitrecord_sdi_parity.cpp.o
+[17/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_shadowconfig_sdi_parity.cpp.o
+[18/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_accumulationconfig_sdi_parity.cpp.o
+[19/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_sdiparity.dir/Nodes/test_prevcameraconfig_sdi_parity.cpp.o
+[20/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_windowedcapture.dir/Nodes/test_editor_toggle_undo_capture.cpp.o
+[21/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sdi_stage_wiring.dir/test_sdi_stage_wiring.cpp.o
+[22/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_connection_rule.dir/test_connection_rule.cpp.o
+[23/97] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_syncbarrier.dir/test_graph_topology.cpp.o
+[24/97] Linking CXX static library lib/libVixenApp.a
+[25/97] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 833 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[26/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[27/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[28/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[29/97] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[30/97] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[31/97] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[32/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[33/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[34/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[35/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[36/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[37/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[38/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[39/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[40/97] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[41/97] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[42/97] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[43/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[44/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[45/97] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[46/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[47/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[48/97] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[49/97] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[50/97] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[51/97] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[52/97] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[53/97] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[54/97] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[55/97] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[56/97] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[57/97] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[58/97] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[59/97] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[60/97] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[61/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[62/97] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[63/97] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[64/97] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[65/97] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[66/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[67/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[68/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[69/97] Building CXX object libraries/SVO/tests/CMakeFiles/test_uber_shader_splice.dir/test_uber_shader_splice.cpp.o
+[70/97] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[71/97] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[72/97] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[73/97] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[74/97] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[75/97] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[76/97] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[77/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[78/97] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[79/97] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[80/97] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[81/97] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[82/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[83/97] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[84/97] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[85/97] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[86/97] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[87/97] Linking CXX executable libraries/SVO/tests/test_recipe_codegen
+[88/97] Linking CXX executable libraries/SVO/tests/test_recipe_glsl_numerical_parity
+[89/97] Linking CXX executable libraries/SVO/tests/test_recipe_kernel_glsl_roundtrip
+[90/97] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[91/97] Linking CXX executable libraries/SVO/tests/test_recipe_nested_invocation
+[92/97] Linking CXX executable libraries/SVO/tests/test_rayquery_feasibility
+[93/97] Linking CXX executable libraries/SVO/tests/test_recipe_declared_position_render
+[94/97] Linking CXX executable libraries/SVO/tests/test_uber_shader_splice
+[95/97] Linking CXX executable binaries/VIXEN
+[96/97] Linking CXX executable binaries/vixen_editor
+UT_JOB_DONE build gpuyield-final-merged-build exit=0 state=OK

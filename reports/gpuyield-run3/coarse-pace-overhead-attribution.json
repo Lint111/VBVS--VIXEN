@@ -1,0 +1,90 @@
+[
+  {
+    "run": "native-before",
+    "tip": "9cbba374",
+    "primary_submissions_mean": 64.0,
+    "whole_minus_dispatch_mean_us": 0.29679750000000116,
+    "primary_aggregate_mean_ms": 1.1213347200000001,
+    "primary_span_mean_ms": 2.926508285714286,
+    "host_totals_ms_per_frame": {
+      "acquire": 0.1543618,
+      "chunk-retire": 1.5025068000000001,
+      "submit": 1.0455246,
+      "present-and-idle": 0.2594366,
+      "frame-retire": 0.012570399999999999
+    },
+    "invalid_pairs": 0
+  },
+  {
+    "run": "native-final",
+    "tip": "9e9550f2",
+    "primary_submissions_mean": 1.704,
+    "whole_minus_dispatch_mean_us": 2.047824074074056,
+    "primary_aggregate_mean_ms": 0.37439272,
+    "primary_span_mean_ms": 0.3665882653061225,
+    "host_totals_ms_per_frame": {
+      "acquire": 0.1559846,
+      "chunk-retire": 0.028325600000000003,
+      "submit": 0.0809372,
+      "present-and-idle": 0.2493432,
+      "frame-retire": 0.011696,
+      "frame-execute-core": 7.5589616,
+      "frame-pace": 24.6015406
+    },
+    "invalid_pairs": 0
+  },
+  {
+    "run": "native-final-1080",
+    "tip": "9e9550f2",
+    "primary_submissions_mean": 7.524,
+    "whole_minus_dispatch_mean_us": 0.7963473211929362,
+    "primary_aggregate_mean_ms": 2.07531184,
+    "primary_span_mean_ms": 2.205454897959184,
+    "host_totals_ms_per_frame": {
+      "acquire": 0.1552312,
+      "chunk-retire": 1.8699400000000002,
+      "submit": 0.227745,
+      "present-and-idle": 0.4406366,
+      "frame-retire": 0.8745168,
+      "frame-execute-core": 10.9980436,
+      "frame-pace": 20.5432222
+    },
+    "invalid_pairs": 1
+  },
+  {
+    "run": "native-bucketed",
+    "tip": "9e9550f2",
+    "primary_submissions_mean": 1.776,
+    "whole_minus_dispatch_mean_us": 1.3810363836824768,
+    "primary_aggregate_mean_ms": 0.50442144,
+    "primary_span_mean_ms": 0.4962779795918367,
+    "host_totals_ms_per_frame": {
+      "acquire": 0.15879580000000001,
+      "chunk-retire": 0.0346382,
+      "submit": 0.118786,
+      "present-and-idle": 0.24826240000000002,
+      "frame-retire": 0.011071600000000001,
+      "frame-execute-core": 7.039724199999999,
+      "frame-pace": 24.2699782
+    },
+    "invalid_pairs": 3
+  },
+  {
+    "run": "native-hardware-query",
+    "tip": "9e9550f2",
+    "primary_submissions_mean": 1.696,
+    "whole_minus_dispatch_mean_us": 1.0875586854460217,
+    "primary_aggregate_mean_ms": 0.38474712,
+    "primary_span_mean_ms": 0.37609802040816326,
+    "host_totals_ms_per_frame": {
+      "acquire": 0.168682,
+      "chunk-retire": 0.0205136,
+      "submit": 0.0834414,
+      "present-and-idle": 0.2663318,
+      "frame-retire": 0.0124546,
+      "frame-execute-core": 6.8486764,
+      "frame-pace": 24.4365
+    },
+    "invalid_pairs": 0
+  }
+]

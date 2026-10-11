@@ -1,0 +1,10 @@
+{
+  "gpu_exclusive": true,
+  "credits": 2,
+  "cores": 4,
+  "host_cpu_exclusive": false,
+  "native_controls": "rerun in same batch",
+  "prior_controls": "15 credits exclusive; driver-matrix-coarse-pace.json",
+  "queue_exclusive_flag": false,
+  "gpu_serialized_via_resource_mutex": true
+}

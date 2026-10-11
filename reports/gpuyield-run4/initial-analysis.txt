@@ -1,0 +1,6 @@
+Scale 1.0, 500 frames; per-pass GPU-clock spans after excluding 10 warmup frames.
+
+| Resolution / pass | Unbounded ms | Tuned bounded ms | Change |
+|---|---:|---:|---:|
+dozen-final exit 0 CSV frames 500
+  test_dispatch gate False aggregate None chunks {'samples': 38205, 'mean_ms': 1.3141909488286874, 'p99_ms': 2.24968, 'max_ms': 3.93876} submissions/frame {'samples': 500, 'mean': 76.41, 'p99': 81, 'max': 81}

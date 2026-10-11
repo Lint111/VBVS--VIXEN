@@ -1,0 +1,33 @@
+flowing-slot: 15 physical pair-tokens (memory-first)
+memory-reservations: 313MB projected of 80425MB total; reserve=4096MB
+disk: 537017MB free on /home/liory/projects's filesystem; floor=20480MB
+short-lane: reserved-token=14 mask=28,29
+cpu-target: 90% source=file ceiling=active measured=5%
+memory-capacity: 80425MB source=default(missing)
+flowing-jobs:
+  lightunify:before:midday pid=3010857 since=19:56:23 epoch=1791651383 res=gpu mem=313MB estimate=class samples=74 priority=normal exclusive=1
+recent:
+  ok   2026-10-10 19:56:22 build wbb29u:wizard-check exit=0 dur=306s cpu=834.150s rss=4248MB cgpeak=3019MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791651076-build-wbb29u:wizard-check.log state=OK node=ws tokens=4 cmd=512e920f6179 schema=8 last-ran 4m08s ago last-green 4m08s ago
+  ok   2026-10-10 19:56:09 short sptperf-final-browser-elk exit=0 dur=27s cpu=9.060s rss=718MB cgpeak=1203MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791651342-short-sptperf-final-browser-elk.log state=OK node=ws tokens=1 cmd=dc8bd227829f schema=7 last-ran 4m21s ago last-green 4m21s ago
+  ok   2026-10-10 19:55:41 short sptperf-final-stage-profile exit=0 dur=14s cpu=14.900s rss=19MB cgpeak=1303MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791651327-short-sptperf-final-stage-profile.log state=OK node=ws tokens=1 cmd=3eb444c9cab4 schema=7 last-ran 4m49s ago last-green 4m49s ago
+  FAIL 2026-10-10 19:55:27 test personalized-rendergraph-svo exit=8 dur=1276s cpu=370.040s rss=1130MB cgpeak=1036MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791650050-test-personalized-rendergraph-svo.log state=PAYLOAD_FAIL node=ws tokens=3 cmd=21d8fb05da12 breach=1 schema=7 last-ran 5m03s ago last-green never ago
+  FAIL 2026-10-10 19:55:00 gpu run6-final-dozen-corpus exit=1 dur=94s cpu=45.460s rss=460MB cgpeak=384MB log=/home/liory/.local/state/undertow/undertow-box-logs/1791651206-gpu-run6-final-dozen-corpus.log state=PAYLOAD_FAIL node=ws tokens=2 cmd=8e15633f280e breach=1 schema=7 last-ran 5m30s ago last-green never ago
+waiting (oldest first; blocked=tokens|memory|disk|gpu|ready; passes=committed/max):
+  run2-final-controlled-witness pid=3407975 since=19:53:51 res=gpu need=15 mem=57MB estimate=step samples=1 agent=gpuyield priority=normal blocked=tokens passes=0/3
+  sptperf-full-suite-retry pid=3055048 since=19:54:03 res=test need=2 mem=167MB estimate=step samples=1 agent=sptperf priority=normal blocked=tokens passes=0/3
+  run6-lookdev-overcast pid=3426180 since=19:54:20 res=test need=3 mem=373MB estimate=step samples=2 agent=togglelatency priority=normal blocked=tokens passes=0/3
+  run6-dozen-storage-microcase pid=3438502 since=19:54:38 res=gpu agent=togglelatency gate=held gneed=3
+  knowledge-sched-contract1 pid=3439405 since=19:54:43 res=build need=4 mem=13427MB estimate=class-max samples=909 agent=knowledgefacade priority=normal blocked=tokens passes=0/3
+  capstatic:sdi-wiring pid=3469066 since=19:55:08 res=test need=4 mem=273MB estimate=class samples=1344 agent=capstatic priority=normal blocked=tokens passes=0/3
+  final-capstatic-runtime-gates pid=3531812 since=19:55:54 res=test need=5 mem=273MB estimate=class samples=1345 agent=capstatic-run2 priority=normal blocked=tokens passes=0/3
+  wbb29u:strict pid=3574255 since=19:56:25 res=build need=4 mem=128MB estimate=step-p90 samples=10 agent=wbb29u priority=lander blocked=tokens passes=0/3
+  run6-cone-input-compile pid=3615879 since=19:56:56 res=test agent=togglelatency gate=held gneed=2
+  sptperf-elk-node-parity pid=3695647 since=19:57:59 res=short need=1 mem=1549MB estimate=step samples=4 agent=sptperf priority=normal blocked=tokens passes=0/3
+turn-agents: capstatic(steps=0) capstatic-run2(steps=2) gpuyield(steps=2) knowledgefacade(steps=0) sptperf(steps=7) togglelatency(steps=1) wbb29u(steps=2)
+  turn-rule: one job per agent in the token line; held back: togglelatency(2)
+  recent-turns:
+    2026-10-10 19:54:07 sptperf step=7 slot=flow
+    2026-10-10 19:54:19 togglelatency step=? slot=flow
+    2026-10-10 19:55:00 togglelatency step=1 slot=flow
+    2026-10-10 19:55:27 capstatic-run2 step=2 slot=flow
+    2026-10-10 19:56:22 wbb29u step=2 slot=flow

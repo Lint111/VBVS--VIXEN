@@ -21,6 +21,9 @@
 #include "Core/ITaskProfile.h"
 #include <sstream>
 #include <iomanip>
+#include <map>
+#include <optional>
+#include <string>
 
 namespace Vixen::RenderGraph {
 
@@ -120,6 +123,15 @@ public:
         // Save task-specific members
         j["costAtBaselineNs"] = costAtBaselineNs_;
         j["costPerUnitNs"] = costPerUnitNs_;
+        // R503: the producer's chunk-cost envelope per dispatch extent, so the
+        // next run on this device starts warm at the same resolution.
+        nlohmann::json chunks = nlohmann::json::object();
+        for (const auto& [extent, calibration] : chunkCalibration_) {
+            chunks[extent] = {{"anchorUnits", calibration.anchorUnits},
+                              {"unitNs", calibration.unitNs},
+                              {"fixedNs", calibration.fixedNs}};
+        }
+        j["chunkCalibration"] = std::move(chunks);
     }
 
     void LoadState(const nlohmann::json& j) override {
@@ -132,6 +144,18 @@ public:
         }
         if (j.contains("costPerUnitNs")) {
             costPerUnitNs_ = j["costPerUnitNs"];
+        }
+        chunkCalibration_.clear();
+        if (j.contains("chunkCalibration") && j["chunkCalibration"].is_object()) {
+            for (const auto& [extent, value] : j["chunkCalibration"].items()) {
+                if (!value.is_object()) continue;
+                ChunkCalibration calibration;
+                calibration.anchorUnits = value.value("anchorUnits", uint64_t{0});
+                calibration.unitNs = value.value("unitNs", 0.0);
+                calibration.fixedNs = value.value("fixedNs", 0.0);
+                if (calibration.anchorUnits && calibration.unitNs > 0 && calibration.fixedNs >= 0)
+                    chunkCalibration_[extent] = calibration;
+            }
         }
     }
 
@@ -157,6 +181,22 @@ public:
         ITaskProfile::ResetCalibration();
         costAtBaselineNs_ = 0;
         costPerUnitNs_ = 0;
+        chunkCalibration_.clear();
+    }
+
+    // R503: learned chunk-cost envelope keyed by dispatch extent ("WxH" workgroups).
+    struct ChunkCalibration {
+        uint64_t anchorUnits = 0;
+        double unitNs = 0;
+        double fixedNs = 0;
+    };
+    void SetChunkCalibration(const std::string& extent, const ChunkCalibration& calibration) {
+        chunkCalibration_[extent] = calibration;
+    }
+    [[nodiscard]] std::optional<ChunkCalibration> GetChunkCalibration(const std::string& extent) const {
+        const auto it = chunkCalibration_.find(extent);
+        if (it == chunkCalibration_.end()) return std::nullopt;
+        return it->second;
     }
 
     // =========================================================================
@@ -201,6 +241,7 @@ private:
     // Cost model: baseline + (workUnits * costPerUnit)
     uint64_t costAtBaselineNs_ = 0;
     uint64_t costPerUnitNs_ = 0;
+    std::map<std::string, ChunkCalibration> chunkCalibration_;
 };
 
 } // namespace Vixen::RenderGraph

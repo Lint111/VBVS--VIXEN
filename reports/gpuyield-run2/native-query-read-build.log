@@ -1,0 +1,22 @@
+[box:flow] run2-native-query-read-build cpu=25% target=90% depth=7 free=11 baseline=3 granted=5 mode=dynamic
+[box:turn] gpuyield yielding to its queued run2-ray-contract-build (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] run2-native-query-read-build cpu=23% target=90% depth=4 free=0 baseline=3 granted=3 mode=dynamic
+[box:flow] run2-native-query-read-build queued — need=3 tokens projected=3MB estimate=step samples=2
+[box:flow] run2-native-query-read-build cpu=36% target=90% admit
+[box:flow] run2-native-query-read-build memory=admit avail=69548MB projected=3MB estimate=step samples=2 reserved=9588MB total=80425MB reserve=4096MB disk=548984MB
+[box:flow] run2-native-query-read-build cpu=47% target=90% admit
+[box:flow] run2-native-query-read-build memory=admit avail=69427MB projected=3MB estimate=step samples=2 reserved=9588MB total=80425MB reserve=4096MB disk=548979MB
+[box:flow] run2-native-query-read-build cpu=47% target=90% admit
+[box:flow] run2-native-query-read-build memory=admit avail=69469MB projected=3MB estimate=step samples=2 reserved=9866MB total=80425MB reserve=4096MB disk=548974MB
+[box:flow] run2-native-query-read-build cpu=41% target=90% admit
+[box:flow] run2-native-query-read-build memory=admit avail=70141MB projected=3MB estimate=step samples=2 reserved=9310MB total=80425MB reserve=4096MB disk=548974MB
+[box:flow] run2-native-query-read-build granted tokens=4 5 6 mask=8,9,10,11,12,13
+[box:flow] run2-native-query-read-build running on cores 8,9,10,11,12,13 (build)
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.14.41
+** Copyright (c) 2025 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+gpu-cadence-probe.cpp
+UT_JOB_DONE build run2-native-query-read-build exit=0 state=OK

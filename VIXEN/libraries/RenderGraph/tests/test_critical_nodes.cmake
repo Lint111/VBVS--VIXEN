@@ -120,6 +120,8 @@ add_executable(test_rendergraph_criticalnodes_pushconstant
     Selection/test_selection_set.cpp
 )
 target_link_libraries(test_rendergraph_criticalnodes_pushconstant PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
+target_compile_definitions(test_rendergraph_criticalnodes_pushconstant PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
 set_target_properties(test_rendergraph_criticalnodes_pushconstant PROPERTIES FOLDER "Tests/RenderGraph Tests")
 vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_pushconstant)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)")

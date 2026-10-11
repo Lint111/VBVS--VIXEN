@@ -1,0 +1,12 @@
+{
+  "linux_editor": {
+    "path": "build/gpuyield/binaries/vixen_editor",
+    "sha256": "39e1fcd023a2620e90d5ab212ae102015fe8f0a78a9a28b21823e771aba5e8cd",
+    "mtime_ns": 1791662056189884260
+  },
+  "native_editor": {
+    "path": "/mnt/c/vixen-native/gpuyield/build/gpuyield-native/binaries/vixen_editor.exe",
+    "sha256": "5e85ecab99b2511e8cb4bc3f802852a4c9d7972c4dc92e326a3789bbe0e85454",
+    "mtime_ns": 1791662535959112900
+  }
+}

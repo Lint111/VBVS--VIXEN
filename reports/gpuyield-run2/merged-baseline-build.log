@@ -1,0 +1,754 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Using system ccache: /home/liory/.local/bin/ccache
+-- VIXEN: expected Vulkan SDK 1.4.350.1 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: found Vulkan SDK 1.4.350.1 — expected version matches.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.1; found SDK 1.4.350.1; API headers 1.4.0; glslang 16.3.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d)
+-- [ProvisionWslVulkan] Vulkan SDK setting: expected 1.4.350.1 (override with VIXEN_VULKAN_SDK_VERSION).
+-- [ProvisionWslVulkan] cache hit: /home/liory/.cache/vixen/wsl-vulkan/mesa/build/src/microsoft/vulkan/libvulkan_dzn.so
+-- VIXEN: gdb not found (set -DVIXEN_AUTO_PROVISION_GDB=ON to auto-fetch, no sudo required) — no debugger target available.
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64
+-- FetchContent base directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- *************************************************************
+-- gaia-ecs v1.0.0 (Release)
+-- Copyright (c) 2021-2026 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: GNU
+-- CompPath: /usr/bin/g++
+-- CompSim: 
+-- CPU: x86_64
+-- *************************************************************
+-- VIXEN: Gaia source verified at a2e62491b56a8589c31da97128f0658088050a70
+-- Checking for one of the modules 'hwloc'
+-- IPO enabled
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- KernelDispatch library configured (E7 dispatch D1: Tier-A extraction + data-only ABI)
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- VIXEN: wayland-scanner not found; GLFW Wayland backend disabled (X11 only).
+-- VIXEN: X11 dev provisioned at /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.windowing-deps; GLFW X11 backend enabled.
+-- Including X11 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- [RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)
+-- [RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)
+-- [RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)
+-- [RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)
+-- ✓ test_sdi_stage_wiring configured (Semantic Wiring S2)
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)
+-- ✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)
+-- [RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)
+-- ✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)
+-- ✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)
+-- ✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)
+-- ✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)
+-- ✓ test_view_container_builder configured (native UTVC container decode)
+-- ✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)
+-- [CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- [codegen] using discovered Undertow schema catalogue: /home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json
+-- [codegen] using tracked Yeroket kernel pin: c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- [codegen] reusing pinned kernel snapshot: /home/liory/.cache/vixen/kernel-codegen/sources/yeroket-c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- vixen_generate_node_manifest: wrote 65 node type(s) to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- vixen_link_used_nodes: VixenApp scoped-linked 65 node OBJECT librar(y/ies) (whole-archived) from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- VIXEN: Generated shader files output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/shaders
+-- VIXEN: SDI headers output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- [Application Tests] Added: test_headless_ui_graph (offscreen UI render/readback)
+-- [Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)
+-- [Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)
+-- [Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)
+-- [Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)
+-- Application configured - all executables defined
+-- RenderGraph/SVO verification target available: rendergraph_svo_tests
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (2.5s)
+-- Generating done (1.0s)
+-- Build files have been written to: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+[0/4] Re-checking globbed directories...
+[1/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/backend.cpp.o
+[2/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/backref.cpp.o
+[3/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/STBTextureLoader.cpp.o
+[4/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/frontend.cpp.o
+[5/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/large_objects.cpp.o
+[6/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/tbbmalloc.cpp.o
+[7/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc/CMakeFiles/tbbmalloc.dir/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-src/src/tbb/itt_notify.cpp.o
+[8/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/CacherAllocationHelpers.cpp.o
+[9/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/DescriptorSetLayoutCacher.cpp.o
+[10/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/ComputePipelineCacher.cpp.o
+[11/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/DynamicTLAS.cpp.o
+[12/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/MeshCacher.cpp.o
+[13/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/AccelerationStructureCacher.cpp.o
+[14/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/RenderPassCacher.cpp.o
+[15/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TLASInstanceBuffer.cpp.o
+[16/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TLASUpdateRequest.cpp.o
+[17/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/SamplerCacher.cpp.o
+[18/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/cmake_pch.hxx.gch
+[19/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TextureCacher.cpp.o
+[20/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanInstance.cpp.o
+[21/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanDevice.cpp.o
+[22/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanLayerAndExtension.cpp.o
+[23/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/CommandBufferUtility.cpp.o
+[24/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/VulkanSwapChain.cpp.o
+[25/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/GPUTimestampQuery.cpp.o
+[26/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/error/VulkanError.cpp.o
+[27/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelAABBCacher.cpp.o
+[28/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/Time/EngineTime.cpp.o
+[29/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/GLITextureLoader.cpp.o
+[30/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelSceneCacher.cpp.o
+[31/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/CapabilityGraph.cpp.o
+[32/405] Building CXX object libraries/VulkanResources/CMakeFiles/VulkanResources.dir/src/TextureHandling/Loading/TextureLoader.cpp.o
+[33/405] Linking CXX static library lib/libVulkanResources.a
+[34/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/main_cacher.cpp.o
+[35/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/descriptor_cacher.cpp.o
+[36/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/device_identifier.cpp.o
+[37/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_cacher.cpp.o
+[38/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_layout_cacher.cpp.o
+[39/405] Linking C shared library gnu_15.2_cxx11_64_release/libtbbmalloc.so.2.11
+[40/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_compilation_cacher.cpp.o
+[41/405] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_module_cacher.cpp.o
+[42/405] Linking CXX static library lib/libCashSystem.a
+[43/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/VariadicConnectionRule.cpp.o
+[44/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/DirectConnectionRule.cpp.o
+[45/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/PerFrameResources.cpp.o
+[46/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphLifecycleHooks.cpp.o
+[47/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeInstance.cpp.o
+[48/405] Building CXX object libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/cmake_pch.hxx.gch
+[49/405] Creating library symlink gnu_15.2_cxx11_64_release/libtbbmalloc.so.2 gnu_15.2_cxx11_64_release/libtbbmalloc.so
+[50/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc_proxy/CMakeFiles/tbbmalloc_proxy.dir/function_replacement.cpp.o
+[51/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/tbb-build/src/tbbmalloc_proxy/CMakeFiles/tbbmalloc_proxy.dir/proxy.cpp.o
+[52/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/googletest-build/googlemock/CMakeFiles/gmock.dir/src/gmock-all.cc.o
+[53/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceDependencyTracker.cpp.o
+[54/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/EngineContext.cpp.o
+[55/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CameraNode.dir/src/Nodes/CameraNode.cpp.o
+[56/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BlitNode.dir/src/Nodes/BlitNode.cpp.o
+[57/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ConstantNode.dir/src/Nodes/ConstantNode.cpp.o
+[58/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CommandPoolNode.dir/src/Nodes/CommandPoolNode.cpp.o
+[59/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[60/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProxyRasterStageNode.dir/src/Nodes/ProxyRasterStageNode.cpp.o
+[61/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeStageNode.dir/src/Nodes/ComputeStageNode.cpp.o
+[62/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DebugBufferReaderNode.dir/src/Nodes/DebugBufferReaderNode.cpp.o
+[63/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:514:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  514 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/CashSystem/include/MainCacher.h:570:10: note: declared here
+  570 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[64/405] Linking CXX static library lib/libRenderGraphCore.a
+[65/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputePipelineNode.dir/src/Nodes/ComputePipelineNode.cpp.o
+[66/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthBufferNode.dir/src/Nodes/DepthBufferNode.cpp.o
+[67/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderTargetNode.dir/src/Nodes/RenderTargetNode.cpp.o
+[68/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MultiDispatchNode.dir/src/Nodes/MultiDispatchNode.cpp.o
+[69/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PickIdTargetNode.dir/src/Nodes/PickIdTargetNode.cpp.o
+[70/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceBufferNode.dir/src/Nodes/InstanceBufferNode.cpp.o
+[71/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_StorageBufferNode.dir/src/Nodes/StorageBufferNode.cpp.o
+[72/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DynamicInstanceBufferNode.dir/src/Nodes/DynamicInstanceBufferNode.cpp.o
+[73/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightingConfigNode.dir/src/Nodes/LightingConfigNode.cpp.o
+[74/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShadowConfigNode.dir/src/Nodes/ShadowConfigNode.cpp.o
+[75/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationConfigNode.dir/src/Nodes/AccumulationConfigNode.cpp.o
+[76/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationHistoryNode.dir/src/Nodes/AccumulationHistoryNode.cpp.o
+[77/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WorldPosHistoryNode.dir/src/Nodes/WorldPosHistoryNode.cpp.o
+[78/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PrevCameraConfigNode.dir/src/Nodes/PrevCameraConfigNode.cpp.o
+[79/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthTargetNode.dir/src/Nodes/DepthTargetNode.cpp.o
+[80/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_HitAccumParamsConfigNode.dir/src/Nodes/HitAccumParamsConfigNode.cpp.o
+[81/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ReservoirConfigNode.dir/src/Nodes/ReservoirConfigNode.cpp.o
+[82/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MiningBeamBufferNode.dir/src/Nodes/MiningBeamBufferNode.cpp.o
+[83/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkySphereNode.dir/src/Nodes/SkySphereNode.cpp.o
+[84/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeGridConfigNode.dir/src/Nodes/ProbeGridConfigNode.cpp.o
+[85/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightTreeBufferNode.dir/src/Nodes/LightTreeBufferNode.cpp.o
+[86/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeAtlasNode.dir/src/Nodes/ProbeAtlasNode.cpp.o
+[87/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MvpUniformNode.dir/src/Nodes/MvpUniformNode.cpp.o
+[88/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorResourceGathererNode.dir/src/Nodes/DescriptorResourceGathererNode.cpp.o
+[89/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FramebufferNode.dir/src/Nodes/FramebufferNode.cpp.o
+[90/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FrameSyncNode.dir/src/Nodes/FrameSyncNode.cpp.o
+[91/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DeviceNode.dir/src/Nodes/DeviceNode.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp: In member function ‘void Vixen::RenderGraph::DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry&)’:
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:610:36: warning: ‘void CashSystem::DeviceRegistry::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  610 |     deviceRegistry.SetBudgetManager(budgetManager.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Nodes/DeviceNode.h:7,
+                 from ../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:3:
+../../VIXEN/libraries/CashSystem/include/DeviceIdentifier.h:197:10: note: declared here
+  197 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+      |          ^~~~~~~~~~~~~~~~
+[92/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorSetNode.dir/src/Nodes/DescriptorSetNode.cpp.o
+[93/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GeometryRenderNode.dir/src/Nodes/GeometryRenderNode.cpp.o
+[94/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelSelectionProviderNode.dir/src/Nodes/VoxelSelectionProviderNode.cpp.o
+[95/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LoopBridgeNode.dir/src/Nodes/LoopBridgeNode.cpp.o
+[96/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceNode.dir/src/Nodes/InstanceNode.cpp.o
+[97/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PushConstantGathererNode.dir/src/Nodes/PushConstantGathererNode.cpp.o
+[98/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GraphicsPipelineNode.dir/src/Nodes/GraphicsPipelineNode.cpp.o
+[99/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PresentNode.dir/src/Nodes/PresentNode.cpp.o
+[100/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PassGroupNode.dir/src/Nodes/PassGroupNode.cpp.o
+[101/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderPassNode.dir/src/Nodes/RenderPassNode.cpp.o
+[102/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SwapChainNode.dir/src/Nodes/SwapChainNode.cpp.o
+[103/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShaderLibraryNode.dir/src/Nodes/ShaderLibraryNode.cpp.o
+[104/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VertexBufferNode.dir/src/Nodes/VertexBufferNode.cpp.o
+[105/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TextureLoaderNode.dir/src/Nodes/TextureLoaderNode.cpp.o
+[106/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RayTracingPipelineNode.dir/src/Nodes/RayTracingPipelineNode.cpp.o
+[107/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelAABBConverterNode.dir/src/Nodes/VoxelAABBConverterNode.cpp.o
+[108/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WindowNode.dir/src/Nodes/WindowNode.cpp.o
+[109/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelGridNode.dir/src/Nodes/VoxelGridNode.cpp.o
+[110/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccelerationStructureNode.dir/src/Nodes/AccelerationStructureNode.cpp.o
+[111/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellTableNode.dir/src/Nodes/PhotonCellTableNode.cpp.o
+[112/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[113/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellParamsConfigNode.dir/src/Nodes/PhotonCellParamsConfigNode.cpp.o
+[114/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellDepositNode.dir/src/Nodes/PhotonCellDepositNode.cpp.o
+[115/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShellRevalidateNode.dir/src/Nodes/ShellRevalidateNode.cpp.o
+[116/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellFoldNode.dir/src/Nodes/PhotonCellFoldNode.cpp.o
+[117/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellClearNode.dir/src/Nodes/PhotonCellClearNode.cpp.o
+[118/405] Building CXX object libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/src/ArchetypeBuilder.cpp.o
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp: In member function ‘bool GaiaArchetype::RelationshipManager::createRelationship(gaia::ecs::Entity, gaia::ecs::Entity, const GaiaArchetype::RelationshipType&)’:
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp:40:30: warning: unused variable ‘componentType’ [-Wunused-variable]
+   40 |             for (const auto& componentType : archetype.requiredComponentTypes) {
+      |                              ^~~~~~~~~~~~~
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp: In member function ‘const GaiaArchetype::ArchetypeDefinition* GaiaArchetype::RelationshipManager::findArchetypeForEntity(gaia::ecs::Entity) const’:
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp:165:23: warning: unused parameter ‘entity’ [-Wunused-parameter]
+  165 |     gaia::ecs::Entity entity) const {
+      |     ~~~~~~~~~~~~~~~~~~^~~~~~
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp: In function ‘GaiaArchetype::RelationshipType GaiaArchetype::Relations::createChildOf(gaia::ecs::World&)’:
+../../VIXEN/libraries/GaiaArchetypes/src/ArchetypeBuilder.cpp:245:50: warning: unused parameter ‘world’ [-Wunused-parameter]
+  245 | RelationshipType createChildOf(gaia::ecs::World& world) {
+      |                                ~~~~~~~~~~~~~~~~~~^~~~~
+In file included from ../../VIXEN/libraries/GaiaArchetypes/include/pch.h:9,
+                 from ./libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/cmake_pch.hxx:5,
+                 from <command-line>:
+In copy constructor ‘gaia::cnt::darr<T, Allocator>::darr(const gaia::cnt::darr<T, Allocator>&) [with T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’,
+    inlined from ‘robin_hood::pair<T1, T2>::pair(std::tuple<_Args1 ...>&, std::tuple<_Args2 ...>&, std::index_sequence<_Is ...>, std::index_sequence<I2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; long unsigned int ...I1 = {0}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; long unsigned int ...I2 = {0}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16282:42,
+    inlined from ‘constexpr robin_hood::pair<T1, T2>::pair(std::piecewise_construct_t, std::tuple<_Args1 ...>, std::tuple<_Args2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16274:82,
+    inlined from ‘robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::DataNode<M, true>::DataNode(M&, Args&& ...) [with Args = {const std::piecewise_construct_t&, std::tuple<const gaia::ecs::ArchetypeIdLookupKey&>, std::tuple<gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&>}; M = robin_hood::detail::Table<true, 80, gaia::ecs::ArchetypeIdLookupKey, gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>, robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>, gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey> >; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16587:49,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace_impl(OtherKey&&, Args&& ...) [with OtherKey = const gaia::ecs::ArchetypeIdLookupKey&; Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17965:37,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace(const key_type&, Args&& ...) [with Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17419:28,
+    inlined from ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54850:36:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11203:81: warning: ‘<unknown>’ may be used uninitialized [-Wmaybe-uninitialized]
+11203 |                         darr(const darr& other): darr(other.begin(), other.end()) {}
+      |                                                                                 ^
+../../.tmp/fetch/gaia-src/single_include/gaia.h: In member function ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11180:25: note: by argument 3 of type ‘const gaia::ecs::QueryHandle*’ to ‘gaia::cnt::darr<T, Allocator>::darr(InputIt, InputIt) [with InputIt = const gaia::ecs::QueryHandle*; T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’ declared here
+11180 |                         darr(InputIt first, InputIt last) {
+      |                         ^~~~
+[119/405] Building CXX object libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/src/RelationshipObserver.cpp.o
+../../VIXEN/libraries/GaiaArchetypes/src/RelationshipObserver.cpp: In member function ‘std::vector<gaia::ecs::Entity> GaiaArchetype::RelationshipObserver::getTargetsFor(gaia::ecs::Entity, gaia::ecs::Entity) const’:
+../../VIXEN/libraries/GaiaArchetypes/src/RelationshipObserver.cpp:270:23: warning: unused parameter ‘relationTag’ [-Wunused-parameter]
+  270 |     gaia::ecs::Entity relationTag) const {
+      |     ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+../../VIXEN/libraries/GaiaArchetypes/src/RelationshipObserver.cpp: In member function ‘size_t GaiaArchetype::RelationshipObserver::countRelationships(gaia::ecs::Entity, gaia::ecs::Entity) const’:
+../../VIXEN/libraries/GaiaArchetypes/src/RelationshipObserver.cpp:290:23: warning: unused parameter ‘relationTag’ [-Wunused-parameter]
+  290 |     gaia::ecs::Entity relationTag) const {
+      |     ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+In file included from ../../VIXEN/libraries/GaiaArchetypes/include/pch.h:9,
+                 from ./libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/cmake_pch.hxx:5,
+                 from <command-line>:
+In copy constructor ‘gaia::cnt::darr<T, Allocator>::darr(const gaia::cnt::darr<T, Allocator>&) [with T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’,
+    inlined from ‘robin_hood::pair<T1, T2>::pair(std::tuple<_Args1 ...>&, std::tuple<_Args2 ...>&, std::index_sequence<_Is ...>, std::index_sequence<I2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; long unsigned int ...I1 = {0}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; long unsigned int ...I2 = {0}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16282:42,
+    inlined from ‘constexpr robin_hood::pair<T1, T2>::pair(std::piecewise_construct_t, std::tuple<_Args1 ...>, std::tuple<_Args2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16274:82,
+    inlined from ‘robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::DataNode<M, true>::DataNode(M&, Args&& ...) [with Args = {const std::piecewise_construct_t&, std::tuple<const gaia::ecs::ArchetypeIdLookupKey&>, std::tuple<gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&>}; M = robin_hood::detail::Table<true, 80, gaia::ecs::ArchetypeIdLookupKey, gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>, robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>, gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey> >; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16587:49,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace_impl(OtherKey&&, Args&& ...) [with OtherKey = const gaia::ecs::ArchetypeIdLookupKey&; Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17965:37,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace(const key_type&, Args&& ...) [with Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17419:28,
+    inlined from ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54850:36:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11203:81: warning: ‘<unknown>’ may be used uninitialized [-Wmaybe-uninitialized]
+11203 |                         darr(const darr& other): darr(other.begin(), other.end()) {}
+      |                                                                                 ^
+../../.tmp/fetch/gaia-src/single_include/gaia.h: In member function ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11180:25: note: by argument 3 of type ‘const gaia::ecs::QueryHandle*’ to ‘gaia::cnt::darr<T, Allocator>::darr(InputIt, InputIt) [with InputIt = const gaia::ecs::QueryHandle*; T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’ declared here
+11180 |                         darr(InputIt first, InputIt last) {
+      |                         ^~~~
+[120/405] Building CXX object libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/src/VoxelVolumeArchetype.cpp.o
+In file included from ../../VIXEN/libraries/GaiaArchetypes/include/pch.h:9,
+                 from ./libraries/GaiaArchetypes/CMakeFiles/GaiaArchetypes.dir/cmake_pch.hxx:5,
+                 from <command-line>:
+In copy constructor ‘gaia::cnt::darr<T, Allocator>::darr(const gaia::cnt::darr<T, Allocator>&) [with T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’,
+    inlined from ‘robin_hood::pair<T1, T2>::pair(std::tuple<_Args1 ...>&, std::tuple<_Args2 ...>&, std::index_sequence<_Is ...>, std::index_sequence<I2 ...>) [with U1 = {gaia::ecs::EntityLookupKey&&}; long unsigned int ...I1 = {0}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; long unsigned int ...I2 = {0}; T1 = gaia::ecs::EntityLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16282:42,
+    inlined from ‘constexpr robin_hood::pair<T1, T2>::pair(std::piecewise_construct_t, std::tuple<_Args1 ...>, std::tuple<_Args2 ...>) [with U1 = {gaia::ecs::EntityLookupKey&&}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; T1 = gaia::ecs::EntityLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16274:82,
+    inlined from ‘robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::DataNode<M, true>::DataNode(M&, Args&& ...) [with Args = {const std::piecewise_construct_t&, std::tuple<gaia::ecs::EntityLookupKey&&>, std::tuple<gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&>}; M = robin_hood::detail::Table<true, 80, gaia::ecs::EntityLookupKey, gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>, robin_hood::hash<gaia::ecs::EntityLookupKey, void>, gaia::core::equal_to<gaia::ecs::EntityLookupKey> >; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16587:49,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace_impl(OtherKey&&, Args&& ...) [with OtherKey = gaia::ecs::EntityLookupKey; Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17965:37,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace(key_type&&, Args&& ...) [with Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::EntityLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::EntityLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::EntityLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17424:28,
+    inlined from ‘void gaia::ecs::QueryCache::add_sort_to_query_pair(gaia::ecs::Entity, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54691:37,
+    inlined from ‘void gaia::ecs::QueryCache::add_sort_to_query_pairs(const gaia::ecs::QueryCtx&, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54721:27,
+    inlined from ‘gaia::ecs::QueryInfo& gaia::ecs::QueryCache::register_query_info(gaia::ecs::QueryHandle, gaia::ecs::QueryInfo&)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54020:28:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11203:81: warning: ‘<unknown>’ may be used uninitialized [-Wmaybe-uninitialized]
+11203 |                         darr(const darr& other): darr(other.begin(), other.end()) {}
+      |                                                                                 ^
+../../.tmp/fetch/gaia-src/single_include/gaia.h: In member function ‘gaia::ecs::QueryInfo& gaia::ecs::QueryCache::register_query_info(gaia::ecs::QueryHandle, gaia::ecs::QueryInfo&)’:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11180:25: note: by argument 3 of type ‘const gaia::ecs::QueryHandle*’ to ‘gaia::cnt::darr<T, Allocator>::darr(InputIt, InputIt) [with InputIt = const gaia::ecs::QueryHandle*; T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’ declared here
+11180 |                         darr(InputIt first, InputIt last) {
+      |                         ^~~~
+In copy constructor ‘gaia::cnt::darr<T, Allocator>::darr(const gaia::cnt::darr<T, Allocator>&) [with T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’,
+    inlined from ‘robin_hood::pair<T1, T2>::pair(std::tuple<_Args1 ...>&, std::tuple<_Args2 ...>&, std::index_sequence<_Is ...>, std::index_sequence<I2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; long unsigned int ...I1 = {0}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; long unsigned int ...I2 = {0}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16282:42,
+    inlined from ‘constexpr robin_hood::pair<T1, T2>::pair(std::piecewise_construct_t, std::tuple<_Args1 ...>, std::tuple<_Args2 ...>) [with U1 = {const gaia::ecs::ArchetypeIdLookupKey&}; U2 = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&}; T1 = gaia::ecs::ArchetypeIdLookupKey; T2 = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16274:82,
+    inlined from ‘robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::DataNode<M, true>::DataNode(M&, Args&& ...) [with Args = {const std::piecewise_construct_t&, std::tuple<const gaia::ecs::ArchetypeIdLookupKey&>, std::tuple<gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>&&>}; M = robin_hood::detail::Table<true, 80, gaia::ecs::ArchetypeIdLookupKey, gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>, robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>, gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey> >; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:16587:49,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace_impl(OtherKey&&, Args&& ...) [with OtherKey = const gaia::ecs::ArchetypeIdLookupKey&; Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17965:37,
+    inlined from ‘std::pair<robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::Iter<false>, bool> robin_hood::detail::Table<IsFlat, MaxLoadFactor100, Key, T, Hash, KeyEqual>::try_emplace(const key_type&, Args&& ...) [with Args = {gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>}; bool IsFlat = true; long unsigned int MaxLoadFactor100 = 80; Key = gaia::ecs::ArchetypeIdLookupKey; T = gaia::cnt::darr<gaia::ecs::QueryHandle, gaia::mem::DefaultAllocatorAdaptor>; Hash = robin_hood::hash<gaia::ecs::ArchetypeIdLookupKey, void>; KeyEqual = gaia::core::equal_to<gaia::ecs::ArchetypeIdLookupKey>]’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:17419:28,
+    inlined from ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’ at ../../.tmp/fetch/gaia-src/single_include/gaia.h:54850:36:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11203:81: warning: ‘<unknown>’ may be used uninitialized [-Wmaybe-uninitialized]
+11203 |                         darr(const darr& other): darr(other.begin(), other.end()) {}
+      |                                                                                 ^
+../../.tmp/fetch/gaia-src/single_include/gaia.h: In member function ‘void gaia::ecs::QueryCache::add_archetype_query_pair(const gaia::ecs::Archetype*, gaia::ecs::QueryHandle)’:
+../../.tmp/fetch/gaia-src/single_include/gaia.h:11180:25: note: by argument 3 of type ‘const gaia::ecs::QueryHandle*’ to ‘gaia::cnt::darr<T, Allocator>::darr(InputIt, InputIt) [with InputIt = const gaia::ecs::QueryHandle*; T = gaia::ecs::QueryHandle; Allocator = gaia::mem::DefaultAllocatorAdaptor]’ declared here
+11180 |                         darr(InputIt first, InputIt last) {
+      |                         ^~~~
+[121/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanApplicationBase.cpp.o
+[122/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkyProjectionNode.dir/src/Nodes/SkyProjectionNode.cpp.o
+[123/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BodyOctreeSceneNode.dir/src/Nodes/BodyOctreeSceneNode.cpp.o
+[124/405] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_UIRenderNode.dir/src/Nodes/UIRenderNode.cpp.o
+[125/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildUIGraph.cpp.o
+[126/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildInstancingDemoGraph.cpp.o
+[127/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildAutoSyncDemoGraph.cpp.o
+[128/405] vixen_stage_assets: staging /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/libraries/RenderGraph/assets -> /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/assets
+[129/405] Linking CXX shared library gnu_15.2_cxx11_64_release/libtbbmalloc_proxy.so.2.11
+[130/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/gli-build/gli/CMakeFiles/gli_dummy.dir/core/dummy.cpp.o
+[131/405] Linking CXX static library lib/libgmock.a
+[132/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/googletest-build/googlemock/CMakeFiles/gmock_main.dir/src/gmock_main.cc.o
+[133/405] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/miniz-build/CMakeFiles/miniz.dir/miniz.c.o
+[134/405] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/miniz-build/CMakeFiles/miniz.dir/miniz_zip.c.o
+[135/405] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/miniz-build/CMakeFiles/miniz.dir/miniz_tinfl.c.o
+[136/405] Building C object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/miniz-build/CMakeFiles/miniz.dir/miniz_tdef.c.o
+[137/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/Debugger.cpp.o
+[138/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/DebuggerPlugin.cpp.o
+[139/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/DebuggerSystemInterface.cpp.o
+[140/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/ElementContextHook.cpp.o
+[141/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/ElementDataModels.cpp.o
+[142/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/ElementDebugDocument.cpp.o
+[143/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/ElementInfo.cpp.o
+[144/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/ElementLog.cpp.o
+[145/405] Building CXX object /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/rmlui-build/Source/Debugger/CMakeFiles/rmlui_debugger.dir/Geometry.cpp.o
+[146/405] Building CXX object libraries/logger/tests/CMakeFiles/test_logger_basic.dir/test_logger_basic.cpp.o
+[147/405] Building CXX object libraries/EventBus/tests/CMakeFiles/test_eventbus_basic.dir/test_eventbus_basic.cpp.o
+[148/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_appflow_golden.dir/test_appflow_golden.cpp.o
+[149/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_action_stack.dir/test_action_stack.cpp.o
+[150/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_flow_state_machine.dir/test_flow_state_machine.cpp.o
+[151/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_binding_store.dir/test_binding_store.cpp.o
+[152/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_appflow_loader.dir/test_appflow_loader.cpp.o
+[153/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_appflow_data_seam.dir/test_appflow_data_seam.cpp.o
+[154/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_layer_controller.dir/test_layer_controller.cpp.o
+[155/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_snapshot_undo.dir/test_snapshot_undo.cpp.o
+[156/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_input_profile.dir/test_input_profile.cpp.o
+[157/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_keychord.dir/test_keychord.cpp.o
+[158/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_binding_pattern.dir/test_binding_pattern.cpp.o
+[159/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_flow_return.dir/test_flow_return.cpp.o
+[160/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_return_dispatch.dir/test_return_dispatch.cpp.o
+[161/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildFanInDemoGraph.cpp.o
+[162/405] Building CXX object libraries/ResourceManagement/tests/CMakeFiles/test_resourcemanagement_basic.dir/test_resourcemanagement_basic.cpp.o
+[163/405] Building CXX object libraries/ResourceManagement/tests/CMakeFiles/test_resource_management.dir/test_resource_management.cpp.o
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void HostBudgetManagerTest_FrameReset_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1159:29: warning: ignoring return value of ‘ResourceManagement::HostAllocation ResourceManagement::HostBudgetManager::Allocate(size_t, size_t, ResourceManagement::AllocationScope)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1159 |         hostBudget->Allocate(1024, 16, AllocationScope::Frame);
+      |         ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:22:
+../../VIXEN/libraries/ResourceManagement/include/Memory/HostBudgetManager.h:121:34: note: declared here
+  121 |     [[nodiscard]] HostAllocation Allocate(
+      |                                  ^~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void HostBudgetManagerTest_ResetPersistentStack_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1276:25: warning: ignoring return value of ‘ResourceManagement::HostAllocation ResourceManagement::HostBudgetManager::Allocate(size_t, size_t, ResourceManagement::AllocationScope)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1276 |     hostBudget->Allocate(1024, 16, AllocationScope::PersistentStack);
+      |     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/HostBudgetManager.h:121:34: note: declared here
+  121 |     [[nodiscard]] HostAllocation Allocate(
+      |                                  ^~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1277:25: warning: ignoring return value of ‘ResourceManagement::HostAllocation ResourceManagement::HostBudgetManager::Allocate(size_t, size_t, ResourceManagement::AllocationScope)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1277 |     hostBudget->Allocate(1024, 16, AllocationScope::PersistentStack);
+      |     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/HostBudgetManager.h:121:34: note: declared here
+  121 |     [[nodiscard]] HostAllocation Allocate(
+      |                                  ^~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void DeviceBudgetManagerTest_GetStats_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1390:35: warning: ignoring return value of ‘bool ResourceManagement::DeviceBudgetManager::TryReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1390 |     manager.TryReserveStagingQuota(256 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:23:
+../../VIXEN/libraries/ResourceManagement/include/Memory/DeviceBudgetManager.h:211:24: note: declared here
+  211 |     [[nodiscard]] bool TryReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_ReleaseStagingQuota_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1627:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1627 |     bridge_->ReserveStagingQuota(50 * 1024 * 1024);  // 50 MB
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:24:
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_StagingNearLimit_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1646:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1646 |     bridge_->ReserveStagingQuota(200 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_RecordUpload_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1656:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1656 |     bridge_->ReserveStagingQuota(10 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_ProcessCompletedUploadsFence_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1665:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1665 |     bridge_->ReserveStagingQuota(30 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_ProcessCompletedUploadsFrameBased_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1688:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1688 |     bridge_->ReserveStagingQuota(20 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_UploadCompleteCallback_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1705:33: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1705 |     bridge_->ReserveStagingQuota(10 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp: In member function ‘virtual void BudgetBridgeTest_MaxPendingUploadsDropsOldest_Test::TestBody()’:
+../../VIXEN/libraries/ResourceManagement/tests/test_resource_management.cpp:1734:36: warning: ignoring return value of ‘bool ResourceManagement::BudgetBridge::ReserveStagingQuota(uint64_t)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+ 1734 |     testBridge->ReserveStagingQuota(4 * 1024 * 1024);
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+../../VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h:94:24: note: declared here
+   94 |     [[nodiscard]] bool ReserveStagingQuota(uint64_t bytes);
+      |                        ^~~~~~~~~~~~~~~~~~~
+[164/405] Building CXX object libraries/ResourceManagement/tests/CMakeFiles/test_budget_manager_integration.dir/test_budget_manager_integration.cpp.o
+[165/405] Building CXX object libraries/ResourceManagement/tests/CMakeFiles/test_vulkan_buffer_allocator.dir/test_vulkan_buffer_allocator.cpp.o
+[166/405] Building CXX object libraries/AppFlow/tests/CMakeFiles/test_appflow_blob.dir/test_appflow_blob.cpp.o
+[167/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/ShaderManagementTests.dir/test_shader_compiler.cpp.o
+[168/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/ShaderManagementTests.dir/test_shader_cache_manager.cpp.o
+[169/405] Building CXX object libraries/ShaderManagement/tools/CMakeFiles/sdi_tool.dir/shader_tool.cpp.o
+[170/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/ShaderManagementTests.dir/test_shader_preprocessor.cpp.o
+[171/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/ShaderManagementTests.dir/test_sdi_lifecycle.cpp.o
+[172/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_hlsl_ingestion.dir/test_hlsl_ingestion.cpp.o
+[173/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_probe_update_smoke.dir/test_probe_update_smoke.cpp.o
+[174/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_shader_family.dir/test_shader_family.cpp.o
+[175/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_sdi_variant_merge.dir/test_sdi_variant_merge.cpp.o
+[176/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_async_shader_bundle_builder.dir/test_async_shader_bundle_builder.cpp.o
+[177/405] Building CXX object libraries/VulkanResources/tests/CMakeFiles/test_vulkanresources_basic.dir/test_vulkanresources_basic.cpp.o
+[178/405] Building CXX object libraries/ShaderManagement/tests/CMakeFiles/test_spirv_access.dir/test_spirv_access.cpp.o
+[179/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_registration_api.dir/test_registration_api.cpp.o
+[180/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_pipeline_blend_key.dir/test_pipeline_blend_key.cpp.o
+[181/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_tlas_phase3.dir/test_tlas_phase3.cpp.o
+[182/405] Building CXX object libraries/VulkanResources/tests/CMakeFiles/test_vulkan_global_names_policy.dir/test_vulkan_global_names_policy.cpp.o
+[183/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_lifetime_safety.dir/test_lifetime_safety.cpp.o
+[184/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_cacher_chain_integration.dir/test_cacher_chain_integration.cpp.o
+[185/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_typed_cacher_concurrency.dir/test_typed_cacher_concurrency.cpp.o
+[186/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_cache_codec.dir/test_cache_codec.cpp.o
+[187/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_voxel_scene_key.dir/test_voxel_scene_key.cpp.o
+[188/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_spirv_loader.dir/test_spirv_loader.cpp.o
+[189/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_recipe_content_hash.dir/test_recipe_content_hash.cpp.o
+[190/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_pipeline_cache_header.dir/test_pipeline_cache_header.cpp.o
+[191/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_recipe_content_cacher.dir/test_recipe_content_cacher.cpp.o
+[192/405] Building CXX object libraries/CashSystem/tests/CMakeFiles/test_recipe_bucket_data_cacher.dir/test_recipe_bucket_data_cacher.cpp.o
+[193/405] Linking CXX static library lib/libRenderGraphNodes.a
+[194/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_slot_task.dir/test_slot_task.cpp.o
+[195/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_subgraph.dir/test_subgraph_nodes.cpp.o
+[196/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_b.dir/Core/test_per_frame_resources.cpp.o
+[197/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_b.dir/Core/test_gpu_query_manager.cpp.o
+../../VIXEN/libraries/RenderGraph/tests/Core/test_gpu_query_manager.cpp: In member function ‘virtual void GPUQueryManagerTest_AllocateBeyondMaxReturnsInvalidSlot_Test::TestBody()’:
+../../VIXEN/libraries/RenderGraph/tests/Core/test_gpu_query_manager.cpp:137:34: warning: ignoring return value of ‘Vixen::RenderGraph::GPUQueryManager::QuerySlotHandle Vixen::RenderGraph::GPUQueryManager::AllocateQuerySlot(const std::string&)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  137 |         manager.AllocateQuerySlot("Consumer" + std::to_string(i));
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/tests/Core/test_gpu_query_manager.cpp:18:
+../../VIXEN/libraries/RenderGraph/include/Core/GPUQueryManager.h:109:35: note: declared here
+  109 |     [[nodiscard]] QuerySlotHandle AllocateQuerySlot(const std::string& consumerName);
+      |                                   ^~~~~~~~~~~~~~~~~
+[198/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_c.dir/Core/test_gpu_query_manager_integration.cpp.o
+[199/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_device_node.cpp.o
+[200/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_command_pool_node.cpp.o
+[201/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_frame_sync_node.cpp.o
+[202/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[203/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_a.dir/Core/test_recompile_dedup.cpp.o
+[204/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_blit_node.cpp.o
+[205/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra2.dir/Nodes/test_acceleration_structure_node.cpp.o
+[206/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra2.dir/Nodes/test_body_octree_lifetime.cpp.o
+[207/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_render_target_node.cpp.o
+[208/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_compute_dispatch_node.cpp.o
+[209/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Nodes/test_push_constant_gatherer_node.cpp.o
+[210/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_descriptorgatherer.dir/Nodes/test_descriptor_resource_gatherer_node.cpp.o
+[211/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender1.dir/Nodes/test_hitrecord_readback.cpp.o
+[212/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender1.dir/Nodes/test_body_instance_raymarch_render.cpp.o
+[213/405] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[214/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_pool_render.dir/Nodes/test_recipe_pool_render.cpp.o
+[215/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2.dir/Nodes/test_body_instance_occlusion_reject.cpp.o
+[216/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_mip_fallback_render.dir/Nodes/test_mip_fallback_render.cpp.o
+[217/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2.dir/Nodes/test_tier_crossing_lod_residency.cpp.o
+[218/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2.dir/Nodes/test_editor_document_render.cpp.o
+[219/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2b.dir/Nodes/test_recipe_authoring_gate.cpp.o
+[220/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2b.dir/Nodes/test_shadow_correctness.cpp.o
+[221/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_baked_vs_virtual_parity.dir/Nodes/test_baked_vs_virtual_parity.cpp.o
+[222/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_shell_revalidate_node.dir/Nodes/test_shell_revalidate_node.cpp.o
+[223/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_appflow_editor_toggle_render.dir/Nodes/test_appflow_editor_toggle_render.cpp.o
+[224/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_instance_bucketing.dir/Nodes/test_recipe_instance_bucketing.cpp.o
+[225/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_instance_occlusion_cull_device.dir/Nodes/test_instance_occlusion_cull_device.cpp.o
+[226/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_b1_occlusion_ab.dir/Nodes/test_b1_occlusion_ab.cpp.o
+[227/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_bucketed_indirect_dispatch.dir/Nodes/test_recipe_bucketed_indirect_dispatch.cpp.o
+[228/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sdi_stage_wiring.dir/test_sdi_stage_wiring.cpp.o
+[229/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_multi_bucket_compositing.dir/Nodes/test_recipe_multi_bucket_compositing.cpp.o
+[230/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_syncbarrier.dir/test_frame_sync_node_timeline.cpp.o
+[231/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_bucketing_perf.dir/Nodes/test_recipe_bucketing_perf.cpp.o
+[232/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_node_self_registration.dir/test_node_self_registration.cpp.o
+[233/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_photon_cell_nodes.dir/test_photon_cell_nodes.cpp.o
+[234/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_nodes.dir/Nodes/test_partial_brick_upload.cpp.o
+[235/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_nodes.dir/Nodes/test_bandwidth_ab_measurement.cpp.o
+[236/405] Building CXX object libraries/VoxelComponents/tests/CMakeFiles/test_component_system.dir/test_component_system.cpp.o
+[237/405] Building CXX object libraries/VoxelData/tests/CMakeFiles/test_block_compressor.dir/test_block_compressor.cpp.o
+[238/405] Building CXX object libraries/VoxelData/tests/CMakeFiles/test_attribute_storage.dir/test_attribute_storage.cpp.o
+[239/405] Building CXX object libraries/VoxelData/tests/CMakeFiles/test_attribute_registry.dir/test_attribute_registry.cpp.o
+[240/405] Building CXX object libraries/GaiaVoxelWorld/tests/CMakeFiles/test_gaia_voxel_world.dir/test_gaia_voxel_world.cpp.o
+[241/405] Building CXX object libraries/GaiaVoxelWorld/tests/CMakeFiles/test_voxel_injector.dir/test_voxel_injector.cpp.o
+[242/405] Building CXX object libraries/GaiaVoxelWorld/tests/CMakeFiles/test_gaia_voxel_world_coverage.dir/test_gaia_voxel_world_coverage.cpp.o
+[243/405] Building CXX object libraries/GaiaVoxelWorld/tests/CMakeFiles/benchmark_voxel_batch.dir/benchmark_voxel_batch.cpp.o
+[244/405] Building CXX object libraries/GaiaVoxelWorld/tests/CMakeFiles/test_voxeldata_integration.dir/test_voxeldata_integration.cpp.o
+[245/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_connection_rule.dir/test_connection_rule.cpp.o
+[246/405] Linking CXX static library lib/libGaiaArchetypes.a
+[247/405] Building CXX object libraries/GaiaArchetypes/tests/CMakeFiles/test_gaia_archetypes.dir/test_archetype_builder.cpp.o
+[248/405] Building CXX object libraries/GaiaArchetypes/tests/CMakeFiles/test_gaia_archetypes.dir/test_relationship_observer.cpp.o
+[249/405] Building CXX object libraries/GaiaArchetypes/tests/CMakeFiles/test_gaia_archetypes.dir/test_voxel_volume_archetype.cpp.o
+[250/405] Linking CXX static library lib/libVixenApp.a
+[251/405] Building CXX object libraries/VoxelDocument/tests/CMakeFiles/test_editor_document_model_preview.dir/test_editor_document_model_preview.cpp.o
+[252/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_tracking.dir/test_graph_task_lowering.cpp.o
+[253/405] Building CXX object application/main/CMakeFiles/test_app_run_tick.dir/tests/test_app_run_tick.cpp.o
+[254/405] Building CXX object application/main/CMakeFiles/test_hud_view.dir/tests/test_hud_view.cpp.o
+[255/405] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_syncbarrier.dir/test_graph_topology.cpp.o
+[256/405] Building CXX object application/main/CMakeFiles/VIXEN.dir/source/main.cpp.o
+[257/405] Building CXX object application/main/CMakeFiles/test_headless_starfield_graph.dir/tests/test_headless_starfield_graph.cpp.o
+[258/405] Building CXX object application/main/CMakeFiles/test_headless_ui_graph.dir/tests/test_headless_ui_graph.cpp.o
+[259/405] Building CXX object application/main/CMakeFiles/test_view_blob_equiv.dir/tests/test_view_blob_equiv.cpp.o
+[260/405] Building CXX object application/main/CMakeFiles/test_headless_cornell_graph.dir/tests/test_headless_cornell_graph.cpp.o
+[261/405] Building CXX object application/main/CMakeFiles/vixen_lookdev_capture.dir/tests/test_lookdev_capture.cpp.o
+[262/405] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/AppFlowReadback.cpp.o
+[263/405] Building CXX object tests/CMakeFiles/coordinate_system_test.dir/coordinate_system_test.cpp.o
+[264/405] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 833 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[265/405] Creating library symlink gnu_15.2_cxx11_64_release/libtbbmalloc_proxy.so.2 gnu_15.2_cxx11_64_release/libtbbmalloc_proxy.so
+[266/405] Linking CXX executable /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/gli-build/gli/gli_dummy
+[267/405] Linking CXX static library lib/libgmock_main.a
+[268/405] Linking C static library lib/libminiz.a
+[269/405] Linking CXX static library lib/librmlui_debugger.a
+[270/405] Linking CXX executable libraries/logger/tests/test_logger_basic
+[271/405] Linking CXX executable libraries/EventBus/tests/test_eventbus_basic
+[272/405] Linking CXX executable libraries/AppFlow/tests/test_appflow_golden
+[273/405] Linking CXX executable libraries/AppFlow/tests/test_action_stack
+[274/405] Linking CXX executable libraries/AppFlow/tests/test_flow_state_machine
+[275/405] Linking CXX executable libraries/AppFlow/tests/test_binding_store
+[276/405] Linking CXX executable libraries/AppFlow/tests/test_appflow_loader
+[277/405] Linking CXX executable libraries/AppFlow/tests/test_appflow_data_seam
+[278/405] Linking CXX executable libraries/AppFlow/tests/test_layer_controller
+[279/405] Linking CXX executable libraries/AppFlow/tests/test_snapshot_undo
+[280/405] Building CXX object application/main/CMakeFiles/test_cel_shading_graph.dir/tests/test_cel_shading_graph.cpp.o
+[281/405] Linking CXX executable libraries/AppFlow/tests/test_input_profile
+[282/405] Linking CXX executable libraries/AppFlow/tests/test_keychord
+[283/405] Linking CXX executable libraries/AppFlow/tests/test_binding_pattern
+[284/405] Linking CXX executable libraries/AppFlow/tests/test_flow_return
+[285/405] Linking CXX executable libraries/AppFlow/tests/test_return_dispatch
+[286/405] Linking CXX executable libraries/AppFlow/tests/test_appflow_blob
+[287/405] Linking CXX executable libraries/ResourceManagement/tests/test_resourcemanagement_basic
+[288/405] Linking CXX executable libraries/ResourceManagement/tests/test_budget_manager_integration
+[289/405] Linking CXX executable libraries/ResourceManagement/tests/test_vulkan_buffer_allocator
+[290/405] Linking CXX executable bin/sdi_tool
+[291/405] Linking CXX executable libraries/ShaderManagement/tests/ShaderManagementTests
+[292/405] Linking CXX executable libraries/ShaderManagement/tests/test_hlsl_ingestion
+[293/405] Linking CXX executable libraries/ShaderManagement/tests/test_probe_update_smoke
+[294/405] Linking CXX executable libraries/ResourceManagement/tests/test_resource_management
+[295/405] Linking CXX executable libraries/ShaderManagement/tests/test_shader_family
+[296/405] Linking CXX executable libraries/ShaderManagement/tests/test_async_shader_bundle_builder
+[297/405] Linking CXX executable libraries/ShaderManagement/tests/test_sdi_variant_merge
+[298/405] Linking CXX executable libraries/ShaderManagement/tests/test_spirv_access
+[299/405] Linking CXX executable libraries/VulkanResources/tests/test_vulkanresources_basic
+[300/405] Linking CXX executable libraries/VulkanResources/tests/test_vulkan_global_names_policy
+[301/405] Linking CXX executable libraries/CashSystem/tests/test_registration_api
+[302/405] Linking CXX executable libraries/CashSystem/tests/test_pipeline_blend_key
+[303/405] Linking CXX executable libraries/CashSystem/tests/test_tlas_phase3
+[304/405] Linking CXX executable libraries/CashSystem/tests/test_lifetime_safety
+[305/405] Linking CXX executable libraries/CashSystem/tests/test_typed_cacher_concurrency
+[306/405] Linking CXX executable libraries/CashSystem/tests/test_cacher_chain_integration
+[307/405] Linking CXX executable libraries/CashSystem/tests/test_voxel_scene_key
+[308/405] Linking CXX executable libraries/CashSystem/tests/test_cache_codec
+[309/405] Linking CXX executable libraries/CashSystem/tests/test_spirv_loader
+[310/405] Linking CXX executable libraries/CashSystem/tests/test_pipeline_cache_header
+[311/405] Linking CXX executable libraries/CashSystem/tests/test_recipe_content_hash
+[312/405] Linking CXX executable libraries/CashSystem/tests/test_recipe_content_cacher
+[313/405] Linking CXX executable libraries/CashSystem/tests/test_recipe_bucket_data_cacher
+[314/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[315/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[316/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[317/405] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[318/405] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/main.cpp.o
+[319/405] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[320/405] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[321/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[322/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[323/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[324/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[325/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[326/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[327/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[328/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[329/405] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[330/405] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[331/405] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[332/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[333/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[334/405] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[335/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[336/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[337/405] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[338/405] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[339/405] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[340/405] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[341/405] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[342/405] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[343/405] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[344/405] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[345/405] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[346/405] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[347/405] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[348/405] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[349/405] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[350/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[351/405] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[352/405] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[353/405] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[354/405] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[355/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[356/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[357/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[358/405] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[359/405] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[360/405] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[361/405] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[362/405] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[363/405] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[364/405] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[365/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[366/405] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[367/405] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[368/405] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[369/405] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[370/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[371/405] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[372/405] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[373/405] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[374/405] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[375/405] Linking CXX executable libraries/VoxelComponents/tests/test_component_system
+[376/405] Linking CXX executable libraries/VoxelData/tests/test_block_compressor
+[377/405] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[378/405] Linking CXX executable libraries/VoxelData/tests/test_attribute_storage
+[379/405] Linking CXX executable libraries/VoxelData/tests/test_attribute_registry
+[380/405] Linking CXX executable libraries/GaiaVoxelWorld/tests/test_voxel_injector
+[381/405] Linking CXX executable libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world
+[382/405] Linking CXX executable libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world_coverage
+[383/405] Linking CXX executable libraries/GaiaVoxelWorld/tests/benchmark_voxel_batch
+[384/405] Linking CXX executable libraries/GaiaVoxelWorld/tests/test_voxeldata_integration
+[385/405] Linking CXX executable libraries/SVO/tests/test_recipe_glsl_numerical_parity
+[386/405] Linking CXX executable libraries/SVO/tests/test_rayquery_feasibility
+[387/405] Linking CXX executable libraries/SVO/tests/test_recipe_nested_invocation
+[388/405] Linking CXX executable libraries/SVO/tests/test_recipe_declared_position_render
+[389/405] Linking CXX executable libraries/VoxelDocument/tests/test_editor_document_model_preview
+[390/405] Linking CXX executable libraries/GaiaArchetypes/tests/test_gaia_archetypes
+[391/405] Linking CXX executable application/main/test_app_run_tick
+[392/405] Linking CXX executable binaries/VIXEN
+[393/405] Linking CXX executable application/main/test_hud_view
+[394/405] Linking CXX executable application/main/test_view_blob_equiv
+[395/405] Linking CXX executable application/main/test_headless_ui_graph
+[396/405] Linking CXX executable application/main/test_headless_cornell_graph
+[397/405] Linking CXX executable application/main/vixen_lookdev_capture
+[398/405] Linking CXX executable application/main/test_headless_starfield_graph
+[399/405] Linking CXX executable binaries/tests/coordinate_system_test
+[400/405] Linking CXX executable application/main/test_cel_shading_graph
+[401/405] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/EditorApplication.cpp.o
+[402/405] Linking CXX executable binaries/vixen_editor

@@ -1,3 +1,4 @@
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/TraceRaysNode.h"
 #include "Core/NodeRegistration.h"
@@ -7,6 +8,11 @@
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include <array>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <cstdlib>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 
@@ -68,7 +74,9 @@ void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
     }
 
     // Get pipeline data
-    pipelineData_ = ctx.In(TraceRaysNodeConfig::RT_PIPELINE_DATA);
+    auto* nextPipeline = ctx.In(TraceRaysNodeConfig::RT_PIPELINE_DATA);
+    if (pipelineData_ != nextPipeline) chunkCost_ = {};
+    pipelineData_ = nextPipeline;
     if (!pipelineData_ || !pipelineData_->IsValid()) {
         throw std::runtime_error("[TraceRaysNode] RT_PIPELINE_DATA is null or invalid");
     }
@@ -95,6 +103,32 @@ void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // NOTE: Descriptor resources are now managed by DescriptorSetNode
     // We receive descriptor sets via DESCRIPTOR_SETS input in ExecuteImpl
     // This follows the same pattern as ComputeDispatchNode
+
+    // R486 extends the existing shader contract; offsets and types come from reflection.
+    const auto& bundle = ctx.In(TraceRaysNodeConfig::SHADER_DATA_BUNDLE);
+    if (!bundle || !bundle->reflectionData)
+        throw std::runtime_error("TraceRaysNode: ray-generation reflection is required");
+    const auto fieldOffset = [&](const char* name) {
+        for (const auto& range : bundle->reflectionData->pushConstants) {
+            if (!(range.stageFlags & VK_SHADER_STAGE_RAYGEN_BIT_KHR)) continue;
+            for (const auto& member : range.structDef.members) {
+                if (member.name != name) continue;
+                if (member.type.baseType != ShaderManagement::SpirvTypeInfo::BaseType::UInt ||
+                    member.type.width != 32 || member.type.vecSize != 3 || member.type.arraySize != 0 ||
+                    member.offset < pipelineData_->pushConstantOffset ||
+                    uint64_t(member.offset) + sizeof(uint32_t) * 3 >
+                        uint64_t(pipelineData_->pushConstantOffset) + pipelineData_->pushConstantSize)
+                    throw std::runtime_error(std::string("TraceRaysNode: invalid uvec3 push member ") + name);
+                return member.offset - pipelineData_->pushConstantOffset;
+            }
+        }
+        throw std::runtime_error(std::string("TraceRaysNode: missing ray-generation push member ") + name);
+    };
+    tileOriginOffset_ = fieldOffset("tileOrigin");
+    fullLaunchExtentOffset_ = fieldOffset("fullLaunchExtent");
+    if (!(pipelineData_->pushConstantStages & VK_SHADER_STAGE_RAYGEN_BIT_KHR))
+        throw std::runtime_error("TraceRaysNode: push range must include ray generation");
+    tileCommandBuffers_.resize(swapChainImageCount_);
 
     // Allocate command buffers
     if (!AllocateCommandBuffers()) {
@@ -198,6 +232,17 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
     }
 
+    if (currentFrame >= tileQueries_.size()) {
+        tileQueries_.resize(currentFrame + 1);
+        tileCounts_.resize(currentFrame + 1);
+        tileBudgets_.resize(currentFrame + 1);
+        tilePixelCounts_.resize(currentFrame + 1);
+        submissionBatches_.resize(currentFrame + 1);
+        tileNominalPixelCounts_.resize(currentFrame + 1);
+        tileQueryCapacities_.resize(currentFrame + 1);
+    }
+    CollectTileTiming(currentFrame);
+
     // Collect GPU performance results for this frame-in-flight (after fence wait)
     if (gpuPerfLogger_) {
         gpuPerfLogger_->CollectResults(currentFrame);
@@ -224,6 +269,44 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get command buffer for this IMAGE (not frame) - matches ComputeDispatchNode pattern
     VkCommandBuffer cmdBuffer = commandBuffers_[imageIndex];
 
+    if (width_ == 0 || height_ == 0 || depth_ == 0)
+        throw std::runtime_error("TraceRaysNode: launch dimensions must be positive");
+    const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
+    const uint64_t budgetNs = std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs);
+    const uint32_t edge = chunkCost_.Edge(budgetNs, std::max(width_, height_), 56);
+    tileNominalPixelCounts_[currentFrame] = uint64_t(std::min(edge, width_)) * std::min(edge, height_);
+    const uint64_t planeTiles = uint64_t(1 + (width_ - 1) / edge) * (1 + (height_ - 1) / edge);
+    if (planeTiles > std::numeric_limits<uint32_t>::max() / 4u / depth_)
+        throw std::runtime_error("TraceRaysNode: too many timestamped launch tiles");
+    const uint32_t count = static_cast<uint32_t>(planeTiles * depth_);
+    auto& extra = tileCommandBuffers_[imageIndex];
+    if (extra.size() < count - 1u) {
+        std::vector<VkCommandBuffer> allocated(count - 1u - extra.size());
+        VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocation.commandPool = commandPool_;
+        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocation.commandBufferCount = static_cast<uint32_t>(allocated.size());
+        if (vkAllocateCommandBuffers(device, &allocation, allocated.data()) != VK_SUCCESS)
+            throw std::runtime_error("TraceRaysNode: tile command allocation failed");
+        extra.insert(extra.end(), allocated.begin(), allocated.end());
+    }
+    std::vector<VkCommandBuffer> recorded{cmdBuffer};
+    recorded.insert(recorded.end(), extra.begin(), extra.begin() + (count - 1u));
+    if (tileQueryCapacities_[currentFrame] < count) {
+        tileQueryCapacities_[currentFrame] = std::max(count, tileQueryCapacities_[currentFrame] * 2u);
+        tileQueries_[currentFrame] = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(
+            vulkanDevice_, 1, tileQueryCapacities_[currentFrame] * 4);
+    }
+    tileCounts_[currentFrame] = count;
+    tileBudgets_[currentFrame] = budgetNs;
+    auto& pixels = tilePixelCounts_[currentFrame];
+    pixels.clear();
+    pixels.reserve(count);
+    auto& query = *tileQueries_[currentFrame];
+    pushConstData.resize(pipelineData_->pushConstantSize, 0);
+    const std::array<uint32_t, 3> fullExtent{width_, height_, depth_};
+    std::memcpy(pushConstData.data() + fullLaunchExtentOffset_, fullExtent.data(), sizeof(fullExtent));
+
     // Begin command buffer (matches ComputeDispatchNode pattern - no special flags)
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -233,6 +316,9 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (beginResult != VK_SUCCESS) {
         throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to begin command buffer: " + std::to_string(beginResult));
     }
+
+    query.ResetQueries(cmdBuffer, 0);
+    query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
     // Get output image for layout transitions
     VkImage outputImage = swapchainInfo->GetImage(imageIndex);
@@ -322,17 +408,35 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         gpuPerfLogger_->RecordDispatchStart(cmdBuffer, currentFrame);
     }
 
-    // Dispatch rays
-    vkCmdTraceRaysKHR_(
-        cmdBuffer,
-        &raygenRegion,
-        &missRegion,
-        &hitRegion,
-        &callableRegion,
-        width_,
-        height_,
-        depth_
-    );
+    uint32_t tile = 0;
+    for (uint32_t z = 0; z < depth_; ++z) {
+        for (uint32_t y = 0; y < height_; y += edge) {
+            for (uint32_t x = 0; x < width_; x += edge) {
+                pixels.push_back(uint64_t(std::min(edge, width_ - x)) * std::min(edge, height_ - y));
+                const std::array<uint32_t, 3> origin{x, y, z};
+                std::memcpy(pushConstData.data() + tileOriginOffset_, origin.data(), sizeof(origin));
+                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineData_->pipeline);
+                vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                    pipelineData_->pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+                vkCmdPushConstants(cmdBuffer, pipelineData_->pipelineLayout,
+                    pipelineData_->pushConstantStages, pipelineData_->pushConstantOffset,
+                    static_cast<uint32_t>(pushConstData.size()), pushConstData.data());
+                query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, tile * 4 + 1);
+                vkCmdTraceRaysKHR_(cmdBuffer, &raygenRegion, &missRegion, &hitRegion, &callableRegion,
+                    std::min(edge, width_ - x), std::min(edge, height_ - y), 1);
+                query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, tile * 4 + 2);
+                if (++tile != count) {
+                    query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, tile * 4 - 1);
+                    if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
+                        throw std::runtime_error("TraceRaysNode: ending tile commands failed");
+                    cmdBuffer = recorded[tile];
+                    if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
+                        throw std::runtime_error("TraceRaysNode: beginning tile commands failed");
+                    query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, tile * 4);
+                }
+            }
+        }
+    }
 
     // Record GPU timing end
     if (gpuPerfLogger_) {
@@ -357,33 +461,44 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     );
 
     swapchainInfo->SetImageLayout(imageIndex, barrier.newLayout);
+    query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 4 - 1);
     VkResult endResult = vkEndCommandBuffer(cmdBuffer);
     if (endResult != VK_SUCCESS) {
         throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to end command buffer: " + std::to_string(endResult));
     }
 
-    // Submit command buffer
-    VkSemaphore waitSemaphores[] = { handoffs.acquire };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR };
-    VkSemaphore signalSemaphores[] = { handoffs.present };
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = handoffs.acquire != VK_NULL_HANDLE ? 1u : 0u;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-    submitInfo.signalSemaphoreCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
-    submitInfo.pSignalSemaphores = signalSemaphores;
-
-    VkResult result;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-        result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
+    // Existing typed submit channel consumes acquire once and signals completion once.
+    std::vector<VkCommandBufferSubmitInfo> commands;
+    for (const auto buffer : recorded) {
+        VkCommandBufferSubmitInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        info.commandBuffer = buffer;
+        commands.push_back(info);
     }
+    VkSemaphoreSubmitInfo acquire{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    acquire.semaphore = handoffs.acquire;
+    acquire.stageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+    VkSemaphoreSubmitInfo present{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    present.semaphore = handoffs.present;
+    present.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkSubmitInfo2 info{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    info.commandBufferInfoCount = static_cast<uint32_t>(commands.size());
+    info.pCommandBufferInfos = commands.data();
+    info.waitSemaphoreInfoCount = handoffs.acquire != VK_NULL_HANDLE ? 1u : 0u;
+    info.pWaitSemaphoreInfos = &acquire;
+    info.signalSemaphoreInfoCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
+    info.pSignalSemaphoreInfos = &present;
+    VkResult result = VK_SUCCESS;
+    auto record = SubmitRecord::FromSubmitInfo2(info, inFlightFence);
+    record.submissionBudgetNs = budgetNs;
+    for (uint64_t pixelCount : pixels)
+        record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(pixelCount));
+    submissionBatches_[currentFrame] = record.SubmissionBatches();
+    if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
+        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        result = record.Submit(
+            vulkanDevice_->fpQueueSubmit2, vulkanDevice_->queue);
+    }
+
     if (result != VK_SUCCESS) {
         // Matches ComputeDispatchNode: a swallowed submit failure here previously fell through to
         // ctx.Out() below, handing Present a semaphore that will never be signalled, and a
@@ -395,8 +510,50 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Output command buffer and semaphore
-    ctx.Out(TraceRaysNodeConfig::COMMAND_BUFFER, cmdBuffer);
-    ctx.Out(TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSemaphores[0]);
+    ctx.Out(TraceRaysNodeConfig::COMMAND_BUFFER, recorded.front());
+    ctx.Out(TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORE, handoffs.present);
+}
+
+void TraceRaysNode::CollectTileTiming(uint32_t frame) {
+    auto& query = tileQueries_[frame];
+    if (!query || !query->ReadResults(0)) return;
+    double total = 0, maximum = 0;
+    for (uint32_t i = 0; i < tileCounts_[frame]; ++i) {
+        const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+        if (tilePixelCounts_[frame][i])
+            chunkCost_.Observe(tilePixelCounts_[frame][i], tileNominalPixelCounts_[frame], ms * 1.0e6);
+        if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+            NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
+                " flight=" + std::to_string(frame) + " chunk=" + std::to_string(i) +
+                " start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4)) +
+                " end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 3)) +
+                " dispatch_start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 1)) +
+                " dispatch_end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 2)) +
+                " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
+                " elapsed_gpu_ms=" + std::to_string(ms));
+        }
+    }
+    for (const auto& batch : submissionBatches_[frame]) {
+        const double ms = query->GetElapsedMs(0, batch.first * 4,
+            (batch.first + batch.count) * 4 - 1);
+        total += ms;
+        maximum = std::max(maximum, ms);
+        uint64_t pixels = 0;
+        for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
+            pixels += tilePixelCounts_[frame][i];
+        if (pixels) chunkCost_.ObserveBatch(pixels, batch.count, ms * 1.0e6);
+        if (std::getenv("VIXEN_GPUYIELD_TRACE"))
+            NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
+                " first_chunk=" + std::to_string(batch.first) +
+                " chunks=" + std::to_string(batch.count) +
+                " elapsed_gpu_ms=" + std::to_string(ms));
+    }
+    NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" +
+        std::to_string(submissionBatches_[frame].size()) +
+        " chunks=" + std::to_string(tileCounts_[frame]) + " total_gpu_ms=" + std::to_string(total) +
+        " max_submission_ms=" + std::to_string(maximum) +
+        " budget_ms=" + std::to_string(tileBudgets_[frame] / 1.0e6) +
+        " device_class=" + GpuDeviceClassName(*vulkanDevice_));
 }
 
 void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
@@ -406,6 +563,18 @@ void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor
     // Logger object stays alive for parent log extraction.
 
+    if (vulkanDevice_ && vulkanDevice_->device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(vulkanDevice_->device);
+        for (uint32_t frame = 0; frame < tileQueries_.size(); ++frame) CollectTileTiming(frame);
+    }
+    tileQueries_.clear();
+    tileCounts_.clear();
+    tileBudgets_.clear();
+    tilePixelCounts_.clear();
+    submissionBatches_.clear();
+    tileNominalPixelCounts_.clear();
+    tileQueryCapacities_.clear();
+    chunkCost_ = {};
     DestroyResources();
 }
 
@@ -470,6 +639,12 @@ void TraceRaysNode::DestroyResources() {
                              commandBuffers_.data());
         commandBuffers_.clear();
     }
+
+    for (auto& extra : tileCommandBuffers_) {
+        if (!extra.empty() && commandPool_ != VK_NULL_HANDLE)
+            vkFreeCommandBuffers(device, commandPool_, static_cast<uint32_t>(extra.size()), extra.data());
+    }
+    tileCommandBuffers_.clear();
 
     // NOTE: Descriptor pool/set cleanup is handled by DescriptorSetNode
     // TraceRaysNode no longer owns descriptor resources

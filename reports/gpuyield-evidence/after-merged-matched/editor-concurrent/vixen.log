@@ -1,0 +1,1688 @@
+[16:32:29.557] [editor_main] [INFO] vixen_editor: document = /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/BuiltAssets/documents/sample_tri_layer.vxd
+[16:32:29.560] [VulkanAppBase] [INFO] VulkanGraphApplication (Graph-based) Starting
+[GaiaVoxelWorld] ECS world initialized
+[16:32:29.562] [VulkanAppBase] [INFO] VulkanGraphApplication Initialize START
+[16:32:29.574] [VulkanLayerAndExtension] [ERROR] GetProcAddr: Unable to find vkCreateDebugReportCallbackEXT function.
+[16:32:29.574] [VulkanAppBase] [INFO] Vulkan core initialized successfully
+[16:32:29.574] [VulkanAppBase] [INFO] VulkanGraphApplication Base initialized
+[16:32:29.574] [VulkanAppBase] [INFO] VulkanGraphApplication Instance exported globally
+[16:32:29.575] [VulkanAppBase] [INFO] Registered 65 built-in node types (self-registration)
+[16:32:29.575] [VulkanAppBase] [INFO] EngineContext created (MainCacher initialized, autonomous CalibrationStore active)
+[16:32:29.575] [VulkanAppBase] [INFO] RenderGraph created successfully
+[16:32:29.575] [VulkanAppBase] [INFO] Registered PhysicsLoop (60Hz) with ID: 0
+[16:32:29.575] [VulkanAppBase] [INFO] Registered SimLoop (30Hz) with ID: 1
+[16:32:29.575] [VulkanAppBase] [INFO] VulkanGraphApplication initialized successfully
+[16:32:29.575] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] START
+[16:32:29.575] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] Calling BuildRenderGraph...
+[16:32:29.575] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=3771822081 boundRadius=1.732051 (authored) stepRelaxation=0.900000 (authored)
+[16:32:29.575] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=3771822081 occupancyGrid=none (non-whitelisted opcode)
+[16:32:29.575] [VulkanAppBase] [INFO] Building complete render pipeline with typed connections
+[16:32:29.575] [VulkanAppBase] [INFO] Created node instances (including compute pipeline, camera, voxel grid, gatherers, selection provider, and UI composite pass)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] Render-scale=1.000000 (VIXEN_RENDER_SCALE env; 1.0 = full resolution)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] DDGI probe atlases: irradiance 512x64 RGBA16F, visibility 1024x128 RG16F (default 8x8x8 probe grid)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] B1 occlusion probe enabled: depth 500x500 ping-pong, HiZ tiles 32x32
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] Loop ID set, moving to shader library...
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] M4b: secondary-ray (shadow/probe) raySizeCoef=0.050000 (VIXEN_SECONDARY_RAY_SIZE_COEF env; default 0.05)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] composed traversal predicate: OFF (no far-field/orbital scene demand); no override
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] Registered VoxelRayMarch shader builder
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] Setting dispatch dims: 62x62x1 (from window 500x500)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] ProbeGather/Apply sparse dispatch (Inc6 M1 shape): probeCount=512 amortizationFactor=8 -> dispatchX=64; ShadowRayTrace waveDispatchX=2048 (slots=131072)
+[16:32:29.575] [VulkanAppBase] [INFO] [BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)
+[16:32:29.575] [VulkanAppBase] [INFO] Mounted building-inspector fragment (M-ui), handle 1
+[16:32:29.575] [VulkanAppBase] [INFO] Configured all node parameters (including camera, voxel grid, and UI composite pass)
+[16:32:29.575] [VulkanAppBase] [INFO] Wiring node connections using TypedConnection API
+[16:32:29.576] [VulkanAppBase] [INFO] [BuildRenderGraph] March descriptors wired from merged SDI (sceneProviders registry)
+[16:32:29.576] [VulkanAppBase] [INFO] Registering 618 connections...
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_instance[0] -> main_device[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_device depends on main_instance
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[1] -> main_window[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_window depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_window[1] -> main_swapchain[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on main_window
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_window[2] -> main_swapchain[1]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on main_window
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_window[3] -> main_swapchain[2]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on main_window
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_window[1] -> input_handler[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: input_handler depends on main_window
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[1] -> main_swapchain[3]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> main_swapchain[4]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> frame_sync[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: frame_sync depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> main_swapchain[6]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on frame_sync
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> main_swapchain[7]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on frame_sync
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> main_swapchain[5]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_swapchain depends on frame_sync
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> main_cmd_pool[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: main_cmd_pool depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> present[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: present depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[0] -> present[1]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: present depends on main_swapchain
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> present[2]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: present depends on main_swapchain
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting ui_composite_render[1] -> present[3]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: present depends on ui_composite_render
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> debug_capture[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: debug_capture depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> debug_capture[1]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: debug_capture depends on main_cmd_pool
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_desc_gatherer[2] -> test_dispatch[14]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on compute_desc_gatherer
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting test_dispatch[3] -> debug_capture[2]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: debug_capture depends on test_dispatch
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> debug_capture[3]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: debug_capture depends on frame_sync
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[5] -> present[5]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: present depends on main_swapchain
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting physics_loop_id[0] -> physics_loop[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: physics_loop depends on physics_loop_id
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> compute_shader_lib[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_shader_lib depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> compute_descriptors[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> test_compute_pipeline[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_compute_pipeline depends on main_device
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_shader_lib[1] -> compute_desc_gatherer[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_desc_gatherer depends on compute_shader_lib
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_desc_gatherer[0] -> compute_descriptors[3]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on compute_desc_gatherer
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_shader_lib[1] -> push_constant_gatherer[0]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: push_constant_gatherer depends on compute_shader_lib
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting push_constant_gatherer[0] -> test_dispatch[12]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on push_constant_gatherer
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting push_constant_gatherer[1] -> test_dispatch[13]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on push_constant_gatherer
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_shader_lib[1] -> compute_descriptors[1]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on compute_shader_lib
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_shader_lib[1] -> test_compute_pipeline[1]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_compute_pipeline depends on compute_shader_lib
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_shader_lib[1] -> test_dispatch[11]
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on compute_shader_lib
+[16:32:29.576] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_descriptors[0] -> test_compute_pipeline[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_compute_pipeline depends on compute_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> test_dispatch[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting test_compute_pipeline[0] -> test_dispatch[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on test_compute_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting test_compute_pipeline[1] -> test_dispatch[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on test_compute_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_descriptors[2] -> test_dispatch[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on compute_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> test_dispatch[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_depth_target[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_depth_target depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> b1_depth_target[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_depth_target depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> b1_depth_target[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_depth_target depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> b1_depth_target[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_depth_target depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> b1_depth_target[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_depth_target depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_hiz_tile_image[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_tile_image depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> b1_hiz_tile_image[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_tile_image depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_hiz_shader_lib[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_shader_lib depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_hiz_descriptors[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_hiz_pipeline[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_pipeline depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_shader_lib[1] -> b1_hiz_desc_gatherer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_desc_gatherer depends on b1_hiz_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_desc_gatherer[0] -> b1_hiz_descriptors[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on b1_hiz_desc_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_shader_lib[1] -> b1_hiz_descriptors[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on b1_hiz_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_shader_lib[1] -> b1_hiz_pipeline[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_pipeline depends on b1_hiz_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_descriptors[0] -> b1_hiz_pipeline[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_pipeline depends on b1_hiz_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> b1_hiz_descriptors[5]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> b1_hiz_descriptors[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> b1_hiz_descriptors[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_descriptors depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_hiz_downsample[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> b1_hiz_downsample[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_pipeline[0] -> b1_hiz_downsample[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_pipeline[1] -> b1_hiz_downsample[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_descriptors[2] -> b1_hiz_downsample[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> b1_hiz_downsample[7]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> b1_hiz_downsample[8]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_shader_lib[1] -> b1_hiz_downsample[11]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> b1_hiz_downsample[16]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> b1_hiz_downsample[17]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> b1_hiz_downsample[6]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> b1_hiz_downsample[9]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> b1_hiz_downsample[10]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_shader_lib[1] -> b1_hiz_push_gatherer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_push_gatherer depends on b1_hiz_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_push_gatherer[0] -> b1_hiz_downsample[12]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_push_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_push_gatherer[1] -> b1_hiz_downsample[13]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_push_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_cull_shader_lib[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_shader_lib depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_cull_descriptors[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_cull_pipeline[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_pipeline depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_shader_lib[1] -> b1_cull_desc_gatherer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_desc_gatherer depends on b1_cull_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_desc_gatherer[0] -> b1_cull_descriptors[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on b1_cull_desc_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_shader_lib[1] -> b1_cull_descriptors[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on b1_cull_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_shader_lib[1] -> b1_cull_pipeline[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_pipeline depends on b1_cull_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_descriptors[0] -> b1_cull_pipeline[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_pipeline depends on b1_cull_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> b1_cull_descriptors[5]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> b1_cull_descriptors[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> b1_cull_descriptors[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_descriptors depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> b1_instance_occlusion_cull[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> b1_instance_occlusion_cull[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_pipeline[0] -> b1_instance_occlusion_cull[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_pipeline[1] -> b1_instance_occlusion_cull[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_pipeline
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_descriptors[2] -> b1_instance_occlusion_cull[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_descriptors
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> b1_instance_occlusion_cull[7]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> b1_instance_occlusion_cull[8]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_shader_lib[1] -> b1_instance_occlusion_cull[11]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> b1_instance_occlusion_cull[16]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> b1_instance_occlusion_cull[17]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> b1_instance_occlusion_cull[6]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> b1_instance_occlusion_cull[9]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> b1_instance_occlusion_cull[10]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_shader_lib[1] -> b1_cull_push_gatherer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_cull_push_gatherer depends on b1_cull_shader_lib
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_push_gatherer[0] -> b1_instance_occlusion_cull[12]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_push_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_push_gatherer[1] -> b1_instance_occlusion_cull[13]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_push_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_hiz_tile_write_gatherer[0] -> b1_hiz_downsample[19]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_hiz_downsample depends on b1_hiz_tile_write_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_tile_read_gatherer[0] -> b1_instance_occlusion_cull[20]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_tile_read_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting b1_cull_mask_write_gatherer[0] -> b1_instance_occlusion_cull[14]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: b1_instance_occlusion_cull depends on b1_cull_mask_write_gatherer
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> raymarch_camera[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: raymarch_camera depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> raymarch_camera[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: raymarch_camera depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> raymarch_camera[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: raymarch_camera depends on main_swapchain
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting input_handler[0] -> raymarch_camera[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: raymarch_camera depends on input_handler
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting input_handler[0] -> voxel_selection_provider[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on input_handler
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting pick_id_target[1] -> voxel_selection_provider[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on pick_id_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> voxel_selection_provider[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> voxel_selection_provider[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> voxel_selection_provider[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> voxel_selection_provider[5]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> voxel_selection_provider[6]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_selection_provider depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting input_handler[0] -> ui_selection_provider[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_selection_provider depends on input_handler
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting input_handler[0] -> selection_coordinator[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: selection_coordinator depends on input_handler
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> pick_id_target[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: pick_id_target depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> pick_id_target[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: pick_id_target depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> pick_id_target[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: pick_id_target depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> pick_id_target[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: pick_id_target depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> pick_id_target[4]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: pick_id_target depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> voxel_grid[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_grid depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> voxel_grid[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: voxel_grid depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> body_octree_scene[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: body_octree_scene depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> body_octree_scene[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: body_octree_scene depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> body_octree_scene[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: body_octree_scene depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> lighting_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: lighting_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> lighting_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: lighting_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> shadow_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> accumulation_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> accumulation_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting raymarch_camera[0] -> accumulation_config[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_config depends on raymarch_camera
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> accumulation_history[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_history depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> accumulation_history[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_history depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> accumulation_history[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_history depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> accumulation_history[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: accumulation_history depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> scene_radiance[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: scene_radiance depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> scene_radiance[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: scene_radiance depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> scene_radiance[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: scene_radiance depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> scene_radiance[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: scene_radiance depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> worldpos_history[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: worldpos_history depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> worldpos_history[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: worldpos_history depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[3] -> worldpos_history[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: worldpos_history depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> worldpos_history[3]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: worldpos_history depends on compute_render_target
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> prev_camera_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: prev_camera_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> prev_camera_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: prev_camera_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting raymarch_camera[1] -> prev_camera_config[2]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: prev_camera_config depends on raymarch_camera
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> reservoir_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> reservoir_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> light_tree_buffer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: light_tree_buffer depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> light_tree_buffer[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: light_tree_buffer depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> mining_beam_buffer[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: mining_beam_buffer depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> mining_beam_buffer[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: mining_beam_buffer depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_grid_config[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_grid_config depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> probe_grid_config[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_grid_config depends on frame_sync
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_irradiance_atlas[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_irradiance_atlas depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> probe_irradiance_atlas[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_irradiance_atlas depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_visibility_atlas[0]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_visibility_atlas depends on main_device
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> probe_visibility_atlas[1]
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_visibility_atlas depends on main_cmd_pool
+[16:32:29.577] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> sky_sphere[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_sphere depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> sky_sphere[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_sphere depends on main_cmd_pool
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> reservoir_buffer_a[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_buffer_a depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> reservoir_buffer_a[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_buffer_a depends on compute_render_target
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> reservoir_buffer_b[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_buffer_b depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> reservoir_buffer_b[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: reservoir_buffer_b depends on compute_render_target
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> spatial_reservoir_debug_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reservoir_debug_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> spatial_reservoir_debug_buffer[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reservoir_debug_buffer depends on compute_render_target
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> ddgi_leak_gate_debug_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ddgi_leak_gate_debug_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> instance_skip_mask_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: instance_skip_mask_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> instance_skip_mask_buffer[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: instance_skip_mask_buffer depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> policy_stencil_tile_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: policy_stencil_tile_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_request_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_request_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_result_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_result_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_ray_payload_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_ray_payload_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> hit_record_buffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: hit_record_buffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> hit_record_buffer[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: hit_record_buffer depends on compute_render_target
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> compute_descriptors[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> compute_descriptors[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> compute_descriptors[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_descriptors depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> test_dispatch[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> test_dispatch[6]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> compute_render_target[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_render_target depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> compute_render_target[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: compute_render_target depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[4] -> ray_size_coef[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ray_size_coef depends on compute_render_target
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> test_dispatch[7]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> test_dispatch[8]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> test_dispatch[15]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> test_dispatch[16]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> test_dispatch[9]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> test_dispatch[10]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> sky_projection_render_pass[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection_render_pass depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> sky_projection_render_pass[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection_render_pass depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> sky_projection_framebuffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection_framebuffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting sky_projection_render_pass[0] -> sky_projection_framebuffer[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection_framebuffer depends on sky_projection_render_pass
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> sky_projection_framebuffer[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection_framebuffer depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> sky_projection[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> sky_projection[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on main_cmd_pool
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> sky_projection[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting raymarch_camera[0] -> sky_projection[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on raymarch_camera
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting sky_projection_render_pass[0] -> sky_projection[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on sky_projection_render_pass
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting sky_projection_framebuffer[0] -> sky_projection[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on sky_projection_framebuffer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> sky_projection[6]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> sky_projection[7]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> sky_projection[8]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> sky_projection[10]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> sky_projection[11]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> ui_composite_render_pass[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render_pass depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> ui_composite_render_pass[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render_pass depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> ui_composite_framebuffer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_framebuffer depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting ui_composite_render_pass[0] -> ui_composite_framebuffer[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_framebuffer depends on ui_composite_render_pass
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> ui_composite_framebuffer[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_framebuffer depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> ui_composite_render[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> ui_composite_render[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on main_cmd_pool
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> ui_composite_render[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> ui_composite_render[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> ui_composite_render[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting ui_composite_render_pass[0] -> ui_composite_render[8]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on ui_composite_render_pass
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting ui_composite_framebuffer[0] -> ui_composite_render[9]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on ui_composite_framebuffer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> ui_composite_render[11]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> ui_composite_render[12]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> ui_composite_render[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> ui_composite_render[6]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> ui_composite_render[7]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> direct_lighting_shader_lib[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_shader_lib depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> direct_lighting_descriptors[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> direct_lighting_pipeline[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_pipeline depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_shader_lib[1] -> direct_lighting_desc_gatherer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_desc_gatherer depends on direct_lighting_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_desc_gatherer[0] -> direct_lighting_descriptors[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on direct_lighting_desc_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_shader_lib[1] -> direct_lighting_descriptors[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on direct_lighting_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_shader_lib[1] -> direct_lighting_pipeline[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_pipeline depends on direct_lighting_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_descriptors[0] -> direct_lighting_pipeline[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_pipeline depends on direct_lighting_descriptors
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> direct_lighting_descriptors[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> direct_lighting_descriptors[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> direct_lighting_descriptors[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> direct_lighting[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> direct_lighting[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on main_cmd_pool
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_pipeline[0] -> direct_lighting[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_pipeline
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_pipeline[1] -> direct_lighting[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_pipeline
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_descriptors[2] -> direct_lighting[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_descriptors
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> direct_lighting[7]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> direct_lighting[8]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_shader_lib[1] -> direct_lighting[11]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> direct_lighting[16]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> direct_lighting[17]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> direct_lighting[6]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> direct_lighting[9]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> direct_lighting[10]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_shader_lib[1] -> direct_lighting_push_gatherer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting_push_gatherer depends on direct_lighting_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_push_gatherer[0] -> direct_lighting[12]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_push_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_push_gatherer[1] -> direct_lighting[13]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_push_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> spatial_reuse_shader_lib[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_shader_lib depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> spatial_reuse_descriptors[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> spatial_reuse_pipeline[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_pipeline depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_shader_lib[1] -> spatial_reuse_desc_gatherer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_desc_gatherer depends on spatial_reuse_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_desc_gatherer[0] -> spatial_reuse_descriptors[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on spatial_reuse_desc_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_shader_lib[1] -> spatial_reuse_descriptors[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on spatial_reuse_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_shader_lib[1] -> spatial_reuse_pipeline[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_pipeline depends on spatial_reuse_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_descriptors[0] -> spatial_reuse_pipeline[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_pipeline depends on spatial_reuse_descriptors
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> spatial_reuse_descriptors[5]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> spatial_reuse_descriptors[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> spatial_reuse_descriptors[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_descriptors depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> spatial_reuse[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on main_device
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> spatial_reuse[1]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on main_cmd_pool
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_pipeline[0] -> spatial_reuse[2]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_pipeline
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_pipeline[1] -> spatial_reuse[3]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_pipeline
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_descriptors[2] -> spatial_reuse[4]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_descriptors
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> spatial_reuse[7]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> spatial_reuse[8]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_shader_lib[1] -> spatial_reuse[11]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> spatial_reuse[16]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> spatial_reuse[17]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> spatial_reuse[6]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> spatial_reuse[9]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on frame_sync
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> spatial_reuse[10]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on main_swapchain
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_shader_lib[1] -> spatial_reuse_push_gatherer[0]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse_push_gatherer depends on spatial_reuse_shader_lib
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_push_gatherer[0] -> spatial_reuse[12]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_push_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_push_gatherer[1] -> spatial_reuse[13]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_push_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting hit_record_buffer[0] -> test_dispatch[18]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on hit_record_buffer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_read_gatherer[0] -> direct_lighting[15]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_read_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_read_gatherer[0] -> spatial_reuse[15]
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_read_gatherer
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.578] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting direct_lighting_reservoir_write_gatherer[0] -> direct_lighting[14]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: direct_lighting depends on direct_lighting_reservoir_write_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> spatial_reuse[18]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on compute_render_target
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse_probe_atlas_read_gatherer[0] -> spatial_reuse[20]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on spatial_reuse_probe_atlas_read_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_gather_shader_lib[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_shader_lib depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_gather_descriptors[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_gather_pipeline[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_pipeline depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_shader_lib[1] -> probe_gather_desc_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_desc_gatherer depends on probe_gather_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_desc_gatherer[0] -> probe_gather_descriptors[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on probe_gather_desc_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_shader_lib[1] -> probe_gather_descriptors[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on probe_gather_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_shader_lib[1] -> probe_gather_pipeline[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_pipeline depends on probe_gather_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_descriptors[0] -> probe_gather_pipeline[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_pipeline depends on probe_gather_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> probe_gather_descriptors[5]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> probe_gather_descriptors[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> probe_gather_descriptors[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_gather[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> probe_gather[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on main_cmd_pool
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_pipeline[0] -> probe_gather[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_pipeline[1] -> probe_gather[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_descriptors[2] -> probe_gather[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> probe_gather[7]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> probe_gather[8]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_shader_lib[1] -> probe_gather[11]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> probe_gather[16]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> probe_gather[17]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> probe_gather[6]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> probe_gather[9]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> probe_gather[10]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_shader_lib[1] -> probe_gather_push_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather_push_gatherer depends on probe_gather_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_push_gatherer[0] -> probe_gather[12]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_push_gatherer[1] -> probe_gather[13]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_trace_shader_lib[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_shader_lib depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_trace_descriptors[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_trace_pipeline[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_pipeline depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_shader_lib[1] -> shadow_ray_trace_desc_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_desc_gatherer depends on shadow_ray_trace_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_desc_gatherer[0] -> shadow_ray_trace_descriptors[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on shadow_ray_trace_desc_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_shader_lib[1] -> shadow_ray_trace_descriptors[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on shadow_ray_trace_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_shader_lib[1] -> shadow_ray_trace_pipeline[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_pipeline depends on shadow_ray_trace_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_descriptors[0] -> shadow_ray_trace_pipeline[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_pipeline depends on shadow_ray_trace_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> shadow_ray_trace_descriptors[5]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> shadow_ray_trace_descriptors[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> shadow_ray_trace_descriptors[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_ray_trace[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> shadow_ray_trace[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on main_cmd_pool
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_pipeline[0] -> shadow_ray_trace[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_pipeline[1] -> shadow_ray_trace[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_descriptors[2] -> shadow_ray_trace[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> shadow_ray_trace[7]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> shadow_ray_trace[8]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_shader_lib[1] -> shadow_ray_trace[11]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> shadow_ray_trace[16]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> shadow_ray_trace[17]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> shadow_ray_trace[6]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> shadow_ray_trace[9]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> shadow_ray_trace[10]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_shader_lib[1] -> shadow_ray_trace_push_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace_push_gatherer depends on shadow_ray_trace_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_push_gatherer[0] -> shadow_ray_trace[12]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_push_gatherer[1] -> shadow_ray_trace[13]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_apply_shader_lib[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_shader_lib depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_apply_descriptors[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_apply_pipeline[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_pipeline depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_shader_lib[1] -> probe_apply_desc_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_desc_gatherer depends on probe_apply_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_desc_gatherer[0] -> probe_apply_descriptors[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on probe_apply_desc_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_shader_lib[1] -> probe_apply_descriptors[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on probe_apply_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_shader_lib[1] -> probe_apply_pipeline[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_pipeline depends on probe_apply_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_descriptors[0] -> probe_apply_pipeline[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_pipeline depends on probe_apply_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> probe_apply_descriptors[5]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> probe_apply_descriptors[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> probe_apply_descriptors[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> probe_apply[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> probe_apply[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on main_cmd_pool
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_pipeline[0] -> probe_apply[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_pipeline[1] -> probe_apply[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_descriptors[2] -> probe_apply[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> probe_apply[7]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> probe_apply[8]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_shader_lib[1] -> probe_apply[11]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> probe_apply[16]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> probe_apply[17]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> probe_apply[6]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> probe_apply[9]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> probe_apply[10]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_shader_lib[1] -> probe_apply_push_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply_push_gatherer depends on probe_apply_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_push_gatherer[0] -> probe_apply[12]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_push_gatherer[1] -> probe_apply[13]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_visibility_wave_shader_lib[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_shader_lib depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_visibility_wave_descriptors[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_visibility_wave_pipeline[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_pipeline depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_shader_lib[1] -> shadow_visibility_wave_desc_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_desc_gatherer depends on shadow_visibility_wave_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_desc_gatherer[0] -> shadow_visibility_wave_descriptors[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on shadow_visibility_wave_desc_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_shader_lib[1] -> shadow_visibility_wave_descriptors[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on shadow_visibility_wave_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_shader_lib[1] -> shadow_visibility_wave_pipeline[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_pipeline depends on shadow_visibility_wave_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_descriptors[0] -> shadow_visibility_wave_pipeline[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_pipeline depends on shadow_visibility_wave_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> shadow_visibility_wave_descriptors[5]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> shadow_visibility_wave_descriptors[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> shadow_visibility_wave_descriptors[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_descriptors depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> shadow_visibility_wave[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on main_device
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> shadow_visibility_wave[1]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on main_cmd_pool
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_pipeline[0] -> shadow_visibility_wave[2]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_pipeline[1] -> shadow_visibility_wave[3]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_pipeline
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_descriptors[2] -> shadow_visibility_wave[4]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_descriptors
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> shadow_visibility_wave[7]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> shadow_visibility_wave[8]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_shader_lib[1] -> shadow_visibility_wave[11]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> shadow_visibility_wave[16]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> shadow_visibility_wave[17]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> shadow_visibility_wave[6]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> shadow_visibility_wave[9]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on frame_sync
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> shadow_visibility_wave[10]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on main_swapchain
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_shader_lib[1] -> shadow_visibility_wave_push_gatherer[0]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave_push_gatherer depends on shadow_visibility_wave_shader_lib
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_push_gatherer[0] -> shadow_visibility_wave[12]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_push_gatherer[1] -> shadow_visibility_wave[13]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_push_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_gather_write_gatherer[0] -> probe_gather[14]
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_gather depends on probe_gather_write_gatherer
+[16:32:29.579] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_read_gatherer[0] -> shadow_ray_trace[15]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_read_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_ray_trace_write_gatherer[0] -> shadow_ray_trace[14]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_ray_trace depends on shadow_ray_trace_write_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_apply_read_gatherer[0] -> probe_apply[15]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_apply_read_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_read_gatherer[0] -> shadow_visibility_wave[15]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_read_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave_write_gatherer[0] -> shadow_visibility_wave[14]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on shadow_visibility_wave_write_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting test_dispatch[2] -> shadow_visibility_wave[21]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: shadow_visibility_wave depends on test_dispatch
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting shadow_visibility_wave[0] -> spatial_reuse[21]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: spatial_reuse depends on shadow_visibility_wave
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting policy_stencil_tile_write_gatherer[0] -> test_dispatch[19]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: test_dispatch depends on policy_stencil_tile_write_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting probe_atlas_gatherer[0] -> probe_apply[19]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: probe_apply depends on probe_atlas_gatherer
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_device[0] -> render_target_blit[0]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on main_device
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_cmd_pool[0] -> render_target_blit[1]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on main_cmd_pool
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[1] -> render_target_blit[3]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on main_swapchain
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[2] -> render_target_blit[4]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on main_swapchain
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[0] -> render_target_blit[5]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on frame_sync
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[1] -> render_target_blit[6]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on frame_sync
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[3] -> render_target_blit[8]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on frame_sync
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[4] -> render_target_blit[9]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on frame_sync
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting main_swapchain[4] -> render_target_blit[7]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on main_swapchain
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting frame_sync[2] -> render_target_blit[11]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on frame_sync
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting compute_render_target[0] -> render_target_blit[2]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on compute_render_target
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting spatial_reuse[0] -> render_target_blit[10]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: render_target_blit depends on spatial_reuse
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting render_target_blit[0] -> sky_projection[12]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: sky_projection depends on render_target_blit
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Connecting sky_projection[2] -> ui_composite_render[10]
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added dependency: ui_composite_render depends on sky_projection
+[16:32:29.580] [VulkanAppBase] [INFO] [RenderGraph::ConnectNodes] Added topology edge
+[16:32:29.580] [VulkanAppBase] [INFO] Successfully wired 618 connections
+[16:32:29.580] [VulkanAppBase] [INFO] Complete render pipeline built with 129 nodes
+[GaiaVoxelWorld] ECS world initialized
+[16:32:29.646] [editor] [INFO] [EDITOR/snapshot] revision=1 cpu=[0.6,0,0,0,0,0] preview=[0.6,0,0,0,0,0] programInstructions=7
+[GaiaVoxelWorld] ECS world destroyed
+[16:32:29.649] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] BuildRenderGraph complete
+[16:32:29.649] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] Calling CompileRenderGraph...
+[16:32:29.649] [VulkanAppBase] [INFO] [CompileRenderGraph] START
+[16:32:29.649] [VulkanAppBase] [INFO] [RenderGraph::Compile] Starting compilation...
+[16:32:29.649] [VulkanAppBase] [INFO] [RenderGraph] EventBus pre-allocated for 387 messages (129 nodes × 3 events/node, min 256)
+[16:32:29.649] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: Validation...
+[16:32:29.649] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: AnalyzeDependencies...
+[16:32:29.650] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: AllocateResources...
+[16:32:29.650] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: GeneratePipelines...
+[16:32:29.650] [VulkanAppBase] [INFO] [GeneratePipelines] Total instances to compile: 129
+[16:32:29.650] [VulkanAppBase] [INFO] [GeneratePipelines] Phase 1: GraphCompileSetup (discovering dynamic slots)...
+[16:32:29.650] [VulkanAppBase] [INFO] [GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)
+[16:32:29.650] [VulkanAppBase] [INFO] [GeneratePipelines] Phase 3a: Setup all nodes...
+[16:32:29.695] [main_device] [INFO] [DeviceNode] Setup: Preparing device creation
+[16:32:29.695] [main_device] [INFO] [DeviceNode] Requested 3 device extensions
+[16:32:29.695] [main_device] [INFO] [DeviceNode] Requested 0 device layers
+[16:32:29.695] [main_device] [INFO] [DeviceNode] Setup complete
+[16:32:29.695] [voxel_grid] [INFO] VoxelGridNode setup
+[16:32:29.695] [voxel_grid] [INFO] Voxel grid: 128^3, scene=cornell
+[16:32:29.695] [voxel_grid] [INFO] [VoxelGridNode] Registered compile profile: voxel_grid_compile
+[16:32:29.695] [voxel_selection_provider] [INFO] [VoxelSelectionProvider] setup
+[16:32:29.695] [ui_selection_provider] [INFO] [UISelectionProvider] setup
+[16:32:29.695] [selection_coordinator] [INFO] [SelectionCoordinator] setup
+[16:32:29.695] [test_dispatch] [INFO] [ComputeDispatchNode::SetupImpl] Graph-scope initialization
+[16:32:29.695] [debug_capture] [INFO] DebugBufferReaderNode::SetupImpl
+[16:32:29.695] [debug_capture] [INFO]   outputPath: binaries/compute_debug_output
+[16:32:29.695] [debug_capture] [INFO]   maxTraces: 1000
+[16:32:29.695] [debug_capture] [INFO]   autoExport: false
+[16:32:29.695] [debug_capture] [INFO]   exportFormat: 2
+[16:32:29.695] [VulkanAppBase] [INFO] [GeneratePipelines] Loading persistent caches...
+[16:32:29.695] [VulkanAppBase] [INFO] [RenderGraph] Loading persistent caches from: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/runtime-cache
+[16:32:29.696] [VulkanAppBase] [INFO] [RenderGraph] Persistent caches loaded successfully
+[16:32:29.696] [VulkanAppBase] [INFO] [GeneratePipelines] Phase 3b: Compile all nodes...
+[16:32:29.698] [main_device] [INFO] [DeviceNode] Compile: Creating Vulkan device
+[16:32:29.698] [main_device] [INFO] [DeviceNode] Received VkInstance from InstanceNode: 99623252289856
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+[16:32:29.891] [main_device] [INFO] [DeviceNode] Found 1 physical device(s)
+[16:32:29.892] [main_device] [INFO] [DeviceNode]   GPU 0: Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[16:32:29.892] [main_device] [INFO] [DeviceNode] Selected GPU 0: Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics) (auto-selected (no discrete GPU found; using first available))
+[16:32:29.892] [main_device] [INFO] [DeviceNode]   Vendor ID: 0x4098
+[16:32:29.892] [main_device] [INFO] [DeviceNode]   Device ID: 0x5510
+[16:32:29.892] [main_device] [INFO] [DeviceNode]   Driver Version: 104865800
+[16:32:29.892] [main_device] [INFO] [DeviceNode]   API Version: 1.2.318
+[16:32:29.892] [main_device] [INFO] [DeviceNode] Graphics queue family index: 0
+[16:32:29.892] [main_device] [INFO] [DeviceNode] Memory heaps: 1
+[16:32:29.892] [main_device] [INFO] [DeviceNode] Memory types: 3
+[16:32:29.892] [main_device] [INFO] [DeviceNode] Found 46 available device extensions
+[16:32:29.893] [main_device] [WARNING] [DeviceNode]   ✗ VK_EXT_swapchain_maintenance1 (NOT AVAILABLE - skipping)
+[16:32:29.893] [main_device] [WARNING] [DeviceNode]   ✗ VK_KHR_maintenance6 (NOT AVAILABLE - skipping)
+[16:32:29.893] [main_device] [INFO] [DeviceNode] Validated 1 base device extensions
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RayQueryLighting extension not available: VK_KHR_acceleration_structure
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RayQueryLighting extension not available: VK_KHR_ray_query
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RayQueryLighting extension not available: VK_KHR_deferred_host_operations
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RayQueryLighting extensions not available - shadow wave will use DDA twin
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RTX extension not available: VK_KHR_acceleration_structure
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RTX extension not available: VK_KHR_ray_tracing_pipeline
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RTX extension not available: VK_KHR_ray_query
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RTX extension not available: VK_KHR_deferred_host_operations
+[16:32:29.893] [main_device] [INFO] [DeviceNode] RTX extensions not available - hardware RT disabled
+[16:32:29.969] [main_device] [INFO] [DeviceNode] BackgroundGpu candidate: none visible
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Logical device created successfully
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Device handle: 99623250034704
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Queue handle: 99623250046704
+[16:32:29.969] [main_device] [INFO] [DeviceNode] RTX enabled: NO
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Gathering metadata for all 1 detected devices...
+[16:32:29.969] [main_device] [INFO]   [0] Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[16:32:29.969] [main_device] [INFO]       Vulkan: 1.2 | SPIR-V: 1.5 | Memory: 78354 MB (Integrated)
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Selected device index: 0
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Publishing metadata for 1 devices
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Device metadata published successfully
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Registered device with MainCacher
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Created DirectAllocator for device: Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Device VRAM: 78354 MB
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Budget: 70518 MB (90%)
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Warning threshold: 62683 MB (80%)
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Created DeviceBudgetManager with staging quota: 256 MB
+[16:32:29.969] [VulkanAppBase] [INFO] [RenderGraph] DeviceBudgetManager configured
+[16:32:29.969] [main_device] [INFO] [DeviceNode] Budget manager connected to DeviceRegistry and VulkanDevice
+[16:32:29.989] [main_device] [INFO] [DeviceNode] StagingBufferPool pre-warmed with default sizes
+[16:32:29.989] [main_device] [INFO] [DeviceNode] BatchedUploader created and connected to VulkanDevice
+[16:32:29.989] [main_device] [INFO] [DeviceNode] BatchedUpdater created and connected to VulkanDevice
+[16:32:30.005] [main_device] [INFO] [DeviceNode] GPUQueryManager created with 16 query slots (period: 10.000000 ns/tick)
+[16:32:30.005] [main_device] [INFO] [DeviceNode] Device memory: 70518 MB total, 70501 MB available
+[16:32:30.005] [main_device] [INFO] [DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs
+[16:32:30.010] [VulkanAppBase] [INFO] [BuildRenderGraph] Using BodyInstanceRayMarch shader: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders/BodyInstanceRayMarch.comp (1 procedural recipes spliced)
+[16:32:30.010] [VulkanAppBase] [INFO] [BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 6 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/BodyInstanceRayMarchNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: BodyInstanceRayMarch (127ms)
+[16:32:30.188] [voxel_grid] [INFO] === VoxelGridNode::CompileImpl START ===
+[16:32:30.227] [voxel_grid] [INFO] VoxelGridNode: VoxelScene cache ready
+[16:32:30.228] [voxel_grid] [INFO] VoxelGridNode: Requesting scene via cacher: type=cornell, resolution=128
+[16:32:30.228] [voxel_grid] [INFO] VoxelGridNode: Scene created via cacher: 1601 nodes, 1256 bricks, 299666 voxels
+[16:32:30.228] [voxel_grid] [INFO] VoxelGridNode: Scene created via cacher
+[16:32:30.237] [voxel_grid] [INFO] [VoxelGridNode::CompileImpl] VOXEL_WORLD output ptr=0 (NULL - no CPU world on cached scene!)
+[16:32:30.237] [voxel_grid] [INFO] Uploaded octree buffers successfully
+[16:32:30.237] [voxel_grid] [INFO] GPU MEMORY SUMMARY:
+=== GPU Memory Summary ===
+Total tracked: 0.00 MB
+
+Buffer breakdown:
+Total GPU Memory: 0 MB
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=648 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=131072 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=432 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=786432 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2592 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=1 events=1
+[MipPoolSize] n=2592
+[BrickDataHash] nodes=ff3d25881131808c pool=2c786a82b983faa5 lookup=729e3a3c851e9425 configs=5c5b5028a19d0523
+[BrickDataHash] sizes: nodes=648B pool=786432B lookup=2048B configs=432B
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=786432 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=786432 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes=2048 events=1
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/DirectLightingNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: DirectLighting (77ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/SpatialReuseShadeNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: SpatialReuseShade (80ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/ProbeGatherNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: ProbeGather (100ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/ShadowRayTraceNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: ShadowRayTrace (79ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/ProbeApplyNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: ProbeApply (2ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/ShadowVisibilityWaveNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: ShadowVisibilityWave (84ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/HiZDownsampleNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: HiZDownsample (0ms)
+[2026-10-10 16:32:30] [INFO] [Builder] Preprocessing shader source with 3 include paths
+[2026-10-10 16:32:30] [INFO] [SDI] Generated shader-specific Names header: ./generated/sdi/InstanceOcclusionCullNames.g.h
+[2026-10-10 16:32:30] [INFO] [Builder] Shader bundle build completed successfully: InstanceOcclusionCull (2ms)
+[16:32:30.881] [compute_desc_gatherer] [INFO] [DescriptorResourceGathererNode::Compile] Outputting debug capture: voxel_grid_rayTrace
+[16:32:32.134] [voxel_selection_provider] [INFO] [VoxelSelectionProvider] compile: priority=0; configured (device+pool+ID image acquired)
+[16:32:32.134] [selection_coordinator] [INFO] [SelectionCoordinator] compile: candidate-gathering coordinator (providers are nodes)
+[16:32:32.134] [ray_size_coef] [INFO] [LOD] raySizeCoef recomputed for height 500: 0.001571
+[16:32:32.134] [test_dispatch] [INFO] [ComputeDispatchNode::CompileImpl] Allocating per-image command buffers
+[16:32:32.134] [test_dispatch] [INFO] [ComputeDispatchNode::CompileImpl] Allocating 4 command buffers (flight-ring depth; swapchain imageCount=4)
+[16:32:32.134] [test_dispatch] [INFO] [ComputeDispatchNode::CompileImpl] Allocated 4 command buffers successfully
+[16:32:32.134] [test_dispatch] [INFO] [ComputeDispatchNode] GPU performance timing enabled (slot 0)
+[16:32:32.134] [test_dispatch] [INFO] [ComputeDispatchNode] Registered GPU profile: test_dispatch_gpu_dispatch
+[16:32:32.134] [debug_capture] [INFO] DebugBufferReaderNode::CompileImpl
+[16:32:33.788] [sky_projection] [INFO] [SkyProjectionNode] fixture 'centered': direction=(0.000000, 0.000000, -1.000000) distanceCm=1048576.000000 magnitude=0.999999 valid=true
+[16:32:33.788] [sky_projection] [INFO] [SkyProjectionNode] fixture 'off-to-one-side': direction=(0.514496, 0.000000, -0.857493) distanceCm=1222839.191368 magnitude=0.599999 valid=true
+[16:32:33.788] [sky_projection] [INFO] [SkyProjectionNode] fixture 'borderline-out-of-fov': direction=(0.792624, 0.000000, -0.609711) distanceCm=1719792.470737 magnitude=0.899997 valid=true
+[16:32:33.790] [sky_projection] [INFO] [SkyProjectionNode] Created sky points SSBO: 3 points (96 bytes)
+[16:32:33.896] [sky_projection] [INFO] [SkyProjectionNode] Compile complete: 3 sky points, 4 framebuffers
+Loaded font face 'LatoLatin' [regular] from 'assets/ui/LatoLatin-Regular.ttf'.
+[16:32:33.910] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: BuildExecutionOrder...
+[16:32:33.910] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: PreAllocateResources...
+[16:32:33.910] [VulkanAppBase] [INFO] [RenderGraph] Aggregated pre-allocation requirements: 0 command buffers, 0 descriptor sets
+[16:32:33.910] [VulkanAppBase] [INFO] [RenderGraph] Pre-reserved deferred destruction queue: 1935 slots (129 nodes × 5 resources × 3 frames, min 64)
+[16:32:33.910] [VulkanAppBase] [INFO] [RenderGraph::Compile] Phase: BuildResourceAccessTracker...
+[16:32:33.911] [VulkanAppBase] [INFO] [RenderGraph::Compile] ResourceAccessTracker built: 299 resources, 129 nodes tracked
+[16:32:33.912] [VulkanAppBase] [INFO] [RenderGraph::BuildExecutionTaskPlan] Lowered 129 node tasks into 119 waves with 629 edges
+[16:32:33.912] [VulkanAppBase] [INFO] [BootScheduleFingerprint] fp=8be0372f7061c599 nodes=129 edges=616
+[16:32:33.912] [VulkanAppBase] [INFO] [BootSchedulePrecedence] test_dispatch=77 shadow_visibility_wave=123
+[16:32:33.912] [VulkanAppBase] [INFO] [BootFrameSyncProbe] march=gid:77,wait:0,sig:3,bar:0 wave=gid:123,wait:2,sig:0,bar:2 eff=1:0
+[16:32:33.912] [VulkanAppBase] [INFO] [RenderGraph::Compile] FrameSyncSchedule built: 129 groups, 12 edges
+[16:32:33.912] [VulkanAppBase] [INFO] [RenderGraph::Compile] Compilation complete!
+[16:32:33.912] [VulkanAppBase] [INFO] [CompileRenderGraph] Shader cache telemetry: hits=9 misses=0
+[16:32:33.912] [VulkanAppBase] [INFO] [BootPipelineProbe] shader_hits=9 shader_misses=0 march_create=1 wave_create=9 march_vkcache=0 wave_vkcache=0
+[16:32:33.912] [VulkanAppBase] [INFO] [CompileRenderGraph] Validating graph...
+[16:32:33.912] [VulkanAppBase] [INFO] Render graph compiled and validated successfully
+[16:32:33.912] [VulkanAppBase] [INFO] [CompileRenderGraph] Complete - 129 nodes
+[16:32:33.912] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] CompileRenderGraph complete
+[16:32:33.912] [VulkanAppBase] [INFO] VulkanGraphApplication prepared and ready to render
+[16:32:33.912] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true
+[16:32:33.912] [VulkanAppBase] [INFO] [Run] Entering render loop...
+[16:32:33.913] [editor] [INFO] [AppFlow/channel] descriptor=/tmp/vixen-appflow-1293879.json
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph] Render pause event: START (reason: 0)
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph] Rendering paused - continuing with event processing only
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph] Render pause event: END (reason: 0)
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph] Rendering resumed
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph::RecompileDirtyNodes] Dirty nodes count: 1
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph::RecompileDirtyNodes]   - Node 'body_octree_scene' marked dirty
+[16:32:33.913] [VulkanAppBase] [INFO] [RenderGraph] Recompiling 1 nodes in this wave (transitive closure)
+[16:32:33.914] [VulkanAppBase] [INFO] [RenderGraph] Recompiling node: body_octree_scene
+[16:32:33.914] [VulkanAppBase] [INFO] [RenderGraph] All nodes successfully recompiled - graph is compiled
+[ui-host] mounted 'building' (handle 1, 500x500)
+[16:32:34.478] [VulkanAppBase] [INFO] [RenderGraph] Window state changed: FOCUSED
+[16:32:35.367] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.148200 max_submission_ms=1.551280 budget_ms=16.666666
+[16:32:35.476] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.168760 max_submission_ms=1.613520 budget_ms=16.666666
+[16:32:35.586] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.780600 max_submission_ms=1.606680 budget_ms=16.666666
+[16:32:35.696] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=87.621440 max_submission_ms=1.598160 budget_ms=16.666666
+[16:32:35.809] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=87.219800 max_submission_ms=1.614200 budget_ms=16.666666
+[16:32:35.920] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=87.779600 max_submission_ms=1.834440 budget_ms=16.666666
+[16:32:36.032] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=87.755440 max_submission_ms=1.643680 budget_ms=16.666666
+[16:32:36.141] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.127800 max_submission_ms=1.655200 budget_ms=16.666666
+[16:32:36.251] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.701840 max_submission_ms=1.649720 budget_ms=16.666666
+[16:32:36.360] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.888160 max_submission_ms=1.728680 budget_ms=16.666666
+[16:32:36.475] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.290240 max_submission_ms=1.646400 budget_ms=16.666666
+[16:32:36.591] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.928760 max_submission_ms=1.693520 budget_ms=16.666666
+[16:32:36.707] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.389680 max_submission_ms=1.643000 budget_ms=16.666666
+[16:32:36.828] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.083120 max_submission_ms=1.775680 budget_ms=16.666666
+[16:32:36.947] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.342200 max_submission_ms=1.678840 budget_ms=16.666666
+[16:32:37.063] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.731280 max_submission_ms=1.753160 budget_ms=16.666666
+[16:32:37.179] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.344040 max_submission_ms=1.816560 budget_ms=16.666666
+[16:32:37.295] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.682160 max_submission_ms=1.827680 budget_ms=16.666666
+[16:32:37.406] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.212280 max_submission_ms=1.730280 budget_ms=16.666666
+[16:32:37.517] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.477680 max_submission_ms=1.818840 budget_ms=16.666666
+[16:32:37.628] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.468200 max_submission_ms=1.719520 budget_ms=16.666666
+[16:32:37.740] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.711480 max_submission_ms=1.630400 budget_ms=16.666666
+[16:32:37.852] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.051080 max_submission_ms=1.692320 budget_ms=16.666666
+[16:32:37.963] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.614720 max_submission_ms=1.712480 budget_ms=16.666666
+[16:32:38.074] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.695720 max_submission_ms=2.260160 budget_ms=16.666666
+[16:32:38.184] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.240920 max_submission_ms=1.778720 budget_ms=16.666666
+[16:32:38.293] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.881160 max_submission_ms=1.626920 budget_ms=16.666666
+[16:32:38.409] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.674320 max_submission_ms=1.961400 budget_ms=16.666666
+[16:32:38.528] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.628839 max_submission_ms=1.553120 budget_ms=16.666666
+[16:32:38.646] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=87.796240 max_submission_ms=1.629680 budget_ms=16.666666
+[16:32:38.765] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.362960 max_submission_ms=1.718840 budget_ms=16.666666
+[16:32:38.883] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.780080 max_submission_ms=1.777480 budget_ms=16.666666
+[16:32:39.003] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.863840 max_submission_ms=1.771200 budget_ms=16.666666
+[16:32:39.123] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.383000 max_submission_ms=2.011520 budget_ms=16.666666
+[16:32:39.234] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.430280 max_submission_ms=1.807600 budget_ms=16.666666
+[16:32:39.345] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.728760 max_submission_ms=1.905280 budget_ms=16.666666
+[16:32:39.456] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.473360 max_submission_ms=1.726880 budget_ms=16.666666
+[16:32:39.568] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.961960 max_submission_ms=1.700240 budget_ms=16.666666
+[16:32:39.690] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.507080 max_submission_ms=1.932640 budget_ms=16.666666
+[16:32:39.802] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.838239 max_submission_ms=1.974560 budget_ms=16.666666
+[16:32:39.915] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.450959 max_submission_ms=1.653240 budget_ms=16.666666
+[16:32:40.029] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.017400 max_submission_ms=1.721760 budget_ms=16.666666
+[16:32:40.141] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.495120 max_submission_ms=1.667680 budget_ms=16.666666
+[16:32:40.261] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.281400 max_submission_ms=1.803280 budget_ms=16.666666
+[16:32:40.377] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.063800 max_submission_ms=1.897120 budget_ms=16.666666
+[16:32:40.505] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.009920 max_submission_ms=1.584040 budget_ms=16.666666
+[16:32:40.634] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.713920 max_submission_ms=1.776320 budget_ms=16.666666
+[16:32:40.763] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.883080 max_submission_ms=1.722200 budget_ms=16.666666
+[16:32:40.887] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=95.147360 max_submission_ms=1.770040 budget_ms=16.666666
+[16:32:41.010] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=98.960400 max_submission_ms=1.866920 budget_ms=16.666666
+[16:32:41.141] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=97.424800 max_submission_ms=1.813240 budget_ms=16.666666
+[16:32:41.254] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.897520 max_submission_ms=1.806600 budget_ms=16.666666
+[16:32:41.370] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.115720 max_submission_ms=1.709360 budget_ms=16.666666
+[16:32:41.488] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=99.869920 max_submission_ms=1.869240 budget_ms=16.666666
+[16:32:41.613] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.845320 max_submission_ms=1.674600 budget_ms=16.666666
+[16:32:41.738] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.189040 max_submission_ms=1.693920 budget_ms=16.666666
+[16:32:41.854] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.809360 max_submission_ms=1.737600 budget_ms=16.666666
+[16:32:41.971] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.429800 max_submission_ms=1.739720 budget_ms=16.666666
+[16:32:42.085] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=99.286400 max_submission_ms=1.884360 budget_ms=16.666666
+[16:32:42.199] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.956040 max_submission_ms=1.752960 budget_ms=16.666666
+[16:32:42.319] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.289080 max_submission_ms=1.825960 budget_ms=16.666666
+[16:32:42.431] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.089920 max_submission_ms=1.691320 budget_ms=16.666666
+[16:32:42.541] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.472240 max_submission_ms=1.693960 budget_ms=16.666666
+[16:32:42.650] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=97.264480 max_submission_ms=1.776360 budget_ms=16.666666
+[16:32:42.758] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.843080 max_submission_ms=1.694800 budget_ms=16.666666
+[16:32:42.870] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.982360 max_submission_ms=1.693240 budget_ms=16.666666
+[16:32:42.986] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.919960 max_submission_ms=1.718080 budget_ms=16.666666
+[16:32:43.104] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.190480 max_submission_ms=1.913160 budget_ms=16.666666
+[16:32:43.222] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.650840 max_submission_ms=1.638440 budget_ms=16.666666
+[16:32:43.333] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.551720 max_submission_ms=1.718400 budget_ms=16.666666
+[16:32:43.441] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.542080 max_submission_ms=1.766440 budget_ms=16.666666
+[16:32:43.550] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.815720 max_submission_ms=1.697040 budget_ms=16.666666
+[16:32:43.658] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.277680 max_submission_ms=2.079440 budget_ms=16.666666
+[16:32:43.775] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.900920 max_submission_ms=1.806280 budget_ms=16.666666
+[16:32:43.892] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.245960 max_submission_ms=1.828080 budget_ms=16.666666
+[16:32:44.002] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.061600 max_submission_ms=1.656160 budget_ms=16.666666
+[16:32:44.110] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.998760 max_submission_ms=2.006640 budget_ms=16.666666
+[16:32:44.219] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.788160 max_submission_ms=1.788680 budget_ms=16.666666
+[16:32:44.325] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.436360 max_submission_ms=2.191360 budget_ms=16.666666
+[16:32:44.434] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.715680 max_submission_ms=1.694160 budget_ms=16.666666
+[16:32:44.542] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.809800 max_submission_ms=1.903240 budget_ms=16.666666
+[16:32:44.653] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.881880 max_submission_ms=1.641440 budget_ms=16.666666
+[16:32:44.761] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.831520 max_submission_ms=2.063400 budget_ms=16.666666
+[16:32:44.870] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.805040 max_submission_ms=1.943520 budget_ms=16.666666
+[16:32:44.978] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.268600 max_submission_ms=2.050760 budget_ms=16.666666
+[16:32:45.088] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.569160 max_submission_ms=1.721280 budget_ms=16.666666
+[16:32:45.197] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.233000 max_submission_ms=1.693520 budget_ms=16.666666
+[16:32:45.305] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.400840 max_submission_ms=1.787880 budget_ms=16.666666
+[16:32:45.414] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.421680 max_submission_ms=1.854360 budget_ms=16.666666
+[16:32:45.526] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.214200 max_submission_ms=1.823400 budget_ms=16.666666
+[16:32:45.638] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.100680 max_submission_ms=1.709400 budget_ms=16.666666
+[16:32:45.749] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.493680 max_submission_ms=1.988720 budget_ms=16.666666
+[16:32:45.865] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.114720 max_submission_ms=1.683120 budget_ms=16.666666
+[16:32:45.979] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.317561 max_submission_ms=1.842560 budget_ms=16.666666
+[16:32:46.090] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.348680 max_submission_ms=1.958200 budget_ms=16.666666
+[16:32:46.200] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.751360 max_submission_ms=1.822200 budget_ms=16.666666
+[16:32:46.311] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=95.034160 max_submission_ms=1.772760 budget_ms=16.666666
+[16:32:46.421] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.999880 max_submission_ms=1.687200 budget_ms=16.666666
+[16:32:46.531] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.378560 max_submission_ms=1.805960 budget_ms=16.666666
+[16:32:46.642] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.155880 max_submission_ms=1.716080 budget_ms=16.666666
+[16:32:46.749] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.506680 max_submission_ms=1.793040 budget_ms=16.666666
+[16:32:46.857] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.629360 max_submission_ms=1.682920 budget_ms=16.666666
+[16:32:46.964] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.155840 max_submission_ms=1.715920 budget_ms=16.666666
+[16:32:47.073] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.529200 max_submission_ms=1.930440 budget_ms=16.666666
+[16:32:47.182] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.652360 max_submission_ms=1.618440 budget_ms=16.666666
+[16:32:47.296] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.563720 max_submission_ms=1.815080 budget_ms=16.666666
+[16:32:47.414] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.861640 max_submission_ms=1.671960 budget_ms=16.666666
+[16:32:47.527] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.703600 max_submission_ms=1.763280 budget_ms=16.666666
+[16:32:47.639] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.754040 max_submission_ms=1.641240 budget_ms=16.666666
+[16:32:47.758] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=98.717440 max_submission_ms=2.202000 budget_ms=16.666666
+[16:32:47.880] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.521840 max_submission_ms=1.618000 budget_ms=16.666666
+[16:32:48.007] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.649200 max_submission_ms=1.827600 budget_ms=16.666666
+[16:32:48.126] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.659080 max_submission_ms=1.750840 budget_ms=16.666666
+[16:32:48.242] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.872640 max_submission_ms=1.775920 budget_ms=16.666666
+[16:32:48.354] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=98.843800 max_submission_ms=1.962920 budget_ms=16.666666
+[16:32:48.463] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.115880 max_submission_ms=1.813440 budget_ms=16.666666
+[16:32:48.574] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=95.746400 max_submission_ms=1.919120 budget_ms=16.666666
+[16:32:48.683] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.394080 max_submission_ms=1.699000 budget_ms=16.666666
+[16:32:48.792] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.795200 max_submission_ms=1.625080 budget_ms=16.666666
+[16:32:48.900] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.177320 max_submission_ms=2.245720 budget_ms=16.666666
+[16:32:49.007] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.673200 max_submission_ms=1.819560 budget_ms=16.666666
+[16:32:49.118] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.180400 max_submission_ms=1.721880 budget_ms=16.666666
+[16:32:49.224] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.885520 max_submission_ms=1.761640 budget_ms=16.666666
+[16:32:49.333] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.839040 max_submission_ms=1.698680 budget_ms=16.666666
+[16:32:49.444] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.349720 max_submission_ms=1.980880 budget_ms=16.666666
+[16:32:49.552] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.419040 max_submission_ms=1.660840 budget_ms=16.666666
+[16:32:49.660] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.167800 max_submission_ms=2.081920 budget_ms=16.666666
+[16:32:49.768] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.656400 max_submission_ms=1.808920 budget_ms=16.666666
+[16:32:49.876] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.049960 max_submission_ms=1.833120 budget_ms=16.666666
+[16:32:49.992] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.436640 max_submission_ms=1.725080 budget_ms=16.666666
+[16:32:50.112] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.338080 max_submission_ms=1.678760 budget_ms=16.666666
+[16:32:50.231] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.205240 max_submission_ms=1.693440 budget_ms=16.666666
+[16:32:50.348] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.060000 max_submission_ms=1.901600 budget_ms=16.666666
+[16:32:50.461] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.451640 max_submission_ms=1.758680 budget_ms=16.666666
+[16:32:50.574] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.623240 max_submission_ms=2.257680 budget_ms=16.666666
+[16:32:50.685] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.578680 max_submission_ms=1.734880 budget_ms=16.666666
+[16:32:50.797] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.737200 max_submission_ms=2.221160 budget_ms=16.666666
+[16:32:50.913] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.747640 max_submission_ms=2.226880 budget_ms=16.666666
+[16:32:51.029] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.620080 max_submission_ms=1.719480 budget_ms=16.666666
+[16:32:51.145] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.707120 max_submission_ms=1.640120 budget_ms=16.666666
+[16:32:51.258] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=95.033880 max_submission_ms=1.790720 budget_ms=16.666666
+[16:32:51.369] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.625560 max_submission_ms=2.133520 budget_ms=16.666666
+[16:32:51.480] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.105640 max_submission_ms=1.745600 budget_ms=16.666666
+[16:32:51.594] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.948120 max_submission_ms=1.718320 budget_ms=16.666666
+[16:32:51.713] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.736120 max_submission_ms=1.687000 budget_ms=16.666666
+[16:32:51.826] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.471520 max_submission_ms=1.745040 budget_ms=16.666666
+[16:32:51.938] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.513440 max_submission_ms=1.982200 budget_ms=16.666666
+[16:32:52.049] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.646040 max_submission_ms=1.818600 budget_ms=16.666666
+[16:32:52.161] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.029600 max_submission_ms=1.895400 budget_ms=16.666666
+[16:32:52.275] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.783760 max_submission_ms=2.235400 budget_ms=16.666666
+[16:32:52.387] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.977040 max_submission_ms=1.722320 budget_ms=16.666666
+[16:32:52.498] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.771400 max_submission_ms=1.973360 budget_ms=16.666666
+[16:32:52.610] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.822600 max_submission_ms=1.710360 budget_ms=16.666666
+[16:32:52.721] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.534840 max_submission_ms=1.752960 budget_ms=16.666666
+[16:32:52.831] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.987840 max_submission_ms=1.730960 budget_ms=16.666666
+[16:32:52.945] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.746200 max_submission_ms=1.759680 budget_ms=16.666666
+[16:32:53.056] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.229120 max_submission_ms=1.698840 budget_ms=16.666666
+[16:32:53.167] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.259440 max_submission_ms=1.693400 budget_ms=16.666666
+[16:32:53.279] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.675040 max_submission_ms=2.098040 budget_ms=16.666666
+[16:32:53.390] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.322200 max_submission_ms=1.821560 budget_ms=16.666666
+[16:32:53.501] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.421920 max_submission_ms=1.732480 budget_ms=16.666666
+[16:32:53.614] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.292080 max_submission_ms=1.895600 budget_ms=16.666666
+[16:32:53.726] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.528200 max_submission_ms=1.970480 budget_ms=16.666666
+[16:32:53.837] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.668720 max_submission_ms=1.741520 budget_ms=16.666666
+[16:32:53.949] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.515160 max_submission_ms=1.742200 budget_ms=16.666666
+[16:32:54.062] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.229760 max_submission_ms=1.931120 budget_ms=16.666666
+[16:32:54.171] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.032440 max_submission_ms=1.701160 budget_ms=16.666666
+[16:32:54.282] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.946240 max_submission_ms=1.754320 budget_ms=16.666666
+[16:32:54.398] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=93.120240 max_submission_ms=1.968080 budget_ms=16.666666
+[16:32:55.690] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.560040 max_submission_ms=2.025520 budget_ms=16.666666
+[16:33:08.227] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.096320 max_submission_ms=1.902320 budget_ms=16.666666
+[16:33:14.060] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=96.337000 max_submission_ms=2.238280 budget_ms=16.666666
+[16:33:24.450] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=98.344520 max_submission_ms=2.120400 budget_ms=16.666666
+[16:33:32.565] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.666800 max_submission_ms=1.578560 budget_ms=16.666666
+[16:33:38.374] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.359360 max_submission_ms=1.603720 budget_ms=16.666666
+[16:33:46.391] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.820800 max_submission_ms=1.628000 budget_ms=16.666666
+[16:33:54.434] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.611360 max_submission_ms=1.554240 budget_ms=16.666666
+[16:34:03.724] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.819200 max_submission_ms=1.588520 budget_ms=16.666666
+[16:34:08.481] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=84.703240 max_submission_ms=1.568720 budget_ms=16.666666
+[16:34:08.593] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=84.202279 max_submission_ms=1.565920 budget_ms=16.666666
+[16:34:15.648] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=1188.768766 max_submission_ms=1103.538086 budget_ms=16.666666
+[16:34:22.612] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=89.389480 max_submission_ms=1.642320 budget_ms=16.666666
+[16:34:28.385] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=94.238200 max_submission_ms=2.006480 budget_ms=16.666666
+[16:34:38.890] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=91.843600 max_submission_ms=1.837680 budget_ms=16.666666
+[16:34:48.446] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.844520 max_submission_ms=1.537600 budget_ms=16.666666
+[16:34:58.348] [VulkanAppBase] [INFO] [RenderGraph] Window state changed: UNFOCUSED
+[16:34:58.350] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.010160 max_submission_ms=1.564960 budget_ms=16.666666
+[16:35:10.540] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.497519 max_submission_ms=1.604080 budget_ms=16.666666
+[16:35:21.044] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=88.148960 max_submission_ms=1.607960 budget_ms=16.666666
+[16:35:24.592] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=92.765920 max_submission_ms=1.744040 budget_ms=16.666666
+[16:35:24.692] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=90.510079 max_submission_ms=1.651800 budget_ms=16.666666
+[16:35:30.413] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=86.395040 max_submission_ms=1.561440 budget_ms=16.666666
+[16:35:39.686] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=84.397159 max_submission_ms=1.515720 budget_ms=16.666666
+[16:35:46.585] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.252920 max_submission_ms=2.118320 budget_ms=16.666666
+[16:35:58.044] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.553880 max_submission_ms=2.027320 budget_ms=16.666666
+[16:36:04.920] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=84.633800 max_submission_ms=1.515120 budget_ms=16.666666
+[16:36:13.058] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.326201 max_submission_ms=1.514880 budget_ms=16.666666
+[16:36:22.383] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=85.111600 max_submission_ms=1.616760 budget_ms=16.666666
+[16:36:29.256] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=84.726839 max_submission_ms=1.544200 budget_ms=16.666666

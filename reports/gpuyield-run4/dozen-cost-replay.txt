@@ -1,0 +1,11 @@
+{
+  "assumed_actual_extent": [
+    500,
+    500
+  ],
+  "frames_replayed": 500,
+  "launch_prediction_mismatches": [],
+  "ignored_hot_full_tiles": 19487
+}
+First: [{'index': 0, 'flight': 1, 'measured_edge': 7, 'next_edge': 8, 'unit_ns': 28742.775510204083, 'fixed_ns': 0, 'anchor_units': 49, 'full_smaller_over2_ignored_as_throughput': 0, 'max_submission_ms': 1.28036}, {'index': 1, 'flight': 2, 'measured_edge': 7, 'next_edge': 8, 'unit_ns': 28916.081632653062, 'fixed_ns': 0, 'anchor_units': 49, 'full_smaller_over2_ignored_as_throughput': 0, 'max_submission_ms': 1.28808}, {'index': 2, 'flight': 3, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 30529.71428571429, 'fixed_ns': 0, 'anchor_units': 49, 'full_smaller_over2_ignored_as_throughput': 0, 'max_submission_ms': 1.35996}, {'index': 3, 'flight': 0, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 30529.71428571429, 'fixed_ns': 0, 'anchor_units': 49, 'full_smaller_over2_ignored_as_throughput': 0, 'max_submission_ms': 1.34704}, {'index': 4, 'flight': 1, 'measured_edge': 8, 'next_edge': 7, 'unit_ns': 30907.250000000004, 'fixed_ns': 0, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 0, 'max_submission_ms': 1.79824}]
+Last: [{'index': 495, 'flight': 0, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 31219.375000000004, 'fixed_ns': 2892690.625000001, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 11, 'max_submission_ms': 2.14996}, {'index': 496, 'flight': 0, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 31219.375000000004, 'fixed_ns': 2892690.625000001, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 3, 'max_submission_ms': 1.9852}, {'index': 497, 'flight': 1, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 31219.375000000004, 'fixed_ns': 2892690.625000001, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 4, 'max_submission_ms': 2.05464}, {'index': 498, 'flight': 2, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 31219.375000000004, 'fixed_ns': 2892690.625000001, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 62, 'max_submission_ms': 2.5674}, {'index': 499, 'flight': 3, 'measured_edge': 7, 'next_edge': 7, 'unit_ns': 31219.375000000004, 'fixed_ns': 2892690.625000001, 'anchor_units': 64, 'full_smaller_over2_ignored_as_throughput': 22, 'max_submission_ms': 2.2714}]

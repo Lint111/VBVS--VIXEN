@@ -20,6 +20,8 @@
 #include <algorithm>
 
 #include "Core/TaskQueue.h"
+#include "Nodes/MultiDispatchNode.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "Core/TimelineCapacityTracker.h"  // Sprint 6.3: Phase 2.2
 #include "Data/TaskBudget.h"
 #include "Data/DispatchPass.h"
@@ -688,4 +690,45 @@ TEST_F(MultiDispatchIntegration, TrackerFeedbackWithoutQueueExecution) {
     float expectedUtilization = 12'000'000.0f / 16'666'666.0f;  // ~0.72
     EXPECT_NEAR(timeline.gpuQueues[0].utilization, expectedUtilization, 0.001f);
     EXPECT_FALSE(tracker.IsOverBudget());
+}
+
+// Exercise the actual node API: a TaskQueue simulator cannot detect the node's
+// treatment of absent estimates or uncalibrated profiles.
+TEST_F(MultiDispatchIntegration, ActualNodeChargesMandatoryUnknownWork) {
+    MultiDispatchNodeType type;
+    MultiDispatchNode node("unknown-mandatory", &type);
+    node.SetBudget(TaskBudget{16'666'666});
+    EXPECT_EQ(node.QueueDispatch(CreateValidDispatch()), 0u);
+    EXPECT_EQ(node.GetRemainingBudget(), 0u);
+    EXPECT_EQ(node.QueueDispatch(CreateValidDispatch()), 1u);
+    EXPECT_EQ(node.GetQueueSize(), 2u);
+    node.ClearQueue();
+    EXPECT_EQ(node.GetRemainingBudget(), 16'666'666u);
+}
+
+TEST_F(MultiDispatchIntegration, ActualNodeUnknownCostCannotBypassStrictAdmission) {
+    MultiDispatchNodeType type;
+    MultiDispatchNode node("unknown-strict", &type);
+    node.SetBudget(TaskBudget{16'666'666});
+    EXPECT_TRUE(node.TryQueueDispatch(CreateValidDispatch(), 0));
+    EXPECT_EQ(node.GetRemainingBudget(), 0u);
+    EXPECT_FALSE(node.TryQueueDispatch(CreateValidDispatch(), 0));
+    EXPECT_EQ(node.GetQueueSize(), 1u);
+    node.ClearQueue();
+    EXPECT_TRUE(node.TryQueueDispatch(CreateValidDispatch(), 1'000'000));
+    EXPECT_EQ(node.GetRemainingBudget(), 15'666'666u);
+}
+
+TEST_F(MultiDispatchIntegration, ActualNodeMissingOrUncalibratedProfileIsNotFree) {
+    MultiDispatchNodeType type;
+    MultiDispatchNode node("unknown-profile", &type);
+    node.SetBudget(TaskBudget{16'666'666});
+    EXPECT_TRUE(node.TryQueueWithProfile(CreateValidDispatch(), nullptr));
+    EXPECT_FALSE(node.TryQueueWithProfile(CreateValidDispatch(), nullptr));
+    node.ClearQueue();
+    SimpleTaskProfile profile("uncalibrated", "compute");
+    ASSERT_FALSE(profile.IsCalibrated());
+    EXPECT_TRUE(node.TryQueueWithProfile(CreateValidDispatch(), &profile));
+    EXPECT_EQ(node.GetRemainingBudget(), 0u);
+    EXPECT_FALSE(node.TryQueueWithProfile(CreateValidDispatch(), &profile));
 }

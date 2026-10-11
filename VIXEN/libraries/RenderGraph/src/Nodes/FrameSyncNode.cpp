@@ -7,6 +7,9 @@
 #include "Message.h"
 #include <mutex>
 #include <stdexcept>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph {
 
@@ -257,6 +260,31 @@ void FrameSyncNode::HandleFrameEnd() {
     frameCompletionValues_[currentFrameIndex] = completionValue;
     // Preserve monotonicity if the graph schedule changes during recompile.
     frameBase_ = completionValue;
+
+    // Retire this frame before the host's next PreTick can write parameters.
+    // Keep the allocation ring, but bound outstanding graph work to one frame.
+    // The existing marker covers all submits, including nodes after the binary fence owner.
+    VkSemaphoreWaitInfo wait{};
+    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+    wait.semaphoreCount = 1;
+    wait.pSemaphores = &timelineSemaphore_;
+    wait.pValues = &completionValue;
+    const auto waitStarted = std::chrono::steady_clock::now();
+    const VkResult waitResult = vkWaitSemaphores(vulkanDevice->device, &wait, UINT64_MAX);
+    if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+        const auto completed = std::chrono::steady_clock::now();
+        std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-retire elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
+            std::chrono::duration<double, std::milli>(completed - waitStarted).count(),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(waitStarted.time_since_epoch()).count()),
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
+    }
+    if (waitResult != VK_SUCCESS) {
+        frameCompletionSubmitFailure_ = waitResult;
+        NODE_LOG_ERROR("FrameSyncNode: failed to retire frame completion timeline: " +
+                       std::to_string(waitResult));
+        if (waitResult == VK_ERROR_DEVICE_LOST)
+            GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::FrameEnd vkWaitSemaphores");
+    }
 }
 
 void FrameSyncNode::TypedCleanupImpl(TypedCleanupContext& ctx) {

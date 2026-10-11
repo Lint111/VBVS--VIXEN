@@ -1,0 +1,5 @@
+{
+  "source": "/mnt/c/vixen-native/gpuyield/reports/gpuyield-run3",
+  "archive": "/mnt/c/vixen-native/gpuyield/.tmp/run4-preserved-native-run3",
+  "reason": "Preserve untracked raw run-3 evidence before fast-forward to the committed report tip; no product inputs changed."
+}

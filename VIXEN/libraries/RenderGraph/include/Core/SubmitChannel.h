@@ -18,8 +18,9 @@
 // not as a mutex. Present is drained/issued in its own final wave, naturally last (Present depends on
 // the render-complete semaphore, so the schedule already places it after every render submit).
 //
-// SCOPE (P1, controller ruling Option A): the ASYNC frame-path submits only (fence/semaphore signal,
-// no inline WaitIdle). The synchronous submit+WaitIdle sites (CommandBufferUtility, TextureLoader,
+// SCOPE (P1, controller ruling Option A): the frame-path submits only. R477 additionally retires
+// the previous queue chunk in the owner drain, bounding outstanding submissions to one. The
+// synchronous submit+WaitIdle sites (CommandBufferUtility, TextureLoader,
 // CashSystem AS build, RenderTargetReadback, the one-shot transition/clear nodes) and BatchedUploader
 // keep VK2 as a documented residual; converting them to two-phase observe is a separate P1b lane.
 //
@@ -47,6 +48,12 @@ namespace Vixen::RenderGraph {
 struct SubmitRecord {
     std::vector<VkSemaphoreSubmitInfo> waits;
     std::vector<VkCommandBufferSubmitInfo> commandBuffers;
+    // Calibrated upper bounds supplied by the existing producer's timestamp history.
+    // Missing/zero entries reserve a whole submission; they can never enable batching.
+    std::vector<uint64_t> commandCostUpperBoundsNs;
+    uint64_t submissionBudgetNs = 2'000'000;
+    struct Batch { std::size_t first, count; };
+    [[nodiscard]] std::vector<Batch> SubmissionBatches() const;
     std::vector<VkSemaphoreSubmitInfo> signals;
     VkFence fence = VK_NULL_HANDLE;   ///< Binary in-flight fence for the designated fence-owning submit, else VK_NULL_HANDLE.
     bool present = false;             ///< True for the present record (issued via presentFn, not vkQueueSubmit2).
@@ -69,13 +76,31 @@ struct SubmitRecord {
     /// record so the deferred drain can rebuild a VkSubmitInfo2 pointing at THIS record's vectors.
     /// (pNext chains are NOT copied — the frame-path submits converted in P1 use none; a site that
     /// grows a pNext must extend this.)
+    // Each primary command buffer is a separate queue submission. Consume waits
+    // once, and publish signals/fence only after the final buffer. Queue order and
+    // existing entry/exit barriers retain the original graph dependency contract.
+    // R503: at most two submitted batches are outstanding on the queue, so one
+    // batch executes while the next is queued and a pass boundary no longer costs
+    // a host round trip. Worst queued work is two submission budgets (4 ms), inside
+    // R494's 4.17 ms desktop reserve. The final semaphore/fence remains owned by the
+    // final batch. The retirement function is the existing Vulkan queue primitive;
+    // its explicit parameter lets CPU contract tests observe ordering and propagate
+    // failures. `outstandingBatches` is the queue-wide count the drain owns across
+    // records; without it (the guarded direct path) the record assumes a full queue
+    // and retires before its first batch, as before.
+    static constexpr uint32_t kOutstandingBatchCap = 2;
+    VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
+                    PFN_vkQueueWaitIdle retireFn = vkQueueWaitIdle,
+                    uint32_t* outstandingBatches = nullptr) const;
+
     static SubmitRecord FromSubmitInfo2(const VkSubmitInfo2& si, VkFence fence) {
         SubmitRecord r;
         r.fence = fence;
-        r.waits.assign(si.pWaitSemaphoreInfos, si.pWaitSemaphoreInfos + si.waitSemaphoreInfoCount);
-        r.commandBuffers.assign(si.pCommandBufferInfos,
+        if (si.waitSemaphoreInfoCount)
+            r.waits.assign(si.pWaitSemaphoreInfos, si.pWaitSemaphoreInfos + si.waitSemaphoreInfoCount);
+        if (si.commandBufferInfoCount) r.commandBuffers.assign(si.pCommandBufferInfos,
                                 si.pCommandBufferInfos + si.commandBufferInfoCount);
-        r.signals.assign(si.pSignalSemaphoreInfos,
+        if (si.signalSemaphoreInfoCount) r.signals.assign(si.pSignalSemaphoreInfos,
                          si.pSignalSemaphoreInfos + si.signalSemaphoreInfoCount);
         return r;
     }

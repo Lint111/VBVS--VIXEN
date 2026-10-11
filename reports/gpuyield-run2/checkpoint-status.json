@@ -1,0 +1,12 @@
+{
+  "checkpoint_utc": "2026-10-10 17:11:00 UTC",
+  "queue_session_exit": 143,
+  "termination_cause": "unclassified; outer session exited before explicit owned-scope cleanup",
+  "owned_scope_group": 155810,
+  "cleanup": "SIGTERM to verified own process group",
+  "full_suites": "not started",
+  "cache_gate": "not run",
+  "no_op_build": "not run",
+  "generation_refresh": "interrupted after 17/23 logged CMake steps",
+  "owned_scope_processes_absent": true
+}

@@ -1,0 +1,81 @@
+[box:flow] run3-current-group-producer-witness cpu=23% target=90% depth=0 free=3 baseline=2 granted=1 mode=static
+[box:flow] run3-current-group-producer-witness cpu=22% target=90% admit
+[box:flow] run3-current-group-producer-witness memory=admit avail=68020MB projected=3695MB estimate=class-p91 samples=1344 reserved=13606MB total=80425MB reserve=4096MB disk=525674MB
+[box:flow] run3-current-group-producer-witness granted tokens=8 mask=16,17
+[box:flow] run3-current-group-producer-witness running on cores 16,17 (test)
+Internal ctest changing into directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+Test project /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+    Start 1216: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0
+1/9 Test #1216: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0 ...   Passed    0.62 sec
+    Start 1217: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1
+2/9 Test #1217: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/1 ...   Passed    0.51 sec
+    Start 1218: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2
+3/9 Test #1218: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/2 ...   Passed    0.55 sec
+    Start 1219: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3
+4/9 Test #1219: CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/3 ...   Passed    0.62 sec
+    Start 1226: RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle
+5/9 Test #1226: RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle .............   Passed    0.45 sec
+    Start 1228: RecipeMultiBucketCompositingTest.OverlappingHotRecipesCompositeCorrectlyBothOrderings
+6/9 Test #1228: RecipeMultiBucketCompositingTest.OverlappingHotRecipesCompositeCorrectlyBothOrderings ...........   Passed    1.42 sec
+    Start 1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+7/9 Test #1537: MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork ..................................   Passed    0.01 sec
+    Start 1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+8/9 Test #1538: MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission .......................   Passed    0.01 sec
+    Start 1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+9/9 Test #1539: MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree ........................   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Label Time Summary:
+RenderGraph    =   4.20 sec*proc (9 tests)
+
+Total Test time (real) =   4.59 sec
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SubmitRecord.*
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+[       OK ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal (0 ms)
+[ RUN      ] SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership
+[       OK ] SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership (0 ms)
+[ RUN      ] SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission
+[       OK ] SubmitRecord.UnknownOrMissingCostReservesAWholeSubmission (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 5 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 5 tests.
+Note: Google Test filter = MultiDispatchIntegration.ActualNode*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MultiDispatchIntegration
+[ RUN      ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+[       OK ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+[       OK ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+[       OK ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree (0 ms)
+[----------] 3 tests from MultiDispatchIntegration (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = RayGenerationTileContract.*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RayGenerationTileContract
+[ RUN      ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+[       OK ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields (137 ms)
+[----------] 1 test from RayGenerationTileContract (138 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (138 ms total)
+[  PASSED  ] 1 test.
+All seven required contract tests were discovered and executed.
+Timing smoke checks: completed frames, budget boundary, query availability, empty/invalid peer rows PASS
+UT_JOB_DONE test run3-current-group-producer-witness exit=0 state=OK

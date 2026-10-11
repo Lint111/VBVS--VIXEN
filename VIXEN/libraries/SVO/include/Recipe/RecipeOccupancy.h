@@ -57,7 +57,7 @@
  *     13's "far color fidelity is out of scope" note; flat shade is intentionally coarse.
  */
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode
-#include "Recipe/generated/RecipeSimd.g.hpp"
+#include <RecipeSimd.g.hpp>
 #include "Recipe/SdfRecipeEval.h"   // evalRecipe
 #include <cmath>
 #include <array>

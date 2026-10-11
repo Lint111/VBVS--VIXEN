@@ -1,0 +1,73 @@
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.14.41
+** Copyright (c) 2025 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+[configure] Waiting for the machine-wide configure lock (another worktree may be configuring)...
+[configure] Configure lock acquired (was free).
+-- VIXEN: expected Vulkan SDK 1.4.350.0 (environment override: VIXEN_VULKAN_SDK_VERSION; shared settings: Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/vulkan-sdk-settings.env)
+-- VIXEN: external Vulkan SDK loader: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib
+-- VIXEN: found Vulkan SDK 1.4.350.0 — expected version matches.
+-- [VulkanCapability] RayQueryLighting SPIR-V requirement available: 1.6.0 >= 1.4.0.
+-- VIXEN: Vulkan toolchain — expected SDK 1.4.350.0; found SDK 1.4.350.0; API headers 1.4.0; glslang 16.2.0; SPIR-V target 1.6.0.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: )
+-- [ProvisionWslVulkan] Vulkan SDK setting: expected 1.4.350.0 (override with VIXEN_VULKAN_SDK_VERSION).
+-- [ProvisionWslVulkan] WSL2 GPU detected; building Mesa Dozen (first time, a few minutes) into /.cache/vixen/wsl-vulkan ...
+wsl: Failed to translate 'Z:\home\liory\projects\VBVS--VIXEN\.claude-worktrees\gpuyield'
+/bin/bash: Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/cmake/provision-wsl-vulkan.sh: No such file or directory
+CMake Warning at cmake/ProvisionWslVulkan.cmake:48 (message):
+  [ProvisionWslVulkan] Dozen provision failed (rc=127); the runtime selector
+  will require VK_ICD_FILENAMES or VIXEN_ALLOW_SOFTWARE_VULKAN=1.  Re-run
+  configure to retry, or set VIXEN_AUTO_PROVISION_WSL_VULKAN=OFF.
+Call Stack (most recent call first):
+  CMakeLists.txt:250 (include)
+
+
+-- Attempting auto locate Vulkan using CMake......
+-- Found Vulkan: C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib (found version "1.4.350") found components: glslc glslangValidator
+-- Vulkan SDK found: C:/VulkanSDK/1.4.350.0
+-- The C compiler identification is MSVC 19.44.35229.0
+-- The CXX compiler identification is MSVC 19.44.35229.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Capping concurrent link jobs at 8 (override with VIXEN_MAX_PARALLEL_LINKS)
+-- MSVC multi-processor compilation enabled
+-- MSVC linker warnings suppressed (LNK4099: missing PDB files)
+-- MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)
+-- FetchContent base directory: Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch
+[1/9] Creating directories for 'glm-populate'
+[1/9] Performing download step (git clone) for 'glm-populate'
+Cloning into 'glm-src'...
+fatal: detected dubious ownership in repository at '//wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-src'
+'//wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-src' may refer to a non-local directory
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory '%(prefix)///wsl.localhost/Ubuntu/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-src'
+CMake Error at glm-subbuild/glm-populate-prefix/tmp/glm-populate-gitclone.cmake:61 (message):
+  Failed to checkout tag: '1.0.1'
+
+
+FAILED: glm-populate-prefix/src/glm-populate-stamp/glm-populate-download Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-subbuild/glm-populate-prefix/src/glm-populate-stamp/glm-populate-download 
+C:\Windows\system32\cmd.exe /C "cd /D Z:\home\liory\projects\VBVS--VIXEN\.claude-worktrees\gpuyield\.tmp\gpuyield-run2\native-fetch && "C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-subbuild/glm-populate-prefix/tmp/glm-populate-gitclone.cmake && "C:\Program Files\CMake\bin\cmake.exe" -E touch Z:/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/native-fetch/glm-subbuild/glm-populate-prefix/src/glm-populate-stamp/glm-populate-download"
+ninja: build stopped: subcommand failed.
+
+CMake Error at C:/Program Files/CMake/share/cmake-4.2/Modules/FetchContent.cmake:1928 (message):
+  Build step for glm failed: 1
+Call Stack (most recent call first):
+  C:/Program Files/CMake/share/cmake-4.2/Modules/FetchContent.cmake:1619 (__FetchContent_populateSubbuild)
+  C:/Program Files/CMake/share/cmake-4.2/Modules/FetchContent.cmake:2155:EVAL:2 (__FetchContent_doPopulation)
+  C:/Program Files/CMake/share/cmake-4.2/Modules/FetchContent.cmake:2155 (cmake_language)
+  C:/Program Files/CMake/share/cmake-4.2/Modules/FetchContent.cmake:2394 (__FetchContent_Populate)
+  dependencies/native/CMakeLists.txt:10 (FetchContent_MakeAvailable)
+
+
+-- Configuring incomplete, errors occurred!
+[configure] Configure lock released.

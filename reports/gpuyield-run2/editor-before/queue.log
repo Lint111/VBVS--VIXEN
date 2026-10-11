@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 119, in <module>
+    main()
+    ~~~~^^
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/tools/measure-gpu-cadence.py", line 79, in main
+    raise RuntimeError(f"witness child exited {child.returncode}; see logs")
+RuntimeError: witness child exited 1; see logs
+Native VIXEN captures written to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/reports/gpuyield-run2/captures-before (DISPLAY=:0)

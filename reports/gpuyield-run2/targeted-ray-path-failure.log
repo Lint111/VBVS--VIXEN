@@ -1,0 +1,89 @@
+[box:flow] run2-fresh-contract-tests cpu=73% target=90% depth=1 free=0 baseline=2 granted=2 mode=dynamic
+[box:flow] run2-fresh-contract-tests queued — need=2 tokens projected=14MB estimate=step samples=1
+[box:flow] run2-fresh-contract-tests cpu=57% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=62406MB projected=14MB estimate=step samples=1 reserved=24599MB total=80425MB reserve=4096MB disk=548261MB
+[box:flow] run2-fresh-contract-tests cpu=57% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=64680MB projected=14MB estimate=step samples=1 reserved=24599MB total=80425MB reserve=4096MB disk=548175MB
+[box:flow] run2-fresh-contract-tests cpu=65% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=64285MB projected=14MB estimate=step samples=1 reserved=24599MB total=80425MB reserve=4096MB disk=548173MB
+[box:flow] run2-fresh-contract-tests cpu=71% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=63771MB projected=14MB estimate=step samples=1 reserved=24599MB total=80425MB reserve=4096MB disk=548169MB
+[box:flow] run2-fresh-contract-tests cpu=71% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=63372MB projected=14MB estimate=step samples=1 reserved=24599MB total=80425MB reserve=4096MB disk=548167MB
+[box:flow] run2-fresh-contract-tests cpu=35% target=90% admit
+[box:flow] run2-fresh-contract-tests memory=admit avail=71545MB projected=14MB estimate=step samples=1 reserved=26900MB total=80425MB reserve=4096MB disk=546671MB
+[box:flow] run2-fresh-contract-tests granted tokens=9 13 mask=18,19,26,27
+[box:flow] run2-fresh-contract-tests running on cores 18,19,26,27 (test)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SubmitRecord.*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from SubmitRecord
+[ RUN      ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit
+[       OK ] SubmitRecord.TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit (0 ms)
+[ RUN      ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal
+[       OK ] SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal (0 ms)
+[ RUN      ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence
+[       OK ] SubmitRecord.SemaphoreOnlyCompletionStillSubmitsItsFence (0 ms)
+[----------] 3 tests from SubmitRecord (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = MultiDispatchIntegration.ActualNode*
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MultiDispatchIntegration
+[ RUN      ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork
+[       OK ] MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission
+[       OK ] MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission (0 ms)
+[ RUN      ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree
+[       OK ] MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree (0 ms)
+[----------] 3 tests from MultiDispatchIntegration (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+Note: Google Test filter = RayGenerationTileContract.*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RayGenerationTileContract
+[ RUN      ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+../../VIXEN/libraries/RenderGraph/tests/Nodes/test_push_constant_gatherer_node.cpp:82: Failure
+Expected: (origin) != (nullptr), actual: NULL vs (nullptr)
+
+[  FAILED  ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields (152 ms)
+[----------] 1 test from RayGenerationTileContract (152 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (152 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+
+ 1 FAILED TEST
+Traceback (most recent call last):
+  File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/filtered-contract-tests.py", line 13, in <module>
+    subprocess.run([binary, '--gtest_filter=' + selector], check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['build/gpuyield/libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant', '--gtest_filter=RayGenerationTileContract.*']' returned non-zero exit status 1.
+UT_JOB_FAILED test run2-fresh-contract-tests exit=1 log=/home/liory/.local/state/undertow/undertow-box-logs/1791647620-test-run2-fresh-contract-tests.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | [  FAILED  ] 1 test, listed below:
+  | [  FAILED  ] RayGenerationTileContract.CompiledShaderPreservesCameraPrefixAndReflectsTileFields
+  | 
+  |  1 FAILED TEST
+  | Traceback (most recent call last):
+  |   File "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/gpuyield-run2/filtered-contract-tests.py", line 13, in <module>
+  |     subprocess.run([binary, '--gtest_filter=' + selector], check=True)
+  |     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/usr/lib/python3.14/subprocess.py", line 578, in run
+  |     raise CalledProcessError(retcode, process.args,
+  |                              output=stdout, stderr=stderr)
+  | subprocess.CalledProcessError: Command '['build/gpuyield/libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant', '--gtest_filter=RayGenerationTileContract.*']' returned non-zero exit status 1.
+------------------------------
+UT_JOB_DONE test run2-fresh-contract-tests exit=1 state=PAYLOAD_FAIL
