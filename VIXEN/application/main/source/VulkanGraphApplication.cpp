@@ -4251,6 +4251,17 @@ void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool)
     }
 }
 
+void VulkanGraphApplication::SetRecipePoolProducer(
+    std::function<Vixen::SVO::ConcatenatedOctrees()> producer) {
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->SetRecipePoolProducer(std::move(producer));
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetRecipePoolProducer] bodyOctreeSceneNode_ not found — producer not applied");
+    }
+}
+
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
     // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined

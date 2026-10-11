@@ -781,20 +781,21 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     }
 
     Vixen::SVO::RecipeBakeConfig bakeCfg{};  // defaults: n=64, band=2.5, depth=3
-    auto bakeResult = Vixen::SVO::BakeRegistryToPool(reg, bakeCfg);
-    if (!bakeResult.ok) {
-        lastEditorError_ = "BakeRegistryToPool failed: " + bakeResult.err;
-        return false;
-    }
-
-    TraceEditorLatency("bake", "end", updateTick_);
+    auto bakeRegistry = std::make_shared<Vixen::SVO::RecipeRegistry>(std::move(reg));
     TraceEditorLatency("publish", "begin", updateTick_);
     lastBakeSnapshot_ = snapshot;
     for (size_t i = 0; i < lastPreviewParameterValues_.size(); ++i) {
         lastPreviewParameterValues_[i] = snapshot.parameterValues[i];
     }
 
-    SetRecipePool(std::move(bakeResult.pool));
+    SetRecipePoolProducer([bakeRegistry, bakeCfg]() mutable {
+        auto bakeResult = Vixen::SVO::BakeRegistryToPool(*bakeRegistry, bakeCfg);
+        if (!bakeResult.ok) {
+            throw std::runtime_error("BakeRegistryToPool failed: " + bakeResult.err);
+        }
+        return std::move(bakeResult.pool);
+    });
+    TraceEditorLatency("bake", "end", updateTick_);
 
     // One virtual provider body evaluates the exact same registered bytecode used by the CPU
     // bake. Its six runtime values are copied from that bake snapshot; the CPU octree remains

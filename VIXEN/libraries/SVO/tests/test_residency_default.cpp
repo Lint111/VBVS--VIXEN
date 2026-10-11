@@ -137,7 +137,7 @@ TEST(ResidencyDefault, ChannelsWithoutBakedMipsIsNotMipCapable) {
 // vector is a real correctness bug, not just an addressing curiosity.
 // ===========================================================================
 
-// No shell cache derived (shellCache_[0]/[1] both default-empty, matching a
+// No shell cache derived (the published pool is default-empty, matching a
 // binary/Procedural body or a Stored-SDF body before DeriveShellCache ever ran)
 // -> must select the SOURCE configs, unchanged from pre-M2 behavior.
 TEST(StampAndSelectActiveConfigs, NoShellCacheSelectsSourceConfigs) {
@@ -147,8 +147,8 @@ TEST(StampAndSelectActiveConfigs, NoShellCacheSelectsSourceConfigs) {
     OctreeConfig c1{}; c1.brickResident = 0u;
     source.configs = { c0, c1 };
 
-    ShellPool shellCache[2];  // both default-constructed: compact.configs empty
-    ASSERT_TRUE(shellCache[0].compact.configs.empty());
+    ShellPool shellCache;  // default-constructed: compact.configs empty
+    ASSERT_TRUE(shellCache.compact.configs.empty());
 
     std::vector<OctreeConfig>* active = StampAndSelectActiveConfigs(source, shellCache);
 
@@ -158,37 +158,30 @@ TEST(StampAndSelectActiveConfigs, NoShellCacheSelectsSourceConfigs) {
     }
 }
 
-// A shell cache WAS derived (both CPU double-buffer slots populated, as
-// CreateShellBuffers leaves them) -> must select the COMPACT configs (slot 0),
-// with brickResident stamped into BOTH slots (so whichever slot ExecuteImpl
-// next reads — read/write alternate by frame parity — is already correct),
-// and the SOURCE configs must be left untouched (the bug this milestone fixes:
+// A shell cache WAS derived -> must select its COMPACT configs, with brickResident
+// stamped into that published vector, and the SOURCE configs must be left untouched
+// (the bug this milestone fixes:
 // re-uploading source configs would clobber CreateShellBuffers' poolBrickBase
 // rewrite for octree index >=1).
-TEST(StampAndSelectActiveConfigs, ShellCachePresentSelectsCompactConfigsBothSlotsStamped) {
+TEST(StampAndSelectActiveConfigs, ShellCachePresentSelectsCompactConfigsStamped) {
     ConcatenatedOctrees source{};
     source.count = 2u;
     OctreeConfig srcC0{}; srcC0.poolBrickBase = 0u;   srcC0.brickResident = 0u;
     OctreeConfig srcC1{}; srcC1.poolBrickBase = 999u; srcC1.brickResident = 0u;  // source's own base
     source.configs = { srcC0, srcC1 };
 
-    ShellPool shellCache[2];
-    for (int slot = 0; slot < 2; ++slot) {
-        OctreeConfig cc0{}; cc0.poolBrickBase = 0u;   cc0.brickResident = 0u;
-        OctreeConfig cc1{}; cc1.poolBrickBase = 42u;  cc1.brickResident = 0u;  // COMPACT's re-packed base (different from source's 999)
-        shellCache[slot].compact.configs = { cc0, cc1 };
-    }
+    ShellPool shellCache;
+    OctreeConfig cc0{}; cc0.poolBrickBase = 0u;   cc0.brickResident = 0u;
+    OctreeConfig cc1{}; cc1.poolBrickBase = 42u;  cc1.brickResident = 0u;  // COMPACT's re-packed base (different from source's 999)
+    shellCache.compact.configs = { cc0, cc1 };
 
     std::vector<OctreeConfig>* active = StampAndSelectActiveConfigs(source, shellCache);
 
-    EXPECT_EQ(active, &shellCache[0].compact.configs)
+    EXPECT_EQ(active, &shellCache.compact.configs)
         << "must select the COMPACT view CreateShellBuffers last wrote to binding-5, not the source";
 
-    // Both CPU double-buffer slots stamped resident...
-    for (const auto& cfg : shellCache[0].compact.configs) {
-        EXPECT_TRUE(brickResidentOf(cfg));
-    }
-    for (const auto& cfg : shellCache[1].compact.configs) {
+    // The published compact config vector is stamped resident...
+    for (const auto& cfg : shellCache.compact.configs) {
         EXPECT_TRUE(brickResidentOf(cfg));
     }
     // ...and the compact poolBrickBase for octree index 1 is UNCHANGED by the stamp

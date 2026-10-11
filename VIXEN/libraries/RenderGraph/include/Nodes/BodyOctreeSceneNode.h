@@ -15,12 +15,16 @@
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
+#include "KernelDispatch/TaskExecutor.h"
 
 #include <glm/glm.hpp>
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <future>
 #include <memory>
+#include <optional>
 #include <utility>   // std::pair (OOC R1 retired-buffer ledger)
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -169,6 +173,7 @@ public:
      *   - called post-Compile → sets recipeDirty_ so ExecuteImpl re-materializes.
      */
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
+    void SetRecipePoolProducer(std::function<Vixen::SVO::ConcatenatedOctrees()> producer);
 
     /**
      * @brief Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — upload the concatenated
@@ -200,48 +205,40 @@ public:
      * @brief Surface-Shell ESVO cache — brick-layer dilation of the SURFACE set.
      *
      * Clamped to [1,3]; default 1 (minimal sound 26-neighbour invariant). Sizes
-     * the derived reachable-shell cache, NOT SdfBake's bandVoxels. Re-derives both
-     * cache slots on the next Compile/Rematerialize.
+     * the derived reachable-shell cache, NOT SdfBake's bandVoxels. On a live node,
+     * requests an asynchronous replacement generation while the current one remains
+     * published until Execute reaches its safe point.
      */
     void SetShellThickness(uint32_t dilation);
 
     /**
-     * @brief Surface-Shell §C dirty-path PRODUCER — value-edit one source brick's SDF lane.
+     * @brief Surface-Shell producer — value-edit one source brick's SDF lane.
      *
-     * The ONE public way to value-edit octree 0's baked SDF post-Compile: writes the
-     * source pool via Vixen::SVO::ApplyBrickSdfEdit AND appends the brick to the dirty
-     * list in the same call, so the mark can never drift from the mutation. ExecuteImpl
-     * consumes the list on the next frame — RevalidateShellBricks into the WRITE shell
-     * slot + re-upload of that slot only (no full Rematerialize, no barrier vs the
-     * render reading the other slot). Membership-changing edits (a brick entering or
-     * leaving the shell set) are NOT detected here; per the §C increment-1 contract
-     * those go through SetBakeRecipe/SetRecipePool (full re-derive). Proxy AABB values
-     * are invariant under value edits (grid boxes don't move), but the WRITE slot's
-     * proxy buffer is still refreshed with the shell upload so its publication remains
-     * ping-pong-slot coherent.
+     * Applies the edit to the CPU source snapshot and requests a complete asynchronous
+     * shell generation. The current published generation stays immutable and renderable
+     * until Execute observes the producer future at its safe point and swaps in the new
+     * buffers. Fresh buffers are used for the replacement, so no host write can overlap
+     * an in-flight frame. Membership-changing edits are handled by the same full derive.
      *
      * @return false (nothing written, nothing marked) if the pool/brick/SDF channel is
      *         invalid or sdf512 holds fewer than kVoxelsPerBrick values.
      */
     bool EditSourceBrickSdf(uint32_t brickId, const std::vector<float>& sdf512);
 
-    /// Accessors for verification/tests (no GPU needed). ShellCacheSlot returns
-    /// octree 0's per-octree derivation (the primary Stored-SDF body); ShellPoolSlot
-    /// returns the whole multi-octree compact pool. Slot 0/1 = CPU double buffer.
-    [[nodiscard]] const Vixen::SVO::ShellDeriveResult& ShellCacheSlot(uint32_t i) const {
+    /// Accessors for verification/tests (no GPU needed). ShellCache returns octree
+    /// 0's derivation; ShellPool returns the complete published compact pool.
+    [[nodiscard]] const Vixen::SVO::ShellDeriveResult& ShellCache() const {
         static const Vixen::SVO::ShellDeriveResult kEmpty{};
-        const auto& po = shellCache_[i & 1u].perOctree;
+        const auto& po = shellCache_.perOctree;
         return po.empty() ? kEmpty : po[0];
     }
-    [[nodiscard]] const Vixen::SVO::ShellPool& ShellPoolSlot(uint32_t i) const {
-        return shellCache_[i & 1u];
-    }
+    [[nodiscard]] const Vixen::SVO::ShellPool& ShellPool() const { return shellCache_; }
     [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
     [[nodiscard]] uint64_t ShellFullDeriveCount() const { return shellFullDeriveCount_; }
+    [[nodiscard]] bool HasPublishedShellGeneration() const { return published_.has_value(); }
+    [[nodiscard]] uint64_t PublishedShellGeneration() const { return published_.value_or(0u); }
     [[nodiscard]] uint64_t ShellRevalidateCount() const { return shellRevalidateCount_; }
-    [[nodiscard]] uint64_t ProxyAabbUploadCount(uint32_t slot) const {
-        return proxyAabbUploadCount_[slot & 1u];
-    }
+    [[nodiscard]] uint64_t ProxyAabbUploadCount() const { return proxyAabbUploadCount_; }
 
     /// Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: current residency state (CPU-observable,
     /// no GPU needed) — reflects the capability-derived default once EnsureOctreesBuilt has run,
@@ -264,7 +261,7 @@ public:
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
     [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
     // Sum the byte capacities of every persistent payload buffer, including
-    // descriptor-valid 1-byte placeholders and both in-flight shell slots.
+    // descriptor-valid 1-byte placeholders and the published shell generation.
     // This is allocation capacity, deliberately independent of readiness.
     [[nodiscard]] uint64_t AllocatedCapacityBytes() const {
         const auto padded = [](size_t bytes) -> uint64_t {
@@ -273,16 +270,15 @@ public:
         uint64_t total = padded(concatenated_.nodes.size()) + padded(concatenated_.bricks.size()) +
             padded(concatenated_.materials.size()) +
             padded(concatenated_.configs.size() * sizeof(Vixen::SVO::OctreeConfig)) +
-            padded((wholesaleAdmissionEnabled_ && !shellCache_[0].compact.channelPool.empty() &&
-                    !shellCache_[0].compact.brickGridLookup.empty()) ? 0u : concatenated_.channelPool.size()) +
-            padded((wholesaleAdmissionEnabled_ && !shellCache_[0].compact.channelPool.empty() &&
-                    !shellCache_[0].compact.brickGridLookup.empty()) ? 0u : concatenated_.brickGridLookup.size()) +
+            padded((wholesaleAdmissionEnabled_ && !shellCache_.compact.channelPool.empty() &&
+                    !shellCache_.compact.brickGridLookup.empty()) ? 0u : concatenated_.channelPool.size()) +
+            padded((wholesaleAdmissionEnabled_ && !shellCache_.compact.channelPool.empty() &&
+                    !shellCache_.compact.brickGridLookup.empty()) ? 0u : concatenated_.brickGridLookup.size()) +
             padded(concatenated_.mipPool.size()) +
             padded(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef)) +
             padded(occupancyGrid_.size() * sizeof(float));
-        for (uint32_t slot = 0; slot < 2; ++slot)
-            total += static_cast<uint64_t>(shellDataCapacity_[slot] + shellLookupCapacity_[slot] +
-                                           proxyAabbCapacity_[slot]);
+        total += static_cast<uint64_t>(shellDataCapacity_ + shellLookupCapacity_ +
+                                       proxyAabbCapacity_);
         return total;
     }
     [[nodiscard]] const Vixen::SVO::ResidencyState& WholesaleState() const { return wholesaleAvailability_; }
@@ -331,16 +327,20 @@ protected:
 private:
     // --- Octree build / serialization (octrees + concatenated bytes cached) ---
     void EnsureOctreesBuilt();                                        // build + concatenate once
-    void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);  // 4 octree buffers
+    void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device,
+                             bool publishingShellGeneration = false);  // complete pool generation
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
     void RefreshInstanceStreams();
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
-    void Rematerialize(uint64_t executeFrame);  // OOC R1: re-bake octree 0 + build new octree buffers OFF-TICK
-                                                // (unload(g)+load(g+1)+flip; the old buffers are RETIRED, not
-                                                // freed behind a vkDeviceWaitIdle — design §4.1/§4.3)
+    struct ShellGenerationMetrics;
+    void Rematerialize(uint64_t executeFrame,
+                       Vixen::SVO::ConcatenatedOctrees pool,
+                       Vixen::SVO::ShellPool shell,
+                       const ShellGenerationMetrics& metrics);  // publish a completed producer generation
+                                                // (unload(g)+load(g+1); old buffers retire by frame age)
     // OOC R1 (out-of-core residency, design §4.3 rules 1-3): the anti-stutter retire/reclaim
     // path that dissolves Rematerialize's vkDeviceWaitIdle. RetireOctreeBuffers moves the
     // current octree/shell/proxy buffer handles (and the RT AS) into pendingRetire_ stamped
@@ -369,14 +369,33 @@ private:
     void DestroyRtQueryTlas();
 
     // --- Surface-Shell ESVO cache ---
-    // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
-    // double-buffer slots (bootstrap). No-op when octree 0 is not Stored-SDF.
-    void DeriveShellCache();
-    // Create/refresh the two GPU shell buffer pairs (double-buffered by distinct
-    // object identity) from shellCache_[0]/[1]. Called from CreateOctreeBuffers.
+    struct ShellGenerationMetrics {
+        uint64_t bricks = 0;
+        uint64_t shellBricks = 0;
+        uint64_t bytes = 0;
+        uint32_t workers = 0;
+        double deriveMs = 0.0;
+        double producerMs = 0.0;
+    };
+    struct ShellGenerationPayload {
+        Vixen::SVO::ConcatenatedOctrees pool;
+        Vixen::SVO::ShellPool shell;
+        ShellGenerationMetrics metrics;
+    };
+    struct ShellGenerationJob {
+        std::future<Vixen::KernelDispatch::AsyncRunResult> completion;
+        std::shared_ptr<ShellGenerationPayload> payload;
+        uint64_t requestId = 0;
+    };
+    void ScheduleShellGeneration();
+    bool PollShellGeneration(uint64_t executeFrame);
+    static Vixen::SVO::ShellPool DeriveShellCache(
+        const Vixen::SVO::ConcatenatedOctrees& source,
+        uint32_t shellDilation,
+        bool bakeNormals,
+        uint32_t workerCount);
+    // Create/refresh the GPU buffers for the complete published shell generation.
     void CreateShellBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);
-    // Re-upload shellCache_[slot]'s compact pool + grid lookup into GPU slot `slot`.
-    void UploadShellSlot(Vixen::Vulkan::Resources::VulkanDevice* device, uint32_t slot);
 
     // Build constants (one shell per kind; depth/material chosen here).
     static constexpr int      kShellDepth = 6;   // 2^6 = 64 cells/axis
@@ -449,8 +468,14 @@ private:
 
     // I4.1: pre-baked pool from BakeRegistryToPool. When set, EnsureOctreesBuilt
     // skips the hardcoded shell/SDF archetypes and uses this pool directly.
-    Vixen::SVO::ConcatenatedOctrees providedPool_;
+    std::shared_ptr<Vixen::SVO::ConcatenatedOctrees> providedPool_;
     bool                             poolProvided_ = false;
+    std::function<Vixen::SVO::ConcatenatedOctrees()> requestedPoolProducer_;
+    std::optional<ShellGenerationJob> shellGenerationJob_;
+    bool materializationRequested_ = false;
+    uint64_t materializationRequestId_ = 0;
+    uint64_t nextPublishedGeneration_ = 1;
+    std::optional<uint64_t> published_;
 
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: concatenated per-recipe occupancy
     // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
@@ -532,43 +557,32 @@ private:
     uint64_t retiredBufferGenerationCount_ = 0;   // diagnostic: generations ever retired
     uint64_t reclaimedBufferGenerationCount_ = 0;  // diagnostic: generations ever reclaimed
 
-    // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
-    //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate
-    //     compute pass writes slot [(N+1)&1]. Because the two GPU buffers are
-    //     SEPARATE VkBuffer objects (distinct Resource* on the graph side), the
-    //     FrameSyncScheduler — which keys hazards by pointer identity — never
-    //     inserts a false barrier between a render reading slot N and a revalidate
-    //     writing slot N+1 (proven: FrameSyncScheduler.cpp per-resource timelines).
-    //     shellData[slot] holds the COMPACT pool (binding 11 replacement),
-    //     shellLookup[slot] holds the grid->shellSlot remap (binding 12 replacement).
-    VkBuffer       shellDataBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkDeviceMemory shellDataMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkBuffer       shellLookupBuffer_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkDeviceMemory shellLookupMemory_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkDeviceSize   shellDataCapacity_[2]   = { 0, 0 };  // bytes allocated per slot
-    VkDeviceSize   shellLookupCapacity_[2] = { 0, 0 };
+    // One immutable GPU image belongs to each published generation. A replacement
+    // receives fresh buffers; the old generation's handles live in pendingRetire_
+    // until every frame that could bind them has completed.
+    VkBuffer       shellDataBuffer_   = VK_NULL_HANDLE;
+    VkDeviceMemory shellDataMemory_    = VK_NULL_HANDLE;
+    VkBuffer       shellLookupBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory shellLookupMemory_  = VK_NULL_HANDLE;
+    VkDeviceSize   shellDataCapacity_   = 0;
+    VkDeviceSize   shellLookupCapacity_ = 0;
 
     // Raster-proxy artifact (hybrid slice A): per-shell-brick template-local AABBs
-    // (ShellProxyAabb, 32B), flattened across octree templates, on the SAME
-    // two-distinct-VkBuffer double-buffer pattern as shellData/shellLookup (the
-    // FrameSyncScheduler hazard-keys by Resource/pointer identity). Slice B2
-    // publishes the current read slot together with its exact live record count.
-    VkBuffer       proxyAabbBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkDeviceMemory proxyAabbMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-    VkDeviceSize   proxyAabbCapacity_[2] = { 0, 0 };
-    uint32_t       proxyAabbCount_[2]    = { 0, 0 };
-    uint64_t       proxyAabbUploadCount_[2] = { 0, 0 };
+    // (ShellProxyAabb, 32B), flattened across octree templates in this generation.
+    VkBuffer       proxyAabbBuffer_   = VK_NULL_HANDLE;
+    VkDeviceMemory proxyAabbMemory_   = VK_NULL_HANDLE;
+    VkDeviceSize   proxyAabbCapacity_ = 0;
+    uint32_t       proxyAabbCount_    = 0;
+    uint64_t       proxyAabbUploadCount_ = 0;
 
-    // CPU double-buffer (source of truth; also what the tests inspect). Each slot
-    // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +
-    // per-octree ShellDeriveResults for the dirty-revalidate path).
-    Vixen::SVO::ShellPool         shellCache_[2];
+    // CPU snapshot paired with the published shell buffers. A generation replaces
+    // the full pool and matching config tuple at one Execute safe point.
+    Vixen::SVO::ShellPool         shellCache_;
     uint32_t                      shellDilation_ = 1u;   // [1,3]; sound 26-neighbour default
     uint64_t                      shellFullDeriveCount_ = 0;
+    // Retained as a diagnostic counter for callers migrating from the old partial
+    // revalidation path; full generations now handle value edits as well.
     uint64_t                      shellRevalidateCount_ = 0;
-    // CPU-owned dirty source-brick list (§C). A value edit pushes the affected
-    // brick range here; ExecuteImpl revalidates only those bricks in the write slot.
-    std::vector<uint32_t>         dirtyBricks_;
 
     // Hot transforms upload each frame; cold materials upload once per changed ring slot.
     PerFrameResources transformPerFrame_;

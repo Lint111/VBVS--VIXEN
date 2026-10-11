@@ -41,9 +41,13 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "Core/NodeContext.h"
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
+#include "MainCacher.h"
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
+#include "Recipe/RecipeBaker.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -64,6 +68,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>   // getenv + portable env set/unset (VIXEN_STORED_SDF_DEMO bake gate)
+#include <thread>
 
 #include <cstring>
 #include <fstream>
@@ -2581,10 +2586,14 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     ASSERT_TRUE(softwareConfirmed_);
     using C = BodyOctreeSceneNodeConfig;
 
+    CashSystem::MainCacher mainCacher;
+    NodeTypeRegistry registry;
+    RenderGraph asyncGraph(&registry, nullptr, nullptr, &mainCacher);
     BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
     auto nodeBase = nodeType.CreateInstance("body_render_remat");
     auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
     ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&asyncGraph);
 
     Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
     Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
@@ -2624,8 +2633,14 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     // re-runs EnsureOctreesBuilt(), which gates on this env var.
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());      // bakes recipe A; clears recipeDirty_
-    ASSERT_NO_THROW(node->Execute());      // uploads instance; no re-materialize (not dirty)
-
+    for (uint32_t frame = 0; frame < 1000u && !node->HasPublishedShellGeneration(); ++frame) {
+        frameIndex = frame % 2u;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_TRUE(node->HasPublishedShellGeneration()) << "initial shell generation timed out";
+    ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
     constexpr uint32_t kW = 512, kH = 512;
     const glm::vec3 focus = ShaderBodyCentre(frameInst);
     const float     R     = ShaderBodyRadius(frameInst);
@@ -2633,7 +2648,8 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
 
     // Re-reads handles each call so a re-materialized (recreated) buffer is picked up.
-    auto renderAndMeasure = [&](const char* png, int& outWidth, int& outBodyPx) {
+    auto renderAndMeasure = [&](const char* png, int& outWidth, int& outBodyPx,
+                                std::vector<uint8_t>* outStableBytes = nullptr) {
         NodeBuffers b;
         b.nodes       = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         b.bricks      = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
@@ -2653,6 +2669,17 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
         std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst, transform,
                                              b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
+        if (outStableBytes != nullptr) {
+            // HitRecordCpu has four std430 padding words. Compare only its defined
+            // render payload plus instance index, excluding any driver-dependent tail.
+            constexpr size_t kStableBytesPerPixel = 52u;
+            outStableBytes->resize(hitRecords.size() * kStableBytesPerPixel);
+            for (size_t i = 0; i < hitRecords.size(); ++i) {
+                uint8_t* dst = outStableBytes->data() + i * kStableBytesPerPixel;
+                std::memcpy(dst, &hitRecords[i], 48u);
+                std::memcpy(dst + 48u, &hitRecords[i]._pad0[0], sizeof(uint32_t));
+            }
+        }
         {
             std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
             for (uint32_t i = 0; i < kW * kH; ++i) {
@@ -2662,8 +2689,10 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
                 rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
                 rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
             }
-            EXPECT_NE(stbi_write_png(png, kW, kH, 3, rgb.data(), kW*3), 0)
-                << "stbi_write_png failed for " << png;
+            if (png != nullptr) {
+                EXPECT_NE(stbi_write_png(png, kW, kH, 3, rgb.data(), kW*3), 0)
+                    << "stbi_write_png failed for " << png;
+            }
         }
         int minX = int(kW), maxX = -1, bodyPx = 0;
         for (uint32_t y = 0; y < kH; ++y) for (uint32_t x = 0; x < kW; ++x) {
@@ -2685,18 +2714,39 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
     // Inc2a: object-centered (local); center=(32,32,32) places the pair back at the same
     // effective grid position as the old grid-absolute (24,32,32)/(40,32,32).
+    const uint64_t generationA = node->PublishedShellGeneration();
     node->SetBakeRecipe({
         makeSph({-8.0f, 0.0f, 0.0f}, 16.0f),
         makeSph({ 8.0f, 0.0f, 0.0f}, 16.0f),
         uni
     });
-    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
-    ASSERT_NO_THROW(node->Execute());       // recipeDirty_ -> Rematerialize + re-emit octree slots
+    for (uint32_t frame = 0; frame < 1000u &&
+         node->PublishedShellGeneration() == generationA; ++frame) {
+        frameIndex = frame % 2u;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_GT(node->PublishedShellGeneration(), generationA) << "edited shell generation timed out";
+    ASSERT_EQ(node->ShellFullDeriveCount(), 2u);
     UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
 
-    // --- render B (re-reads the NEW handles post-rematerialize) ---
+    // --- render B on eight consecutive frames after the publication flip ---
     int widthB = 0, pxB = 0;
-    renderAndMeasure("/tmp/glsl_sdf_remat_B.png", widthB, pxB);
+    std::vector<uint8_t> firstFrameBytes;
+    renderAndMeasure("/tmp/glsl_sdf_remat_B.png", widthB, pxB, &firstFrameBytes);
+    const uint64_t generationB = node->PublishedShellGeneration();
+    for (uint32_t frame = 1; frame < 8u; ++frame) {
+        frameIndex = frame % 2u;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute());
+        ASSERT_EQ(node->PublishedShellGeneration(), generationB);
+        std::vector<uint8_t> frameBytes;
+        int frameWidth = 0, framePixels = 0;
+        renderAndMeasure(nullptr, frameWidth, framePixels, &frameBytes);
+        EXPECT_EQ(frameBytes, firstFrameBytes) << "render bytes changed on post-flip frame " << frame;
+    }
+    UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
 
     std::printf("[REMAT] A: width=%d px=%d  B: width=%d px=%d  (B = wider peanut)\n",
                 widthA, pxA, widthB, pxB);
