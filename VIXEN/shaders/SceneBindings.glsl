@@ -328,21 +328,20 @@ bool anyInstanceSkipped() {
 layout(std430, binding = 4) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;
-    // W-COMPOSED round-3 fix item 3: unconditional far-field-cutoff counter
-    // (mirrors C++ TraceBufferHeader::farFieldCount, DebugRaySample.h) --
-    // NOT gated on VIXEN_GPU_TRACE_HOOKS/ENABLE_SHADER_COUNTERS, since both far-
-    // field call sites (SceneBindings.glsl/RayQueryTraversal.glsl) increment it
-    // unconditionally on every real firing. CPU-side Reset() (RayTraceBuffer.cpp)
-    // deliberately never clears it, so it accumulates for the whole boot.
+    // W-COMPOSED round-3 far-field-cutoff counter (mirrors C++
+    // TraceBufferHeader::farFieldCount, DebugRaySample.h). Shader writes are
+    // enabled with VIXEN_COMPOSITION_COUNTERS; when enabled, the CPU-side
+    // Reset() (RayTraceBuffer.cpp) deliberately leaves it untouched so it
+    // accumulates for the whole boot.
     uint farFieldCount;
     // Round-5 far-field diagnostics (validator-mandated): candidates REACHING the
     // gate test, vs farFieldCount above which only counts firings that PASS it.
     // Bumped immediately before each far-field if-test (RayQueryTraversal.glsl,
     // SceneBindings.glsl's traverseCoarseGridInstancedSdf) -- distinguishes "the
     // candidate loop yields nothing" from "the gate expression rejects everything"
-    // per the round-5 interpretation tree. Same unconditional/never-reset
-    // discipline as farFieldCount; repurposes the former _padding1 tail slot so
-    // TraceBufferHeader stays 16 B (DebugRaySample.h).
+    // per the round-5 interpretation tree. Same composition-counter gate and
+    // never-reset discipline as farFieldCount; repurposes the former _padding1
+    // tail slot so TraceBufferHeader stays 16 B (DebugRaySample.h).
     uint farFieldCandidates;
     // Round-6 DDA-threshold-degeneracy probe (blocker 1): min/max of BOTH
     // gate operands, bit-encoded via floatBitsToUint (values are always
@@ -561,23 +560,11 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 // realistic per-frame far-field sample count.
 const uint kIntensityFixedPointScale = 1000000u;
 
-// recordFarFieldTerminalPixel: round 11 STEP 2, primary-march-only pixel
-// decode. Called from BodyInstanceRayMarch.comp right alongside
-// incrFarFieldTerminal() -- gl_GlobalInvocationID.xy IS the pixel coordinate
-// at that call site (one invocation per pixel). 32-slot ring, wraps by %32;
-// a slot collision just overwrites an earlier sample (a decode aid, not a
-// census -- farFieldTerminal already gives the exact count).
-void recordFarFieldTerminalPixel(uvec2 pixel) {
-#if defined(VIXEN_COMPOSITION_COUNTERS) || defined(VIXEN_POLICY_STENCIL)
-    // The composition census and policy-stencil readback reuse this historical
-    // ring while enabled; exact terminal-pixel decode is unavailable on those
-    // probe boots. Composition owns [0,28), policy-stencil owns [28,32).
-    return;
-#else
-    uint slot = atomicAdd(farFieldTerminalPixelWriteCount, 1u) % 32u;
-    farFieldTerminalPixels[slot] = (pixel.x << 16) | (pixel.y & 0xFFFFu);
-#endif
-}
+// The old terminal-pixel decode used a default-only atomic ring write. Its
+// 32 slots alias the composition and policy-stencil readback words, so those
+// modes already disabled it. Keep the optional pixel sample out of normal
+// traversal; the exact aggregate remains available through the gated counter.
+#define recordFarFieldTerminalPixel(pixel)
 
 // E6-T1: the shared CellFootprintRegime classifier (stencil doc's prerequisite +
 // residency-unification design's step 1). ZERO behavior change: this is the
@@ -687,9 +674,9 @@ void recordCompositionRelaxedRay() {
     atomicAdd(farFieldTerminalPixels[27], 1u);
 }
 #else
-void recordCompositionPixel(uint regime, uint sourceMask) {}
-void recordCompositionShadowWave(uint waveType, uint regime, uint sourceMask) {}
-void recordCompositionRelaxedRay() {}
+#define recordCompositionPixel(regime, sourceMask)
+#define recordCompositionShadowWave(waveType, regime, sourceMask)
+#define recordCompositionRelaxedRay()
 #endif
 
 // g_dispatchIsPrimaryMarch: round 11, set once (compile-time constant folds
@@ -703,9 +690,10 @@ const uint g_dispatchTag = 0u;
 const uint g_dispatchTag = 1u;
 #endif
 
+#ifdef VIXEN_COMPOSITION_COUNTERS
 // incrFarFieldCount: single atomic call site for both far-field twins (DDA in
 // SceneBindings.glsl, RT in RayQueryTraversal.glsl) -- see the struct comment
-// above for why this is unconditional rather than #ifdef-gated.
+// above for the counter layout.
 void incrFarFieldCount() {
     atomicAdd(farFieldCount, 1u);
     atomicAdd(farFieldCountByTag[g_dispatchTag], 1u);  // round 11
@@ -1014,6 +1002,43 @@ void incrFarFieldColorFallback() {
     atomicAdd(farFieldColorFallback, 1u);
     atomicAdd(farFieldColorFallbackByTag[g_dispatchTag], 1u);  // round 11
 }
+#else
+// Function-like macros erase probe call sites before shader compilation. This
+// matters in the per-cell DDA loop: empty probe functions can still leave a
+// function call in intermediate SPIR-V on some compiler paths.
+#define incrFarFieldCount()
+#define incrFarFieldCandidates()
+#define recordEntryGateLhs(lhs)
+#define recordFarFieldGateOperands(lhs, rhs)
+#define incrRtLoopEntries()
+#define incrFarGenRectRay()
+#define incrFarGenRectCellEntry()
+#define incrFarGenRectGateCross()
+#define recordFarGenRectLhsHistogram(lhs)
+#define recordEsvoCutoffOperands(lhs, rhs, level)
+#define incrRtLoopEntriesOct3()
+#define incrFarFieldGateRejectOct3()
+#define incrFarFieldCandidatesOct3()
+#define incrFarFieldWon()
+#define recordFarFieldMipResolve(resolved)
+#define incrFarFieldDescentFail()
+#define recordFarFieldDescentFailLevel(hops)
+#define recordPolicyLevel(level)
+#define recordFarFieldSampledLevel(level)
+#define recordFarFieldSampleIntensity(luminance)
+#define recordPolicyEntryDispatch(tookMip)
+#define recordPolicyEntryEmptyEntry()
+#define recordRegime3Entry()
+#define recordRegime3EarlyOut()
+#define recordWalkCov(cov)
+#define recordWalkSampledLevel(level)
+#define recordCompositeBlend(behindColor)
+#define recordEsvoMipArm(armIndex)
+#define incrFarFieldRejectedByBounds()
+#define incrFarFieldTerminal()
+#define incrFarFieldColorResolved()
+#define incrFarFieldColorFallback()
+#endif
 
 // ============================================================================
 // OCTREE CONFIG SSBO (binding 5, std430, 432 B / element, N elements)

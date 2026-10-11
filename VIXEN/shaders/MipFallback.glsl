@@ -24,6 +24,7 @@
 #ifndef MIP_FALLBACK_GLSL
 #define MIP_FALLBACK_GLSL
 
+#ifdef VIXEN_COMPOSITION_COUNTERS
 void recordMipSampleRead(uint bodyId, uint level) {
     if (bodyId >= 192u || level >= 16u) {
         atomicExchange(mipReadCounterOverflow, 1u);
@@ -36,6 +37,9 @@ void recordMipSampleRead(uint bodyId, uint level) {
         atomicExchange(mipReadCounterOverflow, 1u);
     }
 }
+#else
+#define recordMipSampleRead(bodyId, level)
+#endif
 
 // ---------------------------------------------------------------------------
 // mipChannelIndex: return the channel INDEX (0..channelCount-1) for a semantic
