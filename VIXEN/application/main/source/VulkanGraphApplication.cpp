@@ -1700,6 +1700,18 @@ void VulkanGraphApplication::PostTick() {
     if (auto* probeApply = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_apply"))) {
         passes.push_back({"probe_apply", probeApply->GetGPUPerformanceLogger()});
     }
+    // HDR exposure is optional on the current default path, so include these columns only
+    // when the corresponding graph stages exist. This makes their per-dispatch GPU cost
+    // visible in the same native CSV used to profile the rest of the render graph.
+    if (auto* exposureMeter = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_meter"))) {
+        passes.push_back({"exposure_meter", exposureMeter->GetGPUPerformanceLogger()});
+    }
+    if (auto* exposureReduce = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_reduce"))) {
+        passes.push_back({"exposure_reduce", exposureReduce->GetGPUPerformanceLogger()});
+    }
+    if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
+        passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});
     }
