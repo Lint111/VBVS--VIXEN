@@ -56,45 +56,6 @@ struct CaptureScenario {
     std::string filename;
 };
 
-TEST(LookdevLighting, EmittersHaveDistinctDeclaredSources) {
-    using namespace Vixen::App::Lookdev;
-    for (const auto& preset : LightingPresets()) {
-        const auto lights = Lights(preset);
-        EXPECT_EQ(lights.size(), CelSpillPurposeScales(preset).size());
-        const auto recipes = BuildMaterialRecipes(preset);
-        const auto instances = BodyInstances(recipes, preset);
-        size_t emitterCount = 0;
-        for (size_t i = 0; i < recipes.size(); ++i) {
-            if (!IsServiceEmitter(recipes[i].material)) continue;
-            ++emitterCount;
-            EXPECT_EQ(recipes[i].entry.bytecode.size(), 1u);
-            const auto position = Vixen::SVO::TransformPoint(instances[i].transform.localToWorld, glm::vec3(0.0f));
-            size_t matched = 0;
-            for (const auto& light : lights) {
-                if (light.kind != 1u) continue;
-                const glm::vec3 source(light.direction_or_positionX,
-                    light.direction_or_positionY, light.direction_or_positionZ);
-                if (glm::distance(position, source) > 1e-5f) continue;
-                ++matched;
-                EXPECT_GT(light.range, 0.0f);
-                if (ServiceLightsEnabled(preset))
-                    EXPECT_GT(light.radianceX + light.radianceY + light.radianceZ, 0.0f);
-                else EXPECT_EQ(light.radianceX + light.radianceY + light.radianceZ, 0.0f);
-            }
-            EXPECT_EQ(matched, 1u) << "emitter instance " << i;
-        }
-        EXPECT_EQ(lights.size(), emitterCount + 1u); // One shared directional key.
-        for (size_t i = 1; i < lights.size(); ++i)
-            for (size_t j = i + 1; j < lights.size(); ++j) {
-                const glm::vec3 a(lights[i].direction_or_positionX, lights[i].direction_or_positionY,
-                    lights[i].direction_or_positionZ);
-                const glm::vec3 b(lights[j].direction_or_positionX, lights[j].direction_or_positionY,
-                    lights[j].direction_or_positionZ);
-                EXPECT_GT(glm::distance(a, b), 1e-5f);
-            }
-    }
-}
-
 std::vector<CaptureScenario> BuildScenarios() {
     constexpr std::array<float, 4> yaws{{0.0f, 1.57079632679f, 3.14159265359f, 4.71238898038f}};
     const auto& presets = Vixen::App::Lookdev::LightingPresets();

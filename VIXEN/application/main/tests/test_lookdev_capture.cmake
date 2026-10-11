@@ -8,11 +8,6 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
     target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main)
     set_target_properties(vixen_lookdev_capture PROPERTIES FOLDER "Tests/Application")
-    add_test(NAME Application.LookdevLighting.EmittersHaveDistinctDeclaredSources
-        COMMAND $<TARGET_FILE:vixen_lookdev_capture>
-            --gtest_filter=LookdevLighting.EmittersHaveDistinctDeclaredSources)
-    set_tests_properties(Application.LookdevLighting.EmittersHaveDistinctDeclaredSources
-        PROPERTIES LABELS "Application")
     set(_lookdev_test_environment
         ${VIXEN_CTEST_GPU_ENVIRONMENT}
         "VIXEN_HDR_EXPOSURE=1"

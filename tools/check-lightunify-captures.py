@@ -188,8 +188,8 @@ def main():
     (args.output/"properties.json").write_text(json.dumps(properties, indent=2)+"\n")
     failures = []
     if args.gate:
-        # Night tiles hold more declared lights than the visibility mask carries
-        # (R502 closes that with sampling); they are recorded, never gated.
+        # Night tiles are recorded, never gated: every service point light sits inside or
+        # on the machine's own volume, so the any-light lit/shadow split has no lit class.
         for row in properties:
             if row["tile"].startswith("night-service"):
                 continue
