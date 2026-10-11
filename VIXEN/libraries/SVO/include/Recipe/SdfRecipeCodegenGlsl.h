@@ -2,6 +2,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode — the exact opcode set this emitter must cover
 #include <cassert>
+#include "Recipe/generated/RecipeGlslLiterals.g.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -21,12 +22,8 @@ namespace Vixen::SVO::Recipe {
 // evalRecipeField's switch dispatches to whichever sdfRecipe_<id> by recipeId and needs one
 // call shape.
 //
-// Float-literal guard (mandatory, kernel-framework discipline): every numeric literal must
-// emit with a decimal point/exponent — GLSL, like HLSL, has an int/float overload split, and
-// `1/6` (no decimal point) silently integer-divides to 0 on the GPU where the CPU VM's C++
-// `1.0f/6.0f` doesn't (the documented failure class this guard exists for). `f()` below
-// enforces that for every literal this emitter writes. ReadParam/ReadParamFloat3 (M2 Task 5)
-// are the one deliberate exception — see their case sites below for why.
+// Numeric operands use the generated binary32 formatter. uintBitsToFloat has float type,
+// including for integer-valued operands, signed zero and subnormal words.
 // emitDeclaredPositionOutParam (Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract
 // meta/resolve prototype): when true, the emitted function gains a trailing `out vec3
 // declaredPos` parameter, assigned inline the moment a DeclarePosition instruction is walked
@@ -72,14 +69,8 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     // At RestorePos: if |scale-1|>1e-4 emit a multiply to scale the TOS distance before popping.
     std::vector<float> distScaleSaveStk;
 
-    // ponytail: std::to_string for floats — sufficient for GLSL literals; no locale issues.
-    // Ensures a decimal point so GLSL sees it as a float literal (the float-literal guard).
-    auto f = [](float v) {
-        std::string s = std::to_string(v);
-        if (s.find('.') == std::string::npos && s.find('e') == std::string::npos)
-            s += ".0";
-        return s;
-    };
+    // Operands obey the binary32 transport contract (integer-word literals).
+    const auto f = RecipeGlslFloatLiteral;
 
     // Recursive-inlining walk (Recipe-Nested-Invocation M1): a self-recursive lambda so
     // InvokeRecipe can walk a callee's bytecode into the SAME body/stk/n/curPos state as the

@@ -1873,3 +1873,198 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         }
     }
 }
+
+// Exact-literal transport witness over the whole parity corpus. The inline form carries every
+// operand as an integer-word literal the compiler may fold; the runtime-operand form xors the
+// same words with a value only known from a storage buffer, so nothing folds. Both must agree
+// bit for bit. Programs the generated stack tape can run are also compared with the tape.
+TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTape) {
+    auto corpus = ParityCorpus::GetAll();
+    const auto instruction = [](SdfOpCode opcode, float data = 0.0f) {
+        SdfInstruction value{};
+        value.opCode = static_cast<std::uint8_t>(opcode);
+        value.data[0] = data;
+        return value;
+    };
+    corpus.push_back({"TapeDeclarePosition", {instruction(SdfOpCode::ReadParamFloat3),
+        instruction(SdfOpCode::DeclarePosition), ParityCorpus::sphere(glm::vec3(0.0f), 0.75f)}});
+    corpus.push_back({"TapeHash32", {instruction(SdfOpCode::ReadParamU32), instruction(SdfOpCode::Hash32)}});
+    corpus.push_back({"TapeHash32Combine", {instruction(SdfOpCode::ReadParamU32),
+        instruction(SdfOpCode::ReadParamU32, 1.0f), instruction(SdfOpCode::Hash32Combine)}});
+    Vixen::SVO::RecipeRegistry registry;
+    Vixen::SVO::RecipeRegistry::RecipeEntry callee;
+    callee.bytecode = {ParityCorpus::sphere(glm::vec3(0.25f, -0.5f, 1.0f), 0.75f)};
+    ASSERT_EQ(registry.Register(7u, callee), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+    corpus.push_back({"TapeInvokeClosure", {instruction(SdfOpCode::InvokeRecipe, 7.0f)}});
+    std::vector<SdfInstruction> depthLimit;
+    for (int i = 0; i < 64; ++i)
+        depthLimit.push_back(ParityCorpus::sphere(glm::vec3(0.25f * i, 0, 0), 0.75f));
+    for (int i = 1; i < 64; ++i) depthLimit.push_back(ParityCorpus::unionOp());
+    corpus.push_back({"TapeExistingDepthLimit", std::move(depthLimit)});
+    std::vector<SdfInstruction> positionDepthLimit(64, instruction(SdfOpCode::MirrorX));
+    positionDepthLimit.push_back(ParityCorpus::sphere(glm::vec3(0.25f, 0, 0), 0.75f));
+    positionDepthLimit.insert(positionDepthLimit.end(), 64, instruction(SdfOpCode::RestorePos));
+    corpus.push_back({"TapeExistingPositionDepthLimit", std::move(positionDepthLimit)});
+
+    std::unordered_set<std::uint8_t> covered;
+    for (const auto& entry : corpus)
+        for (const auto& operation : entry.program) covered.insert(operation.opCode);
+
+    const std::string sdfCoreGlsl = ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
+    ASSERT_FALSE(sdfCoreGlsl.empty());
+    ASSERT_FALSE(tapeGlsl.empty());
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+
+    const std::unordered_set<std::uint8_t> tapeOpcodes{
+        static_cast<std::uint8_t>(SdfOpCode::Sphere), static_cast<std::uint8_t>(SdfOpCode::Box),
+        static_cast<std::uint8_t>(SdfOpCode::Union), static_cast<std::uint8_t>(SdfOpCode::Subtract),
+        static_cast<std::uint8_t>(SdfOpCode::Intersect)};
+
+    struct ProgramResult {
+        std::string name;
+        std::uint32_t literalVersusRuntimeWords = 0;
+        std::string firstLiteralDifference;
+        bool tapeSupported = false;
+        std::uint32_t tapeVersusRuntimeWords = 0;
+    };
+    std::vector<ProgramResult> results;
+    constexpr std::size_t kBatch = 8;
+    const std::string wordPattern = "uintBitsToFloat(";
+    for (std::size_t first = 0; first < corpus.size(); first += kBatch) {
+        const std::size_t count = std::min(kBatch, corpus.size() - first);
+        std::vector<GpuRecipeTapeInstruction> tape;
+        std::array<TileTapeRange, 64> ranges{};
+        std::ostringstream fields, dispatch;
+        dispatch << "switch (gl_WorkGroupID.y) {\n";
+        std::vector<bool> supported(count, true);
+        for (std::size_t local = 0; local < count; ++local) {
+            const auto& entry = corpus[first + local];
+            SCOPED_TRACE(entry.name);
+            std::vector<SdfInstruction> closed;
+            std::string error;
+            ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(entry.program.data(),
+                static_cast<std::uint32_t>(entry.program.size()), registry, closed, error)) << error;
+            const auto packed = PackGpuTape(closed);
+            ranges[local] = {static_cast<std::uint32_t>(tape.size()), static_cast<std::uint32_t>(packed.size())};
+            tape.insert(tape.end(), packed.begin(), packed.end());
+            for (const auto& operation : closed)
+                if (!tapeOpcodes.contains(operation.opCode)) supported[local] = false;
+            const bool declaresPosition = std::any_of(closed.begin(), closed.end(), [](const auto& operation) {
+                return operation.opCode == static_cast<std::uint8_t>(SdfOpCode::DeclarePosition);
+            });
+            fields << EmitProceduralFieldFunctionGlsl(closed.data(), static_cast<std::uint32_t>(closed.size()),
+                static_cast<std::uint32_t>(local), declaresPosition) << "\n";
+            dispatch << "case " << local << "u: distanceValue = sdfRecipe_" << local
+                << "(p, params" << (declaresPosition ? ", declaredPosition" : "") << "); break;\n";
+        }
+        dispatch << "default: distanceValue = -999.0; break; }\n";
+        std::string literalFields = fields.str();
+        std::string runtimeFields;
+        for (std::size_t at = 0;;) {
+            const auto next = literalFields.find(wordPattern, at);
+            if (next == std::string::npos) { runtimeFields += literalFields.substr(at); break; }
+            const auto close = literalFields.find("u)", next);
+            ASSERT_NE(close, std::string::npos);
+            runtimeFields += literalFields.substr(at, close - at);
+            runtimeFields += "u ^ tileRanges[63].x)";
+            at = close + 2;
+        }
+
+        const auto compose = [&](const std::string& fieldSource, bool tapeForm) {
+            std::ostringstream shader;
+            shader << "#version 450\n" << sdfCoreGlsl << "\n"
+                << "struct RecipeTapeInstruction { uint opCode; float data[32]; };\n"
+                << "layout(set=0,binding=0,rgba32f) uniform image2D outImage;\n"
+                << "layout(set=0,binding=1,std430) readonly buffer InRecipeTape { RecipeTapeInstruction recipeTape[]; };\n"
+                << "layout(set=0,binding=2,std430) readonly buffer InTileRanges { uvec2 tileRanges[]; };\n"
+                << "layout(set=0,binding=3,std430) writeonly buffer OutClauseCounts { uint clauseCounts[]; };\n"
+                << "layout(local_size_x=8,local_size_y=8) in;\n";
+            shader << (tapeForm ? tapeGlsl : fieldSource);
+            shader << "\nvoid main() {\n"
+                << "vec3 p = vec3(float(gl_LocalInvocationID.x) - 3.5, float(gl_LocalInvocationID.y) - 3.5, 0.25);\n"
+                << "float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);\n"
+                << "if (gl_WorkGroupID.x != 0u) { params[0]=1.5; params[1]=-2.25; params[2]=7.5; params[3]=0.75; params[4]=42.0; params[5]=-0.5; }\n"
+                << "float distanceValue = 0.0; vec3 declaredPosition = vec3(0.0); uint clauses = 0u;\n";
+            if (tapeForm)
+                shader << "uvec2 range = tileRanges[gl_WorkGroupID.y];\n"
+                    << "if (!EvalRecipeTape(range.x, range.y, p, distanceValue, clauses)) distanceValue = -999.0;\n";
+            else shader << dispatch.str();
+            shader << "imageStore(outImage, ivec2(gl_GlobalInvocationID.xy), vec4(distanceValue, declaredPosition));\n"
+                << "ivec2 size = imageSize(outImage); clauseCounts[gl_GlobalInvocationID.y * uint(size.x) + gl_GlobalInvocationID.x] = clauses;\n}\n";
+            return shader.str();
+        };
+        const auto render = [&](const std::string& source, std::vector<float>& pixels, const char* form) {
+            const auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, source, "main", options);
+            ASSERT_TRUE(compiled.success) << form << " first=" << first << "\n" << compiled.GetFullLog();
+            if (const char* root = std::getenv("BOUNDSCORE_TAPE_CAPTURE_DIR")) {
+                const auto directory = std::filesystem::path(root) / "corpus-shaders";
+                std::filesystem::create_directories(directory);
+                const auto stem = std::to_string(first) + "-" + form;
+                std::ofstream(directory / (stem + ".comp")) << source;
+                std::ofstream binary(directory / (stem + ".spv"), std::ios::binary);
+                binary.write(reinterpret_cast<const char*>(compiled.spirv.data()),
+                    static_cast<std::streamsize>(compiled.spirv.size() * sizeof(std::uint32_t)));
+            }
+            std::vector<std::uint32_t> clauses;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(compiled.spirv, tape, ranges,
+                16, static_cast<std::uint32_t>(count * 8), pixels, clauses, gpuMs));
+        };
+        std::vector<float> literal, runtime, tapePixels;
+        ASSERT_NO_FATAL_FAILURE(render(compose(literalFields, false), literal, "inline"));
+        ASSERT_NO_FATAL_FAILURE(render(compose(runtimeFields, false), runtime, "runtime"));
+        ASSERT_NO_FATAL_FAILURE(render(compose({}, true), tapePixels, "tape"));
+        ASSERT_EQ(literal.size(), runtime.size());
+        ASSERT_EQ(literal.size(), tapePixels.size());
+        for (std::size_t local = 0; local < count; ++local) {
+            ProgramResult result;
+            result.name = corpus[first + local].name;
+            result.tapeSupported = supported[local];
+            const std::size_t offset = local * 8 * 16 * 4;
+            for (std::size_t i = offset; i < offset + 8 * 16 * 4; ++i) {
+                std::uint32_t a = 0, b = 0, c = 0;
+                std::memcpy(&a, &literal[i], sizeof(a));
+                std::memcpy(&b, &runtime[i], sizeof(b));
+                std::memcpy(&c, &tapePixels[i], sizeof(c));
+                if (a != b) {
+                    if (result.literalVersusRuntimeWords++ == 0)
+                        result.firstLiteralDifference = "sample=" + std::to_string((i - offset) / 4)
+                            + " channel=" + std::to_string(i % 4) + " inline=" + std::to_string(a)
+                            + " runtime=" + std::to_string(b);
+                }
+                if (result.tapeSupported && c != b) ++result.tapeVersusRuntimeWords;
+            }
+            results.push_back(std::move(result));
+        }
+    }
+
+    std::uint32_t inlineExact = 0, tapeSupportedCount = 0, tapeExact = 0;
+    std::ostringstream json;
+    json << "{\"programs\":[";
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        const auto& r = results[i];
+        inlineExact += r.literalVersusRuntimeWords == 0;
+        tapeSupportedCount += r.tapeSupported;
+        tapeExact += r.tapeSupported && r.tapeVersusRuntimeWords == 0;
+        json << (i ? "," : "") << "{\"name\":\"" << r.name << "\",\"inlineDifferentWords\":"
+            << r.literalVersusRuntimeWords << ",\"first\":\"" << r.firstLiteralDifference
+            << "\",\"tapeSupported\":" << (r.tapeSupported ? "true" : "false")
+            << ",\"tapeDifferentWords\":" << r.tapeVersusRuntimeWords << "}";
+    }
+    json << "],\"programCount\":" << results.size() << ",\"inlineExactPrograms\":" << inlineExact
+        << ",\"tapeSupportedPrograms\":" << tapeSupportedCount << ",\"tapeExactPrograms\":" << tapeExact
+        << ",\"opcodesCovered\":" << covered.size()
+        << ",\"opcodesDeclared\":" << Yeroket::Sdf::Generated::RecipeOpcodeTable.size() << "}\n";
+    std::cout << "[RecipeCorpusLiteralTransport] " << json.str();
+    if (const char* path = std::getenv("VIXEN_RECIPE_CORPUS_RESULTS")) {
+        std::ofstream file(path);
+        file << json.str();
+        ASSERT_TRUE(file.good()) << path;
+    }
+    EXPECT_EQ(tapeExact, tapeSupportedCount) << "tape evaluator differs from runtime-operand field";
+    if (std::getenv("VIXEN_RECIPE_CORPUS_REQUIRE_INLINE_EXACT"))
+        EXPECT_EQ(inlineExact, results.size()) << "inline literals differ from runtime operands";
+}
