@@ -95,8 +95,8 @@ layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec2 fragTexCoord;
 
 // Textures
-layout(set = 1, binding = 0) uniform sampler2D albedoMap;
-layout(set = 1, binding = 1) uniform sampler2D normalMap;
+layout(set = 0, binding = 2) uniform sampler2D albedoMap;
+layout(set = 0, binding = 3) uniform sampler2D normalMap;
 
 // Output
 layout(location = 0) out vec4 outColor;
@@ -207,9 +207,9 @@ TEST_F(SdiLifecycleTest, BuildCompleteShaderBundleWithSDI) {
 
     EXPECT_NE(content.find("#pragma once"), std::string::npos);
 
-    // Check for descriptor set namespaces
+    // One descriptor set per shader (R532): the textures join the UBOs in set 0.
     EXPECT_NE(content.find("namespace Set0"), std::string::npos);
-    EXPECT_NE(content.find("namespace Set1"), std::string::npos);
+    EXPECT_EQ(content.find("namespace Set1"), std::string::npos);
 
     // Check for binding structures (generalized or named)
     EXPECT_TRUE(content.find("struct camera") != std::string::npos ||

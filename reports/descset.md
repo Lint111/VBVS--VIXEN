@@ -14,7 +14,7 @@ A grep for `set = N` (N > 0), HLSL `space N` / `[[vk::binding(b, N)]]`, `setLayo
 | `VIXEN/generated/sdi/**` merged and per-program SDI headers, checked-in SPIR-V | No | derived from the shaders above | n/a |
 | Pipeline layouts: `SkyProjectionNode.cpp:290`, `RayTracingPipelineNode.cpp:394`, `VixenRmlRenderInterface.cpp:101`, `ShellRevalidateNode.cpp:218`, `GraphicsPipelineNode.cpp:265`, `pipeline_layout_cacher.cpp:40` | No, `setLayoutCount` is 1 (0 or 1 in the cacher) | | n/a |
 | `PassRecorder.cpp:59-124`, `MultiDispatchNode.cpp:589-618`, `PassStep.h:30,46`, `DispatchPass.h:58` | `firstSet` is a plumbing field. Every producer leaves it 0. | generic binder | n/a |
-| `VIXEN/libraries/ShaderManagement/tests/test_sdi_lifecycle.cpp:98-99` (`albedoMap`, `normalMap` at set 1) and the `namespace Set1` assertion near line 212 | Yes | Test fixture for per-material data in a second set (legacy split) | **No.** See STOPs. |
+| `VIXEN/libraries/ShaderManagement/tests/test_sdi_lifecycle.cpp:98-99` (`albedoMap`, `normalMap` at set 1) and the `namespace Set1` assertion near line 212 | Yes | Test fixture for per-material data in a second set (legacy split) | **No.** Folded into set 0 (bindings 2 and 3) under P744; see below. |
 | `VIXEN/libraries/ShaderManagement/tests/test_spirv_descriptor_layout.cpp:17` (hk-spirvset's reuse-of-binding-index case) | Yes, deliberately | Negative fixture proving the set-blind reflector fails closed | n/a (a rejection test) |
 
 Finding: no production shader, generated interface, checked-in SPIR-V or pipeline layout uses more than set 0, so there was nothing to convert. The deliverable became making the invariant hold by construction and proving it.
@@ -47,12 +47,15 @@ Red/green: the three new merge tests fail against the old `MergeSdiVariants` and
 ## LANDABLE NOW
 
 - `b6905cd7` feat(shader): enforce one descriptor set per program across feature variants (R532). Checks: `test_sdi_variant_merge` 17/17, `test_spirv_descriptor_layout` 2/2, `sdi_merged_drift_check`, `sdi_tool merge-variants shaders/sdi-variants.json --check`, full RenderGraph|SVO suite failing set equal to base.
-- This report commit.
+- `05e660c5` this report.
+- The P744 fold commit (tip) folding the `test_sdi_lifecycle.cpp` fixture into set 0.
 
 ## STOPs
 
-1. **`VIXEN/libraries/ShaderManagement/tests/test_sdi_lifecycle.cpp:98-99`** declares `albedoMap` and `normalMap` at `set = 1` and asserts a `Set1` namespace (~line 212). That second set is a per-material/legacy split, not a feature variant: the maps are present in the fixture unconditionally. I did not change it, because converting it would rewrite what that SDI lifecycle test asserts about multi-set emission. Decision for the owner: fold both bindings into set 0 (renumbering the fixture) or keep it as the one deliberate multi-set fixture for the generator.
-2. **Per-set layouts versus fail-closed (from hk-spirvset).** `SPIRVReflection.cpp` still fails closed on multi-set programs rather than modelling per-set layouts. With R532 that is consistent, but only if the owner confirms that multi-set support is never wanted. If it is, hk-spirvset's fail-closed behaviour is the permanent form; if not, it needs a set-aware replacement.
+None open. Controller decision P744 (R532) settled both:
+
+1. Multi-set programs are never wanted, so `SPIRVReflection.cpp` stays fail-closed and no set-aware replacement is built.
+2. `test_sdi_lifecycle.cpp`'s `albedoMap` and `normalMap` moved from `set = 1` bindings 0 and 1 to set 0 bindings 2 and 3 (the vertex stage already owns set 0 bindings 0 and 1, so no index moved). The test's `namespace Set1` assertion now asserts the namespace is absent. Checks: `ctest -R "SdiLifecycle|SdiVariantMerge|SpirvDescriptorLayout|sdi_merged_drift"` 27/27 under the queue, and `sdi_tool merge-variants shaders/sdi-variants.json --check` reports all merged headers up to date. No captures needed: the fixture is test-only and the capture binary is unaffected.
 
 ## SPT DISPOSITION
 
