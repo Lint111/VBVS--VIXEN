@@ -1,0 +1,9 @@
+﻿Adapter and driver:
+
+Name                          DriverVersion VideoModeDescription           
+----                          ------------- --------------------           
+AMD Radeon(TM) 8060S Graphics 32.0.22018.5  1920 x 1080 x 4294967296 colors
+GPU clock/power counter paths:
+none exposed by Windows performance counters
+AMD/ROCm management commands:
+C:\Windows\system32\amd-smi.exe
