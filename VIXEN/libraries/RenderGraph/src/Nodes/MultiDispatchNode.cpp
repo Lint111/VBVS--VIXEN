@@ -432,11 +432,10 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             const VkResult result = SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE).Submit(
                 vulkanDevice_->fpQueueSubmit2, vulkanDevice_->queue);
             if (result != VK_SUCCESS) {
-                if (result == VK_ERROR_DEVICE_LOST) {
-                    GetOwningGraph()->NotifyDeviceLost("MultiDispatchNode::ExecuteImpl vkQueueSubmit2");
-                }
-                throw std::runtime_error("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
-                                         std::to_string(result));
+                NODE_LOG_ERROR("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
+                               std::to_string(result));
+                GetOwningGraph()->ReportGpuFault("MultiDispatchNode::ExecuteImpl vkQueueSubmit2", result);
+                return;
             }
         }
     }

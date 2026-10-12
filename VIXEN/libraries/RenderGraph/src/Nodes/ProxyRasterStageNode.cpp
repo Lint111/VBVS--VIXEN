@@ -161,8 +161,9 @@ void ProxyRasterStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         std::lock_guard lock(GetDevice()->SubmitMutex(GetDevice()->queue));
         const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1u, &submit, VK_NULL_HANDLE);
         if (result != VK_SUCCESS) {
-            throw std::runtime_error("[ProxyRasterStageNode] vkQueueSubmit2 failed: " +
-                                     std::to_string(result));
+            NODE_LOG_ERROR("[ProxyRasterStageNode] vkQueueSubmit2 failed: " + std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("ProxyRasterStageNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 

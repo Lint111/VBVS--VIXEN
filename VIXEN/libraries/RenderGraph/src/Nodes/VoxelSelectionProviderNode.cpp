@@ -4,6 +4,8 @@
 #include "Selection/SelectionCandidate.h"
 #include "InputEvents.h"
 #include "VulkanDevice.h"
+#include "Core/GpuFault.h"
+#include "Core/RenderGraph.h"
 
 #include <glm/glm.hpp>
 #include <cstring>
@@ -356,7 +358,11 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
         }
     }
 
-    vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (const GpuWaitResult waited = BoundedWaitFence(vkDevice, fence); !waited.Ok()) {
+        // The submission may still be in flight: leave the fence and command buffer to device teardown.
+        if (auto* graph = GetOwningGraph()) graph->ReportGpuFault("VoxelSelectionProviderNode::pickFence", waited.result, true);
+        return false;
+    }
 
     // --- Map the staging memory and read the pickID. On the full-image path (KI-012), the
     // staging buffer holds the WHOLE image and the target texel must be indexed on the CPU. ---

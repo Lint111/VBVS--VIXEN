@@ -277,8 +277,9 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
         const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
         if (result != VK_SUCCESS) {
-            throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
-                                     std::to_string(result));
+            NODE_LOG_ERROR("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("ComputeStageNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 
@@ -521,6 +522,11 @@ void ComputeStageNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
             commandBuffers_.clear();
         }
         commandPool_ = VK_NULL_HANDLE;
+    }
+    // The logger holds the old device's GPUQueryManager; a recovered device needs a fresh slot.
+    if (gpuPerfLogger_) {
+        if (auto* nodeLogger = GetLogger()) nodeLogger->RemoveChild(gpuPerfLogger_.get());
+        gpuPerfLogger_.reset();
     }
     NODE_LOG_INFO("[ComputeStageNode::CleanupImpl] Cleanup complete");
 }

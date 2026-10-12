@@ -3,6 +3,8 @@
 #include "Debug/IExportable.h"
 #include "Debug/IDebugCapture.h"
 #include "VulkanDevice.h"
+#include "Core/GpuFault.h"
+#include "Core/RenderGraph.h"
 #include <cstring>
 #include <algorithm>
 #include <numeric>
@@ -102,7 +104,10 @@ void DebugBufferReaderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Wait for GPU to finish before reading
     VkFence inFlightFence = ctx.In(DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
     if (inFlightFence != VK_NULL_HANDLE) {
-        vkWaitForFences(vkDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+        if (const GpuWaitResult waited = BoundedWaitFence(vkDevice, inFlightFence); !waited.Ok()) {
+            if (auto* graph = GetOwningGraph()) graph->ReportGpuFault("DebugBufferReaderNode::inFlightFence", waited.result, true);
+            return;
+        }
     }
 
     // Get the debug buffer from the interface (polymorphic)

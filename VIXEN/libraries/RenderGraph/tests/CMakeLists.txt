@@ -978,6 +978,7 @@ if(TARGET GTest::gtest_main)
         test_frame_sync_node_timeline.cpp
         test_pass_group_schedule.cpp
         test_graph_topology.cpp
+        test_gpu_fault.cpp
     )
 
     # test_graph_topology's own need: allow #include "RenderGraph/..." with a clean path.

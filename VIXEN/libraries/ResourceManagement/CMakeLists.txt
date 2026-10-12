@@ -23,6 +23,7 @@ add_library(ResourceManagement STATIC
     include/Memory/ResourceBudgetManager.h
     include/Memory/HostBudgetManager.h
     include/Memory/DeviceBudgetManager.h
+    include/Memory/MemoryPressure.h
     include/Memory/BudgetBridge.h
     include/Memory/StagingBufferPool.h
     include/Memory/BatchedUploader.h
@@ -37,6 +38,7 @@ add_library(ResourceManagement STATIC
     src/Memory/ResourceBudgetManager.cpp
     src/Memory/HostBudgetManager.cpp
     src/Memory/DeviceBudgetManager.cpp
+    src/Memory/MemoryPressure.cpp
     src/Memory/BudgetBridge.cpp
     src/Memory/StagingBufferPool.cpp
     src/Memory/BatchedUploader.cpp

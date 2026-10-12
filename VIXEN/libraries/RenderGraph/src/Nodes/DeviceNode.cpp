@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "Headers.h"
 #include <cstdlib>  // std::getenv for VIXEN_PIPELINE_STATS
 #include "ConfiguredOptionalPath.h"
@@ -455,6 +456,20 @@ void DeviceNode::CreateLogicalDevice() {
         }
     }
 
+    // R516: live memory budget. Best-effort — without it the budget manager keeps the static heap size.
+    memoryBudgetExtensionEnabled_ = false;
+    if (hasExt(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+        bool alreadyAdded = false;
+        for (const char* existing : allExtensions) {
+            if (strcmp(existing, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) { alreadyAdded = true; break; }
+        }
+        if (!alreadyAdded) allExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        memoryBudgetExtensionEnabled_ = true;
+        NODE_LOG_INFO("[DeviceNode] VK_EXT_memory_budget enabled — live VRAM budget active");
+    } else {
+        NODE_LOG_INFO("[DeviceNode] VK_EXT_memory_budget unavailable — static VRAM budget only");
+    }
+
     // Create logical device with all extensions
     auto createResult = vulkanDevice->CreateDevice(deviceLayers, allExtensions);
     if (!createResult) {
@@ -628,6 +643,12 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
         deviceLocalMemory / 16  // Or 6.25% of VRAM if smaller
     );
     budgetConfig.strictBudget = false;  // Allow over-budget (warn only)
+    budgetConfig.memoryBudgetExtensionEnabled = memoryBudgetExtensionEnabled_;
+    budgetConfig.pressureCallback = [](ResourceManagement::MemoryPressure pressure) {
+        // No captures: the manager can outlive this node across a device-loss rebuild.
+        std::fprintf(stderr, "[MEMBUDGET] live VRAM pressure %s: staging quota reduced, optional staging refused at critical\n",
+                     ResourceManagement::MemoryPressureName(pressure));
+    };
 
     NODE_LOG_INFO("[DeviceNode] Device VRAM: " + std::to_string(deviceLocalMemory / (1024 * 1024)) + " MB");
     NODE_LOG_INFO("[DeviceNode] Budget: " + std::to_string(budgetConfig.deviceMemoryBudget / (1024 * 1024)) + " MB (90%)");

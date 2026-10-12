@@ -30,6 +30,7 @@
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include "LockCensus.h"                         // Lock-free phase 0: per-frame mutex/wave census (no-op unless VIXEN_LOCK_CENSUS)
 #include "Core/SubmitChannel.h"                 // Lock-free phase 1: queue-owner submit channel (design §2.5)
+#include "Core/GpuFault.h"                       // R516: typed GPU faults + bounded waits
 #include <atomic>
 #include <memory>
 #include <string>
@@ -506,6 +507,26 @@ public:
     bool IsDeviceLost() const { return deviceLost_; }
 
     /**
+     * @brief Report a failed GPU submit/wait as a typed fault. Never throws (R213).
+     *
+     * DeviceLost and WatchdogTimeout latch device loss (NotifyDeviceLost) so the host recovers by
+     * recreating the device. OutOfMemory and Other abort the frame and latch the VkResult, which
+     * RenderFrame() returns instead of VK_SUCCESS. A non-fault result is a no-op.
+     *
+     * @param site   Human-readable origin, e.g. "ComputeStageNode::vkQueueSubmit2".
+     * @param result The failing VkResult (VK_TIMEOUT counts as a watchdog fault only when
+     *               fromBoundedWait is true).
+     * @return The classification, so the caller can return early.
+     */
+    GpuFaultKind ReportGpuFault(const std::string& site, VkResult result, bool fromBoundedWait = false);
+
+    /** @brief The non-device-loss VkResult latched this frame by ReportGpuFault (VK_SUCCESS if none). */
+    VkResult FrameFault() const { return frameFault_; }
+
+    /** @brief Number of faults of this kind reported since the graph was created. */
+    uint32_t GpuFaultCount(GpuFaultKind kind) const { return gpuFaultCounts_[static_cast<size_t>(kind)]; }
+
+    /**
      * @brief Abort the remainder of the current frame's node execution.
      *
      * Called mid-frame by a node that discovers the frame cannot proceed — canonically
@@ -960,6 +981,18 @@ private:
     // keeps returning VK_ERROR_DEVICE_LOST and RecoverFromDeviceLoss() refuses to retry, so the host
     // aborts instead of spinning on an unrecoverable device.
     bool deviceLostUnrecoverable_ = false;
+    bool lossIsInjected_ = false;     // the armed loss comes from the fail-scenario injector (VIXEN_FAIL_SCENARIOS)
+    bool genuineDeviceLoss_ = false;  // loss reported by a real VkResult/watchdog, not the fault injector
+    bool GraphHasTranslatedDevice() const;
+    // R516: first non-device-loss GPU fault of the current frame (OOM / other); cleared each frame.
+    VkResult frameFault_ = VK_SUCCESS;
+    // R516: recovery-storm guard. A device that is lost again within kRecoveryStormWindowFrames of the
+    // previous recovery counts as consecutive; kMaxConsecutiveRecoveries in a row is terminal.
+    static constexpr uint64_t kRecoveryStormWindowFrames = 120;
+    static constexpr uint32_t kMaxConsecutiveRecoveries = 3;
+    uint64_t lastRecoveryFrame_ = 0;
+    uint32_t consecutiveRecoveries_ = 0;
+    uint32_t gpuFaultCounts_[5] = {};
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
     // Fault-injection test hook (VIXEN_SIMULATE_DEVICE_LOSS=<render-frame>). -2 = env not yet parsed,
     // -1 = disabled, >=0 = latch a synthetic device loss once at that globalFrameIndex. The teardown +
@@ -1063,6 +1096,9 @@ private:
     // If `instancesToCheck` is empty, waits for all devices referenced by the graph.
     // Otherwise waits only for devices referenced by the provided instances.
     void WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck = {});
+    // R516: queue-idle drain bounded by GpuWaitBoundNs(). False when a queue is still busy after the
+    // bound (GPU wedged, not yet removed), where a teardown would destroy resources in use.
+    bool DrainGraphDevicesBounded();
     // Wait for the provided set of VkDevice handles to be idle
     void WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices);
 };

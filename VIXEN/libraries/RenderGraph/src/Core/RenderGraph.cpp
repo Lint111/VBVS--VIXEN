@@ -6,6 +6,7 @@
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
+#include "Core/BoundedQueueIdle.h"
 #include "RuntimeCachePaths.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -19,6 +20,7 @@
 #include <system_error>
 #include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 #include <cstring>
+#include "Nodes/Common/GpuDeviceClass.h"
 #include <limits>
 #include <thread>
 #ifdef _WIN32
@@ -748,12 +750,60 @@ void RenderGraph::NotifyDeviceLost(const std::string& site) {
                     " — the GPU device and all its resources are now invalid; rendering halts until recovery.");
 }
 
+GpuFaultKind RenderGraph::ReportGpuFault(const std::string& site, VkResult result, bool fromBoundedWait) {
+    const GpuFaultKind kind = ClassifyGpuResult(result, fromBoundedWait);
+    if (kind == GpuFaultKind::None) return kind;
+    ++gpuFaultCounts_[static_cast<size_t>(kind)];
+    switch (kind) {
+        case GpuFaultKind::DeviceLost:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
+            NotifyDeviceLost(site);
+            break;
+        case GpuFaultKind::WatchdogTimeout:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
+            // A bounded wait that expires means the GPU stopped making progress: same remedy as loss.
+            NotifyDeviceLost(site + " (watchdog: wait exceeded " +
+                             std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms)");
+            break;
+        default:
+            AbortCurrentFrame();
+            if (frameFault_ == VK_SUCCESS) frameFault_ = result;
+            GRAPH_LOG_ERROR("[RenderGraph::ReportGpuFault] " + std::string(GpuFaultKindName(kind)) +
+                            " (VkResult " + std::to_string(result) + ") at: " + site);
+            break;
+    }
+    return kind;
+}
+
 bool RenderGraph::RecoverFromDeviceLoss() {
     if (!deviceLost_) {
         return true;  // nothing to recover
     }
     if (deviceLostUnrecoverable_) {
         return false;  // already determined the device is gone for good — don't spin
+    }
+
+    // Recovery-storm guard: a workload that re-loses the device right after every recovery would
+    // otherwise loop forever. Fail cleanly after kMaxConsecutiveRecoveries back-to-back losses.
+    if (lastRecoveryFrame_ != 0 && (globalFrameIndex + 1) - lastRecoveryFrame_ <= kRecoveryStormWindowFrames) {
+        ++consecutiveRecoveries_;
+    } else {
+        consecutiveRecoveries_ = 1;
+    }
+    if (consecutiveRecoveries_ > kMaxConsecutiveRecoveries) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Device lost " + std::to_string(consecutiveRecoveries_) +
+                        " times within " + std::to_string(kRecoveryStormWindowFrames) +
+                        " frames each — giving up (recovery storm)");
+        return false;
+    }
+
+    if (!InProcessRecoveryIsSafe(genuineDeviceLoss_, GraphHasTranslatedDevice())) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] genuine device loss on a translated (Dozen) device: "
+                        "in-process recreation is unsafe — failing cleanly so the process can be restarted "
+                        "(VIXEN_RECOVER_TRANSLATED_DEVICE=1 overrides)");
+        return false;
     }
 
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== DEVICE-LOSS RECOVERY: rebuilding the graph on a fresh device =====");
@@ -777,10 +827,15 @@ bool RenderGraph::RecoverFromDeviceLoss() {
     }
 
     try {
-        // Drain in-flight work before destroying resources. On a truly-lost device vkDeviceWaitIdle
-        // returns VK_ERROR_DEVICE_LOST immediately (no hang); on a healthy device (fault-injection test)
-        // it actually drains, making the teardown safe in both cases.
-        WaitForGraphDevicesIdle();
+        // Drain in-flight work before destroying resources, bounded by the watchdog: each VulkanDevice has a
+        // single queue, so a bounded queue drain is a complete device drain. On a truly-lost device the
+        // drain returns DEVICE_LOST immediately; a wait that outlives the bound means the GPU is wedged
+        // and tearing resources down would destroy objects it is still using, so fail cleanly instead.
+        if (!DrainGraphDevicesBounded()) {
+            deviceLostUnrecoverable_ = true;
+            GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] GPU did not drain within the watchdog bound — the device is unrecoverable");
+            return false;
+        }
 
         // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
         // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
@@ -808,6 +863,15 @@ bool RenderGraph::RecoverFromDeviceLoss() {
             node->ClearNeedsRecompile();
             node->ResetCleanupFlag();                     // allow a future teardown to run again
             cleanupStack.ResetExecuted(node->GetHandle());
+            // DeviceNode reports a failed adapter enumeration / vkCreateDevice by logging and returning,
+            // which would hand every downstream node a VulkanDevice with a null VkDevice and crash in
+            // the driver. Stop the rebuild here and fail cleanly instead.
+            if (!node->ProducesUsableDevice()) {
+                InvalidateExecutionEpoch();
+                deviceLostUnrecoverable_ = true;
+                GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Device recreation produced no VkDevice — the device is unrecoverable");
+                return false;
+            }
         }
     } catch (const std::exception& e) {
         InvalidateExecutionEpoch();
@@ -823,6 +887,9 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 
     // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt).
     deviceLost_ = false;
+    genuineDeviceLoss_ = false;
+    lossIsInjected_ = false;
+    lastRecoveryFrame_ = globalFrameIndex + 1;  // +1 so 0 stays "never recovered"
     dirtyNodes.clear();
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
     return true;
@@ -937,13 +1004,17 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
                 // a hard failure is a channel fault. (Present result is not fed back per-node today.)
                 if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
                     submitChannel_.RecordFault("vkQueuePresentKHR (queue-owner)", r);
+                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueuePresentKHR", r);
                 }
             }
         } else {
             if (device && device->fpQueueSubmit2) {
                 const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
                                               vkQueueWaitIdle, &outstandingBatches_[device->queue]);
-                if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
+                if (r != VK_SUCCESS) {
+                    submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
+                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueueSubmit2", r);
+                }
             }
         }
     }
@@ -1041,7 +1112,8 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
     if (submitChannel_.HasFault()) {
         GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Queue-owner submit fault: " +
                         submitChannel_.FaultMessage());
-        return VK_ERROR_UNKNOWN;
+        // ReportGpuFault already latched device loss / the typed VkResult; RenderFrame returns it.
+        return (deviceLost_ || frameFault_ != VK_SUCCESS) ? VK_SUCCESS : VK_ERROR_UNKNOWN;
     }
 
     // AbortCurrentFrame is the existing successful short-circuit used for out-of-date acquire. A
@@ -1063,6 +1135,7 @@ VkResult RenderGraph::RenderFrame() {
     if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
         globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
         deviceLossSimulated_ = true;
+        lossIsInjected_ = true;
         GetFaultInjector()->ArmOnce(FailScenario::FaultSite::FenceWait, VK_ERROR_DEVICE_LOST);
     }
 #endif
@@ -1160,6 +1233,7 @@ VkResult RenderGraph::RenderFrame() {
 
     // Fresh frame: clear any abort latched by last frame's out-of-date acquire (AbortCurrentFrame).
     frameAborted_ = false;
+    frameFault_ = VK_SUCCESS;
     BeginExecutionEpoch();
 
     // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
@@ -1296,6 +1370,9 @@ VkResult RenderGraph::RenderFrame() {
     if (deviceLost_) {
         return VK_ERROR_DEVICE_LOST;
     }
+    if (frameFault_ != VK_SUCCESS) {
+        return frameFault_;
+    }
 
     // Offscreen, capture, and test graphs share the same existing frame budget as
     // interactive graphs. Anchor each deadline to this frame, so an overrun never
@@ -1408,6 +1485,37 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
         return instances[handle.index].get();
     }
     return nullptr;
+}
+
+bool RenderGraph::GraphHasTranslatedDevice() const {
+    for (const auto& inst : instances) {
+        if (!inst) continue;
+        const auto* vdev = inst->GetDevice();
+        if (vdev && std::strcmp(GpuDeviceClassName(*vdev), "translated") == 0) return true;
+    }
+    return false;
+}
+
+bool RenderGraph::DrainGraphDevicesBounded() {
+    std::unordered_set<Vixen::Vulkan::Resources::VulkanDevice*> devices;
+    for (const auto& inst : instances) {
+        if (!inst) continue;
+        auto* vdev = inst->GetDevice();
+        if (vdev && vdev->device != VK_NULL_HANDLE && vdev->queue != VK_NULL_HANDLE) devices.insert(vdev);
+    }
+    for (auto* vdev : devices) {
+        BoundedQueueIdle idle;
+        const GpuWaitResult drained = idle.Wait(*vdev);
+        // DEVICE_LOST (or any hard failure) means no work is running: teardown is safe. Only a wait
+        // that outlives the bound leaves the GPU executing work that teardown would destroy.
+        if (drained.fault == GpuFaultKind::WatchdogTimeout) {
+            GRAPH_LOG_ERROR("[RenderGraph::DrainGraphDevicesBounded] queue still busy after " +
+                            std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms — GPU wedged");
+            return false;
+        }
+        idle.Destroy(vdev->device);
+    }
+    return true;
 }
 
 void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck) {

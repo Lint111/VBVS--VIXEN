@@ -256,7 +256,9 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         result = vkQueueSubmit(device->queue, 1, &submitInfo, inFlightFence);
     }
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
+        NODE_LOG_ERROR("GeometryRenderNode: Failed to submit command buffer: " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("GeometryRenderNode::ExecuteImpl vkQueueSubmit", result);
+        return;
     }
 
     // Output the same render complete semaphore for PresentNode (pass-through)
