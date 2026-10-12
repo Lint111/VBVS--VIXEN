@@ -333,6 +333,11 @@ void BlitNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
         }
         commandPool_ = VK_NULL_HANDLE;
     }
+    // The logger holds the old device's GPUQueryManager; a recovered device needs a fresh slot.
+    if (gpuPerfLogger_) {
+        if (auto* nodeLogger = GetLogger()) nodeLogger->RemoveChild(gpuPerfLogger_.get());
+        gpuPerfLogger_.reset();
+    }
     NODE_LOG_INFO("[BlitNode::CleanupImpl] Cleanup complete");
 }
 

@@ -114,6 +114,22 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=85")
+
+    if(VIXEN_FAIL_SCENARIOS)
+        set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
+        add_test(NAME vixen_device_loss_recovery
+            COMMAND bash -c
+                "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        set_tests_properties(vixen_device_loss_recovery PROPERTIES
+            WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
+            TIMEOUT 180)
+        vixen_set_suite_properties(RenderGraph GPU TESTS vixen_device_loss_recovery
+            TEST_ENVIRONMENT
+                "VIXEN_SIMULATE_DEVICE_LOSS=40"
+                "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
+                "VIXEN_EXIT_AFTER_FRAMES=85")
+    endif()
 endif()
 
 # The native windowed witness is WSLg-specific. Keep its display contract in
