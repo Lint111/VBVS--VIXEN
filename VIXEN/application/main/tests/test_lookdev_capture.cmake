@@ -16,6 +16,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         COMMAND ${CMAKE_COMMAND}
             "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
             "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev"
+            -DLOOKDEV_CAPTURE_BUDGET_S=900
             -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
     set_tests_properties(Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         PROPERTIES
