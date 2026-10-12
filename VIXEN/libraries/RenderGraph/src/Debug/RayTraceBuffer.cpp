@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <bit>
+#include <cstdio>
 
 namespace Vixen::RenderGraph::Debug {
 
@@ -91,7 +92,10 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
     bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {
+    const VkResult createResult = vkCreateBuffer(device, &bufferInfo, nullptr, &buffer_);
+    if (createResult != VK_SUCCESS) {
+        std::fprintf(stderr, "[RayTraceBuffer] vkCreateBuffer failed: result=%d size=%llu\n",
+                     static_cast<int>(createResult), static_cast<unsigned long long>(bufferSize_));
         return false;
     }
 
@@ -105,6 +109,17 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
 
     uint32_t memoryTypeIndex = FindMemoryType(physicalDevice, memRequirements.memoryTypeBits, memProperties);
     if (memoryTypeIndex == UINT32_MAX) {
+        VkPhysicalDeviceMemoryProperties available{};
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &available);
+        std::fprintf(stderr,
+                     "[RayTraceBuffer] no host-visible/coherent memory type: size=%llu typeBits=0x%08x types=",
+                     static_cast<unsigned long long>(memRequirements.size), memRequirements.memoryTypeBits);
+        for (uint32_t i = 0; i < available.memoryTypeCount; ++i) {
+            if ((memRequirements.memoryTypeBits & (1u << i)) != 0) {
+                std::fprintf(stderr, " %u:0x%x", i, available.memoryTypes[i].propertyFlags);
+            }
+        }
+        std::fputc('\n', stderr);
         vkDestroyBuffer(device, buffer_, nullptr);
         buffer_ = VK_NULL_HANDLE;
         return false;
@@ -116,14 +131,22 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = memoryTypeIndex;
 
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &memory_) != VK_SUCCESS) {
+    const VkResult allocateResult = vkAllocateMemory(device, &allocInfo, nullptr, &memory_);
+    if (allocateResult != VK_SUCCESS) {
+        std::fprintf(stderr,
+                     "[RayTraceBuffer] vkAllocateMemory failed: result=%d size=%llu type=%u\n",
+                     static_cast<int>(allocateResult), static_cast<unsigned long long>(allocInfo.allocationSize),
+                     memoryTypeIndex);
         vkDestroyBuffer(device, buffer_, nullptr);
         buffer_ = VK_NULL_HANDLE;
         return false;
     }
 
     // Bind memory to buffer
-    if (vkBindBufferMemory(device, buffer_, memory_, 0) != VK_SUCCESS) {
+    const VkResult bindResult = vkBindBufferMemory(device, buffer_, memory_, 0);
+    if (bindResult != VK_SUCCESS) {
+        std::fprintf(stderr, "[RayTraceBuffer] vkBindBufferMemory failed: result=%d\n",
+                     static_cast<int>(bindResult));
         vkFreeMemory(device, memory_, nullptr);
         vkDestroyBuffer(device, buffer_, nullptr);
         buffer_ = VK_NULL_HANDLE;

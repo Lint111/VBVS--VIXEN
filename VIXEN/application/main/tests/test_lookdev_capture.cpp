@@ -50,17 +50,18 @@ namespace {
 constexpr uint32_t kDefaultFramesPerScenario = 64; // Two full 32-frame reservoir-history caps.
 constexpr float kPitchRadians = 0.45f;
 
-uint32_t CaptureFramesPerScenario() {
-    const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_FRAMES");
-    if (!requested || *requested == '\0') return kDefaultFramesPerScenario;
+uint32_t CaptureFramesPerScenario(std::string& error) {
+    const char* value = std::getenv("VIXEN_LOOKDEV_CAPTURE_FRAMES");
+    if (!value || !*value) return kDefaultFramesPerScenario;
 
     char* end = nullptr;
-    const unsigned long value = std::strtoul(requested, &end, 10);
-    if (end == requested || *end != '\0' || value == 0 ||
-        value > kDefaultFramesPerScenario) {
-        return kDefaultFramesPerScenario;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0 || parsed > kDefaultFramesPerScenario) {
+        error = "VIXEN_LOOKDEV_CAPTURE_FRAMES must be an integer from 1 through " +
+            std::to_string(kDefaultFramesPerScenario);
+        return 0;
     }
-    return static_cast<uint32_t>(value);
+    return static_cast<uint32_t>(parsed);
 }
 
 struct CaptureScenario {
@@ -442,10 +443,11 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
     const std::filesystem::path outputDir(outputEnv);
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
-    const uint32_t framesPerScenario = CaptureFramesPerScenario();
     ASSERT_EQ(scenarios.size(), 4u)
         << "CTest must select one four-angle look-dev lighting preset";
     std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
 }
 

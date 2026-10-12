@@ -220,6 +220,15 @@ bool envFlagIsSet(const char* name, bool& value) {
     return false;
 }
 
+bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
+    const char* raw = std::getenv(name);
+    if (raw == nullptr) return defaultValue;
+
+    bool explicitValue = false;
+    if (envFlagIsSet(name, explicitValue)) return explicitValue;
+    return envFlagEnabled(name);
+}
+
 enum class RtLightingMode { Auto, Off, Force };
 
 RtLightingMode ParseRtLightingMode() {
@@ -429,7 +438,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
-    const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
+    const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
