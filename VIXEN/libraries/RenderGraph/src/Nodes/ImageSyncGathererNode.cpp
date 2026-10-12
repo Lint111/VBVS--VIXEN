@@ -39,7 +39,10 @@ void ImageSyncGathererNode::PreRegisterImageSlots(size_t count) {
     for (size_t i = 0; i < count; ++i) {
         VariadicSlotInfo slotInfo;
         slotInfo.resource = nullptr;
-        slotInfo.resourceType = ResourceType::Image;
+        // This gatherer carries IRenderTarget* handles (as declared by IMAGE_ARRAY),
+        // rather than raw VkImage resources. Derive the variadic entry category from
+        // that typed declaration so graph-boundary inputs use the same resource kind.
+        slotInfo.resourceType = ImageSyncGathererNodeConfig::IMAGE_ARRAY_Slot::resourceType;
         slotInfo.slotName = "image_" + std::to_string(i);
         RegisterVariadicSlot(slotInfo, 0);
     }
