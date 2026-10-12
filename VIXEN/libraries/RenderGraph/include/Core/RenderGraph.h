@@ -981,6 +981,9 @@ private:
     // keeps returning VK_ERROR_DEVICE_LOST and RecoverFromDeviceLoss() refuses to retry, so the host
     // aborts instead of spinning on an unrecoverable device.
     bool deviceLostUnrecoverable_ = false;
+    bool lossIsInjected_ = false;     // the armed loss comes from the fail-scenario injector (VIXEN_FAIL_SCENARIOS)
+    bool genuineDeviceLoss_ = false;  // loss reported by a real VkResult/watchdog, not the fault injector
+    bool GraphHasTranslatedDevice() const;
     // R516: first non-device-loss GPU fault of the current frame (OOM / other); cleared each frame.
     VkResult frameFault_ = VK_SUCCESS;
     // R516: recovery-storm guard. A device that is lost again within kRecoveryStormWindowFrames of the

@@ -19,6 +19,7 @@
 #include <system_error>
 #include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 #include <cstring>
+#include "Nodes/Common/GpuDeviceClass.h"
 #include <limits>
 #include <thread>
 #ifdef _WIN32
@@ -753,9 +754,11 @@ GpuFaultKind RenderGraph::ReportGpuFault(const std::string& site, VkResult resul
     ++gpuFaultCounts_[static_cast<size_t>(kind)];
     switch (kind) {
         case GpuFaultKind::DeviceLost:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
             NotifyDeviceLost(site);
             break;
         case GpuFaultKind::WatchdogTimeout:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
             // A bounded wait that expires means the GPU stopped making progress: same remedy as loss.
             NotifyDeviceLost(site + " (watchdog: wait exceeded " +
                              std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms)");
@@ -790,6 +793,14 @@ bool RenderGraph::RecoverFromDeviceLoss() {
         GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Device lost " + std::to_string(consecutiveRecoveries_) +
                         " times within " + std::to_string(kRecoveryStormWindowFrames) +
                         " frames each — giving up (recovery storm)");
+        return false;
+    }
+
+    if (!InProcessRecoveryIsSafe(genuineDeviceLoss_, GraphHasTranslatedDevice())) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] genuine device loss on a translated (Dozen) device: "
+                        "in-process recreation is unsafe — failing cleanly so the process can be restarted "
+                        "(VIXEN_RECOVER_TRANSLATED_DEVICE=1 overrides)");
         return false;
     }
 
@@ -874,6 +885,8 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 
     // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt).
     deviceLost_ = false;
+    genuineDeviceLoss_ = false;
+    lossIsInjected_ = false;
     lastRecoveryFrame_ = globalFrameIndex + 1;  // +1 so 0 stays "never recovered"
     dirtyNodes.clear();
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
@@ -1119,6 +1132,7 @@ VkResult RenderGraph::RenderFrame() {
     if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
         globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
         deviceLossSimulated_ = true;
+        lossIsInjected_ = true;
         GetFaultInjector()->ArmOnce(FailScenario::FaultSite::FenceWait, VK_ERROR_DEVICE_LOST);
     }
 #endif
@@ -1461,6 +1475,15 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
         return instances[handle.index].get();
     }
     return nullptr;
+}
+
+bool RenderGraph::GraphHasTranslatedDevice() const {
+    for (const auto& inst : instances) {
+        if (!inst) continue;
+        const auto* vdev = inst->GetDevice();
+        if (vdev && std::strcmp(GpuDeviceClassName(*vdev), "translated") == 0) return true;
+    }
+    return false;
 }
 
 bool RenderGraph::DrainGraphDevicesBounded() {

@@ -68,6 +68,17 @@ inline constexpr uint64_t kDefaultWaitBoundNs = 20'000'000'000ull;
     return bound;
 }
 
+/// Whether an in-process device recreation is safe. A genuine loss on a translated device (Mesa Dozen
+/// over D3D12) is not: the runtime keeps removed-device state alive, so re-creating on the old
+/// VkInstance SIGSEGVs and even a fresh VkInstance can abort inside libd3d12core ("pure virtual
+/// function called", tools/gpuharden/device_loss_probe). Such a loss fails cleanly (typed result) and the
+/// process is restarted by its supervisor. Injected losses never touch the driver, so they recover.
+[[nodiscard]] inline bool InProcessRecoveryIsSafe(bool genuineLoss, bool translatedDevice) {
+    if (!(genuineLoss && translatedDevice)) return true;
+    const char* env = std::getenv("VIXEN_RECOVER_TRANSLATED_DEVICE");
+    return env && env[0] == '1';
+}
+
 /// Result of a bounded wait: a Vulkan status plus its classification.
 struct GpuWaitResult {
     VkResult result = VK_SUCCESS;

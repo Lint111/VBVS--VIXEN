@@ -91,3 +91,17 @@ TEST_F(GpuFaultGraphTest, RecoveryStormFailsCleanlyInsteadOfLooping) {
     EXPECT_TRUE(graph.IsDeviceLost());
     EXPECT_FALSE(graph.RecoverFromDeviceLoss());  // stays failed: no spinning
 }
+
+TEST(GpuFaultPolicy, GenuineLossOnTranslatedDeviceDoesNotRecoverInProcess) {
+    EXPECT_FALSE(InProcessRecoveryIsSafe(true, true));
+    EXPECT_TRUE(InProcessRecoveryIsSafe(true, false));
+    EXPECT_TRUE(InProcessRecoveryIsSafe(false, true));   // injected loss never touches the driver
+    EXPECT_TRUE(InProcessRecoveryIsSafe(false, false));
+}
+
+TEST_F(GpuFaultGraphTest, InjectedLossStaysRecoverableButGenuineLossIsTracked) {
+    graph.NotifyDeviceLost("injected");
+    EXPECT_TRUE(graph.RecoverFromDeviceLoss());
+    (void)graph.ReportGpuFault("real", VK_ERROR_DEVICE_LOST);
+    EXPECT_TRUE(graph.RecoverFromDeviceLoss());  // empty graph has no translated device
+}
