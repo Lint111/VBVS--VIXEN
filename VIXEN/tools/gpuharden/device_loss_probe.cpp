@@ -4,13 +4,16 @@
 //
 //   device_loss_probe <spv> <iterations> [--bound-ms N] [--recover same|fresh|none]
 //
+// Build: g++ -O1 -std=c++20 -pthread -I$SDK/include device_loss_probe.cpp -o device_loss_probe -L$SDK/lib/VulkanLoader/lib -lvulkan -Wl,-rpath,$SDK/lib/VulkanLoader/lib
 // Output is one `[PROBE] key=value ...` line per stage so callers can grep it.
 // Exit code: 0 = completed or recovered, 3 = lost and recovery not attempted, 4 = recovery failed.
 #include <vulkan/vulkan.h>
 #include <execinfo.h>
 #include <signal.h>
 #include <unistd.h>
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -188,6 +191,15 @@ int main(int argc, char** argv) {
         if (!std::strcmp(argv[i], "--bound-ms")) boundMs = std::strtoull(argv[i + 1], nullptr, 10);
         else if (!std::strcmp(argv[i], "--recover")) recover = argv[i + 1];
     }
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    std::atomic<bool> done{false};
+    std::thread heartbeat([&done] {  // keeps queue stall detectors from reading a long bounded wait as a hang
+        for (int ticks = 0; !done.load(); ++ticks) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (ticks % 60 == 59) std::fprintf(stderr, "[PROBE] heartbeat\n");
+        }
+    });
+    struct Join { std::atomic<bool>& d; std::thread& t; ~Join() { d = true; t.join(); } } join{done, heartbeat};
     Ctx c;
     if (!MakeInstance(c) || MakeDevice(c) != VK_SUCCESS) { std::fprintf(stderr, "[PROBE] stage=init result=fail\n"); return 2; }
     double waitMs = 0;
