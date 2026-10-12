@@ -1,12 +1,13 @@
 #include "SPIRVReflection.h"
 #include "spirv_reflect.h"
-#include <unordered_map>
-#include <algorithm>
+#include <map>
 #include <stdexcept>
 
 namespace ShaderManagement {
 
 namespace {
+    using BindingKey = std::pair<uint32_t, uint32_t>; // (set, binding)
+
     /**
      * @brief Convert SpvReflectDescriptorType to VkDescriptorType
      */
@@ -71,7 +72,7 @@ namespace {
     void ReflectStageBindings(
         const std::vector<uint32_t>& spirvCode,
         ShaderStage stage,
-        std::unordered_map<uint32_t, DescriptorBindingSpec>& mergedBindings
+        std::map<BindingKey, DescriptorBindingSpec>& mergedBindings
     ) {
         // Create SPIRV-Reflect module
         SpvReflectShaderModule module;
@@ -111,9 +112,10 @@ namespace {
         // Process each binding
         for (const auto* binding : bindings) {
             uint32_t bindingIndex = binding->binding;
+            BindingKey key{binding->set, bindingIndex};
 
             // Check if binding already exists (from another stage)
-            auto it = mergedBindings.find(bindingIndex);
+            auto it = mergedBindings.find(key);
             if (it != mergedBindings.end()) {
                 // Binding exists - merge stage flags and validate compatibility
                 DescriptorBindingSpec& existing = it->second;
@@ -148,7 +150,7 @@ namespace {
                 spec.stageFlags = stageFlag;
                 spec.name = binding->name ? binding->name : "";
 
-                mergedBindings[bindingIndex] = spec;
+                mergedBindings[key] = spec;
             }
         }
 
@@ -159,8 +161,8 @@ namespace {
 
 std::unique_ptr<DescriptorLayoutSpec> ReflectDescriptorLayout(const CompiledProgram& program) {
     try {
-        // Map: binding index -> merged binding spec
-        std::unordered_map<uint32_t, DescriptorBindingSpec> mergedBindings;
+        // Map: (set, binding) -> merged binding spec, ordered by set then binding
+        std::map<BindingKey, DescriptorBindingSpec> mergedBindings;
 
         // Reflect each shader stage
         for (const auto& stage : program.stages) {
@@ -169,20 +171,14 @@ std::unique_ptr<DescriptorLayoutSpec> ReflectDescriptorLayout(const CompiledProg
             }
         }
 
-        // Convert to DescriptorLayoutSpec
-        auto layoutSpec = std::make_unique<DescriptorLayoutSpec>();
-
-        // Sort bindings by index for consistency
-        std::vector<uint32_t> sortedIndices;
-        sortedIndices.reserve(mergedBindings.size());
-        for (const auto& [index, _] : mergedBindings) {
-            sortedIndices.push_back(index);
+        if (!mergedBindings.empty() &&
+            mergedBindings.begin()->first.first != mergedBindings.rbegin()->first.first) {
+            throw std::runtime_error("Program uses multiple descriptor sets; DescriptorLayoutSpec describes one set");
         }
-        std::sort(sortedIndices.begin(), sortedIndices.end());
 
-        // Add bindings in sorted order
-        for (uint32_t index : sortedIndices) {
-            layoutSpec->AddBinding(mergedBindings[index]);
+        auto layoutSpec = std::make_unique<DescriptorLayoutSpec>();
+        for (const auto& [key, spec] : mergedBindings) {
+            layoutSpec->AddBinding(spec);
         }
 
         // Default to 1 set (can be overridden by user)
