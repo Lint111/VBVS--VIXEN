@@ -88,7 +88,7 @@ struct ComputePipelineCreateParams {
 // programs. `ordinal` is the 1-based count of ACTUAL ComputePipelineCacher::Create calls at the
 // moment that program's pipeline was created; 0 means no Vulkan pipeline was created for it (an
 // in-process cache hit, or the program never appeared). `vkCacheNonNull` records whether the
-// VkPipelineCache handed to vkCreateComputePipelines was non-null — expected 0 at this revision.
+// VkPipelineCache handed to vkCreateComputePipelines was non-null (1 since the persistent compute pipeline cache).
 struct ComputePipelineCreationProbe {
     unsigned marchOrdinal = 0;
     unsigned waveOrdinal = 0;
@@ -105,7 +105,7 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<ComputePipelineWrapper> GetOrCreate(const ComputePipelineCreateParams& ci);
 
-    // Convenience: Get the global pipeline cache (shared with graphics)
+    // The compute pipeline cache (created lazily or loaded from the persisted blob)
     VkPipelineCache GetPipelineCache() const { return m_globalCache.load(std::memory_order_acquire); }
 
     // Serialization
@@ -132,6 +132,7 @@ private:
     // Read unlocked on the pipeline-creation path, cleared by Cleanup(): an atomic handle, not a
     // lock (P4 removed TypedCacher's shared lock it used to borrow).
     std::atomic<VkPipelineCache> m_globalCache{VK_NULL_HANDLE};
+    std::atomic<bool> m_warmCacheLoaded{false};
 };
 
 } // namespace CashSystem
