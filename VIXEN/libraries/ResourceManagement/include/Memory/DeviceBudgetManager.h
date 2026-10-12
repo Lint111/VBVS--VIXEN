@@ -360,6 +360,11 @@ public:
     [[nodiscard]] DegradeAction DecideDegrade(uint64_t bytes, bool optional) const;
 
     static constexpr uint64_t kLiveRefreshFrames = 30;
+    static constexpr uint64_t kLiveRefreshBytes = 4ull * 1024 * 1024;  ///< Requests this large always re-read the budget.
+    static constexpr uint32_t kLiveRefreshEveryNthAllocation = 32;
+
+    /** @brief Highest live device-local usage seen by any refresh (bytes). */
+    [[nodiscard]] uint64_t GetPeakLiveUsage() const { return peakLiveUsage_.load(std::memory_order_acquire); }
 
 private:
     Config config_;
@@ -374,6 +379,9 @@ private:
     std::atomic<uint64_t> liveBudget_{0};
     std::atomic<uint64_t> liveUsage_{0};
     std::atomic<uint8_t> pressure_{static_cast<uint8_t>(MemoryPressure::Normal)};
+    std::atomic<uint64_t> peakLiveUsage_{0};
+    std::atomic<uint32_t> allocationTick_{0};
+    void MaybeRefreshLiveBudget(uint64_t requestBytes);
 
     // Aliased allocation tracking (Sprint 4 Phase B+)
     std::atomic<uint32_t> aliasedAllocationCount_{0};
