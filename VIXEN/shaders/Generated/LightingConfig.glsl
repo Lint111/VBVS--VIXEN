@@ -23,6 +23,12 @@ struct LightingConfig {
     float celBandFalloffEnd;
     float celLightSpillScale;
     float exposureCompensationEV;
-    float _celTailPadding1;
+    float dimBandFloor;
+    vec3 skyColor;
+    uint skyMode;
+    float skyGradientSlope;
+    float _envTailPadding0;
+    float _envTailPadding1;
+    float _envTailPadding2;
 };
 #endif // LIGHTINGCONFIG_GLSL

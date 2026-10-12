@@ -1,5 +1,6 @@
 #pragma once
 
+#include "graph/SceneLook.h"
 #include "Recipe/RecipeRegistry.h"
 #include "ShellOctreeGpu.h"
 #include "Generated/LightingConfig.g.h"
@@ -15,6 +16,24 @@
 #include <vector>
 
 namespace Vixen::App::Lookdev {
+
+// Look-dev declares the engine's long-standing sky gradient and cel thresholds explicitly, so
+// the captures do not depend on LightingConfigNode defaults. Values are unchanged by R507.3.
+inline SceneLook SceneLookDeclaration() {
+    SceneLook look;
+    look.environment.background = EnvironmentDeclaration::Background::Gradient;
+    look.environment.color[0] = 0.02f;
+    look.environment.color[1] = 0.02f;
+    look.environment.color[2] = 0.06f;
+    look.environment.gradientSlope = 0.4f;
+    look.environment.starfield = false;
+    look.cel.shadowThreshold = 0.16f;   // R432 cel defaults
+    look.cel.litThreshold = 0.86f;
+    look.cel.rampSoftness = 0.08f;
+    look.cel.dimBandFloor = 0.0f;       // black shadow step: indoor and night look-dev lights fill by ambient
+    return look;
+}
+
 
 // Authored fixture data for the engine's shared visual-review stage. Geometry is
 // registered through the existing procedural SDF recipe provider; this is not a

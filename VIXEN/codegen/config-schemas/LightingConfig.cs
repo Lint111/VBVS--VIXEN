@@ -53,6 +53,19 @@ public struct LightingConfig
     public float celLightSpillScale;
     // Per-scene tonemap bias in EV. LightingConfigNode clamps this to [-16, 16].
     public float exposureCompensationEV;
+    // Cel profile: value of the darkest band (band 0) as a fraction of the lit
+    // band. 0 keeps the classic black shadow step; a planet profile raises it
+    // so grazing light still reads as a dim band instead of black.
+    public float dimBandFloor;
+
+    // Environment (sky) declaration. skyMode: 0 = vertical gradient
+    // (skyColor * (1 - uv.y * skyGradientSlope)), 1 = solid skyColor.
+    // The procedural starfield is a separate additive layer fed by SkySphereNode.
+    public Float3 skyColor;
+    public uint skyMode;
+    public float skyGradientSlope;
     // Round the struct size to std430's 16-byte structure alignment.
-    public float _celTailPadding1;
+    public float _envTailPadding0;
+    public float _envTailPadding1;
+    public float _envTailPadding2;
 }

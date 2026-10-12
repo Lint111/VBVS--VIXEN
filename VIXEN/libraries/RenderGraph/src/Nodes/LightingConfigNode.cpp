@@ -202,6 +202,26 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         LightingConfigNodeConfig::DEFAULT_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MIN_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MAX_EXPOSURE_COMPENSATION_EV);
+    cfg.dimBandFloor = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_DIM_BAND_FLOOR,
+        LightingConfigNodeConfig::DEFAULT_DIM_BAND_FLOOR, 0.0f, 0.95f);
+    cfg.skyMode = GetParameterValue<uint32_t>(
+                      LightingConfigNodeConfig::PARAM_SKY_MODE,
+                      LightingConfigNodeConfig::SKY_MODE_GRADIENT) == LightingConfigNodeConfig::SKY_MODE_SOLID
+        ? LightingConfigNodeConfig::SKY_MODE_SOLID
+        : LightingConfigNodeConfig::SKY_MODE_GRADIENT;
+    cfg.skyColorX = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_R,
+        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_R, 0.0f, 1000.0f);
+    cfg.skyColorY = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_G,
+        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_G, 0.0f, 1000.0f);
+    cfg.skyColorZ = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_B,
+        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_B, 0.0f, 1000.0f);
+    cfg.skyGradientSlope = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_SKY_GRADIENT_SLOPE,
+        LightingConfigNodeConfig::DEFAULT_SKY_GRADIENT_SLOPE, 0.0f, 1.0f);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);
