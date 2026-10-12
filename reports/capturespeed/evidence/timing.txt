@@ -1,0 +1,57 @@
+== native-base-midday (exit=0 wall_s=48.62)
+[CAPTURE_TIMING] startup_to_build_graph_ms=165.1 build_graph_ms=131.6 build_graph_end_to_first_frame_ms=37155.1 first_frame_ms=120.0 startup_total_ms=37451.8
+[CAPTURE_TIMING] frames=256 frame_total_ms=10121.6 frame_p50_ms=35.81 frame_p95_ms=64.37 frame_max_ms=119.97 png_capture_total_ms=548.0
+== native-pcache-cold (exit=0 wall_s=9.26)
+[CAPTURE_TIMING] startup_to_build_graph_ms=76.4 build_graph_ms=139.0 build_graph_end_to_first_frame_ms=3607.4 first_frame_ms=58.8 startup_total_ms=3822.8
+[CAPTURE_TIMING] frames=256 frame_total_ms=4455.5 frame_p50_ms=17.13 frame_p95_ms=17.40 frame_max_ms=58.79 png_capture_total_ms=528.6
+== native-pcache-warm (exit=0 wall_s=8.68)
+[CAPTURE_TIMING] startup_to_build_graph_ms=68.4 build_graph_ms=141.7 build_graph_end_to_first_frame_ms=1686.7 first_frame_ms=69.9 startup_total_ms=1896.8
+[CAPTURE_TIMING] frames=256 frame_total_ms=5861.5 frame_p50_ms=17.16 frame_p95_ms=42.86 frame_max_ms=71.54 png_capture_total_ms=543.7
+== native-after-midday (exit=0 wall_s=2.72)
+[CAPTURE_TIMING] startup_to_build_graph_ms=58.3 build_graph_ms=114.7 build_graph_end_to_first_frame_ms=1181.1 first_frame_ms=49.6 startup_total_ms=1354.1
+[CAPTURE_TIMING] frames=32 frame_total_ms=589.0 frame_p50_ms=17.05 frame_p95_ms=20.76 frame_max_ms=49.61 png_capture_total_ms=516.2
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=2579.4 budget_ms=300000
+== native-after-late-afternoon (exit=0 wall_s=2.73)
+[CAPTURE_TIMING] startup_to_build_graph_ms=49.9 build_graph_ms=122.9 build_graph_end_to_first_frame_ms=1233.1 first_frame_ms=50.7 startup_total_ms=1406.0
+[CAPTURE_TIMING] frames=32 frame_total_ms=594.8 frame_p50_ms=17.06 frame_p95_ms=21.66 frame_max_ms=50.66 png_capture_total_ms=512.9
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=2623.9 budget_ms=300000
+== native-after-overcast (exit=0 wall_s=2.73)
+[CAPTURE_TIMING] startup_to_build_graph_ms=55.0 build_graph_ms=114.6 build_graph_end_to_first_frame_ms=1247.8 first_frame_ms=48.1 startup_total_ms=1417.5
+[CAPTURE_TIMING] frames=32 frame_total_ms=589.5 frame_p50_ms=17.08 frame_p95_ms=21.46 frame_max_ms=48.10 png_capture_total_ms=510.4
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=2625.2 budget_ms=300000
+== native-after-night-service (exit=0 wall_s=28.79)
+[CAPTURE_TIMING] startup_to_build_graph_ms=48.5 build_graph_ms=142.6 build_graph_end_to_first_frame_ms=27092.3 first_frame_ms=72.8 startup_total_ms=27283.4
+[CAPTURE_TIMING] frames=32 frame_total_ms=662.0 frame_p50_ms=18.09 frame_p95_ms=29.54 frame_max_ms=72.75 png_capture_total_ms=549.9
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=28667.4 budget_ms=300000
+== native-ref64-night-service (exit=0 wall_s=6.94)
+[CAPTURE_TIMING] startup_to_build_graph_ms=83.7 build_graph_ms=155.2 build_graph_end_to_first_frame_ms=1294.9 first_frame_ms=60.2 startup_total_ms=1533.8
+[CAPTURE_TIMING] frames=256 frame_total_ms=4585.1 frame_p50_ms=17.12 frame_p95_ms=19.59 frame_max_ms=60.18 png_capture_total_ms=515.9
+[CAPTURE_TIMING] frames_per_angle=64 process_total_ms=6795.5 budget_ms=300000
+== native-resv-f64 (exit=0 wall_s=6.97)
+[CAPTURE_TIMING] startup_to_build_graph_ms=61.8 build_graph_ms=127.5 build_graph_end_to_first_frame_ms=1427.3 first_frame_ms=55.1 startup_total_ms=1616.6
+[CAPTURE_TIMING] frames=256 frame_total_ms=4518.5 frame_p50_ms=17.10 frame_p95_ms=19.22 frame_max_ms=55.06 png_capture_total_ms=534.3
+[CAPTURE_TIMING] frames_per_angle=64 process_total_ms=6819.3 budget_ms=300000
+== native-budget-fail (exit=1 wall_s=2.94)
+[CAPTURE_TIMING] startup_to_build_graph_ms=73.1 build_graph_ms=118.9 build_graph_end_to_first_frame_ms=1262.7 first_frame_ms=65.2 startup_total_ms=1454.6
+[CAPTURE_TIMING] frames=32 frame_total_ms=709.2 frame_p50_ms=17.15 frame_p95_ms=45.68 frame_max_ms=74.38 png_capture_total_ms=542.4
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=2828.3 budget_ms=1000
+== native adapter
+== dozen instr-f8
+[CAPTURE_TIMING] startup_to_build_graph_ms=7.6 build_graph_ms=110.9 build_graph_end_to_first_frame_ms=59452.5 first_frame_ms=1698.8 startup_total_ms=59571.1
+[CAPTURE_TIMING] frames=32 frame_total_ms=45634.6 frame_p50_ms=1397.65 frame_p95_ms=1558.18 frame_max_ms=1698.78 png_capture_total_ms=512.9
+== dozen dozen-pcache-cold
+[CAPTURE_TIMING] startup_to_build_graph_ms=11.6 build_graph_ms=111.6 build_graph_end_to_first_frame_ms=101194.7 first_frame_ms=2297.8 startup_total_ms=101317.8
+[CAPTURE_TIMING] frames=32 frame_total_ms=54907.4 frame_p50_ms=1672.63 frame_p95_ms=2017.17 frame_max_ms=2297.84 png_capture_total_ms=578.8
+== dozen dozen-pcache-warm
+[CAPTURE_TIMING] startup_to_build_graph_ms=15.7 build_graph_ms=128.0 build_graph_end_to_first_frame_ms=1508.7 first_frame_ms=1876.4 startup_total_ms=1652.4
+[CAPTURE_TIMING] frames=32 frame_total_ms=50100.4 frame_p50_ms=1536.19 frame_p95_ms=1876.39 frame_max_ms=1914.66 png_capture_total_ms=552.9
+== dozen dozen-after-midday
+[CAPTURE_TIMING] startup_to_build_graph_ms=9.5 build_graph_ms=113.5 build_graph_end_to_first_frame_ms=74902.2 first_frame_ms=1930.3 startup_total_ms=75025.2
+[CAPTURE_TIMING] frames=32 frame_total_ms=49326.5 frame_p50_ms=1481.51 frame_p95_ms=1791.80 frame_max_ms=2035.72 png_capture_total_ms=519.5
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=125449.8 budget_ms=300000
+== dozen dozen-after-midday-2
+[CAPTURE_TIMING] startup_to_build_graph_ms=88.7 build_graph_ms=125.8 build_graph_end_to_first_frame_ms=1439.2 first_frame_ms=1799.0 startup_total_ms=1653.6
+[CAPTURE_TIMING] frames=32 frame_total_ms=49766.5 frame_p50_ms=1540.85 frame_p95_ms=1744.03 frame_max_ms=1799.03 png_capture_total_ms=617.4
+[CAPTURE_TIMING] frames_per_angle=8 process_total_ms=52618.0 budget_ms=300000
+== dozen adapter
+[17:45:03.441] [main_device] [INFO] [ADAPTER] name=Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics) type=translated driver_id=23 driver_name=Dozen driver_info=Mesa 25.2.8 (git-f97d7dcca0) driver_version=104865800 api=1.2.318
