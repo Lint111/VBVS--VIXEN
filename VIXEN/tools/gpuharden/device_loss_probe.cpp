@@ -219,7 +219,15 @@ int main(int argc, char** argv) {
     if (recover == "fresh") {
         vkDestroyInstance(c.instance, nullptr);
         c.instance = VK_NULL_HANDLE;
-        if (!MakeInstance(c)) { std::printf("[PROBE] stage=recover mode=fresh result=no-instance\n"); return 4; }
+        // The D3D12 adapter stays unusable for a while after removal; retry the instance with backoff.
+        int attempt = 0;
+        const auto tr = std::chrono::steady_clock::now();
+        while (!MakeInstance(c)) {
+            if (c.instance != VK_NULL_HANDLE) { vkDestroyInstance(c.instance, nullptr); c.instance = VK_NULL_HANDLE; }
+            if (++attempt >= 20) { std::printf("[PROBE] stage=recover mode=fresh result=no-instance attempts=%d\n", attempt); return 4; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500 * attempt));
+        }
+        std::printf("[PROBE] stage=recover-instance attempts=%d ms=%.1f\n", attempt + 1, Ms(tr));
     }
     std::printf("[PROBE] stage=recover-begin mode=%s\n", recover.c_str());
     std::fflush(stdout);
