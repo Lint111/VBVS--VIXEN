@@ -18,6 +18,21 @@ The native build compiles `vixen_editor`, the windowed capture target, and
 `EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget` against the 2.0 ms
 budget.
 
+## Look-dev visual review
+
+After the Linux look-dev capture test completes, compose each four-angle scene
+beside C16 and its matching Track D reference, and write the per-angle visual
+measurements:
+
+```bash
+python3 reports/vxtrain6/reproduce/make-lookdev-contact-sheets.py \
+  build/wsl/runtime-captures/lookdev reports/vxtrain6-visual
+```
+
+The output contains one contact sheet per state and `lookdev-metrics.json` with
+capture dimensions, display-referred luma p5/p50/p95, and emissive share for
+each angle.
+
 ## 1080p revision matrix
 
 For each source revision, build the capture target directly, then queue its GPU

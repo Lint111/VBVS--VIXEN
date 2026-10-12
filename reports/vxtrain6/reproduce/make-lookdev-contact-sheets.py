@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Compose four-angle look-dev captures beside the C16 and lighting references."""
 import importlib.util
+import json
+import math
 from pathlib import Path
 import sys
 
@@ -74,17 +76,58 @@ def compose(pixels, capture_root, state):
     return sheet_width, sheet_height, bytes(canvas)
 
 
+def measure_frame(width, height, rgba):
+    """Return the visual-bible display-referred Rec.709 Y' checks."""
+    luma = []
+    emissive = 0
+    for offset in range(0, len(rgba), 4):
+        red, green, blue = rgba[offset:offset + 3]
+        value = max(red, green, blue) / 255.0
+        saturation = 0.0 if value == 0 else (value - min(red, green, blue) / 255.0) / value
+        luma.append((0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255.0)
+        emissive += value > 0.85 and saturation > 0.45
+    luma.sort()
+
+    def nearest_rank(percent):
+        return luma[max(0, math.ceil(percent * len(luma)) - 1)]
+
+    pixel_count = width * height
+    return {
+        "width": width,
+        "height": height,
+        "luma_p5_p50_p95": [round(nearest_rank(p), 4) for p in (0.05, 0.50, 0.95)],
+        "emissive_share": round(emissive / pixel_count, 4),
+    }
+
+
 def main():
     if len(sys.argv) != 3:
         raise SystemExit(f"usage: {Path(sys.argv[0]).name} <lookdev-capture-root> <output-dir>")
     capture_root, output_dir = map(Path, sys.argv[1:])
     output_dir.mkdir(parents=True, exist_ok=True)
     pixels, write_png = load_pixels()
+    metrics = []
     for state in REFERENCES:
+        for angle in range(4):
+            image = pixels.decode_png(capture_root / state / f"{state}-angle-{angle}.png")
+            metrics.append({
+                "state": state,
+                "angle": angle,
+                **measure_frame(*image),
+            })
         width, height, rgba = compose(pixels, capture_root, state)
         output = output_dir / f"{state}-contact-sheet.png"
         write_png(output, width, height, rgba)
         print(f"{state}: {output} ({width}x{height})")
+    metrics_path = output_dir / "lookdev-metrics.json"
+    metrics_path.write_text(json.dumps(metrics, indent=2) + "\n")
+    print(f"metrics: {metrics_path}")
+    for item in metrics:
+        p5, p50, p95 = item["luma_p5_p50_p95"]
+        print(f"{item['state']} angle {item['angle']}: "
+              f"{item['width']}x{item['height']} "
+              f"luma={p5:.4f}/{p50:.4f}/{p95:.4f} "
+              f"emissive={item['emissive_share']:.4f}")
 
 
 if __name__ == "__main__":
