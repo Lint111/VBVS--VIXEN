@@ -2,6 +2,7 @@
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/IGraphCompilable.h"
+#include "Core/PhaseTiming.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
@@ -151,6 +152,7 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    PhaseTiming::PrintSummary();
     // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
     // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
     lockCensus_.Report();
@@ -890,6 +892,7 @@ bool RenderGraph::PublishSubmit(NodeInstance* producer, SubmitRecord&& record) {
 // through RenderFrame's existing deviceLost_ path), replacing each node's former inline throw.
 void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave) {
     if (!submitChannel_.IsConfigured()) return;
+    PhaseTiming::ScopedWait drainTimer("queue-owner-drain");
     // Collect the ordinals of the nodes in this wave that published, then drain in ordinal order so
     // the submission sequence is the canonical executionOrder sequence regardless of TBB finish order.
     std::vector<std::size_t> ordinals;
@@ -1191,8 +1194,12 @@ VkResult RenderGraph::RenderFrame() {
                 // Phase 2a: catch a node Execute failure here instead of letting the exception
                 // propagate out of RenderFrame -> the app loop -> a process-fatal exit (and UB across
                 // a C# host). Record it, stop the frame, and return a non-success status to Render().
+                const auto executeStart = PhaseTiming::Enabled() ? PhaseTiming::Clock::now()
+                                                                 : PhaseTiming::Clock::time_point{};
                 try {
                     node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+                    if (PhaseTiming::Enabled())
+                        PhaseTiming::AddExecute(node->GetInstanceName(), PhaseTiming::MsSince(executeStart));
                 } catch (const std::exception& e) {
                     GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Node '" + node->GetInstanceName() +
                                     "' failed during Execute: " + e.what());
@@ -1298,7 +1305,10 @@ VkResult RenderGraph::RenderFrame() {
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
         const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
         const auto paceStart = std::chrono::steady_clock::now();
-        PaceFrameUntil(frameExecuteStart + frameBudget);
+        {
+            PhaseTiming::ScopedWait paceTimer("frame-pace");
+            PaceFrameUntil(frameExecuteStart + frameBudget);
+        }
         if (traceYield) {
             const auto paceEnd = std::chrono::steady_clock::now();
             const auto ticks = [](auto time) {
@@ -1559,7 +1569,12 @@ void RenderGraph::GeneratePipelines() {
         }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Calling Setup() on node: " + instance->GetInstanceName());
+        const auto setupStart = PhaseTiming::Clock::now();
         instance->Setup();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=node-setup node=%s ms=%.3f\n",
+                instance->GetInstanceName().c_str(), PhaseTiming::MsSince(setupStart));
+        }
     }
 
     // Load caches after all Setup() calls but before first Compile()
@@ -1592,7 +1607,12 @@ void RenderGraph::GeneratePipelines() {
         }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Calling Compile() on node: " + instance->GetInstanceName());
+        const auto compileStart = PhaseTiming::Clock::now();
         instance->Compile();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=node-compile node=%s ms=%.3f\n",
+                instance->GetInstanceName().c_str(), PhaseTiming::MsSince(compileStart));
+        }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 

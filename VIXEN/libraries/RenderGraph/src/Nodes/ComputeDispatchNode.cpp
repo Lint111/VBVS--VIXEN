@@ -520,9 +520,18 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
                 : std::string(" start=cold")));
     }
     tileExtentKeys_[frameIndex] = extentKey;
-    const uint32_t edge = canTile_
-        ? chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7)
-        : std::max(1u, std::max(dispatchX, dispatchY));
+    // VIXEN_GPUYIELD_EDGE=<n> pins the tile edge in workgroups (0 = one untiled dispatch); a
+    // diagnostic for separating tiling cost from shader cost, not a production control.
+    static const long edgeOverride = [] {
+        const char* value = std::getenv("VIXEN_GPUYIELD_EDGE");
+        return value && *value ? std::strtol(value, nullptr, 10) : -1L;
+    }();
+    const uint32_t wholeEdge = std::max(1u, std::max(dispatchX, dispatchY));
+    const uint32_t edge = !canTile_ || edgeOverride == 0
+        ? wholeEdge
+        : edgeOverride > 0
+            ? static_cast<uint32_t>(edgeOverride)
+            : chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7);
     tileNominalWorkGroupCounts_[frameIndex] = std::min(edge, dispatchX) * std::min(edge, dispatchY);
     const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
     auto& extraBuffers = tileCommandBuffers_[frameIndex];
