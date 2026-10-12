@@ -178,25 +178,4 @@ private:
     mutable std::mutex cacheMutex;
 };
 
-/**
- * @brief Generate cache key from source and metadata
- *
- * Utility function to create content-addressable cache keys.
- * Hashes: source code + stage + defines + entry point
- *
- * @param source Shader source code (GLSL or empty if using SPIR-V path)
- * @param sourcePath Path to source file (used if source is empty)
- * @param stage Shader stage
- * @param defines Preprocessor defines (name=value pairs)
- * @param entryPoint Entry point function name
- * @return Hex string cache key (64 characters)
- */
-std::string GenerateCacheKey(
-    const std::string& source,
-    const std::filesystem::path& sourcePath,
-    uint32_t stage,
-    const std::vector<std::pair<std::string, std::string>>& defines,
-    const std::string& entryPoint
-);
-
 } // namespace ShaderManagement

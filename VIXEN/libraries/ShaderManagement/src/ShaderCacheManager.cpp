@@ -372,26 +372,4 @@ uint32_t ShaderCacheManager::EvictOldEntries() {
     return evicted;
 }
 
-std::string GenerateCacheKey(
-    const std::string& source,
-    const std::filesystem::path& sourcePath,
-    uint32_t targetVulkanVersion,
-    const std::vector<std::pair<std::string, std::string>>& defines,
-    const std::string& entryPoint)
-{
-    // Create a hash from all inputs
-    std::stringstream keyStream;
-    keyStream << source;
-    keyStream << sourcePath.string();
-    keyStream << targetVulkanVersion;
-    keyStream << entryPoint;
-
-    for (const auto& [name, value] : defines) {
-        keyStream << name << "=" << value << ";";
-    }
-
-    std::string keyString = keyStream.str();
-    return ComputeSHA256Hex(reinterpret_cast<const uint8_t*>(keyString.data()), keyString.size());
-}
-
 } // namespace ShaderManagement
