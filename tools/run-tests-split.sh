@@ -28,6 +28,7 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+queue_wrapper="${VIXEN_BOX_QUEUE_WRAPPER:-/home/liory/.local/bin/with-test-lock.sh}"
 build_dir="build/wsl"
 regex=""
 suite_label=""
@@ -80,7 +81,7 @@ witness_env=()
 queue() {
   local resource="$1" label="$2"; shift 2
   if (( use_queue )); then
-    bash "$root/tools/with-test-lock.sh" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
   else
     "$@"
   fi
