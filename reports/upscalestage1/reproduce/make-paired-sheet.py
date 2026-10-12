@@ -22,15 +22,20 @@ def main():
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--round", type=int, default=1)
+    parser.add_argument("--lod-mode", choices=("fixed", "coupled"), default="fixed")
     args = parser.parse_args()
 
     extent = f"{args.width}x{args.height}"
     base = args.root / extent / f"round-{args.round}"
-    native = base / "linear-scale1" / "A-before" / "captures"
+    configs = CONFIGS if args.lod_mode == "fixed" else tuple(
+        config for config in CONFIGS if config[0] not in ("linear-scale1", "fsr1-scale1")
+    )
+    control_config = "linear-scale1" if args.lod_mode == "fixed" else "linear-scale-2-3"
+    native = base / control_config / "A-before" / "captures"
     rows = [("Native · empty upscaler slot", native)]
     rows.extend(
         (label, base / config / "B-candidate" / "captures")
-        for config, label in CONFIGS
+        for config, label in configs
     )
     for _, directory in rows:
         for angle in range(4):
@@ -38,7 +43,8 @@ def main():
             if not image.is_file():
                 raise FileNotFoundError(image)
 
-    output = args.root / extent / f"comparison-sheet-round-{args.round}.svg"
+    mode_suffix = "" if args.lod_mode == "fixed" else "-coupled"
+    output = args.root / extent / f"comparison-sheet{mode_suffix}-round-{args.round}.svg"
     output.parent.mkdir(parents=True, exist_ok=True)
     width = 1320
     row_height = 250
@@ -53,7 +59,7 @@ def main():
         f'<rect width="{width}" height="{height}" fill="#f4f5f7"/>',
         '<style>text{font-family:Arial,sans-serif;fill:#20242b}.title{font-size:25px;font-weight:bold}.label{font-size:15px;font-weight:bold}.sub{font-size:12px;fill:#5d6470}</style>',
         f'<text x="24" y="34" class="title">{extent} · paired native controls and upscaler modules</text>',
-        f'<text x="24" y="58" class="sub">Round {args.round}; same midday scene and four yaw views. Raw panels remain linked to their PNG files.</text>',
+        f'<text x="24" y="58" class="sub">Round {args.round}; {args.lod_mode} LOD; same midday scene and four yaw views. Raw panels remain linked to their PNG files.</text>',
     ]
     for row_index, (label, directory) in enumerate(rows):
         y = top + row_index * row_height

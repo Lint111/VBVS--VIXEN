@@ -77,13 +77,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=Path, help="paired-native run output root")
     parser.add_argument("--rounds", type=int, default=3)
+    parser.add_argument("--extent", choices=("all", "500", "1080"), default="all")
+    parser.add_argument("--lod-mode", choices=("fixed", "coupled"), default="fixed")
     args = parser.parse_args()
+
+    extents = ((500, 500), (1920, 1080))
+    if args.extent == "500":
+        extents = ((500, 500),)
+    elif args.extent == "1080":
+        extents = ((1920, 1080),)
+    configs = CONFIGS if args.lod_mode == "fixed" else tuple(
+        config for config in CONFIGS if config[1] < 1.0
+    )
 
     trial_rows = []
     aggregate = []
-    for width, height in ((500, 500), (1920, 1080)):
+    for width, height in extents:
         extent = f"{width}x{height}"
-        for config_name, scale, upscaler in CONFIGS:
+        for config_name, scale, upscaler in configs:
             trial_metrics = []
             for round_number in range(1, args.rounds + 1):
                 base = args.root / extent / f"round-{round_number}" / config_name
