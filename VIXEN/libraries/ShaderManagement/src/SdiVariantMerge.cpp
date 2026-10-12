@@ -129,6 +129,52 @@ SdiMergeResult MergeSdiVariants(const std::string& programName,
         }
     }
 
+    // One descriptor set per program (R532): a feature variant adds or omits
+    // bindings inside that set, it never opens another set or moves a binding.
+    {
+        const uint32_t onlySet = bindingMap.begin()->first.first;
+        for (const auto& [key, occ] : bindingMap) {
+            if (key.first != onlySet) {
+                std::ostringstream msg;
+                msg << "MergeSdiVariants(" << programName << "): variants span"
+                    << " more than one descriptor set (set " << onlySet << " and set "
+                    << key.first << "); a program has one set and features add"
+                    << " bindings to it";
+                return Fail(msg.str());
+            }
+        }
+
+        // A name's binding indices in one variant must nest with every other
+        // variant's (one is a subset of the other); disjoint or crossing sets
+        // mean a variant renumbered it.
+        std::map<std::string, std::vector<std::set<uint32_t>>> slotsByName;
+        for (const auto& variant : variants) {
+            std::map<std::string, std::set<uint32_t>> thisVariant;
+            for (const auto& [setIndex, bindings] : variant.data.descriptorSets)
+                for (const auto& b : bindings)
+                    if (!b.name.empty()) thisVariant[b.name].insert(b.binding);
+            for (auto& [name, slots] : thisVariant)
+                slotsByName[name].push_back(std::move(slots));
+        }
+        for (const auto& [name, perVariant] : slotsByName) {
+            for (size_t i = 0; i < perVariant.size(); ++i) {
+                for (size_t j = i + 1; j < perVariant.size(); ++j) {
+                    if (std::includes(perVariant[i].begin(), perVariant[i].end(),
+                                      perVariant[j].begin(), perVariant[j].end()) ||
+                        std::includes(perVariant[j].begin(), perVariant[j].end(),
+                                      perVariant[i].begin(), perVariant[i].end()))
+                        continue;
+                    std::ostringstream msg;
+                    msg << "MergeSdiVariants(" << programName << "): '" << name
+                        << "' is at binding " << *perVariant[i].begin() << " in one"
+                        << " variant and binding " << *perVariant[j].begin()
+                        << " in another; binding indices are stable across variants";
+                    return Fail(msg.str());
+                }
+            }
+        }
+    }
+
     // Struct-definition union (deduped by name; layouts must agree).
     std::map<std::string, int> structIndexByName;
     auto internStruct =
