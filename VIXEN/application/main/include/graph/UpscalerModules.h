@@ -33,6 +33,17 @@ CONSTEXPR_NODE_CONFIG(UpscalerModulePorts, 4, 2, SlotArrayMode::Single) {
                 SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(RENDER_COMPLETE, VkSemaphore, 1,
                 SlotNullability::Required, SlotMutability::WriteOnly);
+
+    // SubGraphType publishes the runtime descriptors to RenderGraph, while the
+    // typed slots above remain the source of truth for optionality. Keep those
+    // views aligned so GraphScope::Finalize does not mistake optional module
+    // inputs for required inputs.
+    UpscalerModulePorts() {
+        inputs[SOURCE_TARGET_Slot::index].nullable = SOURCE_TARGET_Slot::nullable;
+        inputs[PRESENTATION_TARGET_Slot::index].nullable = PRESENTATION_TARGET_Slot::nullable;
+        inputs[ORDERING_WAIT_Slot::index].nullable = ORDERING_WAIT_Slot::nullable;
+        inputs[DEVICE_Slot::index].nullable = DEVICE_Slot::nullable;
+    }
 };
 
 static_assert(std::is_same_v<UpscalerModulePorts::UPSCALED_TARGET_Slot::Type,

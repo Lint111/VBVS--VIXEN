@@ -9395,16 +9395,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
         const NodeHandle orderingSource = hdrExposureEnabled ? exposureNode : spatialReuseNode;
         renderGraph->Connect(orderingSource, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                              *upscalerModule, UpscalerModulePorts::ORDERING_WAIT);
-        if (fsr1UpscalerSelected) {
-            renderGraph->Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                                 *upscalerModule, UpscalerModulePorts::DEVICE);
-            if (offscreenPresentation) {
-                renderGraph->Connect(offscreenTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                                     *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
-            } else {
-                renderGraph->Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                                     *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
-            }
+        renderGraph->Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                             *upscalerModule, UpscalerModulePorts::DEVICE);
+        if (offscreenPresentation) {
+            renderGraph->Connect(offscreenTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                                 *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
+        } else {
+            renderGraph->Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                                 *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
         }
     }
 

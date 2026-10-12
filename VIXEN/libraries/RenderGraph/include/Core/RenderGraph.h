@@ -1568,6 +1568,9 @@ void RenderGraph::Connect(NodeHandle source, SourceSlot sourceSlot,
         }
     }
     if (!found) {
+        if constexpr (PortType::nullable) {
+            return;
+        }
         throw std::runtime_error("Sub-graph input port " + std::to_string(PortType::index) +
                                  " is not bound");
     }
