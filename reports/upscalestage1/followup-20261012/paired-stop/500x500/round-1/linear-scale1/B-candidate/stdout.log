@@ -1,0 +1,103 @@
+Note: Google Test filter = LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from LookdevCapture
+[ RUN      ] LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
+[02:57:13.445] [VulkanAppBase] [INFO] VulkanGraphApplication (Graph-based) Starting
+[02:57:13.447] [VulkanAppBase] [DEBUG] VulkanGraphApplication::Initialize() - START
+[02:57:13.448] [VulkanAppBase] [INFO] VulkanGraphApplication Initialize START
+[02:57:13.449] [VulkanAppBase] [DEBUG] About to call VulkanApplicationBase::Initialize()
+[02:57:13.518] [VulkanLayerAndExtension] [ERROR] GetProcAddr: Unable to find vkCreateDebugReportCallbackEXT function.
+[02:57:13.518] [VulkanAppBase] [INFO] Vulkan core initialized successfully
+[02:57:13.518] [VulkanAppBase] [DEBUG] VulkanApplicationBase::Initialize() returned
+[02:57:13.519] [VulkanAppBase] [INFO] VulkanGraphApplication Base initialized
+[02:57:13.519] [VulkanAppBase] [DEBUG] Instance exported globally
+[02:57:13.520] [VulkanAppBase] [INFO] VulkanGraphApplication Instance exported globally
+[02:57:13.520] [VulkanAppBase] [DEBUG] Creating EngineContext (registry + bus + graph + calibration)
+[02:57:13.521] [VulkanAppBase] [INFO] Registered 67 built-in node types (self-registration)
+[02:57:13.521] [VulkanAppBase] [INFO] EngineContext created (MainCacher initialized, autonomous CalibrationStore active)
+[02:57:13.522] [VulkanAppBase] [DEBUG] Subscribing to WindowCloseEvent
+[02:57:13.522] [VulkanAppBase] [DEBUG] WindowCloseEvent subscription complete
+[02:57:13.522] [VulkanAppBase] [DEBUG] Subscribing to ShutdownAckEvent
+[02:57:13.523] [VulkanAppBase] [DEBUG] ShutdownAckEvent subscription complete
+[02:57:13.523] [VulkanAppBase] [INFO] RenderGraph created successfully
+[02:57:13.523] [VulkanAppBase] [DEBUG] Registering physics loop
+[02:57:13.524] [VulkanAppBase] [DEBUG] Physics loop registered with ID: 0
+[02:57:13.524] [VulkanAppBase] [INFO] Registered PhysicsLoop (60Hz) with ID: 0
+[02:57:13.524] [VulkanAppBase] [DEBUG] Sim loop registered with ID: 1
+[02:57:13.524] [VulkanAppBase] [INFO] Registered SimLoop (30Hz) with ID: 1
+[02:57:13.525] [VulkanAppBase] [INFO] VulkanGraphApplication initialized successfully
+[02:57:13.525] [VulkanAppBase] [DEBUG] VulkanGraphApplication::Initialize() - COMPLETE
+[02:57:13.525] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] START
+[02:57:13.525] [VulkanAppBase] [INFO] [VulkanGraphApplication::Prepare] Calling BuildRenderGraph...
+[02:57:13.526] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=100 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.533] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=100 occupancyGrid=16^3
+[02:57:13.534] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=101 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.550] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=101 occupancyGrid=16^3
+[02:57:13.551] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=102 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.557] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=102 occupancyGrid=16^3
+[02:57:13.558] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=103 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.570] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=103 occupancyGrid=16^3
+[02:57:13.571] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=104 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.577] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=104 occupancyGrid=16^3
+[02:57:13.578] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=105 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.591] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=105 occupancyGrid=16^3
+[02:57:13.592] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=106 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.598] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=106 occupancyGrid=16^3
+[02:57:13.598] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=107 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.604] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=107 occupancyGrid=16^3
+[02:57:13.604] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=108 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.614] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=108 occupancyGrid=16^3
+[02:57:13.614] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=109 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.624] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=109 occupancyGrid=16^3
+[02:57:13.624] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=110 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.631] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=110 occupancyGrid=16^3
+[02:57:13.631] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=111 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.655] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=111 occupancyGrid=16^3
+[02:57:13.655] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=112 boundRadius=9.000000 (authored) stepRelaxation=0.900000 (authored)
+[02:57:13.662] [VulkanAppBase] [INFO] [VulkanGraphApplication::RegisterProceduralRecipe] recipeId=112 occupancyGrid=16^3
+[02:57:13.662] [VulkanAppBase] [INFO] Building complete render pipeline with typed connections
+[02:57:13.663] [VulkanAppBase] [INFO] Created node instances (including compute pipeline, camera, voxel grid, gatherers, selection provider, and UI composite pass)
+[02:57:13.663] [VulkanAppBase] [INFO] [BuildRenderGraph] Render-path scale=1.000000 (1.0 = full resolution)
+[02:57:13.663] [VulkanAppBase] [INFO] [BuildRenderGraph] DDGI probe atlases: irradiance 512x64 RGBA16F, visibility 1024x128 RG16F (default 8x8x8 probe grid)
+[02:57:13.664] [VulkanAppBase] [INFO] [BuildRenderGraph] B1 occlusion probe enabled: depth 500x500 ping-pong, HiZ tiles 32x32
+[02:57:13.664] [VulkanAppBase] [INFO] [BuildRenderGraph] Loop ID set, moving to shader library...
+[02:57:13.664] [VulkanAppBase] [INFO] [BuildRenderGraph] VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE: raySizeCoef forced to 0.001657 (bypasses RaySizeCoefNode entirely for this run)
+[02:57:13.664] [VulkanAppBase] [INFO] [BuildRenderGraph] M4b: secondary-ray (shadow/probe) raySizeCoef=0.050000 (VIXEN_SECONDARY_RAY_SIZE_COEF env; default 0.05)
+[02:57:13.665] [VulkanAppBase] [INFO] [BuildRenderGraph] composed traversal predicate: OFF (no far-field/orbital scene demand); no override
+[02:57:13.665] [VulkanAppBase] [INFO] [BuildRenderGraph] Registered VoxelRayMarch shader builder
+[02:57:13.665] [VulkanAppBase] [INFO] [BuildRenderGraph] Setting primary dispatch dims: 62x62x1 (render extent 500x500, presentation 500x500)
+[02:57:13.665] [VulkanAppBase] [INFO] [BuildRenderGraph] ProbeGather/Apply sparse dispatch (Inc6 M1 shape): probeCount=512 amortizationFactor=8 -> dispatchX=64; ShadowRayTrace waveDispatchX=2048 (slots=131072)
+[02:57:13.666] [VulkanAppBase] [INFO] [BuildRenderGraph] Seeded 3 Procedural SDF body instances (standalone fallback)
+[02:57:13.666] [VulkanAppBase] [INFO] Mounted building-inspector fragment (M-ui), handle 1
+[02:57:13.666] [VulkanAppBase] [INFO] Configured all node parameters (including camera, voxel grid, and UI composite pass)
+[02:57:13.667] [VulkanAppBase] [INFO] Wiring node connections using TypedConnection API
+[02:57:13.667] [VulkanAppBase] [INFO] [BuildRenderGraph] March descriptors wired from merged SDI (sceneProviders registry)
+[02:57:13.668] [VulkanAppBase] [ERROR] [VulkanGraphApplication::Prepare] Prepare failed: Unbound sub-graph input port 1 in render_path/upscaler
+[02:57:13.668] [VulkanAppBase] [ERROR] [Run] Prepare failed: Prepare failed: Unbound sub-graph input port 1 in render_path/upscaler - aborting before render loop
+[02:57:13.669] [VulkanAppBase] [INFO] Published ApplicationShuttingDownEvent
+[02:57:13.671] [VulkanAppBase] [INFO] Logs written to C:\Users\liory\AppData\Local\Temp\vixen_main_14100\vulkan_app_log.txt
+[02:57:13.671] [VulkanAppBase] [INFO] [DeInitialize] Destroying render graph...
+[02:57:13.671] [VulkanAppBase] [INFO] [RenderGraph::Clear] Saving persistent caches to: C:/vixen-native/upscalestage1/build/stage1-merged-native/runtime-cache
+[02:57:13.676] [VulkanAppBase] [INFO] [RenderGraph::Clear] Persistent caches saved successfully
+[02:57:13.676] [VulkanAppBase] [INFO] [RenderGraph::ExecuteCleanup] Executing cleanup callbacks...
+[02:57:13.676] [VulkanAppBase] [INFO] [RenderGraph::ExecuteCleanup] Cleanup already executed, skipping
+[02:57:13.678] [VulkanAppBase] [INFO] [DeInitialize] EngineContext (graph + registry + bus + calibration) destroyed
+[02:57:13.678] [VulkanAppBase] [INFO] [DeInitialize] Calling base class DeInitialize...
+[02:57:13.687] [VulkanAppBase] [INFO] [DeInitialize] Base class DeInitialize complete
+[02:57:13.687] [VulkanAppBase] [INFO] VulkanGraphApplication deinitialized
+C:\vixen-native\upscalestage1\VIXEN\application\main\tests\test_lookdev_capture.cpp(265): error: Value of: CaptureSequence(outputDir, scenarios, error)
+  Actual: false
+Expected: true
+application exited before all look-dev captures were written
+
+[  FAILED  ] LookdevCapture.RendersFourStatesAtFourAnglesDeterministically (319 ms)
+[----------] 1 test from LookdevCapture (321 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (326 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
+
+ 1 FAILED TEST
