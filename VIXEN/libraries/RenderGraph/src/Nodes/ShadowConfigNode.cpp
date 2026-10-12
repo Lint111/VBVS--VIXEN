@@ -99,7 +99,11 @@ void ShadowConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Static default content (no UI/authoring this increment). Re-uploaded every
     // frame anyway: 16 B is negligible and this keeps the node ready for a future
     // SetShadowConfig() with no rewiring.
-    const Vixen::Gpu::ShadowConfig cfg = MakeDefaultShadowConfig();
+    Vixen::Gpu::ShadowConfig cfg = MakeDefaultShadowConfig();
+    if (overrideActive_) {
+        cfg.maxShadowDistance = overrideMaxShadowDistance_;
+        cfg.biasEpsilon       = overrideBiasEpsilon_;
+    }
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

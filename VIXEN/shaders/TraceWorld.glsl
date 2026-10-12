@@ -362,7 +362,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bool farSubPixel = false;
                 if (pc.raySizeCoef > 0.0) {
                     float footprint = entryTWorld * pc.raySizeCoef + pc.raySizeBias;
-                    farSubPixel = footprint >= 2.0 * boundRadius;
+                    // footprint is world metres; boundRadius is instance-local, so convert it.
+                    farSubPixel = footprint >= 2.0 * boundRadius * worldUnitsPerInstUnit;
                 }
 
                 if (farSubPixel) {

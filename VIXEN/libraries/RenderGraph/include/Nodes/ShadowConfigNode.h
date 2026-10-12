@@ -54,6 +54,15 @@ public:
     ShadowConfigNode(const std::string& instanceName, NodeType* nodeType);
     ~ShadowConfigNode() override = default;
 
+    // Optional per-scene override of the default reach and bias (world units). A scene whose
+    // bodies span many orders of magnitude needs a bias above the float ulp of its dominant
+    // body; callers that never set it keep the default content unchanged.
+    void SetReachAndBias(float maxShadowDistance, float biasEpsilon) {
+        overrideActive_ = true;
+        overrideMaxShadowDistance_ = maxShadowDistance;
+        overrideBiasEpsilon_ = biasEpsilon;
+    }
+
 protected:
     void TypedSetupImpl(TypedSetupContext&    ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -64,6 +73,9 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
+    bool overrideActive_ = false;
+    float overrideMaxShadowDistance_ = 0.0f;
+    float overrideBiasEpsilon_ = 0.0f;
 };
 
 } // namespace Vixen::RenderGraph
