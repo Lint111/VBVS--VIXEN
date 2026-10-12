@@ -47,7 +47,7 @@ target_compile_definitions(test_hlsl_ingestion PRIVATE
     SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
 )
 include(GoogleTest)
-gtest_discover_tests(test_hlsl_ingestion WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_hlsl_ingestion WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Probe-update reusability smoke test (Sampled Lighting Inc4 M1) — separate
 # executable, no Vulkan device dependency, mirrors test_hlsl_ingestion above.
@@ -64,7 +64,7 @@ set_target_properties(test_probe_update_smoke PROPERTIES FOLDER "Tests/ShaderMan
 target_compile_definitions(test_probe_update_smoke PRIVATE
     VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders")
 include(GoogleTest)
-gtest_discover_tests(test_probe_update_smoke WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_probe_update_smoke WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # ShaderFamily (Semantic Shader Wiring S2 synthesis slice B) — separate
 # executable; real glslang compiles CPU-side, no Vulkan device.
@@ -79,7 +79,7 @@ target_link_libraries(test_shader_family
 )
 set_target_properties(test_shader_family PROPERTIES FOLDER "Tests/ShaderManagement Tests")
 include(GoogleTest)
-gtest_discover_tests(test_shader_family WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_shader_family WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Async shader compilation regression: uses the shared budgeted blocking lane.
 add_executable(test_async_shader_bundle_builder
@@ -92,7 +92,7 @@ target_link_libraries(test_async_shader_bundle_builder
         gtest_main
 )
 set_target_properties(test_async_shader_bundle_builder PROPERTIES FOLDER "Tests/ShaderManagement Tests")
-gtest_discover_tests(test_async_shader_bundle_builder WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_async_shader_bundle_builder WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Feature-tagged SDI variant merge (Semantic Shader Wiring S0) — separate
 # executable, pure data-level, no Vulkan device / no glslang compile.
@@ -107,7 +107,7 @@ target_link_libraries(test_sdi_variant_merge
 )
 set_target_properties(test_sdi_variant_merge PROPERTIES FOLDER "Tests/ShaderManagement Tests")
 include(GoogleTest)
-gtest_discover_tests(test_sdi_variant_merge WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_sdi_variant_merge WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Per-binding access from SPIR-V decorations (Semantic Shader Wiring S3
 # sub-slice 1) — real glslang compile + reflection, CPU-side, no Vulkan device
@@ -123,7 +123,7 @@ target_link_libraries(test_spirv_access
         gtest_main
 )
 set_target_properties(test_spirv_access PROPERTIES FOLDER "Tests/ShaderManagement Tests")
-gtest_discover_tests(test_spirv_access WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+vixen_gtest_discover_tests(ShaderManagement test_spirv_access WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
 # feature-variant interface from the committed manifest and fails (exit 6)
@@ -154,7 +154,7 @@ set_target_properties(ShaderManagementTests PROPERTIES FOLDER "Tests/ShaderManag
 
 # Discover tests
 include(GoogleTest)
-gtest_discover_tests(ShaderManagementTests
+vixen_gtest_discover_tests(ShaderManagement ShaderManagementTests
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )
 

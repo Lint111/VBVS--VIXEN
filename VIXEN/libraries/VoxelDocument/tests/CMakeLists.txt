@@ -12,4 +12,4 @@ set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Test
 
 # This CPU-only module test deliberately uses ordinary GoogleTest discovery so CTest does not
 # attach the RenderGraph suite's Vulkan loader environment.
-gtest_discover_tests(test_editor_document_model_preview)
+vixen_gtest_discover_tests(VoxelDocument test_editor_document_model_preview)

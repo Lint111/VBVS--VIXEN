@@ -48,7 +48,7 @@ set_target_properties(test_vulkan_buffer_allocator PROPERTIES FOLDER "Tests/Reso
 
 # Register tests with CTest
 include(GoogleTest)
-gtest_discover_tests(test_resourcemanagement_basic)
-gtest_discover_tests(test_resource_management)
-gtest_discover_tests(test_budget_manager_integration)
-gtest_discover_tests(test_vulkan_buffer_allocator)
+vixen_gtest_discover_tests(ResourceManagement test_resourcemanagement_basic)
+vixen_gtest_discover_tests(ResourceManagement test_resource_management)
+vixen_gtest_discover_tests(ResourceManagement test_budget_manager_integration)
+vixen_gtest_discover_tests(ResourceManagement test_vulkan_buffer_allocator)

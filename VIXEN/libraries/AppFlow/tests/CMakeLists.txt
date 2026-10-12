@@ -24,6 +24,6 @@ target_include_directories(test_keychord PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..
 
 if(COMMAND gtest_discover_tests)
     foreach(t test_appflow_golden test_action_stack test_flow_state_machine test_binding_store test_appflow_loader test_appflow_data_seam test_layer_controller test_snapshot_undo test_input_profile test_keychord test_binding_pattern test_flow_return test_return_dispatch test_appflow_blob)
-        gtest_discover_tests(${t})
+        vixen_gtest_discover_tests(AppFlow ${t})
     endforeach()
 endif()
