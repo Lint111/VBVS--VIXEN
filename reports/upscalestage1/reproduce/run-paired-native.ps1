@@ -152,8 +152,12 @@ function Invoke-Capture(
         throw "Timed out after $TimeoutSeconds seconds: $runLabel"
     }
     Record-GpuTelemetry $runLabel 'after'
-    if ($process.ExitCode -ne 0) {
-        throw "Capture failed with exit code $($process.ExitCode): $runLabel; see $stdout and $stderr"
+    $process.Refresh()
+    $exitCode = $process.ExitCode
+    $passMarker = Select-String -Path $stdout -Pattern '^\[  PASSED  \] 1 test\.$' -Quiet
+    if (($null -ne $exitCode -and $exitCode -ne 0) -or
+        ($null -eq $exitCode -and -not $passMarker)) {
+        throw "Capture failed with exit code ${exitCode}: $runLabel; see $stdout and $stderr"
     }
     if (-not (Test-Path $csv)) { throw "Performance CSV was not written: $runLabel" }
     $captureCount = @(Get-ChildItem $captureDir -Filter '*.png' -ErrorAction SilentlyContinue).Count
