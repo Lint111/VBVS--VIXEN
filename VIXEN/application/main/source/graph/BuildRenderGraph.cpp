@@ -10127,14 +10127,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     }
+    // IMAGE_READ is the required native fallback declared by BlitNodeConfig; the optional
+    // UPSCALED_IMAGE_READ input overrides it when the selected typed upscaler module is present.
+    // Keep the fallback bound for both paths so graph validation doesn't depend on which module
+    // was selected.
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     if (upscalerModule.has_value()) {
         renderGraph->Connect(*upscalerModule, UpscalerModulePorts::UPSCALED_TARGET,
                              blitNode, BlitNodeConfig::UPSCALED_IMAGE_READ);
         renderGraph->Connect(*upscalerModule, UpscalerModulePorts::RENDER_COMPLETE,
                              blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
-    } else {
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     }
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
     // doc): establishes the SpatialReuse-before-Blit TOPOLOGY (Sampled Lighting Inc3 M5 — moved
