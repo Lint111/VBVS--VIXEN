@@ -66,6 +66,28 @@ inline mask operator!(mask a) { return mask(_mm_xor_ps(a.value, _mm_castsi128_ps
 inline f32 select(f32 whenFalse, f32 whenTrue, mask condition) {
     return f32(_mm_or_ps(_mm_and_ps(condition.value, whenTrue.value), _mm_andnot_ps(condition.value, whenFalse.value)));
 }
+inline mask mask_from_bools(bool a, bool b, bool c, bool d) { return mask(_mm_castsi128_ps(_mm_set_epi32(d ? -1 : 0, c ? -1 : 0, b ? -1 : 0, a ? -1 : 0))); }
+struct alignas(16) f64 {
+    __m128d lo, hi;
+    f64() : lo(_mm_setzero_pd()), hi(_mm_setzero_pd()) {}
+    f64(double v) : lo(_mm_set1_pd(v)), hi(_mm_set1_pd(v)) {}
+    f64(__m128d a, __m128d b) : lo(a), hi(b) {}
+    static f64 load_aligned(const double* p) { return f64(_mm_load_pd(p), _mm_load_pd(p + 2)); }
+    static f64 from_lanes(const double* p) { return f64(_mm_loadu_pd(p), _mm_loadu_pd(p + 2)); }
+    void store_unaligned(double* p) const { _mm_storeu_pd(p, lo); _mm_storeu_pd(p + 2, hi); }
+};
+inline f64 operator+(f64 a, f64 b) { return f64(_mm_add_pd(a.lo, b.lo), _mm_add_pd(a.hi, b.hi)); }
+inline f64 operator-(f64 a, f64 b) { return f64(_mm_sub_pd(a.lo, b.lo), _mm_sub_pd(a.hi, b.hi)); }
+inline f64 operator*(f64 a, f64 b) { return f64(_mm_mul_pd(a.lo, b.lo), _mm_mul_pd(a.hi, b.hi)); }
+inline f64 operator/(f64 a, f64 b) { return f64(_mm_div_pd(a.lo, b.lo), _mm_div_pd(a.hi, b.hi)); }
+inline f64 operator-(f64 a) { const __m128d sign = _mm_set1_pd(-0.0); return f64(_mm_xor_pd(a.lo, sign), _mm_xor_pd(a.hi, sign)); }
+inline mask operator<(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmplt_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmplt_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator>(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpgt_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpgt_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator<=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmple_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmple_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator>=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpge_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpge_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator==(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpeq_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpeq_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator!=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpneq_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpneq_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline f64 select(f64 whenFalse, f64 whenTrue, mask condition) { alignas(16) double f[4], t[4], r[4]; whenFalse.store_unaligned(f); whenTrue.store_unaligned(t); int bits = _mm_movemask_ps(condition.value); for (int i=0;i<4;++i) r[i] = (bits & (1 << i)) ? t[i] : f[i]; return f64::from_lanes(r); }
 inline std::uint32_t runtime_ftz_daz_fingerprint() { return _mm_getcsr() & ((1u << 15) | (1u << 6)); }
 #else
 struct alignas(16) mask { bool lane[4]; };
@@ -92,8 +114,46 @@ inline mask operator&(mask a, mask b) { mask r{}; for (int i = 0; i < 4; ++i) r.
 inline mask operator|(mask a, mask b) { mask r{}; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] || b.lane[i]; return r; }
 inline mask operator!(mask a) { mask r{}; for (int i = 0; i < 4; ++i) r.lane[i] = !a.lane[i]; return r; }
 inline f32 select(f32 whenFalse, f32 whenTrue, mask condition) { f32 r; for (int i = 0; i < 4; ++i) r.lane[i] = condition.lane[i] ? whenTrue.lane[i] : whenFalse.lane[i]; return r; }
+inline mask mask_from_bools(bool a, bool b, bool c, bool d) { return mask{{a, b, c, d}}; }
+struct alignas(16) f64 {
+    double lane[4];
+    f64() : lane{0.0, 0.0, 0.0, 0.0} {}
+    f64(double v) : lane{v, v, v, v} {}
+    static f64 load_aligned(const double* p) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = p[i]; return r; }
+    static f64 from_lanes(const double* p) { return load_aligned(p); }
+    void store_unaligned(double* p) const { for (int i = 0; i < 4; ++i) p[i] = lane[i]; }
+};
+inline f64 operator+(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] + b.lane[i]; return r; }
+inline f64 operator-(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] - b.lane[i]; return r; }
+inline f64 operator*(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] * b.lane[i]; return r; }
+inline f64 operator/(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] / b.lane[i]; return r; }
+inline f64 operator-(f64 a) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = -a.lane[i]; return r; }
+inline mask operator<(f64 a, f64 b) { return mask_from_bools(a.lane[0] < b.lane[0], a.lane[1] < b.lane[1], a.lane[2] < b.lane[2], a.lane[3] < b.lane[3]); }
+inline mask operator>(f64 a, f64 b) { return mask_from_bools(a.lane[0] > b.lane[0], a.lane[1] > b.lane[1], a.lane[2] > b.lane[2], a.lane[3] > b.lane[3]); }
+inline mask operator<=(f64 a, f64 b) { return mask_from_bools(a.lane[0] <= b.lane[0], a.lane[1] <= b.lane[1], a.lane[2] <= b.lane[2], a.lane[3] <= b.lane[3]); }
+inline mask operator>=(f64 a, f64 b) { return mask_from_bools(a.lane[0] >= b.lane[0], a.lane[1] >= b.lane[1], a.lane[2] >= b.lane[2], a.lane[3] >= b.lane[3]); }
+inline mask operator==(f64 a, f64 b) { return mask_from_bools(a.lane[0] == b.lane[0], a.lane[1] == b.lane[1], a.lane[2] == b.lane[2], a.lane[3] == b.lane[3]); }
+inline mask operator!=(f64 a, f64 b) { return mask_from_bools(a.lane[0] != b.lane[0], a.lane[1] != b.lane[1], a.lane[2] != b.lane[2], a.lane[3] != b.lane[3]); }
+inline f64 select(f64 whenFalse, f64 whenTrue, mask condition) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = condition.lane[i] ? whenTrue.lane[i] : whenFalse.lane[i]; return r; }
 inline std::uint32_t runtime_ftz_daz_fingerprint() { return 0u; }
 #endif
+
+inline f32& operator+=(f32& a, f32 b) { a = a + b; return a; }
+inline f32& operator-=(f32& a, f32 b) { a = a - b; return a; }
+inline f32& operator*=(f32& a, f32 b) { a = a * b; return a; }
+inline f32& operator/=(f32& a, f32 b) { a = a / b; return a; }
+inline f32& operator++(f32& a) { a += f32(1.0f); return a; }
+inline f32 operator++(f32& a, int) { f32 old = a; ++a; return old; }
+inline f32& operator--(f32& a) { a -= f32(1.0f); return a; }
+inline f32 operator--(f32& a, int) { f32 old = a; --a; return old; }
+inline f64& operator+=(f64& a, f64 b) { a = a + b; return a; }
+inline f64& operator-=(f64& a, f64 b) { a = a - b; return a; }
+inline f64& operator*=(f64& a, f64 b) { a = a * b; return a; }
+inline f64& operator/=(f64& a, f64 b) { a = a / b; return a; }
+inline f64& operator++(f64& a) { a += f64(1.0); return a; }
+inline f64 operator++(f64& a, int) { f64 old = a; ++a; return old; }
+inline f64& operator--(f64& a) { a -= f64(1.0); return a; }
+inline f64 operator--(f64& a, int) { f64 old = a; --a; return old; }
 
 struct f32x3 {
     f32 yk_col0, yk_col1, yk_col2;
@@ -106,6 +166,33 @@ inline f32x3 operator*(f32x3 a, f32x3 b) { return {a.yk_col0*b.yk_col0, a.yk_col
 inline f32x3 operator*(f32x3 a, f32 b) { return {a.yk_col0*b, a.yk_col1*b, a.yk_col2*b}; }
 inline f32x3 operator*(f32 a, f32x3 b) { return b*a; }
 inline f32x3 operator-(f32x3 a) { return {-a.yk_col0, -a.yk_col1, -a.yk_col2}; }
+inline f32x3& operator+=(f32x3& a, f32x3 b) { a = a + b; return a; }
+inline f32x3& operator-=(f32x3& a, f32x3 b) { a = a - b; return a; }
+inline f32x3& operator*=(f32x3& a, f32x3 b) { a = a * b; return a; }
+inline f32x3& operator++(f32x3& a) { a += f32x3(f32(1.0f), f32(1.0f), f32(1.0f)); return a; }
+inline f32x3 operator++(f32x3& a, int) { f32x3 old = a; ++a; return old; }
+inline f32x3& operator--(f32x3& a) { a -= f32x3(f32(1.0f), f32(1.0f), f32(1.0f)); return a; }
+inline f32x3 operator--(f32x3& a, int) { f32x3 old = a; --a; return old; }
+struct f64x3 {
+    f64 yk_col0, yk_col1, yk_col2;
+    f64x3() = default;
+    f64x3(f64 x, f64 y, f64 z) : yk_col0(x), yk_col1(y), yk_col2(z) {}
+};
+inline f64x3 operator+(f64x3 a, f64x3 b) { return {a.yk_col0+b.yk_col0, a.yk_col1+b.yk_col1, a.yk_col2+b.yk_col2}; }
+inline f64x3 operator-(f64x3 a, f64x3 b) { return {a.yk_col0-b.yk_col0, a.yk_col1-b.yk_col1, a.yk_col2-b.yk_col2}; }
+inline f64x3 operator*(f64x3 a, f64x3 b) { return {a.yk_col0*b.yk_col0, a.yk_col1*b.yk_col1, a.yk_col2*b.yk_col2}; }
+inline f64x3 operator/(f64x3 a, f64x3 b) { return {a.yk_col0/b.yk_col0, a.yk_col1/b.yk_col1, a.yk_col2/b.yk_col2}; }
+inline f64x3 operator*(f64x3 a, f64 b) { return {a.yk_col0*b, a.yk_col1*b, a.yk_col2*b}; }
+inline f64x3 operator*(f64 a, f64x3 b) { return b*a; }
+inline f64x3 operator-(f64x3 a) { return {-a.yk_col0, -a.yk_col1, -a.yk_col2}; }
+inline f64x3& operator+=(f64x3& a, f64x3 b) { a = a + b; return a; }
+inline f64x3& operator-=(f64x3& a, f64x3 b) { a = a - b; return a; }
+inline f64x3& operator*=(f64x3& a, f64x3 b) { a = a * b; return a; }
+inline f64x3& operator/=(f64x3& a, f64x3 b) { a = a / b; return a; }
+inline f64x3& operator++(f64x3& a) { a += f64x3(f64(1.0), f64(1.0), f64(1.0)); return a; }
+inline f64x3 operator++(f64x3& a, int) { f64x3 old = a; ++a; return old; }
+inline f64x3& operator--(f64x3& a) { a -= f64x3(f64(1.0), f64(1.0), f64(1.0)); return a; }
+inline f64x3 operator--(f64x3& a, int) { f64x3 old = a; --a; return old; }
 
 struct dual {
     f32 value, gx, gy, gz;
@@ -352,6 +439,56 @@ struct LaneSpanF32 {
             base[gather_index(laneBase + lane)] = lanes[lane];
         }
     }
+};
+struct LaneSpanF64 {
+    double* base;
+    std::size_t logical_count;
+    std::size_t padded_capacity;
+    AccessMode access;
+    IterationMapping mapping;
+    std::uint64_t layout_fingerprint;
+    const std::uint8_t* filter = nullptr;
+    const std::size_t* indices = nullptr;
+    bool padding_is_deterministic = true;
+    bool allows(AccessMode required) const { if (required == AccessMode::ReadOnly) return access != AccessMode::WriteOnly; if (required == AccessMode::WriteOnly) return access != AccessMode::ReadOnly; return access == AccessMode::ReadWrite; }
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const {
+        if (base == nullptr && padded_capacity != 0) return {false, PromotionReason::NullBase};
+        if ((reinterpret_cast<std::uintptr_t>(base) & 15u) != 0u) return {false, PromotionReason::MisalignedBase};
+        if ((padded_capacity & 3u) != 0u) return {false, PromotionReason::CapacityNotLaneMultiple};
+        if (logical_count > padded_capacity) return {false, PromotionReason::CountExceedsCapacity};
+        if (!allows(required)) return {false, PromotionReason::AccessModeMismatch};
+        if (layout_fingerprint != expected) return {false, PromotionReason::LayoutFingerprintMismatch};
+        if (!padding_is_deterministic) return {false, PromotionReason::PaddingNotDeterministic};
+        if (mapping == IterationMapping::FilteredDense && logical_count != 0 && filter == nullptr) return {false, PromotionReason::MissingFilter};
+        if (mapping == IterationMapping::SparseMayAlias) return {false, PromotionReason::DuplicateSparseDestination};
+        if (mapping == IterationMapping::SparseUnique) {
+            if (logical_count != 0 && indices == nullptr) return {false, PromotionReason::MissingIndices};
+            for (std::size_t i = 0; i < logical_count; ++i) { if (indices[i] >= padded_capacity) return {false, PromotionReason::SparseIndexOutOfRange}; if (filter != nullptr && filter[i] == 0) continue; for (std::size_t j = 0; j < i; ++j) { if (filter != nullptr && filter[j] == 0) continue; if (indices[i] == indices[j]) return {false, PromotionReason::DuplicateSparseDestination}; } }
+        } else if (mapping != IterationMapping::Dense && mapping != IterationMapping::FilteredDense) return {false, PromotionReason::UnsupportedIterationMapping};
+        return {true, PromotionReason::Admitted};
+    }
+    std::size_t gather_index(std::size_t i) const { return mapping == IterationMapping::SparseUnique ? indices[i] : i; }
+    std::uint8_t active_mask(std::size_t laneBase) const { std::uint8_t bits = 0u; for (std::size_t lane = 0; lane < 4; ++lane) { const std::size_t logical = laneBase + lane; if (logical < logical_count && (filter == nullptr || filter[logical] != 0)) bits |= static_cast<std::uint8_t>(1u << lane); } return bits; }
+    f64 load(std::size_t laneBase) const { assert(allows(AccessMode::ReadOnly)); if (mapping != IterationMapping::SparseUnique) { assert(laneBase + 4 <= padded_capacity); return f64::load_aligned(base + laneBase); } alignas(16) double lanes[4] = {0.0, 0.0, 0.0, 0.0}; const std::uint8_t active = active_mask(laneBase); for (std::size_t lane = 0; lane < 4; ++lane) if ((active & (1u << lane)) != 0) lanes[lane] = base[gather_index(laneBase + lane)]; return f64::from_lanes(lanes); }
+    void store(std::size_t laneBase, f64 value, std::uint8_t active) const { assert(allows(AccessMode::WriteOnly)); alignas(16) double lanes[4]; value.store_unaligned(lanes); for (std::size_t lane = 0; lane < 4; ++lane) { if ((active & (1u << lane)) == 0) continue; base[gather_index(laneBase + lane)] = lanes[lane]; } }
+};
+struct LaneSpanF32x3 {
+    LaneSpanF32 x, y, z;
+    std::size_t logical_count;
+    LaneSpanF32x3(LaneSpanF32 a, LaneSpanF32 b, LaneSpanF32 c) : x(a), y(b), z(c), logical_count(a.logical_count) {}
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const { if (y.logical_count != logical_count || z.logical_count != logical_count || y.padded_capacity != x.padded_capacity || z.padded_capacity != x.padded_capacity || y.access != x.access || z.access != x.access || y.mapping != x.mapping || z.mapping != x.mapping || y.layout_fingerprint != x.layout_fingerprint || z.layout_fingerprint != x.layout_fingerprint || y.filter != x.filter || z.filter != x.filter || y.indices != x.indices || z.indices != x.indices || y.padding_is_deterministic != x.padding_is_deterministic || z.padding_is_deterministic != x.padding_is_deterministic) return {false, PromotionReason::UnsupportedIterationMapping}; PromotionDecision a = x.promotion(expected, required); if (!a.promoted) return a; a = y.promotion(expected, required); if (!a.promoted) return a; return z.promotion(expected, required); }
+    std::uint8_t active_mask(std::size_t laneBase) const { return x.active_mask(laneBase); }
+    f32x3 load(std::size_t laneBase) const { return {x.load(laneBase), y.load(laneBase), z.load(laneBase)}; }
+    void store(std::size_t laneBase, f32x3 value, std::uint8_t active) const { x.store(laneBase, value.yk_col0, active); y.store(laneBase, value.yk_col1, active); z.store(laneBase, value.yk_col2, active); }
+};
+struct LaneSpanF64x3 {
+    LaneSpanF64 x, y, z;
+    std::size_t logical_count;
+    LaneSpanF64x3(LaneSpanF64 a, LaneSpanF64 b, LaneSpanF64 c) : x(a), y(b), z(c), logical_count(a.logical_count) {}
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const { if (y.logical_count != logical_count || z.logical_count != logical_count || y.padded_capacity != x.padded_capacity || z.padded_capacity != x.padded_capacity || y.access != x.access || z.access != x.access || y.mapping != x.mapping || z.mapping != x.mapping || y.layout_fingerprint != x.layout_fingerprint || z.layout_fingerprint != x.layout_fingerprint || y.filter != x.filter || z.filter != x.filter || y.indices != x.indices || z.indices != x.indices || y.padding_is_deterministic != x.padding_is_deterministic || z.padding_is_deterministic != x.padding_is_deterministic) return {false, PromotionReason::UnsupportedIterationMapping}; PromotionDecision a = x.promotion(expected, required); if (!a.promoted) return a; a = y.promotion(expected, required); if (!a.promoted) return a; return z.promotion(expected, required); }
+    std::uint8_t active_mask(std::size_t laneBase) const { return x.active_mask(laneBase); }
+    f64x3 load(std::size_t laneBase) const { return {x.load(laneBase), y.load(laneBase), z.load(laneBase)}; }
+    void store(std::size_t laneBase, f64x3 value, std::uint8_t active) const { x.store(laneBase, value.yk_col0, active); y.store(laneBase, value.yk_col1, active); z.store(laneBase, value.yk_col2, active); }
 };
 } // namespace yk::simd4
 #endif // YK_SIMD4_RUNTIME_V2
