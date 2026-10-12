@@ -174,6 +174,62 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Connect a resolved sub-graph output to a reflected push field.
+     *
+     * The group boundary is resolved by RenderGraph, so callers do not need
+     * to know the module's internal node type or output index. Its declared
+     * PortConfig type has already been checked against the target stage slot.
+     */
+    ConnectionBatch& ConnectResolvedOutput(NodeHandle source, uint32_t sourceOutput,
+                                           NodeHandle target, uint32_t targetBinding,
+                                           SlotRole roles) {
+        PendingConnection pending;
+        pending.context.sourceNode = graph->GetInstance(source);
+        pending.context.targetNode = graph->GetInstance(target);
+        pending.context.graph = graph;
+        if (!pending.context.sourceNode || !pending.context.targetNode) {
+            throw std::runtime_error("Resolved sub-graph output has an invalid node handle");
+        }
+        const ResourceDescriptor* descriptor =
+            pending.context.sourceNode->GetNodeType()->GetOutputDescriptor(sourceOutput);
+        if (!descriptor) {
+            throw std::runtime_error("Resolved sub-graph output has an invalid member slot");
+        }
+
+        SlotInfo sourceInfo{};
+        sourceInfo.index = sourceOutput;
+        sourceInfo.resourceType = descriptor->type;
+        sourceInfo.nullability = descriptor->nullable ? SlotNullability::Optional
+                                                      : SlotNullability::Required;
+        sourceInfo.role = descriptor->role;
+        sourceInfo.mutability = descriptor->mutability;
+        sourceInfo.accessKind = descriptor->accessKind;
+        sourceInfo.name = descriptor->name;
+        sourceInfo.kind = SlotKind::StaticOutput;
+        sourceInfo.state = SlotState::Compiled;
+        pending.context.sourceSlot = sourceInfo;
+        PopulateSourceLifetime(pending.context, sourceOutput);
+
+        SlotInfo targetInfo{};
+        targetInfo.binding = targetBinding;
+        targetInfo.descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+        targetInfo.role = SlotRole::Dependency;
+        targetInfo.kind = SlotKind::Binding;
+        targetInfo.state = SlotState::Tentative;
+        pending.context.targetSlot = targetInfo;
+
+        pending.rule = registry_.FindRule(pending.context.sourceSlot,
+                                           pending.context.targetSlot);
+        if (!pending.rule) {
+            throw std::runtime_error("Resolved sub-graph output has no compatible binding rule");
+        }
+        ConnectionMeta meta = ConnectionMeta{}.With<SlotRoleModifier>(roles);
+        pending.modifiers = std::move(meta.modifiers);
+        pendingConnections_.push_back(std::move(pending));
+        return *this;
+    }
+
     PresentationTargetContract GetPresentationTargetContract(NodeHandle target) const {
         const auto* instance = graph->GetInstance(target);
         const auto contract = instance ? instance->GetNodeType()->GetPresentationTargetContract() : std::nullopt;

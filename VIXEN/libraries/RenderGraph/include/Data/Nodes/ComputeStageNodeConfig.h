@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 22;  // W3c-2: + ORDERING_WAIT_SEMAPHORE (21)
+    static constexpr size_t INPUTS  = 23;  // R495: optional module indirect-light input (22)
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -428,6 +428,13 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /** @brief Optional irradiance supplied by a capability-selected lighting module. */
+    INPUT_SLOT(INDIRECT_LIGHTING, glm::vec3, 22,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -537,6 +544,10 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         HandleDescriptor orderingSemDesc{"VkSemaphore"};
         INIT_INPUT_DESC(ORDERING_WAIT_SEMAPHORE, "ordering_wait_semaphore", ResourceLifetime::Transient, orderingSemDesc);
 
+        HandleDescriptor indirectLightingDesc{"glm::vec3"};
+        INIT_INPUT_DESC(INDIRECT_LIGHTING, "indirect_lighting",
+                        ResourceLifetime::Transient, indirectLightingDesc);
+
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
@@ -569,6 +580,10 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(IMAGE_READ_ARRAY_Slot::index == 20, "IMAGE_READ_ARRAY must be at index 20 (Sampled Lighting Inc4 M5: purely additive, appended after IMAGE_WRITE_ARRAY)");
     static_assert(std::is_same_v<IMAGE_READ_ARRAY_Slot::Type, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>>);
     static_assert(IMAGE_READ_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
+    static_assert(INDIRECT_LIGHTING_Slot::index == 22);
+    static_assert(INDIRECT_LIGHTING_Slot::nullable);
+    static_assert(INDIRECT_LIGHTING_Slot::role == SlotRole::Execute);
+    static_assert(std::is_same_v<INDIRECT_LIGHTING_Slot::Type, glm::vec3>);
 };
 
 } // namespace Vixen::RenderGraph

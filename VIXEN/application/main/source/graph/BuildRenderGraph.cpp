@@ -430,6 +430,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
+    // The capture executable is the only binary that registers this test module.
+    // Keep its explicit opt-in out of every ordinary/default graph build.
+    const bool testIndirectLightingEnabled =
+        envFlagEnabled("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING");
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
@@ -613,6 +617,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    SubGraphProviderSelection testIndirectLightingProvider;
+    if (testIndirectLightingEnabled) {
+        Vixen::CapabilityGraph testModuleCapabilities;
+        testModuleCapabilities.RegisterCapability(
+            std::make_shared<Vixen::CompositeCapability>("Test:IndirectLighting"));
+        testIndirectLightingProvider = renderGraph->InstantiateProviderForInput(
+            testModuleCapabilities, spatialReuseNode,
+            ComputeStageNodeConfig::INDIRECT_LIGHTING.index,
+            "capture_test_indirect_lighting");
+        if (!testIndirectLightingProvider.group.IsValid()) {
+            throw std::runtime_error(
+                "Test indirect-lighting capability did not select a registered provider group");
+        }
+    }
     // SpatialReuseShade reads the visibility bits that ShadowVisibilityWave writes into
     // HitRecordBuffer. Its shader descriptor is supplied through sceneProviders below; this
     // separate gatherer declares the GPU read hazard to ResourceAccessTracker.
@@ -9223,6 +9241,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the providers-before-synthesis rule, third application.
     SdiFeatureSet srsSdiFeatures;
     srsSdiFeatures.Enable(kFeatureMiningBeam);
+    if (testIndirectLightingProvider.group.IsValid()) {
+        batch.Connect(testIndirectLightingProvider.group,
+                      testIndirectLightingProvider.outputPort,
+                      spatialReuseNode, ComputeStageNodeConfig::INDIRECT_LIGHTING.index);
+        sceneProviders.ProvideSubGraphOutput(
+            "moduleIndirectIrradiance", testIndirectLightingProvider.group,
+            testIndirectLightingProvider.outputPort,
+            SlotRole::Dependency | SlotRole::Execute);
+    }
     if (hitAccumEnabled) {
         sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
@@ -9256,6 +9283,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseNode, lightingCommon, sceneProviders, srsSdiFeatures,
         SdiWireSet::DescriptorsOnly);
     spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
+    if (testIndirectLightingProvider.group.IsValid()) {
+        sceneProviders.Apply("moduleIndirectIrradiance", batch,
+                             spatialReusePushConstantGatherer,
+                             ReuseSdi::Push::moduleIndirectIrradiance::INDEX);
+    }
     CensusStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);

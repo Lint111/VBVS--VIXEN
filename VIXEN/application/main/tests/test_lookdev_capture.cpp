@@ -5,8 +5,12 @@
 #include "Nodes/DeviceNode.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Nodes/PushConstantGathererNode.h"
+#include "Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
+#include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"
 
 #include <gtest/gtest.h>
 
@@ -27,6 +31,65 @@
 
 namespace Vixen::RenderGraph {
 
+CONSTEXPR_NODE_CONFIG(TestIndirectIrradianceNodeConfig, 0, 1, SlotArrayMode::Single) {
+    OUTPUT_SLOT(INDIRECT_IRRADIANCE, glm::vec3, 0,
+                SlotNullability::Required, SlotMutability::WriteOnly);
+
+    TestIndirectIrradianceNodeConfig() {
+        HandleDescriptor irradianceDesc{"glm::vec3"};
+        INIT_OUTPUT_DESC(INDIRECT_IRRADIANCE, "indirect_irradiance",
+                         ResourceLifetime::Transient, irradianceDesc);
+    }
+};
+
+class TestIndirectIrradianceNode final : public TypedNode<TestIndirectIrradianceNodeConfig> {
+public:
+    TestIndirectIrradianceNode(const std::string& name, NodeType* nodeType)
+        : TypedNode(name, nodeType) {}
+
+protected:
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override {
+        ctx.Out(TestIndirectIrradianceNodeConfig::INDIRECT_IRRADIANCE,
+                glm::vec3(2.0f, 0.18f, 0.04f));
+    }
+};
+
+class TestIndirectIrradianceNodeType final
+    : public TypedNodeType<TestIndirectIrradianceNodeConfig> {
+public:
+    TestIndirectIrradianceNodeType() : TypedNodeType("TestIndirectIrradiance") {}
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override {
+        return std::make_unique<TestIndirectIrradianceNode>(
+            name, const_cast<TestIndirectIrradianceNodeType*>(this));
+    }
+};
+
+CONSTEXPR_NODE_CONFIG(TestIndirectLightingPorts, 0, 1, SlotArrayMode::Single) {
+    OUTPUT_SLOT(INDIRECT_LIGHTING, glm::vec3, 0,
+                SlotNullability::Required, SlotMutability::WriteOnly);
+
+    TestIndirectLightingPorts() {
+        HandleDescriptor irradianceDesc{"glm::vec3"};
+        INIT_OUTPUT_DESC(INDIRECT_LIGHTING, "moduleIndirectIrradiance",
+                         ResourceLifetime::Transient, irradianceDesc);
+    }
+};
+
+class TestIndirectLightingModule final : public SubGraphType<TestIndirectLightingModule> {
+public:
+    static constexpr std::string_view TYPE_NAME = "TestIndirectLightingModule";
+    static constexpr std::string_view CAPABILITY_NAME = "Test:IndirectLighting";
+    struct Params {};
+    using PortConfig = TestIndirectLightingPorts;
+
+    void Build(GraphScope& scope, const Params&) {
+        const NodeHandle source = scope.AddNode<TestIndirectIrradianceNodeType>("irradiance");
+        scope.BindOutput(TestIndirectLightingPorts::INDIRECT_LIGHTING, source,
+                         TestIndirectIrradianceNodeConfig::INDIRECT_IRRADIANCE);
+    }
+};
+
 class LightingConfigNodeTestAccess {
 public:
     static uint32_t FrameCount(const LightingConfigNode& node) {
@@ -44,6 +107,9 @@ public:
 };
 
 } // namespace Vixen::RenderGraph
+
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::TestIndirectIrradianceNodeType);
+VIXEN_REGISTER_NODE(Vixen::RenderGraph::TestIndirectLightingModule);
 
 namespace {
 
@@ -73,11 +139,21 @@ std::vector<CaptureScenario> BuildScenarios() {
     constexpr std::array<float, 4> yaws{{0.0f, 1.57079632679f, 3.14159265359f, 4.71238898038f}};
     const auto& presets = Vixen::App::Lookdev::LightingPresets();
     const char* requestedState = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
+    const char* requestedAngleText = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE");
+    int requestedAngle = -1;
+    if (requestedAngleText && *requestedAngleText != '\0') {
+        char* end = nullptr;
+        const long parsed = std::strtol(requestedAngleText, &end, 10);
+        if (end != requestedAngleText && *end == '\0' && parsed >= 0 && parsed < 4) {
+            requestedAngle = static_cast<int>(parsed);
+        }
+    }
     std::vector<CaptureScenario> scenarios;
     scenarios.reserve(presets.size() * yaws.size());
     for (const auto& preset : presets) {
         if (requestedState && preset.name != std::string(requestedState)) continue;
         for (size_t angle = 0; angle < yaws.size(); ++angle) {
+            if (requestedAngle >= 0 && static_cast<int>(angle) != requestedAngle) continue;
             scenarios.push_back({preset, yaws[angle],
                 std::string(preset.name) + "-angle-" + std::to_string(angle) + ".png"});
         }
@@ -214,6 +290,58 @@ public:
 
     bool Render() override {
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        if (!modulePushChecked_ && std::getenv("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING")) {
+            modulePushChecked_ = true;
+            auto* graph = GetRenderGraph();
+            auto* gatherer = graph ? graph->GetInstanceByName("spatial_reuse_push_gatherer") : nullptr;
+            auto* packedResource = gatherer
+                ? gatherer->GetOutput(PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA.index)
+                : nullptr;
+            if (!packedResource || !packedResource->IsValid()) {
+                captureError_ = "indirect-light test module did not produce push-constant data";
+                return false;
+            }
+            const auto packed = packedResource->GetHandle<std::vector<uint8_t>>();
+            constexpr size_t kModuleIrradianceOffset = 96;
+            constexpr glm::vec3 kExpectedModuleIrradiance{2.0f, 0.18f, 0.04f};
+            if (packed.size() < kModuleIrradianceOffset + sizeof(kExpectedModuleIrradiance)) {
+                captureError_ = "indirect-light push-constant block is too short: " +
+                    std::to_string(packed.size()) + " bytes";
+                return false;
+            }
+            glm::vec3 packedIrradiance{};
+            std::memcpy(&packedIrradiance, packed.data() + kModuleIrradianceOffset,
+                        sizeof(packedIrradiance));
+            if (std::memcmp(&packedIrradiance, &kExpectedModuleIrradiance,
+                            sizeof(packedIrradiance)) != 0) {
+                std::ostringstream message;
+                message << "indirect-light module push value mismatch: got ("
+                        << packedIrradiance.x << ", " << packedIrradiance.y << ", "
+                        << packedIrradiance.z << "), packedBytes=" << packed.size();
+                auto* variadic = dynamic_cast<IVariadicNode*>(gatherer);
+                const auto* slot = variadic ? variadic->GetVariadicSlotInfo(14) : nullptr;
+                message << ", variadicSlot14=" << (slot ? "present" : "missing");
+                if (slot) {
+                    message << ", sourceHandle=" << slot->sourceNode.index
+                            << ", sourceOutput=" << slot->sourceOutput
+                            << ", resource=" << (slot->resource ? "present" : "null");
+                }
+                auto* sourceNode = graph->GetInstanceByName(
+                    "capture_test_indirect_lighting/irradiance");
+                auto* sourceOutput = sourceNode
+                    ? sourceNode->GetOutput(TestIndirectIrradianceNodeConfig::INDIRECT_IRRADIANCE.index)
+                    : nullptr;
+                message << ", moduleOutput=" << (sourceOutput && sourceOutput->IsValid()
+                    ? "valid" : "missing");
+                if (sourceOutput && sourceOutput->IsValid()) {
+                    const glm::vec3 sourceValue = sourceOutput->GetHandle<glm::vec3>();
+                    message << " (" << sourceValue.x << ", " << sourceValue.y
+                            << ", " << sourceValue.z << ")";
+                }
+                captureError_ = message.str();
+                return false;
+            }
+        }
         ++framesInScenario_;
         if (framesInScenario_ < framesPerScenario_) return true;
 
@@ -393,6 +521,7 @@ private:
     size_t scenarioIndex_ = 0;
     size_t capturedCount_ = 0;
     uint32_t framesInScenario_ = 0;
+    bool modulePushChecked_ = false;
     std::string captureError_;
     VkDevice snapshotDevice_ = VK_NULL_HANDLE;
     VkBuffer snapshotBuffer_ = VK_NULL_HANDLE;
@@ -439,7 +568,8 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const std::filesystem::path outputDir(outputEnv);
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
     const uint32_t framesPerScenario = CaptureFramesPerScenario();
-    ASSERT_EQ(scenarios.size(), 4u)
+    const bool oneAngleRequested = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE") != nullptr;
+    ASSERT_EQ(scenarios.size(), oneAngleRequested ? 1u : 4u)
         << "CTest must select one four-angle look-dev lighting preset";
     std::string error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;

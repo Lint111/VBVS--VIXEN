@@ -59,6 +59,9 @@ layout(push_constant) uniform PushConstants {
     // (read but never branched on) when the flag is off. Default wired to 4.0 by the
     // CPU side when the flag is unset -- irrelevant since the flag guards every use.
     float cosmicK;          // regime-3 threshold multiplier (bytes 72-75)
+#ifdef VIXEN_MODULE_INDIRECT_LIGHTING
+    vec3 moduleIndirectIrradiance;
+#endif
 #ifdef VIXEN_B2_PROXY_PREPASS
     // Exact live count, never the grow-only proxy SSBO capacity. Zero is the
     // conservative fallback: the march ignores the candidate buffer entirely.

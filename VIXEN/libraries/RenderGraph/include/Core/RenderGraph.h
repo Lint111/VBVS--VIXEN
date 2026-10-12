@@ -40,15 +40,19 @@
 #include <set>
 #include <stop_token>
 #include <typeindex>
+#include <optional>
+#include <string_view>
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
+namespace Vixen { class CapabilityGraph; }
 
 namespace Vixen::RenderGraph {
 
 class GraphScope;
 struct SubGraphHandle;
+struct SubGraphProviderSelection;
 struct SubGraphExpansionContext;
 template<typename Derived>
 class SubGraphType;
@@ -149,20 +153,45 @@ public:
     template<typename TSubGraph>
     SubGraphHandle Instantiate(const std::string& instanceName);
 
+    /** @brief Instantiate a registered group by its NodeTypeRegistry name. */
+    SubGraphHandle Instantiate(const std::string& typeName, const std::string& instanceName);
+
+    /** @brief Pick and expand the registered group that provides an optional typed input. */
+    SubGraphProviderSelection InstantiateProviderForInput(
+        const Vixen::CapabilityGraph& capabilities,
+        NodeHandle target,
+        uint32_t targetInput,
+        const std::string& instanceName);
+
     /** @brief Connect a node output to every member slot bound to a group input port. */
     template<typename SourceSlot, typename Port>
+        requires requires { SourceSlot::index; Port::index; }
     void Connect(NodeHandle source, SourceSlot sourceSlot,
                  const SubGraphHandle& target, Port targetPort);
 
+    /** @brief Runtime boundary-to-member connect used after registered group lookup. */
+    void Connect(NodeHandle source, uint32_t sourceOutput,
+                 const SubGraphHandle& target, uint32_t targetPort);
+
     /** @brief Connect a group output port to a node input. */
     template<typename Port, typename TargetSlot>
+        requires requires { Port::index; TargetSlot::index; }
     void Connect(const SubGraphHandle& source, Port sourcePort,
                  NodeHandle target, TargetSlot targetSlot);
 
+    /** @brief Runtime boundary connect used after registered group lookup. */
+    void Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                 NodeHandle target, uint32_t targetInput);
+
     /** @brief Connect a group output port directly to another group input port. */
     template<typename SourcePort, typename TargetPort>
+        requires requires { SourcePort::index; TargetPort::index; }
     void Connect(const SubGraphHandle& source, SourcePort sourcePort,
                  const SubGraphHandle& target, TargetPort targetPort);
+
+    /** @brief Runtime boundary-to-boundary connect used after registered group lookup. */
+    void Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                 const SubGraphHandle& target, uint32_t targetPort);
 
     /**
      * @brief Add a node to the graph (legacy string-based API)
@@ -1091,6 +1120,8 @@ struct SubGraphState {
     std::vector<SubGraphBinding> outputBindings;
     size_t inputCount = 0;
     size_t outputCount = 0;
+    Schema inputSchema;
+    Schema outputSchema;
 };
 
 /**
@@ -1100,6 +1131,7 @@ struct SubGraphState {
  * resolved boundary aliases so later connections can be lowered to direct edges.
  */
 struct SubGraphHandle {
+    SubGraphHandle() = default;
     bool IsValid() const { return state_ != nullptr; }
     const std::string& GetName() const {
         static const std::string empty;
@@ -1108,6 +1140,17 @@ struct SubGraphHandle {
     const std::vector<NodeHandle>& GetMembers() const {
         static const std::vector<NodeHandle> empty;
         return state_ ? state_->members : empty;
+    }
+    std::optional<std::pair<NodeHandle, uint32_t>> ResolveOutput(uint32_t port) const {
+        if (!state_) return std::nullopt;
+        const auto it = std::find_if(state_->outputBindings.begin(), state_->outputBindings.end(),
+            [port](const SubGraphBinding& binding) { return binding.port == port; });
+        if (it == state_->outputBindings.end()) return std::nullopt;
+        return std::pair<NodeHandle, uint32_t>{it->member, it->memberSlot};
+    }
+    const Schema& GetOutputSchema() const {
+        static const Schema empty;
+        return state_ ? state_->outputSchema : empty;
     }
 
 private:
@@ -1119,6 +1162,19 @@ private:
     std::shared_ptr<SubGraphState> state_;
 };
 
+struct SubGraphProviderSelection {
+    SubGraphHandle group;
+    uint32_t outputPort = 0;
+};
+
+/** Type-erased registered-group adapter stored in the ordinary NodeTypeRegistry. */
+class IRegisteredSubGraphNodeType {
+public:
+    virtual ~IRegisteredSubGraphNodeType() = default;
+    virtual SubGraphHandle Instantiate(RenderGraph& graph, const std::string& instanceName) const = 0;
+    virtual std::string_view GetCapabilityName() const = 0;
+};
+
 /**
  * @brief CRTP marker for a C++-declared sub-graph type.
  *
@@ -1127,9 +1183,31 @@ private:
  * configuration made with CONSTEXPR_NODE_CONFIG and INPUT_SLOT/OUTPUT_SLOT.
  */
 template<typename Derived>
-class SubGraphType {
+class SubGraphType : public SubGraphDefinition {
 public:
     virtual ~SubGraphType() = default;
+};
+
+/** NodeTypeRegistry adapter: its input/output schema is the group's PortConfig. */
+template<typename TSubGraph>
+class RegisteredSubGraphNodeType final : public NodeType, public IRegisteredSubGraphNodeType {
+public:
+    RegisteredSubGraphNodeType()
+        : NodeType(std::string(TSubGraph::TYPE_NAME)) {
+        typename TSubGraph::PortConfig config;
+        inputSchema = config.GetInputVector();
+        outputSchema = config.GetOutputVector();
+    }
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string&) const override {
+        throw std::runtime_error("A registered SubGraphType is expanded with RenderGraph::Instantiate");
+    }
+
+    SubGraphHandle Instantiate(RenderGraph& graph, const std::string& instanceName) const override {
+        return graph.template Instantiate<TSubGraph>(instanceName);
+    }
+
+    std::string_view GetCapabilityName() const override { return TSubGraph::CAPABILITY_NAME; }
 };
 
 /**
@@ -1420,6 +1498,9 @@ SubGraphHandle RenderGraph::InstantiateImpl(
         state->outputBindings = scope.outputBindings_;
         state->inputCount = PortConfig::INPUT_COUNT;
         state->outputCount = PortConfig::OUTPUT_COUNT;
+        PortConfig portConfig;
+        state->inputSchema = portConfig.GetInputVector();
+        state->outputSchema = portConfig.GetOutputVector();
 
         expansion->nameStack.pop_back();
         expansion->typeStack.pop_back();
@@ -1433,6 +1514,7 @@ SubGraphHandle RenderGraph::InstantiateImpl(
 }
 
 template<typename SourceSlot, typename Port>
+    requires requires { SourceSlot::index; Port::index; }
 void RenderGraph::Connect(NodeHandle source, SourceSlot sourceSlot,
                           const SubGraphHandle& target, Port targetPort) {
     using SourceType = std::remove_cv_t<std::remove_reference_t<SourceSlot>>;
@@ -1445,20 +1527,16 @@ void RenderGraph::Connect(NodeHandle source, SourceSlot sourceSlot,
     if (!target.state_ || target.state_->graph != this) {
         throw std::runtime_error("Invalid sub-graph target handle");
     }
-    bool found = false;
-    for (const SubGraphBinding& binding : target.state_->inputBindings) {
-        if (binding.port == PortType::index) {
-            found = true;
-            ConnectNodes(source, SourceType::index, binding.member, binding.memberSlot);
-        }
-    }
-    if (!found) {
+    if (std::none_of(target.state_->inputBindings.begin(), target.state_->inputBindings.end(),
+                     [](const SubGraphBinding& binding) { return binding.port == PortType::index; })) {
         throw std::runtime_error("Sub-graph input port " + std::to_string(PortType::index) +
                                  " is not bound");
     }
+    Connect(source, SourceType::index, target, PortType::index);
 }
 
 template<typename Port, typename TargetSlot>
+    requires requires { Port::index; TargetSlot::index; }
 void RenderGraph::Connect(const SubGraphHandle& source, Port sourcePort,
                           NodeHandle target, TargetSlot targetSlot) {
     using PortType = std::remove_cv_t<std::remove_reference_t<Port>>;
@@ -1471,20 +1549,18 @@ void RenderGraph::Connect(const SubGraphHandle& source, Port sourcePort,
     if (!source.state_ || source.state_->graph != this) {
         throw std::runtime_error("Invalid sub-graph source handle");
     }
-    size_t count = 0;
-    for (const SubGraphBinding& binding : source.state_->outputBindings) {
-        if (binding.port == PortType::index) {
-            ++count;
-            ConnectNodes(binding.member, binding.memberSlot, target, TargetType::index);
-        }
-    }
+    const size_t count = static_cast<size_t>(std::count_if(
+        source.state_->outputBindings.begin(), source.state_->outputBindings.end(),
+        [](const SubGraphBinding& binding) { return binding.port == PortType::index; }));
     if (count != 1) {
         throw std::runtime_error("Sub-graph output port " + std::to_string(PortType::index) +
                                  " must resolve to exactly one member");
     }
+    Connect(source, PortType::index, target, TargetType::index);
 }
 
 template<typename SourcePort, typename TargetPort>
+    requires requires { SourcePort::index; TargetPort::index; }
 void RenderGraph::Connect(const SubGraphHandle& source, SourcePort sourcePort,
                           const SubGraphHandle& target, TargetPort targetPort) {
     using SourceType = std::remove_cv_t<std::remove_reference_t<SourcePort>>;
@@ -1498,26 +1574,25 @@ void RenderGraph::Connect(const SubGraphHandle& source, SourcePort sourcePort,
         !target.state_ || target.state_->graph != this) {
         throw std::runtime_error("Sub-graph handles must belong to this graph");
     }
-    size_t sourceCount = 0;
-    for (const SubGraphBinding& sourceBinding : source.state_->outputBindings) {
-        if (sourceBinding.port != SourceType::index) continue;
-        ++sourceCount;
-        bool targetFound = false;
-        for (const SubGraphBinding& targetBinding : target.state_->inputBindings) {
-            if (targetBinding.port != TargetType::index) continue;
-            targetFound = true;
-            ConnectNodes(sourceBinding.member, sourceBinding.memberSlot,
-                         targetBinding.member, targetBinding.memberSlot);
-        }
-        if (!targetFound) {
-            throw std::runtime_error("Sub-graph input port " + std::to_string(TargetType::index) +
-                                     " is not bound");
-        }
-    }
+    const size_t sourceCount = static_cast<size_t>(std::count_if(
+        source.state_->outputBindings.begin(), source.state_->outputBindings.end(),
+        [](const SubGraphBinding& binding) { return binding.port == SourceType::index; }));
     if (sourceCount != 1) {
         throw std::runtime_error("Sub-graph output port " + std::to_string(SourceType::index) +
                                  " must resolve to exactly one member");
     }
+    Connect(source, SourceType::index, target, TargetType::index);
+}
+
+template<typename T, typename... Args>
+bool RegisterSubGraphNodeType(NodeTypeRegistry& registry, Args&&...) {
+    static_assert(std::is_base_of_v<SubGraphType<T>, T>,
+                  "Registered group declarations must derive from SubGraphType<T>");
+    static_assert(std::is_default_constructible_v<T>,
+                  "Registered SubGraphType declarations must be default-constructible");
+    static_assert(requires { T::TYPE_NAME; T::CAPABILITY_NAME; },
+                  "Registered groups declare TYPE_NAME and CAPABILITY_NAME");
+    return registry.RegisterNodeTypeFor<T>(std::make_unique<RegisteredSubGraphNodeType<T>>());
 }
 
 } // namespace Vixen::RenderGraph

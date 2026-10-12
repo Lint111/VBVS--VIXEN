@@ -48,6 +48,7 @@ struct PushConstantFieldSlotInfo {
     uint32_t offset;              // Byte offset in push constant block
     uint32_t size;                // Size in bytes
     ::ShaderManagement::SpirvTypeInfo::BaseType baseType;  // Float, Vec3, etc.
+    ::ShaderManagement::SpirvTypeInfo::BaseType componentType; // Scalar kind for vectors/matrices
     uint32_t vecSize;             // 1 for scalar, 3 for vec3, etc.
     size_t dynamicInputIndex;     // Index in dynamic input array
 };

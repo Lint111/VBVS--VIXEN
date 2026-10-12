@@ -1,6 +1,8 @@
 #include "Core/ImageUsage.h"
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
+#include "Data/Core/ResourceConfig.h"
+#include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
@@ -245,6 +247,59 @@ NodeHandle RenderGraph::AddNode(NodeTypeId typeId, const std::string& instanceNa
     return AddNodeImpl(type, instanceName);
 }
 
+SubGraphHandle RenderGraph::Instantiate(const std::string& typeName,
+                                        const std::string& instanceName) {
+    NodeType* type = typeRegistry->GetNodeType(typeName);
+    auto* groupType = dynamic_cast<IRegisteredSubGraphNodeType*>(type);
+    if (!groupType) {
+        throw std::runtime_error("Registered node type is not a SubGraphType: " + typeName);
+    }
+    return groupType->Instantiate(*this, instanceName);
+}
+
+SubGraphProviderSelection RenderGraph::InstantiateProviderForInput(
+    const Vixen::CapabilityGraph& capabilities,
+    NodeHandle target,
+    uint32_t targetInput,
+    const std::string& instanceName) {
+    NodeInstance* targetNode = GetInstanceInternal(target);
+    if (!targetNode) throw std::runtime_error("Invalid target node for module provider selection");
+    const ResourceDescriptor* targetDesc =
+        targetNode->GetNodeType()->GetInputDescriptor(targetInput);
+    if (!targetDesc) throw std::runtime_error("Invalid target input for module provider selection");
+    if (!targetDesc->nullable || !HasExecute(targetDesc->role)) {
+        throw std::runtime_error("Capability-selected module inputs must be optional Execute slots");
+    }
+
+    IRegisteredSubGraphNodeType* selectedType = nullptr;
+    uint32_t selectedPort = 0;
+    for (NodeType* candidate : typeRegistry->GetAllNodeTypes()) {
+        auto* groupType = dynamic_cast<IRegisteredSubGraphNodeType*>(candidate);
+        if (!groupType || groupType->GetCapabilityName().empty() ||
+            !capabilities.IsCapabilityAvailable(std::string(groupType->GetCapabilityName()))) {
+            continue;
+        }
+        for (uint32_t output = 0; output < candidate->GetOutputCount(); ++output) {
+            const ResourceDescriptor* outputDesc = candidate->GetOutputDescriptor(output);
+            if (!outputDesc || outputDesc->role != SlotRole::Output ||
+                outputDesc->type != targetDesc->type ||
+                outputDesc->declaredType == std::type_index(typeid(void)) ||
+                outputDesc->declaredType != targetDesc->declaredType) {
+                continue;
+            }
+            if (selectedType) {
+                throw std::runtime_error("More than one registered group provides the capability-selected input '" +
+                                         targetDesc->name + "'");
+            }
+            selectedType = groupType;
+            selectedPort = output;
+        }
+    }
+
+    if (!selectedType) return {};
+    return {selectedType->Instantiate(*this, instanceName), selectedPort};
+}
+
 void RenderGraph::ConnectNodes(
     NodeHandle from,
     uint32_t outputIdx,
@@ -341,8 +396,9 @@ void RenderGraph::ConnectNodes(
 void RenderGraph::RemoveNode(NodeHandle handle) {
     NodeInstance* node = GetInstanceInternal(handle);
     if (!node) {
-        return;
-    }
+    return;
+}
+
 
     // Remove from topology
     topology.RemoveNode(node);
@@ -370,6 +426,134 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 
     isCompiled = false;
 }
+
+namespace {
+void ValidateDeclaredPortPair(const ResourceDescriptor& source,
+                              const ResourceDescriptor& target,
+                              const std::string& description) {
+    // Older SubGraphType declarations used only the compile-time slot types and
+    // did not initialize the runtime PortConfig descriptors. Keep those
+    // declarations compatible; their expanded member edges are checked below.
+    const bool sourceUndeclared = source.declaredType == std::type_index(typeid(void)) &&
+                                  source.role == SlotRole::None;
+    const bool targetUndeclared = target.declaredType == std::type_index(typeid(void)) &&
+                                  target.role == SlotRole::None;
+    if ((!sourceUndeclared && source.role != SlotRole::Output) ||
+        (!targetUndeclared && (target.role == SlotRole::Output ||
+                              target.role == SlotRole::None))) {
+        throw std::runtime_error("Invalid slot roles for " + description);
+    }
+    if (source.type != target.type ||
+        (!sourceUndeclared && !targetUndeclared &&
+         source.declaredType != target.declaredType)) {
+        throw std::runtime_error("Declared slot type mismatch for " + description);
+    }
+    if (source.lifetime == ResourceLifetime::Transient &&
+        target.lifetime == ResourceLifetime::Persistent) {
+        throw std::runtime_error("Transient module output cannot feed a persistent input for " +
+                                 description);
+    }
+}
+}
+
+void RenderGraph::Connect(NodeHandle source, uint32_t sourceOutput,
+                          const SubGraphHandle& target, uint32_t targetPort) {
+    NodeInstance* sourceNode = GetInstanceInternal(source);
+    if (!sourceNode || !target.state_ || target.state_->graph != this) {
+        throw std::runtime_error("Invalid node or sub-graph input handle");
+    }
+    if (targetPort >= target.state_->inputSchema.size()) {
+        throw std::runtime_error("Sub-graph input port index is out of range");
+    }
+    const ResourceDescriptor* sourceDesc =
+        sourceNode->GetNodeType()->GetOutputDescriptor(sourceOutput);
+    if (!sourceDesc) throw std::runtime_error("Invalid source output slot");
+    const ResourceDescriptor& portDesc = target.state_->inputSchema[targetPort];
+    ValidateDeclaredPortPair(*sourceDesc, portDesc, "node to group input");
+
+    bool found = false;
+    for (const SubGraphBinding& binding : target.state_->inputBindings) {
+        if (binding.port != targetPort) continue;
+        NodeInstance* member = GetInstanceInternal(binding.member);
+        const ResourceDescriptor* memberDesc =
+            member->GetNodeType()->GetInputDescriptor(binding.memberSlot);
+        if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member input slot");
+        ValidateDeclaredPortPair(*sourceDesc, *memberDesc, "node to group member input");
+        ConnectNodes(source, sourceOutput, binding.member, binding.memberSlot);
+        found = true;
+    }
+    if (!found) throw std::runtime_error("Sub-graph input port is not bound");
+}
+
+void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                          NodeHandle target, uint32_t targetInput) {
+    if (!source.state_ || source.state_->graph != this) {
+        throw std::runtime_error("Invalid sub-graph source handle");
+    }
+    NodeInstance* targetNode = GetInstanceInternal(target);
+    if (!targetNode || sourcePort >= source.state_->outputSchema.size()) {
+        throw std::runtime_error("Invalid sub-graph output or target node handle");
+    }
+    const ResourceDescriptor& portDesc = source.state_->outputSchema[sourcePort];
+    const ResourceDescriptor* targetDesc = targetNode->GetNodeType()->GetInputDescriptor(targetInput);
+    if (!targetDesc) throw std::runtime_error("Invalid target input slot");
+    ValidateDeclaredPortPair(portDesc, *targetDesc, "group output to node input");
+
+    size_t count = 0;
+    for (const SubGraphBinding& binding : source.state_->outputBindings) {
+        if (binding.port != sourcePort) continue;
+        ++count;
+        NodeInstance* member = GetInstanceInternal(binding.member);
+        const ResourceDescriptor* memberDesc =
+            member->GetNodeType()->GetOutputDescriptor(binding.memberSlot);
+        if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member output slot");
+        ValidateDeclaredPortPair(*memberDesc, *targetDesc, "group member output to node input");
+        ConnectNodes(binding.member, binding.memberSlot, target, targetInput);
+    }
+    if (count != 1) {
+        throw std::runtime_error("Sub-graph output port must resolve to exactly one member");
+    }
+}
+
+void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                          const SubGraphHandle& target, uint32_t targetPort) {
+    if (!source.state_ || source.state_->graph != this ||
+        !target.state_ || target.state_->graph != this ||
+        sourcePort >= source.state_->outputSchema.size() ||
+        targetPort >= target.state_->inputSchema.size()) {
+        throw std::runtime_error("Invalid sub-graph boundary handle");
+    }
+    const ResourceDescriptor& sourceDesc = source.state_->outputSchema[sourcePort];
+    const ResourceDescriptor& targetDesc = target.state_->inputSchema[targetPort];
+    ValidateDeclaredPortPair(sourceDesc, targetDesc, "group output to group input");
+
+    size_t sourceCount = 0;
+    bool targetFound = false;
+    for (const SubGraphBinding& sourceBinding : source.state_->outputBindings) {
+        if (sourceBinding.port != sourcePort) continue;
+        ++sourceCount;
+        NodeInstance* sourceMember = GetInstanceInternal(sourceBinding.member);
+        const ResourceDescriptor* memberOutput =
+            sourceMember->GetNodeType()->GetOutputDescriptor(sourceBinding.memberSlot);
+        if (!memberOutput) throw std::runtime_error("Invalid bound sub-graph output slot");
+        for (const SubGraphBinding& targetBinding : target.state_->inputBindings) {
+            if (targetBinding.port != targetPort) continue;
+            targetFound = true;
+            NodeInstance* targetMember = GetInstanceInternal(targetBinding.member);
+            const ResourceDescriptor* memberInput =
+                targetMember->GetNodeType()->GetInputDescriptor(targetBinding.memberSlot);
+            if (!memberInput) throw std::runtime_error("Invalid bound sub-graph input slot");
+            ValidateDeclaredPortPair(*memberOutput, *memberInput,
+                                     "group member output to group member input");
+            ConnectNodes(sourceBinding.member, sourceBinding.memberSlot,
+                         targetBinding.member, targetBinding.memberSlot);
+        }
+    }
+    if (sourceCount != 1 || !targetFound) {
+        throw std::runtime_error("Sub-graph boundary must resolve to one output and a bound input");
+    }
+}
+
 
 void RenderGraph::Clear() {
     renderPassFinalLayouts_.clear();
