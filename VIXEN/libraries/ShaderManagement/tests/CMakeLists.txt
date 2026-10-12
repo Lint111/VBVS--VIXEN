@@ -125,6 +125,21 @@ target_link_libraries(test_spirv_access
 set_target_properties(test_spirv_access PROPERTIES FOLDER "Tests/ShaderManagement Tests")
 vixen_gtest_discover_tests(ShaderManagement test_spirv_access WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# Descriptor layout reflection across descriptor sets — real glslang compile +
+# SPIRV-Reflect, CPU-side, no Vulkan device.
+add_executable(test_spirv_descriptor_layout
+    test_spirv_descriptor_layout.cpp
+)
+target_link_libraries(test_spirv_descriptor_layout
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_spirv_descriptor_layout PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+include(GoogleTest)
+gtest_discover_tests(test_spirv_descriptor_layout WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
 # feature-variant interface from the committed manifest and fails (exit 6)
 # when a committed generated/sdi/merged/*-SDI.g.h no longer matches. This is

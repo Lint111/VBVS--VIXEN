@@ -14,10 +14,12 @@ namespace ShaderManagement {
  * - Binding indices, types, counts, and shader stage access
  * 
  * Merges bindings from all stages in the program (vertex, fragment, etc.)
- * and validates that bindings with the same index have compatible types.
- * 
+ * keyed by (set, binding), and validates that bindings with the same key have
+ * compatible types.
+ *
  * @param program Compiled shader program with SPIRV bytecode
  * @return DescriptorLayoutSpec with all reflected bindings, or nullptr on error
+ *         (including programs that use more than one descriptor set)
  */
 std::unique_ptr<DescriptorLayoutSpec> ReflectDescriptorLayout(const CompiledProgram& program);
 
