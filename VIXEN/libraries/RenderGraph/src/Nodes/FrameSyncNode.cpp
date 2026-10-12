@@ -2,6 +2,7 @@
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
+#include "Core/PhaseTiming.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Message.h"
@@ -173,8 +174,11 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         timelineWait.semaphoreCount = 1;
         timelineWait.pSemaphores = &timelineSemaphore_;
         timelineWait.pValues = &completionValue;
-        const VkResult timelineWaitResult = vkWaitSemaphores(
-            device->device, &timelineWait, UINT64_MAX);
+        VkResult timelineWaitResult;
+        {
+            PhaseTiming::ScopedWait timelineTimer("frame-sync-timeline");
+            timelineWaitResult = vkWaitSemaphores(device->device, &timelineWait, UINT64_MAX);
+        }
         if (timelineWaitResult == VK_ERROR_DEVICE_LOST) {
             NODE_LOG_ERROR("Device lost while waiting on frame completion timeline (flight " +
                            std::to_string(currentFrameIndex) + ")");
@@ -190,8 +194,12 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Keep the binary fence wait for existing consumers that use it as a mid-frame
     // synchronization point (for example, optional debug readback).
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
-    VkResult waitResult = VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
+    VkResult waitResult;
+    {
+        PhaseTiming::ScopedWait fenceTimer("frame-sync-fence");
+        waitResult = VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
                               vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX));
+    }
 
     // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
     // backstop for device loss — when the GPU device is lost, the submitted work never completes and

@@ -3,8 +3,14 @@
 #include "CacheKeyHasher.h"
 #include "PipelineLayoutCacher.h"
 #include "VulkanDevice.h"
+#include "PipelineCacher.h"
+#include "CacheCodec.h"
 #include <stdexcept>
 #include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>  // std::cout for VIXEN_PIPELINE_STATS -- see LogPipelineExecutableStatistics
 
 namespace CashSystem {
@@ -99,10 +105,10 @@ void ComputePipelineCacher::Cleanup() {
             // Don't destroy cache (shared, owned by PipelineCacher or DeviceNode)
         });
 
-        // Destroy global cache if we own it (shouldn't happen - should be shared)
+        // The compute cacher owns its VkPipelineCache (created lazily, persisted by
+        // SerializePayloadToFile); no other cacher shares it.
         if (const VkPipelineCache owned = m_globalCache.exchange(VK_NULL_HANDLE, std::memory_order_acq_rel);
             owned != VK_NULL_HANDLE) {
-            LOG_WARNING("[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)");
             vkDestroyPipelineCache(m_device->device, owned, nullptr);
         }
     }
@@ -201,8 +207,23 @@ void ComputePipelineCacher::CreateComputePipeline(
 
     // Use global cache if available (shared with graphics). Atomic read: m_globalCache can be
     // cleared concurrently by Cleanup() (audit V-M9).
-    const VkPipelineCache cacheToUse = m_globalCache.load(std::memory_order_acquire);
+    VkPipelineCache cacheToUse = m_globalCache.load(std::memory_order_acquire);
+    if (cacheToUse == VK_NULL_HANDLE) {
+        VkPipelineCacheCreateInfo cacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        VkPipelineCache created = VK_NULL_HANDLE;
+        if (vkCreatePipelineCache(m_device->device, &cacheInfo, nullptr, &created) == VK_SUCCESS) {
+            VkPipelineCache expected = VK_NULL_HANDLE;
+            if (m_globalCache.compare_exchange_strong(expected, created, std::memory_order_acq_rel)) {
+                cacheToUse = created;
+            } else {
+                vkDestroyPipelineCache(m_device->device, created, nullptr);
+                cacheToUse = expected;
+            }
+        }
+    }
 
+    const bool timePipeline = std::getenv("VIXEN_PHASE_TIMING") != nullptr;
+    const auto createStart = std::chrono::steady_clock::now();
     VkResult result = vkCreateComputePipelines(
         m_device->device,
         cacheToUse,
@@ -211,6 +232,12 @@ void ComputePipelineCacher::CreateComputePipeline(
         nullptr,
         &wrapper.pipeline
     );
+    if (timePipeline) {
+        std::fprintf(stderr, "[PHASE] stage=vkCreateComputePipelines shader=%s ms=%.3f warm_cache=%d\n",
+            ci.shaderKey.c_str(),
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - createStart).count(),
+            m_warmCacheLoaded.load(std::memory_order_acquire) ? 1 : 0);
+    }
 
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Failed to create compute pipeline: " + std::to_string(result));
@@ -308,30 +335,89 @@ void ComputePipelineCacher::LogPipelineExecutableStatistics(const std::string& s
 }
 
 // ============================================================================
-// SERIALIZATION (Stub implementations)
+// SERIALIZATION: the VkPipelineCache blob (driver-compiled pipelines) is what is worth persisting
 // ============================================================================
 
 bool ComputePipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
-    // Compute pipelines are device-specific and expensive to serialize
-    // Better approach: serialize shader keys + layout keys, recompile on load
-    // Pipeline cache (VkPipelineCache) can be serialized separately for warm starts
+    const VkPipelineCache cache = m_globalCache.load(std::memory_order_acquire);
+    if (!m_device || cache == VK_NULL_HANDLE) return true;
 
-    LOG_DEBUG("[ComputePipelineCacher::SerializeToFile] Compute pipeline serialization deferred");
-    LOG_DEBUG("  Recommendation: Serialize pipeline cache (VkPipelineCache) instead");
+    size_t cacheSize = 0;
+    if (vkGetPipelineCacheData(m_device->device, cache, &cacheSize, nullptr) != VK_SUCCESS || cacheSize == 0) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to size pipeline cache data");
+        return false;
+    }
+    std::vector<uint8_t> cacheData(cacheSize);
+    if (vkGetPipelineCacheData(m_device->device, cache, &cacheSize, cacheData.data()) != VK_SUCCESS) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to read pipeline cache data");
+        return false;
+    }
+    cacheData.resize(cacheSize);
 
-    // TODO: Optionally serialize VkPipelineCache data for warm startup
-    return true;  // Return success (nothing to serialize currently)
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to open cache file for writing: " + path.string());
+        return false;
+    }
+    CacheWriter writer(file);
+    const uint32_t version = 1;
+    writer.WritePod(version);
+    writer.WriteVector(cacheData);
+    if (!writer.Ok()) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to write pipeline cache file");
+        return false;
+    }
+    LOG_INFO("[ComputePipelineCacher] Serialized compute pipeline cache (" + std::to_string(cacheSize) +
+             " bytes) to " + path.string());
+    return true;
 }
 
-bool ComputePipelineCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
-    // Compute pipelines are recreated on demand from shader modules
-    // Pipeline cache (VkPipelineCache) deserialization provides warm startup
+bool ComputePipelineCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* /*device*/) {
+    if (!std::filesystem::exists(path)) {
+        LOG_INFO("[ComputePipelineCacher] No compute pipeline cache at " + path.string() + " (first run)");
+        return true;
+    }
+    if (!m_device) return false;
 
-    LOG_DEBUG("[ComputePipelineCacher::DeserializeFromFile] Compute pipeline deserialization deferred");
-    LOG_DEBUG("  Recommendation: Deserialize pipeline cache (VkPipelineCache) instead");
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to open cache file: " + path.string());
+        return false;
+    }
+    CacheReader reader(file);
+    uint32_t version = 0;
+    if (!reader.ReadPod(version) || version != 1) {
+        LOG_ERROR("[ComputePipelineCacher] Unsupported cache version: " + std::to_string(version));
+        return false;
+    }
+    constexpr size_t kMaxPipelineCacheBytes = 1u << 30;
+    std::vector<uint8_t> cacheData;
+    if (!reader.ReadVector(cacheData, kMaxPipelineCacheBytes) || cacheData.empty()) {
+        LOG_ERROR("[ComputePipelineCacher] Invalid or oversized cache data in file");
+        return false;
+    }
+    if (!PipelineCacheBlobMatchesDevice(cacheData, m_device->gpuProperties)) {
+        LOG_INFO("[ComputePipelineCacher] Pipeline cache is for another device/driver — regenerating: " + path.string());
+        return true;
+    }
 
-    // TODO: Optionally deserialize VkPipelineCache data for warm startup
-    return true;  // Return success (nothing to deserialize currently)
+    VkPipelineCacheCreateInfo cacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+    cacheInfo.initialDataSize = cacheData.size();
+    cacheInfo.pInitialData = cacheData.data();
+    VkPipelineCache loaded = VK_NULL_HANDLE;
+    if (vkCreatePipelineCache(m_device->device, &cacheInfo, nullptr, &loaded) != VK_SUCCESS) {
+        LOG_ERROR("[ComputePipelineCacher] Failed to create pipeline cache from file");
+        return false;
+    }
+    VkPipelineCache expected = VK_NULL_HANDLE;
+    if (!m_globalCache.compare_exchange_strong(expected, loaded, std::memory_order_acq_rel)) {
+        vkDestroyPipelineCache(m_device->device, loaded, nullptr);
+        return true;
+    }
+    m_warmCacheLoaded.store(true, std::memory_order_release);
+    LOG_INFO("[ComputePipelineCacher] Loaded compute pipeline cache from " + path.string() + " (" +
+             std::to_string(cacheData.size()) + " bytes)");
+    return true;
 }
 
 } // namespace CashSystem

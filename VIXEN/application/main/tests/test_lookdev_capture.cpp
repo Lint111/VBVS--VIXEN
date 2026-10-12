@@ -7,11 +7,15 @@
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
+#include "Nodes/ReservoirConfigNode.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -19,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -47,21 +52,55 @@ public:
 
 namespace {
 
-constexpr uint32_t kDefaultFramesPerScenario = 64; // Two full 32-frame reservoir-history caps.
+// Frames per angle are derived, not chosen: every per-frame ring (LightingConfig, camera,
+// previous camera) holds kRingSlotCount slots and each must be rewritten for the new angle, so
+// two full rings give a warmed, verified steady state. The reservoir path carries
+// temporalCap=32 samples of history; when it is enabled the capture needs two full caps (64).
+constexpr uint32_t kRingSlotCount = Vixen::RenderGraph::FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+constexpr uint32_t kReservoirHistoryCap = 32;
+constexpr uint32_t kMaxFramesPerScenario = 2 * kReservoirHistoryCap;
+constexpr uint32_t kDefaultFramesPerScenario = 2 * kRingSlotCount;
+constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 constexpr float kPitchRadians = 0.45f;
 
+using CaptureClock = std::chrono::steady_clock;
+
+double MsBetween(CaptureClock::time_point from, CaptureClock::time_point to) {
+    return std::chrono::duration<double, std::milli>(to - from).count();
+}
+
+double Percentile(std::vector<double> samples, double fraction) {
+    if (samples.empty()) return 0.0;
+    std::sort(samples.begin(), samples.end());
+    const auto index = static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1) + 0.5);
+    return samples[std::min(index, samples.size() - 1)];
+}
+
+uint32_t DefaultFramesPerScenario() {
+    return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerScenario
+                                                          : kDefaultFramesPerScenario;
+}
+
 uint32_t CaptureFramesPerScenario(std::string& error) {
-    const char* value = std::getenv("VIXEN_LOOKDEV_CAPTURE_FRAMES");
-    if (!value || !*value) return kDefaultFramesPerScenario;
+    const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_FRAMES");
+    if (!requested || *requested == '\0') return DefaultFramesPerScenario();
 
     char* end = nullptr;
-    const unsigned long parsed = std::strtoul(value, &end, 10);
-    if (end == value || *end != '\0' || parsed == 0 || parsed > kDefaultFramesPerScenario) {
+    const unsigned long value = std::strtoul(requested, &end, 10);
+    if (end == requested || *end != '\0' || value == 0 || value > kMaxFramesPerScenario) {
         error = "VIXEN_LOOKDEV_CAPTURE_FRAMES must be an integer from 1 through " +
-            std::to_string(kDefaultFramesPerScenario);
+            std::to_string(kMaxFramesPerScenario);
         return 0;
     }
-    return static_cast<uint32_t>(parsed);
+    return static_cast<uint32_t>(value);
+}
+
+double ProcessBudgetMs() {
+    const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_BUDGET_MS");
+    if (!requested || *requested == '\0') return kDefaultProcessBudgetMs;
+    char* end = nullptr;
+    const double value = std::strtod(requested, &end);
+    return (end == requested || *end != '\0' || value <= 0.0) ? kDefaultProcessBudgetMs : value;
 }
 
 struct CaptureScenario {
@@ -96,7 +135,31 @@ public:
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
+    void SetProcessStart(CaptureClock::time_point start) { processStart_ = start; }
+
     void BuildRenderGraph() override {
+        const auto buildStart = CaptureClock::now();
+        buildGraphBeginMs_ = MsBetween(processStart_, buildStart);
+        BuildRenderGraphTimed();
+        buildGraphEndMs_ = MsBetween(processStart_, CaptureClock::now());
+    }
+
+    void PrintTimingSummary() const {
+        const double total = frameWallMs_.empty() ? 0.0
+            : std::accumulate(frameWallMs_.begin(), frameWallMs_.end(), 0.0);
+        std::printf("[CAPTURE_TIMING] startup_to_build_graph_ms=%.1f build_graph_ms=%.1f "
+                    "build_graph_end_to_first_frame_ms=%.1f first_frame_ms=%.1f startup_total_ms=%.1f\n",
+            buildGraphBeginMs_, buildGraphEndMs_ - buildGraphBeginMs_,
+            firstFrameBeginMs_ - buildGraphEndMs_,
+            frameWallMs_.empty() ? 0.0 : frameWallMs_.front(), firstFrameBeginMs_);
+        std::printf("[CAPTURE_TIMING] frames=%zu frame_total_ms=%.1f frame_p50_ms=%.2f frame_p95_ms=%.2f "
+                    "frame_max_ms=%.2f png_capture_total_ms=%.1f\n",
+            frameWallMs_.size(), total, Percentile(frameWallMs_, 0.50), Percentile(frameWallMs_, 0.95),
+            Percentile(frameWallMs_, 1.0), captureWallMs_);
+        std::fflush(stdout);
+    }
+
+    void BuildRenderGraphTimed() {
         const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(scenarios_.front().lighting);
         for (const auto& recipe : recipes) {
             const auto result = RegisterProceduralRecipe(recipe.recipeId, recipe.entry);
@@ -218,20 +281,24 @@ public:
     }
 
     bool Render() override {
+        const auto frameStart = CaptureClock::now();
+        if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        frameWallMs_.push_back(MsBetween(frameStart, CaptureClock::now()));
         ++framesInScenario_;
         if (framesInScenario_ < framesPerScenario_) return true;
 
         const auto& scenario = scenarios_[scenarioIndex_];
-        // The ordinary 64-frame capture verifies every LightingConfig ring
-        // slot after warmup. A short correctness capture intentionally does
-        // not claim that per-frame upload parity; it only exercises rendering.
-        if (scenarioIndex_ == 0 && framesPerScenario_ == kDefaultFramesPerScenario &&
+        // Verifying every LightingConfig ring slot needs each slot rewritten at least once;
+        // a capture shorter than the ring only exercises rendering.
+        if (scenarioIndex_ == 0 && framesPerScenario_ >= kRingSlotCount &&
             !VerifyUploadedExposure(scenario)) {
             return false;
         }
         const std::filesystem::path output = outputDir_ / scenario.filename;
+        const auto captureStart = CaptureClock::now();
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
+        captureWallMs_ += MsBetween(captureStart, CaptureClock::now());
         if (std::getenv("VIXEN_LOOKDEV_READBACK") && !ExportLightingReadback(scenario)) return false;
         ++capturedCount_;
 
@@ -393,6 +460,12 @@ private:
     std::filesystem::path outputDir_;
     std::vector<CaptureScenario> scenarios_;
     uint32_t framesPerScenario_ = kDefaultFramesPerScenario;
+    CaptureClock::time_point processStart_ = CaptureClock::now();
+    double buildGraphBeginMs_ = 0.0;
+    double buildGraphEndMs_ = 0.0;
+    double firstFrameBeginMs_ = 0.0;
+    double captureWallMs_ = 0.0;
+    std::vector<double> frameWallMs_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
     Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
     size_t scenarioIndex_ = 0;
@@ -420,12 +493,25 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     }
 
     LookdevCaptureApplication app(outputDir, scenarios, framesPerScenario);
+    const auto processStart = CaptureClock::now();
+    app.SetProcessStart(processStart);
     const uint32_t frameCount = framesPerScenario * static_cast<uint32_t>(scenarios.size());
     const int result = app.Run(RunOptions{.exitAfterFrames = frameCount});
+    const double processMs = MsBetween(processStart, CaptureClock::now());
+    const double budgetMs = ProcessBudgetMs();
+    app.PrintTimingSummary();
+    std::printf("[CAPTURE_TIMING] frames_per_angle=%u process_total_ms=%.1f budget_ms=%.0f\n",
+        framesPerScenario, processMs, budgetMs);
+    std::fflush(stdout);
     if (result != 0 || app.CapturedCount() != scenarios.size()) {
         error = app.CaptureError().empty()
             ? "application exited before all look-dev captures were written"
             : app.CaptureError();
+        return false;
+    }
+    if (processMs > budgetMs) {
+        error = "look-dev capture exceeded its runtime budget: " + std::to_string(processMs) +
+            " ms > " + std::to_string(budgetMs) + " ms (VIXEN_LOOKDEV_CAPTURE_BUDGET_MS)";
         return false;
     }
     for (const auto& scenario : scenarios) {

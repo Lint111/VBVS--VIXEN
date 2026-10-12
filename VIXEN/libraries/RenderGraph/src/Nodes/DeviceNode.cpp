@@ -5,6 +5,7 @@
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/GPUQueryManager.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Message.h"
 #include "MessageBus.h"
 #include "Core/NodeLogging.h"
@@ -261,6 +262,20 @@ void DeviceNode::SelectPhysicalDevice() {
     vkGetPhysicalDeviceProperties(selectedGPU, &props);
     NODE_LOG_INFO("[DeviceNode] Selected GPU " + std::to_string(selectedGPUIndex) + ": " + props.deviceName
               + " (" + selectionReason + ")");
+    {
+        VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        props2.pNext = &driver;
+        vkGetPhysicalDeviceProperties2(selectedGPU, &props2);
+        NODE_LOG_INFO(std::string("[ADAPTER] name=") + props.deviceName + " type=" +
+                      GpuDeviceClassName(props.deviceType, static_cast<uint32_t>(driver.driverID)) +
+                      " driver_id=" + std::to_string(static_cast<uint32_t>(driver.driverID)) +
+                      " driver_name=" + driver.driverName + " driver_info=" + driver.driverInfo +
+                      " driver_version=" + std::to_string(props.driverVersion) +
+                      " api=" + std::to_string(VK_VERSION_MAJOR(props.apiVersion)) + "." +
+                      std::to_string(VK_VERSION_MINOR(props.apiVersion)) + "." +
+                      std::to_string(VK_VERSION_PATCH(props.apiVersion)));
+    }
     NODE_LOG_INFO("[DeviceNode]   Vendor ID: 0x" + std::to_string(props.vendorID));
     NODE_LOG_INFO("[DeviceNode]   Device ID: 0x" + std::to_string(props.deviceID));
     NODE_LOG_INFO("[DeviceNode]   Driver Version: " + std::to_string(props.driverVersion));
