@@ -30,6 +30,8 @@
 #include <cassert>
 #include <memory>  // For std::shared_ptr
 #include <functional>  // For std::function (wrapper extraction)
+#include <typeindex>
+#include <typeinfo>
 #include "BoolVector.h"  // Include BoolVector wrapper
 
 // Forward declarations (same as PassThroughStorage.h)
@@ -1342,6 +1344,8 @@ struct ResourceDescriptor {
     SlotMutability mutability = SlotMutability::ReadOnly;  // Auto-sync P1: ReadWrite inputs count as writers
     AccessKind accessKind = AccessKind::None;              // Auto-sync P3: declared per-slot access semantics
     VkImageUsageFlags imageUsage = 0; // consumer creation requirements beyond the scheduling access kind
+    std::type_index declaredType{typeid(void)}; // C++ type retained for runtime-registered group ports
+    SlotRole role = static_cast<SlotRole>(0);    // Declared input/output role (output uses SlotRole::Output)
 
     // Constructor for compatibility
     ResourceDescriptor() = default;

@@ -161,6 +161,24 @@ public:
         sources_[name] = SdiProviderSource{source, SourceSlot::index, true};
     }
 
+    /** @brief Register a reflected-field provider from a module group's declared output. */
+    void ProvideSubGraphOutput(const std::string& name, const SubGraphHandle& group,
+                               uint32_t outputPort, SlotRole roles) {
+        const auto resolved = group.ResolveOutput(outputPort);
+        if (!resolved) {
+            throw std::runtime_error("SdiProviderRegistry: group output '" + name +
+                                     "' does not resolve to a member output");
+        }
+        const NodeHandle source = resolved->first;
+        const uint32_t sourceOutput = resolved->second;
+        providers_[name] = [source, sourceOutput, roles](ConnectionBatch& batch,
+                                                         NodeHandle target,
+                                                         uint32_t targetSlot) {
+            batch.ConnectResolvedOutput(source, sourceOutput, target, targetSlot, roles);
+        };
+        sources_[name] = SdiProviderSource{source, sourceOutput, true};
+    }
+
     /// The provider's (node, slot) identity for the hazard census; known=false
     /// for ProvideCustom entries and unknown names.
     SdiProviderSource SourceOf(const std::string& name) const {

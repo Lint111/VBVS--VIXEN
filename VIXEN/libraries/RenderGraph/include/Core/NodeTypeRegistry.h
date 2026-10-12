@@ -9,6 +9,10 @@
 
 namespace Vixen::RenderGraph {
 
+class NodeTypeRegistry;
+template<typename T, typename... Args>
+bool RegisterSubGraphNodeType(NodeTypeRegistry& registry, Args&&... args);
+
 /**
  * @brief Registry for all available node types
  *
@@ -32,20 +36,28 @@ public:
      */
     template<typename T, typename... Args>
     bool Register(Args&&... args) {
-        static_assert(std::is_base_of_v<NodeType, T>, "T must derive from NodeType");
-        auto nodeType = std::make_unique<T>(std::forward<Args>(args)...);
-        auto typeIndex = std::type_index(typeid(T));
-
-        if (typeIndexToId.contains(typeIndex)) {
-            return false; // Already registered
+        if constexpr (std::is_base_of_v<NodeType, T>) {
+            return RegisterNodeTypeFor<T>(std::make_unique<T>(std::forward<Args>(args)...));
+        } else if constexpr (std::is_base_of_v<SubGraphDefinition, T>) {
+            static_assert(sizeof...(Args) == 0,
+                          "Registered SubGraphType declarations are default-constructed");
+            return RegisterSubGraphNodeType<T>(*this);
+        } else {
+            static_assert(std::is_base_of_v<NodeType, T> ||
+                          std::is_base_of_v<SubGraphDefinition, T>,
+                          "T must derive from NodeType or SubGraphDefinition");
         }
+    }
 
-        NodeTypeId id = nodeType->GetTypeId();
-        if (RegisterNodeType(std::move(nodeType))) {
-            typeIndexToId[typeIndex] = id;
-            return true;
-        }
-        return false;
+    /** @brief Store an adapter under the C++ declaration type it represents. */
+    template<typename T>
+    bool RegisterNodeTypeFor(std::unique_ptr<NodeType> nodeType) {
+        const auto typeIndex = std::type_index(typeid(T));
+        if (typeIndexToId.contains(typeIndex)) return false;
+        const NodeTypeId id = nodeType->GetTypeId();
+        if (!RegisterNodeType(std::move(nodeType))) return false;
+        typeIndexToId[typeIndex] = id;
+        return true;
     }
 
     /**
@@ -54,13 +66,20 @@ public:
      * @return Pointer to the node type, or nullptr if not found
      */
     template<typename T>
-    T* Get() const {
-        static_assert(std::is_base_of_v<NodeType, T>, "T must derive from NodeType");
+    auto Get() const {
+        static_assert(std::is_base_of_v<NodeType, T> ||
+                      std::is_base_of_v<SubGraphDefinition, T>,
+                      "T must derive from NodeType or SubGraphDefinition");
         auto it = typeIndexToId.find(std::type_index(typeid(T)));
         if (it != typeIndexToId.end()) {
-            return static_cast<T*>(GetNodeType(it->second));
+            if constexpr (std::is_base_of_v<NodeType, T>) {
+                return static_cast<T*>(GetNodeType(it->second));
+            } else {
+                return GetNodeType(it->second);
+            }
         }
-        return nullptr;
+        if constexpr (std::is_base_of_v<NodeType, T>) return static_cast<T*>(nullptr);
+        else return static_cast<NodeType*>(nullptr);
     }
 
     /**
@@ -69,7 +88,9 @@ public:
      */
     template<typename T>
     bool Has() const {
-        static_assert(std::is_base_of_v<NodeType, T>, "T must derive from NodeType");
+        static_assert(std::is_base_of_v<NodeType, T> ||
+                      std::is_base_of_v<SubGraphDefinition, T>,
+                      "T must derive from NodeType or SubGraphDefinition");
         return typeIndexToId.contains(std::type_index(typeid(T)));
     }
 
@@ -79,7 +100,9 @@ public:
      */
     template<typename T>
     bool Unregister() {
-        static_assert(std::is_base_of_v<NodeType, T>, "T must derive from NodeType");
+        static_assert(std::is_base_of_v<NodeType, T> ||
+                      std::is_base_of_v<SubGraphDefinition, T>,
+                      "T must derive from NodeType or SubGraphDefinition");
         auto typeIndex = std::type_index(typeid(T));
         auto it = typeIndexToId.find(typeIndex);
         if (it != typeIndexToId.end()) {

@@ -1,6 +1,10 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 
+// SpatialReuseShade always exposes the optional module input. When no provider is
+// connected, the push-constant gatherer leaves this field zero-filled.
+#define VIXEN_MODULE_INDIRECT_LIGHTING 1
+
 // ============================================================================
 // SpatialReuseShade.comp - spatial reservoir reuse + shade pass (Sampled Lighting Inc3 M5)
 // ============================================================================
@@ -806,6 +810,15 @@ void main() {
             }
         }
     }
+
+#ifdef VIXEN_MODULE_INDIRECT_LIGHTING
+    // The selected module provides incoming diffuse irradiance through the optional
+    // slot. The shader applies this surface's Lambert diffuse response exactly once.
+    if (anyHitRT) {
+        outColor += (bestColor / 3.14159265358979323846) *
+                    pc.moduleIndirectIrradiance;
+    }
+#endif
 
     // -----------------------------------------------------------------------
     // DDGI indirect diffuse (Sampled Lighting Inc4 M5): trilinear, Chebyshev-weighted

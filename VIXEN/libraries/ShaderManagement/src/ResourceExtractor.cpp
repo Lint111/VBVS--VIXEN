@@ -42,7 +42,10 @@ static const std::array<std::pair<TypeKey, ResourceExtractor::ExtractFn>, 16> EX
 // ============================================================================
 
 ResourceExtractor::ExtractFn ResourceExtractor::GetExtractor(const SpirvTypeInfo& typeInfo) {
-    return GetExtractor(typeInfo.baseType, typeInfo.vecSize);
+    const auto baseType = typeInfo.baseType == SpirvTypeInfo::BaseType::Vector
+        ? typeInfo.componentType
+        : typeInfo.baseType;
+    return GetExtractor(baseType, typeInfo.vecSize);
 }
 
 ResourceExtractor::ExtractFn ResourceExtractor::GetExtractor(
@@ -113,7 +116,10 @@ SPIRV_EXTRACTOR_REGISTRY
 // ============================================================================
 
 size_t ResourceExtractor::GetTypeSize(const SpirvTypeInfo& typeInfo) {
-    switch (typeInfo.baseType) {
+    const auto baseType = typeInfo.baseType == SpirvTypeInfo::BaseType::Vector
+        ? typeInfo.componentType
+        : typeInfo.baseType;
+    switch (baseType) {
         case SpirvTypeInfo::BaseType::Float:
             switch (typeInfo.vecSize) {
                 case 1: return sizeof(float);

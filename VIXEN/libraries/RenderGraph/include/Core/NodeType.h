@@ -15,6 +15,12 @@ namespace Vixen::RenderGraph {
 // Forward declaration
 class NodeInstance;
 
+/** Marker for a C++-declared SubGraphType that can be registered like a node. */
+class SubGraphDefinition {
+public:
+    virtual ~SubGraphDefinition() = default;
+};
+
 using ParameterBundle = std::vector<ParameterDefinition>;
 using Schema = std::vector<ResourceDescriptor>;
 
