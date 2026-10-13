@@ -40,8 +40,10 @@
 #include "merged/InstanceOcclusionCull-SDI.g.h"  // Semantic-wiring S1: B1 cull named binding/push constants
 #include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
+#include "Generated/ExposureTonemapSystem.g.h"
+#include "merged/ExposureTonemapReference-SDI.g.h"
+#include "merged/ExposureTonemapSystem-SDI.g.h"
 #include "merged/SpatialReuseShade-SDI.g.h"
-#include "merged/ExposureTonemap-SDI.g.h"
 #include "merged/ExposureMeter-SDI.g.h"
 #include "merged/ExposureReduce-SDI.g.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
@@ -72,6 +74,17 @@ namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spat
 namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
 namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wide epoch clear
+namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
+namespace ExposureSystemSdi = ShaderInterface::ExposureTonemapSystem;
+
+static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeX == 8u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeY == 8u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_sceneRadianceHistoryOutput == 0u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_outputImage == 1u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_meter == 2u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_LightingConfigSSBO == 3u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[0].set == 0u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[1].set == 0u);
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -439,6 +452,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
+#if defined(VIXEN_CAPTURE_TEST_HOOKS)
+    const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
+#else
+    constexpr bool exposureReference = false;
+#endif
     // The capture executable is the only binary that registers this test module.
     // Keep its explicit opt-in out of every ordinary/default graph build.
     const bool testIndirectLightingEnabled =
@@ -2462,7 +2480,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseShaderLib, makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"),
         std::move(srsShaderFeatures));
 
-    auto exposureFamily = makeLightingFamily("ExposureTonemap.comp", "ExposureTonemap");
+    auto exposureFamily = exposureReference
+        ? makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference")
+        : makeLightingFamily("Generated/ExposureTonemapSystem.comp", "ExposureTonemapSystem");
     if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
         ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
             auto builder = exposureFamily->MakeBuilder({});
@@ -8844,6 +8864,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
     sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("_ExtentX", renderTargetNode,
+                           RenderTargetNodeConfig::WIDTH_OUT, SlotRole::Execute);
+    sceneProviders.Provide("_ExtentY", renderTargetNode,
+                           RenderTargetNodeConfig::HEIGHT_OUT, SlotRole::Execute);
     if (hdrExposureEnabled) {
         sceneProviders.Provide("result", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
@@ -9322,15 +9346,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-    const auto exposureSynth = SynthesizeComputeStage<ShaderInterface::ExposureTonemap::Metadata,
-                                                       ShaderInterface::ExposureTonemap::MEMBERS>(
-        renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
-        lightingCommon, sceneProviders, {});
-    (void)exposureSynth;
+    if (exposureReference) {
+        const auto exposureSynth = SynthesizeComputeStage<ExposureReferenceSdi::Metadata,
+                                                           ExposureReferenceSdi::MEMBERS>(
+            renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
+            lightingCommon, sceneProviders, {});
+        (void)exposureSynth;
+    } else {
+        const auto exposureSynth = SynthesizeComputeStage<ExposureSystemSdi::Metadata,
+                                                           ExposureSystemSdi::MEMBERS>(
+            renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
+            lightingCommon, sceneProviders, {});
+        (void)exposureSynth;
+    }
     auto* exposureStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureNode));
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    const auto exposureWorkgroups = Vixen::Gpu::ExposureTonemapSystemWorkgroups(
+        renderExtent.width, renderExtent.height);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, exposureWorkgroups[0]);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, exposureWorkgroups[1]);
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 

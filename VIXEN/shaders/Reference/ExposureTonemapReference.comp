@@ -11,8 +11,8 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
-// Apply the EV100 computed from all exposure tiles before the display transform. This shader
-// intentionally owns the only HDR->UNORM conversion.
+// SDI reference retained for the native parity harness. Production uses the
+// schema-owned ExposureTonemapSystem emitted from codegen/gpu-systems.
 vec3 acesFitted(vec3 x) {
     const float a = 2.51;
     const float b = 0.03;

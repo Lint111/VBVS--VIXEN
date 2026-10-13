@@ -70,8 +70,15 @@
       ]
     },
     {
-      "name": "ExposureTonemap",
-      "source": "ExposureTonemap.comp",
+      "name": "ExposureTonemapReference",
+      "source": "Reference/ExposureTonemapReference.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "ExposureTonemapSystem",
+      "source": "Generated/ExposureTonemapSystem.comp",
       "variants": [
         []
       ]
