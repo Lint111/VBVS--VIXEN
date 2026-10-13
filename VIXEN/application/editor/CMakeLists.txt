@@ -174,6 +174,9 @@ endif()
 
 # Multi-process cache correctness gate. The test owns its process fan-out so CTest admits it as
 # one GPU job; each child gets unique capture/document paths while all children share VIXEN_CACHE_DIR.
+# It is registered under the `nightly` label only (R565 C5): it tests cache collisions, not a lane's
+# change, and its cold pipeline compiles held 45-60% of every lane's GPU-queue time. The split runner
+# excludes `nightly` by default; `ctest -L nightly` or `run-tests-split.sh --nightly` runs it.
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME vixen_multiinstance_cache_gate
@@ -184,5 +187,5 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             --document "${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
             --work-dir "${CMAKE_BINARY_DIR}/runtime-captures/multiinstance")
     set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
-    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_multiinstance_cache_gate)
+    vixen_set_suite_properties(nightly GPU TESTS vixen_multiinstance_cache_gate)
 endif()

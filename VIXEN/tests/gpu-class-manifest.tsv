@@ -26,6 +26,13 @@
 === Slot Metadata Verification ===.isAccumulation: 1	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 === Slot Metadata Verification ===.isMultiConnect: 1	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 === Slot Metadata Verification ===.requiresExplicitOrder: 1	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
+ASBuildModeTest.DefaultBuildMode	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+ASBuildModeTest.DynamicModeParams	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+ASBuildModeTest.EqualityOperator	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+ASBuildModeTest.HashIncludesBuildMode	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+AccelStructCreateInfoTest.EqualityOperator	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+AccelStructCreateInfoTest.InequalityOnDifferentAABBData	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+AccelStructCreateInfoTest.InequalityOnDifferentFlags	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
 AccelerationStructureNodeTest.AABBDataTypeIsCorrect	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 AccelerationStructureNodeTest.ASBuildModeDefaultIsStatic	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 AccelerationStructureNodeTest.ASBuildModeEnumValues	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
@@ -48,7 +55,7 @@ AccelerationStructureNodeTest.OutputsAreRequired	cpu	test_rendergraph_criticalno
 AccelerationStructureNodeTest.RequiredInputsAreNotNullable	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 AccelerationStructureNodeTest.TLASHandleTypeIsCorrect	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 AccelerationStructureNodeTest.VulkanDeviceInTypeIsCorrect	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
-AccumulationConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+AccumulationConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
 AccumulationConnectionRuleTest.CanHandleAccumulationSlot	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AccumulationConnectionRuleTest.CannotHandleDirectSlot	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AccumulationConnectionRuleTest.Name	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
@@ -81,9 +88,94 @@ AccumulationStateTest.ValidateDuplicateKeysAllowed	cpu	test_connection_rule	9fe5
 AccumulationTypeTest.AccumulatedTypeForBool	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AccumulationTypeTest.AccumulatedTypeForStruct	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 AccumulationTypeTest.AccumulatedTypeForVkBuffer	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
+ActionStack.DispatchThenUndoRestores	cpu	test_action_stack	96151eb62dc7	no GPU action in a passing run
+ActionStack.GroupUndoneAsOneUnit	cpu	test_action_stack	96151eb62dc7	no GPU action in a passing run
+ActionStack.RedoReapplies	cpu	test_action_stack	96151eb62dc7	no GPU action in a passing run
+ActionStack.UndoEmptyReturnsNothingToUndo	cpu	test_action_stack	96151eb62dc7	no GPU action in a passing run
+AliasingTest.AliasedBufferRequestStructure	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.AliasedImageRequestStructure	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.AllowAliasingFlagDefault	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.BufferAllocationCanAliasFlagSet	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.BufferAllocationResultHasAliasingFlags	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.CannotAliasNonAliasable	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AliasingTest.CreateAliasedBuffer	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AliasingTest.CreateAliasedBufferNullSource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.CreateAliasedImageNullSource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.ImageAllocationCanAliasFlagSet	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.ImageAllocationResultHasAliasingFlags	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.NonAliasableAllocation	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AliasingTest.SupportsAliasingNullHandle	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+AliasingTest.SupportsAliasingQuery	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AllocationErrorTest.AllErrorsHaveStrings	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AllocationErrorTest.ErrorToStringConversion	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AllocatorAccessTest.GetAllocator	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+AllocatorAccessTest.GetAllocatorName	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+AllocatorStatsTest.GetAllocatorName	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AllocatorStatsTest.InitialStats	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AllocatorStatsTest.StatsAfterAllocations	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+AppFlowBlob.BlobMatchesCompiledContainerAndRuntimeBehavior	cpu	test_appflow_blob	ab205bb13205	no GPU action in a passing run
+AppFlowBlob.InteriorEditPreservesShapeHash	cpu	test_appflow_blob	ab205bb13205	unmeasured (failed, no GPU action before it ended): kept cpu
+AppFlowBlob.ReloadedRuntimeOwnsParsedBlobStorage	cpu	test_appflow_blob	ab205bb13205	no GPU action in a passing run
+AppFlowBlob.ShapeHashMismatchRejectsAndRuntimeFallsBack	cpu	test_appflow_blob	ab205bb13205	no GPU action in a passing run
+AppFlowDataSeam.LiveViewNounRoundTripsThroughProvider	cpu	test_appflow_data_seam	0a215cd41135	no GPU action in a passing run
+AppFlowDataSeam.LoaderPopulatesDataTargets	cpu	test_appflow_data_seam	0a215cd41135	no GPU action in a passing run
+AppFlowDataSeam.ProviderRejectsMismatchedNounFallibly	cpu	test_appflow_data_seam	0a215cd41135	no GPU action in a passing run
 AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender	gpu	test_appflow_editor_toggle_render	cef71eb51d2d	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically	gpu	vixen_lookdev_capture	0806e6be8a21	unmeasured (failed, no GPU action before it ended): kept gpu
+AppFlowGolden.ActionDeclTablePresent	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.DataTargetsTablePresent	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.EnumValuesArePinned	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.HeaderHasProvenanceBanner	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.KeyVocabAndTriggersPresent	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.ParamSignatureEmitted	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowGolden.ReturnActionAndBackButtonTriggerPresent	cpu	test_appflow_golden	24eaf8d084b5	no GPU action in a passing run
+AppFlowLoader.LoadsGeneratedViewOk	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowLoader.SeedsKeyDefaultsResolvableByChord	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.DataActionDrivesProviderMask	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.DataLegInertWithoutProvider	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.DispatchByKeyRunsBoundActionUndoably	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.DispatchBySelectorRunsBoundActionUndoably	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.NavPopPopsToPriorState	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.StateChangePublishesEvent	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.TransitionEventCarriesDeclaredElementAndKeyCauses	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppFlowRuntime.UndeclaredEdgeIsRefusedAndDiagnosed	cpu	test_appflow_loader	339a821755c9	no GPU action in a passing run
+AppRunTick.FrameLimitReachedWhenCounterHitsExitAfterFrames	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+AppRunTick.HookOrderIsPreUpdateRenderPost	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+AppRunTick.RenderFalseWithDeviceLostIsDeviceLostUnrecoverable	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+AppRunTick.RenderFalseWithNeitherIsRenderError	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+AppRunTick.RenderFalseWithShutdownIsWindowClosed	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+AppRunTick.RenderTrueUnderLimitReturnsRunning	cpu	test_app_run_tick	b9b6d2583877	no GPU action in a passing run
+Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically	gpu	vixen_lookdev_capture	8d40db8c332f	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ArchetypeBuilderEdgeCaseTest.ArchetypeWithEmptyName	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.ArchetypeWithLongName	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.ArchetypeWithSpecialCharactersInName	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.ArchetypeWithUnicodeInName	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.GetHooksReturnsNullForUnregistered	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.LargeBundleThreshold	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderEdgeCaseTest.ZeroBundleThreshold	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderIntegrationTest.CompleteWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderIntegrationTest.ComponentValuesAreInitialized	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.ArchetypeDoesNotAcceptUnregisteredRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.ArchetypeWithBundleHook	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.ArchetypeWithTagComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithAllHookTypes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithInitialValues	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithMultipleComponents	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithMultipleRelationships	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithOptionalComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateArchetypeWithSourceRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.CreateSimpleArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.EmptyArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.ExplicitDoneRequired	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeBuilderTest.FluentChaining	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryTest.ArchetypeNotFound	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryTest.GetArchetypesReturnsAllRegistered	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryTest.OverwriteArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryTest.RegisterAndRetrieveArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryTest.RegisterMultipleArchetypes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+ArchetypeRegistryThreadTest.ConcurrentArchetypeRegistration	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
 ArrayTypeValidation	cpu	test_array_type_validation	659bc7a9ddb8	no GPU action in a passing run
+AsyncShaderBundleBuilder.PreservesBuildReadinessAndCompletionEvents	cpu	test_async_shader_bundle_builder	9435a72b7358	no GPU action in a passing run
 AttributeRegistryIntegrationTest.BackwardCompatibility_StringLookup	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.BrickViewPointerAccess	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.EntityOctreeRoundTrip	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
@@ -92,9 +184,21 @@ AttributeRegistryIntegrationTest.KeyAttributeIsAtIndexZero	cpu	test_attribute_re
 AttributeRegistryIntegrationTest.MultipleOctreesFromGaiaWorld	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.MultipleVoxelsVaryingDensity	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
 AttributeRegistryIntegrationTest.TypeSafeAttributeAccess	cpu	test_attribute_registry_integration	b87be41ec869	no GPU action in a passing run
+AttributeRegistryTest.AddNonKeyAttribute	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeRegistryTest.AllocateBrick	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeRegistryTest.FreeBrick	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeRegistryTest.MultipleAttributes	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeRegistryTest.ObserverNotifications	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeRegistryTest.RegisterKeyAttribute	cpu	test_attribute_registry	f7d5c46316d8	no GPU action in a passing run
+AttributeStorageTest.AllocateSlot	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
+AttributeStorageTest.FloatStorageProperties	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
+AttributeStorageTest.FreeAndReuseSlot	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
+AttributeStorageTest.ReserveCapacity	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
+AttributeStorageTest.SlotDataAccess	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
+AttributeStorageTest.Vec3StorageProperties	cpu	test_attribute_storage	2dcc34a176dd	no GPU action in a passing run
 AttributeTest.MakeAttributes	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
 AttributeTest.UncompressedSize	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
-B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical	gpu	test_b1_occlusion_ab	61c8a32675d8	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+B1OcclusionAbTest.OccludedInstancesDropIterationsAndPixelsStayIdentical	gpu	test_b1_occlusion_ab	b07641bade2e	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BackwardCompatibility.EmptyGroupInputsUsesLegacyQueue	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BackwardCompatibility.LegacyQueueDispatchStillWorks	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BakedVsVirtualParityTest.RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -102,13 +206,19 @@ BakedVsVirtualParityTest.RimleakSlabSphereMatchesAnalyticAndOccupancyOracle	gpu	
 BakedVsVirtualParityTest.VirtualRendersGeometricallyEquivalentToBaked	gpu	test_baked_vs_virtual_parity	94bc46d9fdd4	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BandwidthAbMeasurementTest.MipOnlyFarBodiesUploadDrasticallyFewerBytesThanBaseline	gpu	test_rendergraph_nodes	f7e4495c379c	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 BandwidthAbMeasurementTest.MixedSceneThroughLiveResidencyTriggerMeasuresRealisticBandwidthReduction	gpu	test_rendergraph_nodes	f7e4495c379c	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-BarrierTypes.ColorAttachmentWriteMapsToColorOptimal	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-BarrierTypes.ComputeStorageWriteMapsToGeneral	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-BarrierTypes.FragmentSampledReadMapsToReadOnlyOptimal	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-BarrierTypes.PresentSrcHasNoAccessAndPresentLayout	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-BarrierTypes.ReadWriteClassification	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-BarrierTypes.ShaderStorageWriteCoversFragmentAndComputeWriters	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+BarrierTypes.ColorAttachmentWriteMapsToColorOptimal	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+BarrierTypes.ComputeStorageWriteMapsToGeneral	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+BarrierTypes.FragmentSampledReadMapsToReadOnlyOptimal	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+BarrierTypes.PresentSrcHasNoAccessAndPresentLayout	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+BarrierTypes.ReadWriteClassification	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+BarrierTypes.ShaderStorageWriteCoversFragmentAndComputeWriters	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 BindingDescriptorTest.CreateFromBindingRef	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
+BindingPattern.ExtractsTypedParamFromSelector	cpu	test_binding_pattern	ee25c4028de6	no GPU action in a passing run
+BindingPattern.GeneratedProgramTriggerDoesNotMatchBroaderReorderPattern	cpu	test_binding_pattern	ee25c4028de6	no GPU action in a passing run
+BindingPattern.InvalidIntegerExtractionIsInert	cpu	test_binding_pattern	ee25c4028de6	no GPU action in a passing run
+BindingStore.FirstWinKeepsExisting	cpu	test_binding_store	f9b28ad82bf8	no GPU action in a passing run
+BindingStore.ResolvesSelectorToBoundAction	cpu	test_binding_store	f9b28ad82bf8	no GPU action in a passing run
+BindingStore.UnknownParamWarnsAndSkips	cpu	test_binding_store	f9b28ad82bf8	no GPU action in a passing run
 BlendMode.Additive	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 BlendMode.AllModesWriteRGBA	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 BlendMode.Alpha	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -122,6 +232,18 @@ BlitSubmissionPolicy.CompositeBlitLeavesFenceAndPresentSemaphoreToUiOwner	cpu	te
 BlitSubmissionPolicy.TerminalBlitOwnsFenceAndSignalsPresentSemaphore	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 BlobView.MatchingVersionRegistersAndBinds	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
 BlobView.VersionMismatchSkipsRegister	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
+BlockCompressorTest.CalculateCompressedSize	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.CompressedBufferRoundTrip	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorGLSLFunction	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorGradient	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorPartialBlock	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorProperties	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorRedGreen	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXT1ColorSingleColor	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXTNormalGLSLFunction	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXTNormalProperties	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXTNormalUpVector	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
+BlockCompressorTest.DXTNormalVaried	cpu	test_block_compressor	2b4a8895b488	no GPU action in a passing run
 BodyFootprintRegime.DistanceNeverSelectsFinerRegime	cpu	test_body_footprint_regime	c8a8cf54a6ec	no GPU action in a passing run
 BodyFootprintRegime.InvalidRadiusFailsClosedToDeepField	cpu	test_body_footprint_regime	c8a8cf54a6ec	no GPU action in a passing run
 BodyFootprintRegime.RegimeProvidesConservativeLodBandFloor	cpu	test_body_footprint_regime	c8a8cf54a6ec	no GPU action in a passing run
@@ -188,11 +310,30 @@ BrickViewTest.PointerAccess_DirectWrite	cpu	test_brick_view	4de1eda1a9ab	no GPU 
 BrickViewTest.PointerAccess_Vec3	cpu	test_brick_view	4de1eda1a9ab	no GPU action in a passing run
 BrickViewTest.ThreeDCoordinateAPI	cpu	test_brick_view	4de1eda1a9ab	no GPU action in a passing run
 BrickViewTest.Vec3Attribute_Color	cpu	test_brick_view	4de1eda1a9ab	no GPU action in a passing run
+BudgetBridgeTest.ConcurrentStagingReservation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.CreateWithNullManagers	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.InitialState	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.MaxPendingUploadsDropsOldest	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.ProcessCompletedUploadsFence	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.ProcessCompletedUploadsFrameBased	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.RecordUpload	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.ReleaseStagingQuota	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.ReserveStagingQuota	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.SetStagingQuotaLimit	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.StagingNearLimit	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.StagingQuotaExceeded	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetBridgeTest.UploadCompleteCallback	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+BudgetLimitTest.NearBudgetDetection	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+BudgetLimitTest.OverBudgetDetection	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 BudgetPresets.FPS120StrictHasCorrectValues	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BudgetPresets.FPS30StrictHasCorrectValues	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BudgetPresets.FPS60LenientHasCorrectValues	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BudgetPresets.FPS60StrictHasCorrectValues	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 BudgetPresets.UnlimitedHasCorrectValues	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+BufferAllocationRequestTest.DefaultValues	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+BufferAllocationRequestTest.DesignatedInitializers	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+BufferAllocationTest.BoolOperator	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+BufferAllocationTest.DefaultValues	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
 BufferSyncGathererNodeTest.ConfigArrayModeIsSingle	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
 BufferSyncGathererNodeTest.ConfigBufferArrayOutputIndex	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
 BufferSyncGathererNodeTest.ConfigHasNoStaticInputs	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
@@ -215,6 +356,32 @@ BulkMaterializationIntegrationTest.CpuRecipeOneVsNWorkerCanonicalHashParity	cpu	
 BulkMaterializationIntegrationTest.CpuRecipeProducesUploadReadyEsvoPage	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
 BulkMaterializationIntegrationTest.ScalarVsSimdCanonicalHashParity	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
 BulkMaterializationIntegrationTest.SimdBatchCancellationProducesTerminalResult	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
+CacheCodec.CacherRejectsAnEmptyTornCacheBeforeParsing	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.EmptyVectorRoundTrips	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.ReadStringLengthBeyondCapFails	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.ReadVector32HugeLengthFailsWithoutAllocating	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.ReadVectorHugeLengthFailsWithoutAllocating	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.ReadVectorLengthWithinCapButBeyondFileFails	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.RoundTrip32BitLengthVariants	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.RoundTripPodStringVector	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.SizeTimesSizeofOverflowRejected	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheCodec.TruncatedStreamFailsAtTheRightRead	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheEnvelope.ConcurrentWritersOnlyPublishCompletePayloads	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheEnvelope.RejectsWrongIdentityTypeAndChecksum	cpu	test_cache_codec	fbae6fbb31c5	no GPU action in a passing run
+CacheKeyHasherTest.DifferentInputsDifferentHashes	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyHasherTest.EmptyHasherProducesConsistentHash	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyHasherTest.OrderMatters	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyHasherTest.SameInputsSameHash	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyTest.AABBCreateInfoHashDiffers	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyTest.BuildFlagsAffectHash	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyTest.BuildModeAffectsHash	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyTest.NullAABBDataHashIsZeroBased	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacheKeyTest.SameAABBDataSameHash	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CachedASTest.DynamicModeValidity	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+CachedASTest.StaticModeValidity	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+CachedASTest.ZeroAABBsInvalid	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+CacherChainTest.AABBToASDataFlow	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CacherChainTest.MultipleASFromSameAABB	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
 CalibrationStoreTest.DeleteFile	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 CalibrationStoreTest.GPUIdentifierFilename	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 CalibrationStoreTest.GetFilePath	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
@@ -260,6 +427,8 @@ ChildDescriptorTest.DefaultInitialization	cpu	test_svo_types	cc1ad1aaedba	no GPU
 ChildDescriptorTest.GetChildCount	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
 ChildDescriptorTest.HasChild	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
 ChildDescriptorTest.IsLeaf	cpu	test_svo_types	cc1ad1aaedba	no GPU action in a passing run
+CleanupChainTest.AABBCleanupDoesntInvalidateAS	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+CleanupChainTest.SceneChangeInvalidatesChain	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
 CodegenEmit.M4d_Float3AndVMControl_CompilesSpirV	cpu	test_recipe_codegen	d343521c7f62	no GPU action in a passing run
 CommandPoolNodeTest.ConfigCommandPoolIsRequired	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 CommandPoolNodeTest.ConfigCommandPoolIsWriteOnly	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -277,6 +446,15 @@ Completeness.CheckD_ObliqueEyeSweepHitsShell	cpu	test_shell_octree	1aa5288b57c0	
 ComplexScenarios.LargeScalePartitioning	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 ComplexScenarios.ManyGroupsWithVaryingSizes	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 ComplexScenarios.SparseGroupIds	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+ComponentSystemTest.ComponentRegistry_VisitByName	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.ComponentVariant_TypeSafety	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.MacroComponentRegistry_AllComponentsAccessible	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.MacroComponentRegistry_ValueComponents	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.MortonKey_EncodeDecodeRoundtrip	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.MortonKey_GridPositionRoundtrip	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.ScalarComponents_CustomValues	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.ScalarComponents_DefaultValues	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
+ComponentSystemTest.Vec3Components_GlmConversion	cpu	test_component_system	63a4c3a130b4	no GPU action in a passing run
 ComprehensiveRayCastingTest.AxisAlignedRaysFromOutside	cpu	test_ray_casting_comprehensive	897908deb585	no GPU action in a passing run
 ComprehensiveRayCastingTest.CompleteMissCases	cpu	test_ray_casting_comprehensive	897908deb585	no GPU action in a passing run
 ComprehensiveRayCastingTest.CornellBoxScene	cpu	test_ray_casting_comprehensive	897908deb585	no GPU action in a passing run
@@ -290,6 +468,11 @@ ComprehensiveRayCastingTest.RaysFromInsideGrid	cpu	test_ray_casting_comprehensiv
 ComprehensiveRayCastingTest.ThroughputBenchmark	cpu	test_ray_casting_comprehensive	897908deb585	no GPU action in a passing run
 ComputeDispatchAcquirePolicy.OffscreenOnlyPassDoesNotConsumeSwapchainAcquire	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 ComputeDispatchAcquirePolicy.SwapchainWritingPassConsumesSwapchainAcquire	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
+ConcurrentBudgetManagerTest.ConcurrentAllocateAndDeallocate	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ConcurrentBudgetManagerTest.ConcurrentGetUsage	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ConcurrentBudgetManagerTest.ConcurrentRecordAllocations	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ConcurrentBudgetManagerTest.ConcurrentTryAllocate	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ConcurrentBudgetManagerTest.StressTestHighContention	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 ConnectionContextTest.EffectiveTypeOverride	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 ConnectionContextTest.GetEffectiveSourceTypeNoExtraction	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 ConnectionContextTest.GetEffectiveSourceTypeWithExtraction	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
@@ -336,13 +519,40 @@ DDATest.IsVoxelInBounds_Inside	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no
 DDATest.IsVoxelInBounds_Outside	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
 DDATest.StepToNextVoxel_Diagonal_MultipleSteps	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
 DDATest.StepToNextVoxel_PositiveX	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
+DataFlowTest.AllocationRequestPropagation	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+DataFlowTest.MapUnmapPropagation	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.DistinctRingSlotsAreTrackedIndependently	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.FirstUseOfAHandleIsUndefined	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.SecondUseReportsTheActualTrackedLayoutNotAGuess	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DecideRenderTargetPriorLayoutAndUpdate.UpdatesTrackedStateToTheNewLayout	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
-DeclaredPositionRenderTest.GeneratedGpuRoundingContainsExtremaTiesAndUnknowns	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkQueueSubmit,vkCreateDevice
-DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-DeclaredPositionRenderTest.ThreeDeclaredPositionsMoveTheRenderedShape	gpu	test_recipe_declared_position_render	4d59a1534340	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+DecideSubmitOutcomeTest.BothSucceedIsOk	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DecideSubmitOutcomeTest.FenceCreateFailureIsReported	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DecideSubmitOutcomeTest.FenceCreateFailureTakesPriorityOverSubmitResult	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DecideSubmitOutcomeTest.SubmitFailureAfterGoodFenceIsReported	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeclaredPositionRenderTest.CorpusInlineLiteralsMatchRuntimeOperandsAndTape	gpu	test_recipe_declared_position_render	e91511a1c57b	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+DeclaredPositionRenderTest.GeneratedGpuRoundingContainsExtremaTiesAndUnknowns	gpu	test_recipe_declared_position_render	e91511a1c57b	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels	gpu	test_recipe_declared_position_render	e91511a1c57b	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+DeclaredPositionRenderTest.ThreeDeclaredPositionsMoveTheRenderedShape	gpu	test_recipe_declared_position_render	e91511a1c57b	first: vkCreateDevice; seen: vkCreateDevice,vkCreateInstance,vkAllocateMemory,vkQueueSubmit
+DeferredDestructionConcurrencyTest.ConcurrentAddGenericAndProcessFrameNoCorruption	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionGenericTest.AddGenericQueuesFunction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionGenericTest.AddGenericWithNullFunction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionGenericTest.MultipleGenericDestructions	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.ConstructorWithInitialCapacity	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.NoGrowthAfterPreReserve	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.PreReserveAllocatesCapacity	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.PreReserveGrowsWhenLarger	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.PreReservePreservesExistingItems	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.ProcessFrameRespectsTiming	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.ResetStats	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.RingBufferCorrectFIFOOrder	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.RingBufferWrapAround	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.StatsTrackGrowthCount	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.StatsTrackHighWaterMark	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionPreAllocationTest.StatsTrackTotals	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionTest.EmptyQueue	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionTest.FlushAllDestructions	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionTest.PendingDestructionStructure	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeferredDestructionTest.ProcessFrameFrameTracking	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.AllGraphicsStagesMerged	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.ComputeShaderDescriptors	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.ConfigArrayModeIsSingle	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
@@ -365,6 +575,24 @@ DescriptorResourceGathererNodeTest.SingleShaderWithUBO	cpu	test_rendergraph_crit
 DescriptorResourceGathererNodeTest.SparseBindings	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.VariadicConstraints	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
 DescriptorResourceGathererNodeTest.VkDescriptorSetLayoutBindingConstruction	cpu	test_rendergraph_criticalnodes_descriptorgatherer	d2627d6286f6	no GPU action in a passing run
+DeviceAddressTest.DeviceAddressReturned	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+DeviceAddressTest.NoDeviceAddressWithoutFlag	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+DeviceAddressTest.UniqueDeviceAddresses	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.CreateAliasedBufferNullSource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.CreateAliasedImageNullSource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.FreeAliasedBufferInvalidates	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.FreeAliasedImageInvalidates	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.InitialAliasedCountIsZero	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerAliasingTest.SupportsAliasingNullHandle	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.AllocateAndFreeBuffer	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+DeviceBudgetManagerTest.AllocateWithNullAllocatorFails	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.ConcurrentStagingQuota	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.CreateWithNullAllocator	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.GetStats	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.SetStagingQuota	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.StagingQuotaManagement	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DeviceBudgetManagerTest.StagingQuotaTracking	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+DeviceBudgetManagerTest.StatsTracking	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 DeviceNodeTest.CompileTimeAssertionsPass	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DeviceNodeTest.ConfigArrayModeIsSingle	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DeviceNodeTest.ConfigCompileTimeValidation	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -389,6 +617,10 @@ DeviceNodeTest.ConfigVulkanDeviceTypeIsCorrect	cpu	test_rendergraph_criticalnode
 DeviceNodeTest.GpuIndexAutoSentinelIsMaxUint32	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DeviceNodeTest.GpuIndexParameterDefaultsToAuto	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 DeviceNodeTest.TypeIDIsCorrect	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
+DirectAllocatorTest.AllocateWithNullDeviceFails	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DirectAllocatorTest.CreateWithNullHandles	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DirectAllocatorTest.GetStatsEmpty	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+DirectAllocatorTest.SetBudgetManager	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 DirectConnectionRuleTest.CanHandleDirectConnection	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 DirectConnectionRuleTest.CannotHandleAccumulationConnection	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 DirectConnectionRuleTest.CannotHandleBindingConnection	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
@@ -447,10 +679,20 @@ DynamicInstanceBufferNodeConfigTest.VulkanDeviceInIsDependencyRole	cpu	test_rend
 DynamicInstanceBufferNodeConfigTest.VulkanDeviceInIsReadOnly	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 DynamicInstanceBufferNodeConfigTest.VulkanDeviceInIsRequired	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 DynamicInstanceBufferNodeConfigTest.VulkanDeviceInTypeIsVulkanDevicePtr	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
+DynamicTLASChainTest.DynamicModeInstanceLifecycle	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+DynamicTLASChainTest.MultipleInstancesFromDifferentBLAS	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
 ESVOScaleHelperTest.ScaleToWorldSizeConversion	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
 ESVOScaleHelperTest.TToWorldDistanceConversion	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
 EdgeCases.MaxGroupId	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 EdgeCases.MixedGroupIdsWithNullopt	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+EditorDocumentFraming.FramesThreeDifferentlyBoundedDocumentsAndParameterizedRecipe	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelAdmission.Accepts31And32LayersRejects33And256WithTypedDiagnostic	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelOperations.LayerInsertDeleteMoveAndProgramFieldEditPersist	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelOperations.ToggleUndoSaveAndReopenUseTheAcceptedDocumentState	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelParameters.SnapshotValuesAndMetadataSurviveSaveAndRejectStaleUse	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelPreview.DirectEntryMatchesVrc1FlattenAndExportBytes	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelPreview.DirectEntryMatchesVrc1ForLayerOverride	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
+EditorDocumentModelReload.InvalidReloadPreservesAcceptedRevisionThenValidReloadCommits	cpu	test_editor_document_model_preview	ed096ae67588	no GPU action in a passing run
 EditorDocumentRenderTest.DisablingCutLayerChangesTopFaceSilhouette	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 EditorDocumentRenderTest.FlattenIsDeterministic	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice
 EditorDocumentRenderTest.GoldenDocumentAllLayersRendersVisibleBody	gpu	test_rendergraph_criticalnodes_gpurender2	aa4ea86cda03	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -462,16 +704,26 @@ EditorToggleUndoCapture.ParameterEditReachesRenderPipeline	gpu	test_rendergraph_
 EditorToggleUndoCapture.ParameterSnapshotAndSaveReopenStayCanonical	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
 EditorToggleUndoCapture.ToggleUndoRedoStateTrailThroughWindowedRun	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
 EditorToggleUndoCapture.UndoRedoRestoresRenderByteExact	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
-EmitProceduralFieldFunctionGlsl.DeclaredPositionEmitsOutParamAndInlineAssignment	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
-EmitProceduralFieldFunctionGlsl.EveryNumericLiteralHasDecimalPoint	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
-EmitProceduralFieldFunctionGlsl.SingleSphereProducesComposableFunction	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
-EmitProceduralFieldFunctionGlsl.UnionOfTwoSpheresChainsCorrectly	cpu	test_recipe_codegen_glsl	74404bf392ef	no GPU action in a passing run
+EmitProceduralFieldFunctionGlsl.DeclaredPositionEmitsOutParamAndInlineAssignment	cpu	test_recipe_codegen_glsl	1440cf2e0f6f	no GPU action in a passing run
+EmitProceduralFieldFunctionGlsl.EveryNumericLiteralHasDecimalPoint	cpu	test_recipe_codegen_glsl	1440cf2e0f6f	no GPU action in a passing run
+EmitProceduralFieldFunctionGlsl.InstructionFloatLiteralsRoundTripExactly	cpu	test_recipe_codegen_glsl	1440cf2e0f6f	no GPU action in a passing run
+EmitProceduralFieldFunctionGlsl.SingleSphereProducesComposableFunction	cpu	test_recipe_codegen_glsl	1440cf2e0f6f	no GPU action in a passing run
+EmitProceduralFieldFunctionGlsl.UnionOfTwoSpheresChainsCorrectly	cpu	test_recipe_codegen_glsl	1440cf2e0f6f	no GPU action in a passing run
+EmitterPHatMirror.MatchesClosedFormForAnalyticSphere	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
 EmitterPower.ConcatenatedStreamCarriesLaneAndFarFieldBytesUnchanged	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 EmitterPower.InteriorNodePowerIsChildSum	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 EmitterPower.LaneBakeTimeAndMemoryReport	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 EmitterPower.NonEmissiveTreeBakesEmptyLane	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 EmitterPower.OctantSumsPartitionTheBrick	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 EmitterPower.ShellDerivePassesLaneThroughUnchanged	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
+EmitterSamplingMixture.PipelineSplitFollowsPower	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterSamplingRecipe.DrawsInstancesByPowerOnTheSurfaceWithUnitAreaPdf	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterSamplingReplay.SeededSequenceIsDeterministicAndPinned	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterSamplingRng.NextFloatNeverReachesOne	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterSamplingSparse.LandsInEmissiveOctantsAndPdfIntegratesToClusterArea	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterSamplingSparse.PowerEstimatorReproducesTotalSparsePower	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterTableBuild.EmptyWhenNothingEmits	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+EmitterTableBuild.OnlyEmissiveInstancesPowerScalesWithAreaAndCdfAccumulates	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
 EntityBasedRebuildTest.RebuildAPIStub	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 EntityBasedRebuildTest.RebuildHierarchicalStructure	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 EntityBrickViewTest.BrickMemorySize	cpu	test_entity_brick_view	e9f4dee120cf	no GPU action in a passing run
@@ -507,6 +759,13 @@ EntityBrickViewTest.SetEntity_BoundaryVoxels	cpu	test_entity_brick_view	e9f4dee1
 EntityBrickViewTest.SpanIterateAllEntities	cpu	test_entity_brick_view	e9f4dee120cf	no GPU action in a passing run
 EntityBrickViewTest.SparseOccupancy	cpu	test_entity_brick_view	e9f4dee120cf	no GPU action in a passing run
 EntityBrickViewTest.ZeroCopySpanAccess	cpu	test_entity_brick_view	e9f4dee120cf	no GPU action in a passing run
+EntityFactoryTest.CreateEntityBatch	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateEntityBatchEmpty	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateEntityBatchUnknownArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateEntityFromArchetype	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateEntityWithComponentOverride	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateLargeBatch	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+EntityFactoryTest.CreateUnknownArchetypeReturnsInvalid	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
 EntityOctreeIntegrationTest.EntityBasedRayCasting	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 EntityOctreeIntegrationTest.MissReturnsInvalidEntity	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 EntityOctreeIntegrationTest.MultipleEntitiesRayCasting	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
@@ -522,19 +781,33 @@ FieldExtractionModifierTest.FullPipelineWithPersistentSource	cpu	test_connection
 FieldExtractionModifierTest.PreValidationAcceptsPersistent	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 FieldExtractionModifierTest.PreValidationRejectsTransient	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 FieldExtractionModifierTest.PreValidationSetsEffectiveType	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
+FlowReturn.EmptyHistoryIsNoOp	cpu	test_flow_return	976befb8ed64	no GPU action in a passing run
+FlowReturn.MissingDeclaredReturnEdgePreservesStateAndHistory	cpu	test_flow_return	976befb8ed64	no GPU action in a passing run
+FlowReturn.PopsThroughDeclaredEdges	cpu	test_flow_return	976befb8ed64	no GPU action in a passing run
+FlowStateMachine.InitialStateComesFromGeneratedMarker	cpu	test_flow_state_machine	6b96564caa03	no GPU action in a passing run
+FlowStateMachine.TransitionFailsWhenGuardFalse	cpu	test_flow_state_machine	6b96564caa03	no GPU action in a passing run
+FlowStateMachine.TransitionPassesWhenGuardTrue	cpu	test_flow_state_machine	6b96564caa03	no GPU action in a passing run
+FlowStateMachine.UndeclaredEdgeRejected	cpu	test_flow_state_machine	6b96564caa03	no GPU action in a passing run
+FrameAllocationTrackingTest.ExceededThresholdFlagResets	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.FrameDeltaDefaultZero	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.FrameDeltaWithStagingQuota	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.MultipleFramesTrackSeparately	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.OnFrameStartCapturesSnapshot	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.SetFrameDeltaWarningThreshold	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+FrameAllocationTrackingTest.WarningCallbackCalled	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 FramePipelineTest.DomainCadenceUsesStableFrameMetadata	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 FramePipelineTest.EpochChangeDiscardsUnpublishedResults	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 FramePipelineTest.SlowerCadenceIsAdmittedThroughSharedExecutor	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
-FrameSyncAdapter.SwapchainResource_ImageBarriersAndTagging	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncAdapter.UntypedPassthrough_ProducesNoEdge	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncArrayHazard.ConstituentExpansion_BakesTwoIndependentEdges_NotASpuriousChain	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncArrayHazard.ConstituentExpansion_ProducesIndependentPerBufferTimelines	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncCore.BufferRAW_EdgeNoLayout	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncCore.ComputeWriteThenFragmentRead_ImageHandoff	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncCore.FanIn_TwoProducersOneConsumer	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncCore.ReadAfterReadSameLayout_NoSync	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncCore.TimelineOffsetsAreGroupOrdinals	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+FrameSyncAdapter.SwapchainResource_ImageBarriersAndTagging	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncAdapter.UntypedPassthrough_ProducesNoEdge	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncArrayHazard.ConstituentExpansion_BakesTwoIndependentEdges_NotASpuriousChain	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncArrayHazard.ConstituentExpansion_ProducesIndependentPerBufferTimelines	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncCore.BufferRAW_EdgeNoLayout	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncCore.ComputeWriteThenFragmentRead_ImageHandoff	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncCore.FanIn_TwoProducersOneConsumer	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncCore.ReadAfterReadSameLayout_NoSync	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncCore.TimelineOffsetsAreGroupOrdinals	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 FrameSyncNodeTest.ConfigDeviceInputIndex	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 FrameSyncNodeTest.ConfigDeviceIsReadOnly	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 FrameSyncNodeTest.ConfigDeviceIsRequired	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -545,14 +818,14 @@ FrameSyncNodeTest.ConfigHasOneInput	cpu	test_rendergraph_criticalnodes_infra1	3a
 FrameSyncNodeTest.ConfigHasSemaphoreOutputs	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 FrameSyncNodeTest.ConfigSupportsMultipleFrames	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 FrameSyncNodeTest.TypeNameIsFrameSync	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
-FrameSyncP3.DeclaredAccessKind_ReachesBarrierLayout	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncP3.FindGroupForNode_ReturnsCorrectGroup	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncScheduleTypes.DefaultScheduleIsEmptyAndInvalid	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncScheduleTypes.GroupBarrierDistinguishesImageVsBuffer	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncTimeline.BaseAdvancesByStrideAndNeverCollidesWithin4Frames	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncTimeline.CompletionMarkersStayUniqueAcrossFramesAndScheduleChanges	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncTimeline.ZeroStrideHoldsBase	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-FrameSyncWSILaw.SwapchainAdjacentGraph_WSIBinaryPointsAreTaggedAndNotTimelineEdges	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+FrameSyncP3.DeclaredAccessKind_ReachesBarrierLayout	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncP3.FindGroupForNode_ReturnsCorrectGroup	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncScheduleTypes.DefaultScheduleIsEmptyAndInvalid	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncScheduleTypes.GroupBarrierDistinguishesImageVsBuffer	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncTimeline.BaseAdvancesByStrideAndNeverCollidesWithin4Frames	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncTimeline.CompletionMarkersStayUniqueAcrossFramesAndScheduleChanges	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncTimeline.ZeroStrideHoldsBase	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+FrameSyncWSILaw.SwapchainAdjacentGraph_WSIBinaryPointsAreTaggedAndNotTimelineEdges	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 FrustumCull.BeyondFarPlaneIsRejected	cpu	test_frustum_cull	6e44b1fa2823	no GPU action in a passing run
 FrustumCull.BodyBehindCameraIsRejected	cpu	test_frustum_cull	6e44b1fa2823	no GPU action in a passing run
 FrustumCull.BodyCloseButBehindCameraIsRejected	cpu	test_frustum_cull	6e44b1fa2823	no GPU action in a passing run
@@ -599,6 +872,68 @@ GPUQueryManagerTest.TryReadTimestampsWithUnallocatedSlotReturnsFalse	cpu	test_re
 GPUQueryManagerTest.WriteTimestampWithInvalidFrameIndexThrows	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 GPUQueryManagerTest.WriteTimestampWithInvalidSlotThrows	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 GPUQueryManagerTest.WriteTimestampWithUnallocatedSlotThrows	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.BatchVsIndividualCreation_SameResult	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CountVoxelsInRegion_Empty	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CountVoxelsInRegion_Matches	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateAndDestroy10kVoxels	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxelWithRequest_AllComponents	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxelWithRequest_MinimalComponents	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxel_AutoParentToExistingChunk	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxel_AutoParent_MultipleChunks	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxel_NoAutoParent_OutsideChunkBounds	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_EmptyBatch	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_MixedComponents	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_SkipsAutoParent_ToExistingChunk	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.DestroyNonExistentVoxel_NoThrow	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.FindChunkByOrigin_Exists	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.FindChunkByOrigin_NotFound	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetComponentFromDestroyedVoxel	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_CacheHit	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_EmptyRegion	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_FullInvalidation	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_MultipleVoxels	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_PartialInvalidation	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GetEntityBlockRef_SingleVoxel	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.GroupedCopyNPreservesInputOrderAndComponentValues	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.HasComponent_StringAPI	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.HasComponent_TemplateAPI	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.InsertChunk_FullBrick8x8x8	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.InsertChunk_MultipleChunks	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.InsertChunk_SingleVoxel	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.QueryBrick_Empty	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.QueryBrick_WithVoxels	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.SetComponentOnNonExistentVoxel_NoThrow	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldCoverageTest.StructuralCommitDuringQueryUsesGaiaCommandBuffer	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldIntegrationTest.BatchCreation_MixedComponents	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldIntegrationTest.ComponentCreation_AllMacroComponents	cpu	test_gaia_voxel_world_coverage	da56df89bf03	no GPU action in a passing run
+GaiaVoxelWorldTest.ClearAllVoxels	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.ConcurrentReads	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CountVoxelsInRegion	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateMultipleVoxels	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateSingleVoxel	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateVoxelDefaultParameters	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateVoxelInBrick	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateVoxelsBatch_CreationEntry	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.CreateVoxelsBatch_DynamicVoxelScalar	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.DestroyVoxel	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.DestroyVoxelsBatch	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetColor	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetDensity	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetNonExistentEntity	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetNormal	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetPosition	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.GetStats	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.LargeCoordinates	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.NegativeCoordinates	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.QueryRegion_EmptyResult	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.QueryRegion_MultipleVoxels	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.QueryRegion_SingleVoxel	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.QuerySolidVoxels	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.SetColor	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.SetDensity	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.SetNormal	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.SetPosition	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
+GaiaVoxelWorldTest.ZeroDensity	cpu	test_gaia_voxel_world	6773fd256994	no GPU action in a passing run
 GenerationCostBenchmark.StandardBakeStageBreakdown	cpu	test_generation_cost_benchmark	c72b9e54d7f3	no GPU action in a passing run
 GpuChunkCost.ClippedLatencyDoesNotAmplifyThroughputCost	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 GpuChunkCost.EdgeNeverSubdividesBelowTheColdLaunch	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
@@ -608,6 +943,18 @@ GpuChunkCost.ImportedEnvelopeStartsWarmAndRejectsEmptyState	cpu	test_rendergraph
 GpuChunkCost.LargerLaunchRetainsEveryEarlierSampleBound	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 GpuChunkCost.NearBudgetFixedLatencyDoesNotCollapseIntoThousandsOfCommands	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 GpuChunkCost.SmallerFullTilesUpdateThroughputAfterLargerCalibration	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
+GpuFaultClassify.MapsVulkanResultsToFaultKinds	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultClassify.TimeoutIsAWatchdogFaultOnlyFromABoundedWait	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultClassify.WaitBoundIsFiniteAndAboveTdr	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.BoundedWaitTimeoutIsTreatedAsDeviceLoss	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.DeviceLostLatchesLossAndAbortsTheFrame	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.FirstFrameFaultWins	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.InjectedLossStaysRecoverableButGenuineLossIsTracked	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.OutOfMemoryFailsTheFrameWithoutLosingTheDevice	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.RecoveryOfAnEmptyGraphSucceedsAndClearsTheLatch	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.RecoveryStormFailsCleanlyInsteadOfLooping	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultGraphTest.UnboundedTimeoutIsNotAFault	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GpuFaultPolicy.GenuineLossOnTranslatedDeviceDoesNotRecoverInProcess	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 GpuParity.AxisAlignedRaysMatchOracle	cpu	test_gpu_parity	6077d8493d10	no GPU action in a passing run
 GpuParity.BodyPointContainmentMatchesData	cpu	test_gpu_parity	6077d8493d10	no GPU action in a passing run
 GpuParity.BoundaryEpsilonBandNearFaceEntry	cpu	test_gpu_parity	6077d8493d10	no GPU action in a passing run
@@ -628,25 +975,25 @@ GraphTaskLoweringTest.OutputIsInvariantAcrossWorkerCountsAndQueuedRuns	cpu	test_
 GraphTaskLoweringTest.RenderFrameUsesLoweredPlanAndHonorsEpochAbort	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 GraphTaskLoweringTest.TopologyEdgesBecomeSharedDagEdgesAndWaves	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 GraphTaskLoweringTest.WaveCompletionRunsBetweenDependentWaves	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
-GraphTopologyIntegration.DetectInvalidPipeline	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyIntegration.RenderingPipelineTopology	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.AcyclicGraph	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.AddEdge	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.AddNodes	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.CircularDependencyDetection_Direct	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.CircularDependencyDetection_Indirect	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.ComplexGraph_MultipleConsumers	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.ComplexGraph_MultipleProducers	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.DisconnectedGraph	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.GetDirectDependencies	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.GetDirectDependents	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.LightingDispatchChainSurvivesReversedAndShuffledTieOrders	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.RemoveEdge	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.RemoveNode	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.SelfLoop_Detection	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.TopologicalSort_Diamond	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.TopologicalSort_Linear	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-GraphTopologyTest.TopologicalSort_UsesInsertionOrderForIndependentNodes	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+GraphTopologyIntegration.DetectInvalidPipeline	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyIntegration.RenderingPipelineTopology	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.AcyclicGraph	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.AddEdge	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.AddNodes	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.CircularDependencyDetection_Direct	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.CircularDependencyDetection_Indirect	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.ComplexGraph_MultipleConsumers	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.ComplexGraph_MultipleProducers	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.DisconnectedGraph	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.GetDirectDependencies	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.GetDirectDependents	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.LightingDispatchChainSurvivesReversedAndShuffledTieOrders	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.RemoveEdge	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.RemoveNode	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.SelfLoop_Detection	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.TopologicalSort_Diamond	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.TopologicalSort_Linear	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+GraphTopologyTest.TopologicalSort_UsesInsertionOrderForIndependentNodes	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 GroupDispatchStats.Accumulation	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupDispatchStats.DefaultInitialization	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupKeyModifier.ConstructWithOptionalField	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
@@ -657,9 +1004,11 @@ GroupPartitioning.DeterministicOrderingWithStdMap	cpu	test_rendergraph_dispatch	
 GroupPartitioning.EmptyInputProducesEmptyMap	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupPartitioning.MultiplePassesSameGroup	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 GroupPartitioning.PassesWithoutGroupIdDefaultToGroup0	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams	gpu	test_headless_cornell_graph	e20c2277756f	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 HeadlessStarfieldGraph.CaptureFirst	gpu	test_headless_starfield_graph	eef68080d863	unmeasured (skipped, no GPU action before it ended): kept gpu
 HeadlessStarfieldGraph.CaptureSecond	gpu	test_headless_starfield_graph	eef68080d863	unmeasured (skipped, no GPU action before it ended): kept gpu
 HeadlessStarfieldGraph.CompareIndependentCaptures	gpu	test_headless_starfield_graph	6b849a95a829	unmeasured (skipped, no GPU action before it ended): kept gpu
+HeadlessUiGraph.RendersAndReadsBackAnOffscreenFrame	gpu	test_headless_ui_graph	0ed9b0848a4c	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 HelperFunctions.GroupKeyDeducesType	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 HelperFunctions.GroupKeyReturnsNonNull	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 HiZDownsampleMirror.AllMissStaysSentinel	cpu	test_hiz_downsample_mirror	86e6a43f5e6a	no GPU action in a passing run
@@ -685,7 +1034,22 @@ HitAccumMirror.Toksvig_DisagreementShortensAvgDir_EndToEnd	cpu	test_hit_accumula
 HitAccumMirror.Toksvig_MonotoneInDisagreement_NeverNarrows	cpu	test_hit_accumulation_mirror	ec0b71c8ebcb	no GPU action in a passing run
 HitAccumMirror.Toksvig_PerfectAgreementNeverWidens	cpu	test_hit_accumulation_mirror	ec0b71c8ebcb	no GPU action in a passing run
 HitRecordReadbackTest.HitRecordMatchesShaderColorAndIdOutput	gpu	test_rendergraph_criticalnodes_gpurender1	e3c3d9d5eed5	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-HitRecordSdiParity.ReflectedLayoutMatchesCppMirror	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+HitRecordSdiParity.ReflectedLayoutMatchesCppMirror	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
+HlslIngestion.GeneratedKernelsCompileToSpirv	cpu	test_hlsl_ingestion	6c8d62e33af7	no GPU action in a passing run
+HostBudgetManagerTest.ConcurrentStackAllocations	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.FrameReset	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.FrameStackAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.FrameStackFallbackToHeap	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.HeapAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.InitialState	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.MultipleFrameAllocations	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.PersistentStackAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.PersistentStackSurvivesFrameReset	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.ResetPersistentStack	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.TypedFrameAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HostBudgetManagerTest.TypedPersistentAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+HotReloadTest.GeometryChangeRequiresNewAS	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+HotReloadTest.ShaderChangePreservesAS	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
 HotnessGate.PromotesOnlyBucketsAboveThreshold	cpu	test_recipe_multi_bucket_compositing	3982c6c99bd9	no GPU action in a passing run
 HudRenderCapture.BaselineIsNonEmpty	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
 HudRenderCapture.PayloadSwapProducesRealPixelDifference	gpu	test_rendergraph_criticalnodes_windowedcapture	3e9ba8a88720	fixture: requires GPU fixture VixenEditorCapture (setup test vixen_editor_capture_producer)
@@ -696,6 +1060,9 @@ HudSmokeTest.HudDocumentLoadsAndBindsResolve	cpu	test_ui_hud_smoke	199c99e7fc75	
 HudSmokeTest.S1b_ListDataModelConstructs	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
 HudSmokeTest.S1b_SetHudViewApiCompiles	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
 HudSmokeTest.S1b_SetHudViewListsResolveInRml	cpu	test_ui_hud_smoke	199c99e7fc75	no GPU action in a passing run
+HudViewTest.RegistersAndProjectsFactionData	cpu	test_hud_view	7a9f53684edf	no GPU action in a passing run
+InputProfile.TightestScopeWins	cpu	test_input_profile	b3f84165df5a	no GPU action in a passing run
+InputProfile.UnboundChordReturnsFalse	cpu	test_input_profile	b3f84165df5a	no GPU action in a passing run
 InstanceBufferGridMath.GridDim0Yields0	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 InstanceBufferGridMath.GridDim16Yields256	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 InstanceBufferGridMath.GridDim1Yields1	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
@@ -756,6 +1123,9 @@ KernelDispatchTaskExecutorTest.PrimaryErrorIsLowestTaskIndexAndLaterWavesDoNotRu
 KernelDispatchTaskExecutorTest.QueuedBlockingIoHonorsStopToken	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 KernelDispatchTaskExecutorTest.SaturatedBlockingLaneDoesNotDelayFrameComputeWave	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 KernelDispatchTaskExecutorTest.StopTokenPreventsIssuingLaterWavesAtOneTwoAndNWorkers	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
+KeyChord.EqualityAndMods	cpu	test_keychord	b390071659d4	no GPU action in a passing run
+KeyChord.GlfwToKeyIdCoversEditorUsage	cpu	test_keychord	b390071659d4	no GPU action in a passing run
+KeyChord.GlfwToKeyIdUnknownMapsToNone	cpu	test_keychord	b390071659d4	no GPU action in a passing run
 LODParametersTest.BiasAffectsTermination	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
 LODParametersTest.DefaultConstructorDisablesLOD	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
 LODParametersTest.FromCameraCreatesValidParameters	cpu	test_lod	dd3cb46315dd	no GPU action in a passing run
@@ -773,17 +1143,54 @@ LODRayCastingTest.NoPerformanceRegressionWithoutLOD	cpu	test_lod	dd3cb46315dd	no
 LaineKarrasOctree.CastStack_PushPop	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 LaineKarrasOctree.ParametricPlanes_AxisAligned	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
 LaineKarrasOctree.ParametricPlanes_Diagonal	cpu	test_octree_queries	84dfcf51517d	no GPU action in a passing run
+LayerController.DefaultsAllEnabled	cpu	test_layer_controller	cc1d4db9ccea	no GPU action in a passing run
+LayerController.OutOfRangeIsNoOp	cpu	test_layer_controller	cc1d4db9ccea	no GPU action in a passing run
+LayerController.SnapshotRestoreRoundTrips	cpu	test_layer_controller	cc1d4db9ccea	no GPU action in a passing run
+LayerController.ToggleFlipsBit	cpu	test_layer_controller	cc1d4db9ccea	no GPU action in a passing run
+LifetimeSafetyTest.AABBDataCleanupDoesntInvalidateAS	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.ASValidAfterAABBDataScopeEnds	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.AccelerationStructureDataValidityChecks	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.CreateInfoPointerIsTemporary	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.DynamicModeOnlyNeedsBLAS	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.MultipleASIndependentCounts	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.SharedPtrIndependentLifetime	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.SourceAABBCountIsValueNotPointer	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.TLASInstanceManagerIndependentLifetime	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.VoxelAABBDataValidityIndependent	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.WeakPtrInvalidatesCorrectly	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeSafetyTest.ZeroAABBCountAlwaysInvalid	cpu	test_lifetime_safety	106498e9f421	no GPU action in a passing run
+LifetimeScopeIntegration.DeepNestedScopes	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeIntegration.TypicalFrameWorkflow	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.BeginAndEndScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.BeginFrameIncrementsCounter	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.CurrentScopeReturnsFrameWhenNoNested	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.CurrentScopeReturnsTopNested	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.EndFrameEndsAllNestedScopes	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.EndScopeOnEmptyStackIsNoOp	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.FirstNestedScopeParentIsFrameScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.GetFrameScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.InitialState	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.NestedScopeHasCorrectParent	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeManagerTest.NestedScopes	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.Construction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.ConstructionWithParent	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.DestructorEndsScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.EndScopeIdempotent	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.EndScopeMarksEnded	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.MoveAssignment	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.MoveConstruction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+LifetimeScopeTest.TotalMemoryBytesEmpty	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 LightTree.CutAggregatePowerApproximatesBruteForceLeafSum	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
 LightTree.CutNodesAreWellFormed	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
 LightTree.EmissiveGateSceneHasAtLeastAThousandEmissiveVoxels	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
 LightTree.EmissiveSceneProducesBoundedNonEmptyCut	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
 LightTree.NonEmissiveSceneProducesEmptyCut	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
 LightTree.TighterThresholdNeverProducesFewerCutNodes	cpu	test_light_tree	4634b33acb35	no GPU action in a passing run
-LightingConfigParity.IsTriviallyCopyableStandardLayout	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-LightingConfigParity.LightStd430Layout	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-LightingConfigParity.LightingConfigStd430Layout	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-LightingConfigParity.LightsArrayStridesAtExactLightSize	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+LightingConfigParity.IsTriviallyCopyableStandardLayout	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+LightingConfigParity.LightStd430Layout	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+LightingConfigParity.LightingConfigStd430Layout	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+LightingConfigParity.LightsArrayStridesAtExactLightSize	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
 LodLadder.ComputesConservativeDistanceFootprint	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
 LodLadder.RegistryStoresImplicitOneBandAndNormalizesLegacyThresholds	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
 LodLadder.RejectsInvalidExplicitLadders	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
@@ -792,6 +1199,34 @@ LodLadder.ValidatesFinalInfinityAndMonotoneUploads	cpu	test_lod_ladder	7694d75e4
 LodTransition.BlendWindowProducesCoarserWeight	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
 LodTransition.UploadGateHonorsSkipAndReentry	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
 LodTransition.UsesDeadZoneAndThreeFrameDwell	cpu	test_lod_ladder	7694d75e4fa6	no GPU action in a passing run
+LoggerGlobalStateTest.CriticalReachesTerminalOnDefaultConstructedLogger	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerGlobalStateTest.ErrorReachesTerminalOnDefaultConstructedLogger	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerGlobalStateTest.GlobalMinLevelAboveErrorStillSilencesIt	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerGlobalStateTest.GlobalTerminalOutputFalseRestoresGating	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerGlobalStateTest.GlobalTerminalOutputMakesDisabledLoggerPrintInfo	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerGlobalStateTest.WarningStaysGatedOnDefaultConstructedLogger	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.AddChildLogger	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.AllLogLevelsWork	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.ClearAllClearsChildrenToo	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.ClearChildrenRemovesReferences	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.ClearRemovesLogs	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.CriticalLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.DebugLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.DisabledLoggerDoesNotLog	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.EmptyMessageLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.EnableDisableLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.ErrorLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.ExtractLogsIncludesChildren	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.InfoLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.LogLevelGeneric	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.LoggerCreationDisabled	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.LoggerCreationEnabled	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.LongMessageLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.MultilineMessageLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.MultipleLogEntries	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.RemoveChildLogger	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.TerminalOutputToggle	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
+LoggerTest.WarningLogging	cpu	test_logger_basic	4a097821df37	no GPU action in a passing run
 LoopManagerTest.ConstructorInitializesManager	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 LoopManagerTest.DefaultMaxCatchupTime	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 LoopManagerTest.FireAndForgetResetsAccumulator	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
@@ -834,6 +1269,22 @@ LoopManagerTest.VariableTimestepLoopUsesClampedFrameTime	cpu	test_rendergraph_co
 LoopManagerTest.VeryHighFrequencyLoop	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 LoopManagerTest.VeryLowFrequencyLoop	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 LoopManagerTest.ZeroFrameTimeClampedToMinimum	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
+MapUnmapTest.MapBufferFailure	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MapUnmapTest.MapBufferSuccess	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.AllocationErrorToString	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.AllocationStatsDefaults	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.BufferAllocationDefaults	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.BufferAllocationRequestDefaults	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.ImageAllocationDefaults	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryAllocatorInterfaceTest.MemoryLocationValues	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+MemoryLocationBehaviorTest.DeviceLocalNotMapped	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MemoryLocationBehaviorTest.HostCachedMapped	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MemoryLocationBehaviorTest.HostVisibleMapped	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MemoryLocationTest.AllLocationsDistinct	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+MemoryPressureLadder.ClassifiesAgainstTheBudget	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+MemoryPressureLadder.DegradeActionsEscalateAndOptionalGoesFirst	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+MemoryPressureLadder.NoPhysicalDeviceMeansNoLiveBudget	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+MemoryPressureLadder.QueryWithoutPhysicalDeviceIsEmpty	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 MipAnisoPool.NodeAtOrAboveThresholdLevelIsUntouched	cpu	test_mip_aniso_pool	a92f9d4a5e96	no GPU action in a passing run
 MipAnisoPool.SerializeRoundTripByteSize	cpu	test_mip_aniso_pool	a92f9d4a5e96	no GPU action in a passing run
 MipAnisoPool.SlabAlongMinusXShowsStrongXAsymmetry	cpu	test_mip_aniso_pool	a92f9d4a5e96	no GPU action in a passing run
@@ -861,6 +1312,8 @@ MipSampleFilter.MinMagnitudeHalfEmpty	cpu	test_mip_sample_filter	546e324211a9	no
 MipSampleFilter.MinMagnitudeUniformFill	cpu	test_mip_sample_filter	546e324211a9	no GPU action in a passing run
 MipSampleFilter.SdfMinMagnitudeAvoidsFalseSurfaceCrossing_AdversarialCase	cpu	test_mip_sample_filter	546e324211a9	no GPU action in a passing run
 MipSampleFilter.SdfMinMagnitudeShallowVsDeepInterior	cpu	test_mip_sample_filter	546e324211a9	no GPU action in a passing run
+MultiDeviceBudgetTest.IndependentStagingQuotas	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+MultiDeviceBudgetTest.IsolatedAllocations	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 MultiDispatchIntegration.ActualNodeChargesMandatoryUnknownWork	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 MultiDispatchIntegration.ActualNodeMissingOrUncalibratedProfileIsNotFree	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 MultiDispatchIntegration.ActualNodeUnknownCostCannotBypassStrictAdmission	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
@@ -928,6 +1381,10 @@ NodeParameterManager.NegativeInt32DoesNotConvertToUInt32	cpu	test_rendergraph_no
 NodeParameterManager.UInt32StoredInt32ReadConverts	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 NodeSelfRegistration.RegistersAllBuiltInNodes	cpu	test_node_self_registration	50f3a127a794	no GPU action in a passing run
 NodeSelfRegistration.ReplaysIntoEachRegistryInstance	cpu	test_node_self_registration	50f3a127a794	no GPU action in a passing run
+OOMHandlingTest.DeviceLocalOOM	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+OOMHandlingTest.HostVisibleOOM	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+OOMHandlingTest.InvalidParameters	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
+OOMHandlingTest.RecoverAfterOOM	cpu	test_vulkan_buffer_allocator	d98c07087c0b	no GPU action in a passing run
 OcclusionGate.CandidateDoesNotSelfOccludeWhenPresentInItsOwnOccluderSet	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
 OcclusionGate.CandidateStillCorrectlyOccludedByADifferentResidentTreeWhenIdsDiffer	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
 OcclusionGate.LoneCandidateGrantedWhenNothingResidentYet	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
@@ -943,7 +1400,7 @@ OcclusionGate.RaySphereNearestHit_MissesWhenOffAxis	cpu	test_occlusion_gate	8868
 OcclusionGate.ResidencyPrecheckUsesFootprintPolicySource	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
 OcclusionGate.TargetResidencyRequestedOnceItEmergesPastTheOccluder	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
 OcclusionGate.TargetResidencyRequestedOnceOccluderMovesAside	cpu	test_occlusion_gate	88683215d430	no GPU action in a passing run
-OctreeConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+OctreeConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
 OctreePool.ConcatenatesMoreThanThreeSdfOctrees	cpu	test_octree_pool	21010f814ad3	no GPU action in a passing run
 OctreePool.ConcatenatesOneOctree	cpu	test_octree_pool	21010f814ad3	no GPU action in a passing run
 OctreePool.ConcatenatesThreeOctrees	cpu	test_octree_pool	21010f814ad3	no GPU action in a passing run
@@ -993,10 +1450,10 @@ PartialBrickUploadTest.BricksAllocatedFullSizeButPopulatedOnlyAfterResidencyRequ
 PassGroupNodeSmoke.AddPassGrowsPassCount	cpu	test_pass_group_node_smoke	c2165b9fc6a4	no GPU action in a passing run
 PassGroupNodeSmoke.RegistryLookupByType	cpu	test_pass_group_node_smoke	c2165b9fc6a4	no GPU action in a passing run
 PassGroupNodeSmoke.SetPassesReplacesExisting	cpu	test_pass_group_node_smoke	c2165b9fc6a4	no GPU action in a passing run
-PassGroupSchedule.ComputeToFragmentReadAcrossRenderStep	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-PassGroupSchedule.ComputeWriteThenComputeReadEmitsOneBufferBarrier	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-PassGroupSchedule.IndependentResourcesNoBarrier	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-PassGroupSchedule.ShellDoubleBufferRenderAndRevalidateNoBarrier	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+PassGroupSchedule.ComputeToFragmentReadAcrossRenderStep	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+PassGroupSchedule.ComputeWriteThenComputeReadEmitsOneBufferBarrier	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+PassGroupSchedule.IndependentResourcesNoBarrier	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+PassGroupSchedule.ShellDoubleBufferRenderAndRevalidateNoBarrier	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
 PassThroughStorage_HandleTypes.CompileTimeRegistrationAndGetSet	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 PerFrameResourcesTest.AllFramesHaveIndependentState	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
 PerFrameResourcesTest.CleanupOnUninitializedIsNoOp	cpu	test_rendergraph_coresystems_b	cb60dfd44a20	no GPU action in a passing run
@@ -1064,6 +1521,18 @@ PickRay.CenterPixelMatchesCameraDirOffsetEyeAndAngle	cpu	test_rendergraph_critic
 PickRay.DirectionIsNormalized	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 PickRay.RightPixelLeansRight	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
 PickRay.TopPixelLeansUp	cpu	test_rendergraph_criticalnodes_infra2	f53da14f9efd	no GPU action in a passing run
+PipelineBlendKey.BlendModeChangesCacheKey	cpu	test_pipeline_blend_key	685202db35c5	no GPU action in a passing run
+PipelineBlendKey.DefaultParamsAreOpaqueWriteRGBA	cpu	test_pipeline_blend_key	685202db35c5	no GPU action in a passing run
+PipelineBlendKey.DistinctBlendModesGiveDistinctKeys	cpu	test_pipeline_blend_key	685202db35c5	no GPU action in a passing run
+PipelineBlendKey.SameBlendGivesSameKey	cpu	test_pipeline_blend_key	685202db35c5	no GPU action in a passing run
+PipelineCacheHeader.EmptyBlobFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.MatchingHeaderAndUUIDPasses	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.MatchingHeaderWithTrailingDataPasses	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.TooShortBlobFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.WrongDeviceIdFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.WrongHeaderVersionFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.WrongUUIDFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
+PipelineCacheHeader.WrongVendorIdFails	cpu	test_pipeline_cache_header	49851fedaf00	no GPU action in a passing run
 PredictionErrorTrackerTest.BiasConfidenceConsistent	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 PredictionErrorTrackerTest.BiasDirectionOverestimate	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 PredictionErrorTrackerTest.BiasDirectionUnderestimate	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
@@ -1087,10 +1556,11 @@ PredictionErrorTrackerTest.VarianceComputation	cpu	test_rendergraph_dispatch	810
 PredictionErrorTrackerTest.WindowSizeTrimming	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 PredictionErrorTrackerTest.ZeroActual	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 PredictionErrorTrackerTest.ZeroEstimate	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
-PrevCameraConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+PrevCameraConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
 ProbeGridConfigLayout.FieldOffsetsMatchDeclarationOrder	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
 ProbeGridConfigLayout.StructSizeMatchesStd430	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
 ProbeGridConfigLayout.ValueInitializedIsAllZero	cpu	test_rendergraph_nodes	f7e4495c379c	no GPU action in a passing run
+ProbeUpdateSmokeTest.SceneBindingsChainCompilesFromNewCallSite	cpu	test_probe_update_smoke	e9a9bdd06d40	no GPU action in a passing run
 ProceduralRecipeRenderTest.RenderComposition	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderCone	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ProceduralRecipeRenderTest.RenderDisplacement	gpu	test_procedural_recipe_render	8d19b7fe60bd	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -1164,8 +1634,8 @@ RebuildHierarchyTest.EmptyWorld	cpu	test_rebuild_hierarchy	62d7ea5609c8	no GPU a
 RebuildHierarchyTest.MultipleBricksHierarchy	cpu	test_rebuild_hierarchy	62d7ea5609c8	no GPU action in a passing run
 RebuildHierarchyTest.SingleBrick	cpu	test_rebuild_hierarchy	62d7ea5609c8	no GPU action in a passing run
 RebuildHierarchyTest.StressTest_NoiseGenerated	cpu	test_rebuild_hierarchy	62d7ea5609c8	no GPU action in a passing run
-RecipeAuthoringGateTest.CsgSubtractRendersNonTrivial	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-RecipeAuthoringGateTest.DefaultSceneRegression	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+RecipeAuthoringGateTest.CsgSubtractRendersNonTrivial	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+RecipeAuthoringGateTest.DefaultSceneRegression	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeBake.ReadParamBakeDefaultsToZeroFillFailSafe	cpu	test_recipe_bake	b317907e208e	no GPU action in a passing run
 RecipeBake.ReadParamBakeWithExplicitSnapshotMatchesEvalRecipe	cpu	test_recipe_bake	b317907e208e	no GPU action in a passing run
 RecipeBake.RecipeSphereEqualsAnalyticSphere	cpu	test_recipe_bake	b317907e208e	no GPU action in a passing run
@@ -1194,6 +1664,9 @@ RecipeBounds.SmoothSubtractBoundIsConservativeUnion	cpu	test_recipe_bounds	71114
 RecipeBounds.TransformWithScaleBailsOut	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
 RecipeBounds.TwistBendBailsOut	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
 RecipeBounds.UnionOfDisjointSpheresBoundsBoth	cpu	test_recipe_bounds	711147dbf2db	no GPU action in a passing run
+RecipeBucketDataCacherTest.DirtyRangesAreByteExactAndIgnoreB1MaskWords	cpu	test_recipe_bucket_data_cacher	26272e5cfb9b	no GPU action in a passing run
+RecipeBucketDataCacherTest.FrameStatesRetainRangesAcrossRotationUntilConsumed	cpu	test_recipe_bucket_data_cacher	26272e5cfb9b	no GPU action in a passing run
+RecipeBucketDataCacherTest.GenerationPairReusesCanonicalSnapshot	cpu	test_recipe_bucket_data_cacher	26272e5cfb9b	no GPU action in a passing run
 RecipeBucketedIndirectDispatchTest.SpecializedPipelineMatchesTier0SphereMarchOracle	gpu	test_recipe_bucketed_indirect_dispatch	3f2dc0170f5d	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeBucketingPerfTest.N100_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 RecipeBucketingPerfTest.N10_BucketedVsColdStandIn	gpu	test_recipe_bucketing_perf	df133cc82a87	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
@@ -1209,6 +1682,20 @@ RecipeComposition.RejectsMalformedBlockDeclarations	cpu	test_recipe_composition	
 RecipeComposition.ResolvesVariantAndTwoMaskBlockSelectionByBand	cpu	test_recipe_composition	cf613a157c0a	no GPU action in a passing run
 RecipeComposition.SkipBandHasNoFieldOrBlocks	cpu	test_recipe_composition	cf613a157c0a	no GPU action in a passing run
 RecipeContainerParity.CSharpWriterBlobRoundTripsViaCppReader	cpu	test_recipe_container_parity	d820ebe76f86	no GPU action in a passing run
+RecipeContentCacherTest.DiffersByOneLiteralDistinctEntries	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentCacherTest.DiffersByOpcodeDistinctEntries	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentCacherTest.IdenticalBytecodeDistinctRecipeIdsCollapseToOneEntry	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentCacherTest.ReRegisteringSameRecipeIdDoesNotDuplicateMembership	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentCacherTest.ReadParamSlotIndexDoesNotCollapseAcrossCacher	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentCacherTest.RegistersAsDeviceIndependent	cpu	test_recipe_content_cacher	53a7d33d21df	no GPU action in a passing run
+RecipeContentHash.DeterministicAcrossCalls	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeContentHash.DiffersByInstructionOrder	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeContentHash.DiffersByOneLiteral	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeContentHash.DiffersByOpcode	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeContentHash.DistinguishesReadParamSlotIndex	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeContentHash.IdenticalBytecodeSameHashAcrossDistinctRecipeIds	cpu	test_recipe_content_hash	e3902493cb46	no GPU action in a passing run
+RecipeEmitterShapes.NoGridFallsBackToBoundSphereArea	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
+RecipeEmitterShapes.SurfaceCellAreaTracksSphereArea	cpu	test_emitter_sampling	7a38d273f1d2	no GPU action in a passing run
 RecipeEvalParity.DeclarePosition_CapturesReadParamSourcedWorldPosition	cpu	test_recipe_eval_parity	407f14d4f78e	no GPU action in a passing run
 RecipeEvalParity.DeclarePosition_ChangingReadParamMovesWhereShapeRenders	cpu	test_recipe_eval_parity	407f14d4f78e	no GPU action in a passing run
 RecipeEvalParity.DeclarePosition_OmittedOutParamDoesNotCrash	cpu	test_recipe_eval_parity	407f14d4f78e	no GPU action in a passing run
@@ -1397,16 +1884,85 @@ RecipeWholeDomainCompaction.RemovesGeneratedExactNoOpsWithoutChannelAssumptions	
 RecipeWholeDomainCompaction.UncertifiedGpuDuplicatesRetainTheOperator	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
 RecipeWholeDomainCompaction.UndeclaredEmissionBlocksGlobalBranchRemoval	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
 RecipeWholeDomainCompaction.UnenforcedBoundsBlockIntervalBranchRemoval	cpu	test_recipe_interval_pruning	012642af39df	no GPU action in a passing run
+RefCountBaseTest.AddRefIncrementsCount	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RefCountBaseTest.ConcurrentRefCounting	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RefCountBaseTest.InitialRefCount	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RefCountBaseTest.MoveTransfersOwnership	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RefCountBaseTest.ReleaseDecrementsCount	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RegistrationAPITest.CacheStatistics	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.DuplicateRegistrationThrows	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.GetCacherWithNullDevice	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.GetTypeName	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.RegisterDeviceDependentCacher	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.RegisterDeviceIndependentCacher	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RegistrationAPITest.RegisterMultipleTypes	cpu	test_registration_api	01ec0d7d6bd2	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.CallbackThrowsException	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.EmptyBatchAdd	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.EmptyBatchRemove	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.FlushWithNoDeferredOperations	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.GetSourcesForEmptyTarget	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.GetTargetsForEmptySource	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.LargeBatchOperation	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.MultipleRelationshipTypes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.SelfRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverEdgeCaseTest.UnregisterInvalidHandle	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverIntegrationTest.BatchWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverIntegrationTest.CompleteWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverIntegrationTest.DeferredWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.AddRelationshipTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.AddSameRelationshipTwice	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.BatchAddTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.BatchAddWithDifferentTargets	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.BatchBelowThresholdUsesIndividualCallbacks	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.BatchContextForEachSourceWithComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.BatchRemoveRelationships	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.ContextGetConstComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.ContextGetMissingComponentReturnsNull	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.ContextGetSourceComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.ContextGetTargetComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.CountRelationships	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.DeferredModeQueuesOperations	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.DeferredModeWithMultipleOperations	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.DirectWorldAccess	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.GetSourcesForTarget	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.GetTargetsForSource	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.HasRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.MultipleCallbacksForSameRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.RemoveNonExistentRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.RemoveRelationshipTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.SetBatchThreshold	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverTest.UnregisterCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipObserverThreadTest.ConcurrentCallbackInvocation	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.ChildOfReturnsGaiaBuiltIn	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.ContainsReturnsSameTag	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.DifferentNamesReturnDifferentTags	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.ExistsReturnsCorrectly	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.GetNameForUnknownTagReturnsEmpty	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.GetNameReturnsCorrectName	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.GetNonExistentReturnsEmpty	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.GetOrCreateReturnsConsistentTag	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.MultipleRelationshipTypes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeRegistryTest.PartOfReturnsSameTag	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.CreateChildOfRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.CreateContainsRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.CreateCustomRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.CreateCustomRelationshipNonExclusive	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.CreatePartOfRelationship	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.RelationshipTypeEquality	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+RelationshipTypeTest.RelationshipTypeHash	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
 RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system	cpu	test_compile_time_resource_system	542250d2b7e2	no GPU action in a passing run
 RenderGraph/CompileTimeResourceSystem/test_recursive_validation	cpu	test_recursive_validation	56e4c9056ed4	no GPU action in a passing run
+RenderGraphIntegration.DeferredDestructionProcessedEachFrame	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RenderGraphIntegration.IntegratedResourceLifecycle	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+RenderGraphIntegration.ScopeManagerFrameLifecycle	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 RenderGraph_AccumulationGather.EmptyWhenUnconnected	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 RenderGraph_AccumulationGather.GathersAllProducers	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
 RenderGraph_AccumulationGather.SortKeyOrdersGather	cpu	test_rendergraph_nodeconn	325d8cb7c78b	no GPU action in a passing run
-RenderGraph_ArraySlot.DedupProducerList	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-RenderGraph_Basic.Placeholder	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-RenderGraph_Dependency.CleanupIncludesProducerRegardlessOfMark	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-RenderGraph_Dependency.InputMarkedAsDependency_IsIncluded	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-RenderGraph_MultiProducer.OrderAndUniqueness	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
+RenderGraph_ArraySlot.DedupProducerList	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+RenderGraph_Basic.Placeholder	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+RenderGraph_Dependency.CleanupIncludesProducerRegardlessOfMark	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+RenderGraph_Dependency.InputMarkedAsDependency_IsIncluded	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+RenderGraph_MultiProducer.OrderAndUniqueness	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
 RenderGraph_RecompileDedup.DiamondDependents_EachNodeCompilesExactlyOncePerWave	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
 RenderTargetLayout.RecreatedBufferDoesNotInheritTheOldAllocationLayout	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 RenderTargetLayout.RenderPassFinalLayoutComesFromTheCompiledPass	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -1453,9 +2009,9 @@ RenderTargetUsage.ExtentDependencyDoesNotInheritAnotherTargetsConsumers	cpu	test
 RenderTargetUsage.ForwardedImageArraysContributeConsumerUsage	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 RenderTargetUsage.StaticInputAndBindingAtSameIndexRemainDistinct	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 RenderTargetUsage.UnionsStorageBlitAndAttachmentConsumers	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
-ReservoirConfigLayout.FieldOffsetsMatchDeclarationOrder	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
-ReservoirConfigLayout.StructSizeMatchesStd430	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
-ReservoirConfigLayout.ValueInitializedIsAllZero	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
+ReservoirConfigLayout.FieldOffsetsMatchDeclarationOrder	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
+ReservoirConfigLayout.StructSizeMatchesStd430	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
+ReservoirConfigLayout.ValueInitializedIsAllZero	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
 ReservoirMirror.ChainedSpatialCombineStaysUnbiasedOverManyRuns	cpu	test_reservoir_mirror	afe67fa9ea1a	no GPU action in a passing run
 ReservoirMirror.DegenerateSourcePdfIsRejectedNotCrashed	cpu	test_reservoir_mirror	afe67fa9ea1a	no GPU action in a passing run
 ReservoirMirror.EmptyReservoirIsInvalidAndContributesNothing	cpu	test_reservoir_mirror	afe67fa9ea1a	no GPU action in a passing run
@@ -1526,6 +2082,12 @@ ResourceAccessTrackerTest.NoConflict_DisjointResources	cpu	test_rendergraph_trac
 ResourceAccessTrackerTest.NoConflict_NullNodes	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 ResourceAccessTrackerTest.NoConflict_SameNode	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 ResourceAccessTrackerTest.NoConflict_UntrackedNodes	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
+ResourceBudgetManagerTest.BudgetExceeded	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceBudgetManagerTest.InitialBudget	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceBudgetManagerTest.MultipleResourceTypes	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceBudgetManagerTest.ReleaseUsage	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceBudgetManagerTest.SetBudget	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceBudgetManagerTest.TrackUsage	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 ResourceDependencyTrackerTest.ClearOnEmptyTrackerIsNoOp	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
 ResourceDependencyTrackerTest.ClearPerformanceWithManyResources	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
 ResourceDependencyTrackerTest.ClearRemovesAllTrackedResources	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
@@ -1549,6 +2111,33 @@ ResourceDependencyTrackerTest.RegisterNullResourceIsIgnored	cpu	test_rendergraph
 ResourceDependencyTrackerTest.RegisterResourceProducerBasicFunctionality	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
 ResourceDependencyTrackerTest.RegisterSameResourceUpdatesProducer	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
 ResourceDependencyTrackerTest.TypicalGraphBuildPattern	cpu	test_rendergraph_coresystems_a	0471b20ac8d5	no GPU action in a passing run
+ResourceManagementIntegration.CompleteResourceLifecycle	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ResourceManagementTest.AddStatePreservesExisting	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ClearMetadataRemovesAll	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.DefaultConstructorUninitialized	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.DereferenceOperator	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.GetMetadataOrReturnsDefault	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.GetMetadataThrowsOnMissing	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.HasMetadataWorks	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.InitialGenerationZero	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.InitialStateUninitialized	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.LockUnlockWorks	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ManualGenerationIncrement	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.MarkOutdatedRemovesReady	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.MarkReadyRemovesOutdated	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.PointerOperators	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.RemoveMetadataWorks	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.RemoveStateKeepsOthers	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ResetClearsEverything	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.SetAndGetMetadata	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.SetIncrementsGeneration	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.SetStateChangesState	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.SetValueMarksReady	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ValueConstructorReady	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ValueOrReturnsDefault	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.ValueThrowsWhenNotReady	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ResourceManagementTest.WorksWithComplexTypes	cpu	test_resourcemanagement_basic	fae908876fd7	no GPU action in a passing run
+ReturnDispatch.EscAndBackButtonBothPop	cpu	test_return_dispatch	334753ff06d4	no GPU action in a passing run
 SVOBuilderTest.BuildCube	cpu	test_svo_builder	ff81b0c1393e	no GPU action in a passing run
 SVOBuilderTest.BuildStats	cpu	test_svo_builder	ff81b0c1393e	no GPU action in a passing run
 SVOBuilderTest.Construction	cpu	test_svo_builder	ff81b0c1393e	no GPU action in a passing run
@@ -1584,6 +2173,9 @@ SceneGeneratorTest.Urban_SpatialCoherence	cpu	test_rendergraph_voxelsystems	dd2f
 SceneGeneratorTest.VoxelGrid_EmptyDensity	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
 SceneGeneratorTest.VoxelGrid_FullDensity	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
 SceneGeneratorTest.VoxelGrid_HalfDensity	cpu	test_rendergraph_voxelsystems	dd2feb65a333	no GPU action in a passing run
+ScopeGuardTest.AutomaticScopeManagement	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ScopeGuardTest.GetScopeReturnsCorrectScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+ScopeGuardTest.NestedGuards	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 SdfBake.BoxTightRegionAllocatesFewerBricksThanFullCube	cpu	test_sdf_bake	07f816ae74fb	no GPU action in a passing run
 SdfBake.BoxTightRegionDefaultMatchesExplicitFullCube	cpu	test_sdf_bake	07f816ae74fb	no GPU action in a passing run
 SdfBake.BuildSdfBodyOctreePow2InputIsNoOp	cpu	test_sdf_bake	07f816ae74fb	no GPU action in a passing run
@@ -1607,6 +2199,13 @@ SdiHazardCensus.ReadOnlySharersDeriveNothing	cpu	test_sdi_stage_wiring	85c264422
 SdiHazardCensus.ReadWritePairDerivesBothDirections	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiHazardCensus.SingleStageDerivesNothing	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiHazardCensus.WriterToReaderDerivesOneEdge	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
+SdiLifecycleTest.BuildCompleteShaderBundleWithSDI	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.BuildVertexShaderOnly	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.GeneratedCppFilesUseDotGInfix	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.HandleInvalidShaderGracefully	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.RegisterShaderInSDIRegistry	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.UpdateShaderAndRegenerateSdi	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+SdiLifecycleTest.ValidateSdiContentStructure	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
 SdiStageWiring.EnableIfAvailableConsultsCapabilityGraph	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiStageWiring.FilterPlanSplitsDescriptorsAndPush	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiStageWiring.GatedMemberAbsentNeedsNoProvider	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
@@ -1615,6 +2214,23 @@ SdiStageWiring.PlanResolvesDescriptorAndPushSlots	cpu	test_sdi_stage_wiring	85c2
 SdiStageWiring.RegistryCopyIsIndependent	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiStageWiring.ScopedPlanSkipsOtherHalfProviders	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
 SdiStageWiring.UnmatchedMemberFailsNamingCandidates	cpu	test_sdi_stage_wiring	85c264422533	no GPU action in a passing run
+SdiVariantMerge.BaselineCommonFeaturesAreNotRequirements	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.ConflictingAccessFailsMerge	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.ConflictingBindingDeclarationsFail	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.DuplicateMemberNamesSkipAliases	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.GatedBindingGetsFeaturePredicate	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.MergedBindingCarriesAccess	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.MergedEmissionCarriesFeatureTags	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.MergedEmissionNamesAndIndices	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.MergedEmissionUsesTypedIntegerVectorsInPushBlock	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.NonConjunctivePresenceFails	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.OptionalFeatureAddsOneBindingToTheSameSet	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.PushConstantMemberGating	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.PushMemberOffsetConflictFails	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.SingleVariantIsAllUnconditional	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.SingleVariantSpanningTwoSetsFails	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.VariantRenumberingABindingFails	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
+SdiVariantMerge.VariantsSpanningTwoSetsFail	cpu	test_sdi_variant_merge	b09a1c9860eb	no GPU action in a passing run
 SelectionId.DifferentKindDiffers	cpu	test_rendergraph_criticalnodes_pushconstant	eae7d4640f80	no GPU action in a passing run
 SelectionId.DifferentKindHashesDiffer	cpu	test_rendergraph_criticalnodes_pushconstant	eae7d4640f80	no GPU action in a passing run
 SelectionId.DifferentPayloadDiffers	cpu	test_rendergraph_criticalnodes_pushconstant	eae7d4640f80	no GPU action in a passing run
@@ -1644,11 +2260,60 @@ SetMutationDispatch.DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsser
 SetMutationDispatch.UndoNeverReRunsTheLiveSelectionQueryAfterSelectionDrifts	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
 SetMutationDispatch.UndoRestoresExactPreDispatchValuesAndRedoReapplies	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
 SetMutationDispatch.WritesExactlyTheSelectedSubsetNotTheWholeWorld	cpu	test_set_mutation_dispatch	18ceb5e5c6dc	no GPU action in a passing run
+ShaderCacheManagerTest.CacheFilesCreatedOnDisk	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.CachePersistsAcrossInstances	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.ClearRemovesAllCaches	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.DifferentKeysStoreSeparately	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.EmptyKeyShouldFail	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.HasCacheEntryReturnsFalse	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.HasCacheEntryReturnsTrue	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.InvalidCacheDirectoryHandling	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.InvalidateNonExistentKeyDoesNotCrash	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.InvalidateRemovesCache	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.OverwriteExistingCache	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.RetrieveNonExistentShader	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.StoreAndRetrieveShader	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.StoreEmptySpirvShouldFail	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.StoreMultipleShadersQuickly	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCacheManagerTest.TruncatedCacheMissesAndCanBeRebuilt	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileFromFile	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileNonExistentFileFails	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileSimpleFragmentShader	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileSimpleVertexShader	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileVertexAndFragmentShaders	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileWithDebugInfo	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.CompileWithOptimization	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.DisassembleSpirv	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.GetVersion	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.InferStageFromPath	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.InvalidShaderFails	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.IsAvailable	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.SyntaxErrorReported	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderCompilerTest.ValidateSpirvSuccess	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderFamily.MembersAreCachedPerCanonicalFeatureSet	cpu	test_shader_family	596d898663a2	no GPU action in a passing run
+ShaderFamily.VariantsSelectByFeatureSet	cpu	test_shader_family	596d898663a2	no GPU action in a passing run
 ShaderManagementTests_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
-ShadowConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	86a7c1233e60	no GPU action in a passing run
-ShadowCorrectnessTest.EmissivePointLightFacesThreeBodiesTowardTheStar	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ShadowCorrectnessTest.EmissivePointLightPickReturnsTheLitBodyInstance	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
-ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay	gpu	test_rendergraph_criticalnodes_gpurender2b	e9d7217cad01	first: vkCreateInstance; seen: vkCreateInstance,vkAllocateMemory,vkCreateDevice,vkQueueSubmit
+ShaderPreprocessorTest.GuardedFileIncludedTwiceNonNestedSucceeds	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShaderPreprocessorTest.TrueCircularIncludeStillDetected	cpu	ShaderManagementTests	ce691518bdf1	no GPU action in a passing run
+ShadowConfigSdiParity.ReflectedLayoutMatchesCppStruct	cpu	test_rendergraph_criticalnodes_sdiparity	72d4d3eec6f4	no GPU action in a passing run
+ShadowCorrectnessTest.CelPointLightFalloffAndPurposeRemainLocalThroughLastSlot	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ShadowCorrectnessTest.EmissivePointLightFacesThreeBodiesTowardTheStar	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ShadowCorrectnessTest.EmissivePointLightPickReturnsTheLitBodyInstance	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
+ShadowCorrectnessTest.RegisteredRecipesCastAndReceiveThroughLastDeclaredLight	gpu	test_rendergraph_criticalnodes_gpurender2b	61af595b6c36	first: vkCreateDevice; seen: vkCreateDevice,vkCreateInstance,vkAllocateMemory,vkQueueSubmit
+SharedBufferTest.CreateWithInvalidAllocation	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedBufferTest.MoveSemantics	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedBufferTest.RefCountOperations	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedBufferTest.ResourceScope	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourceFactoryTest.CreateBufferWithInvalidDevice	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourceFactoryTest.CreateBufferWithNullAllocator	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.ConstructWithResource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.CopyAddsReference	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.DefaultConstruction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.LastRefQueuesDestruction	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.MoveTransfersOwnership	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.ResetReleasesResource	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SharedResourcePtrTest.Swap	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 ShellDerive.ApplyBrickSdfEditFeedsRevalidateAndKeepsProxiesValid	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
 ShellDerive.BakedNormalMipSamplesAreRenormalizedAndCovered	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
 ShellDerive.BakedNormalsRemainContinuousAcrossBrickBorders	cpu	test_shell_derive	c534c8e7ebc0	no GPU action in a passing run
@@ -1705,6 +2370,12 @@ SlotInfoTest.DefaultNoExtraction	cpu	test_connection_rule	9fe5bc41ee57	no GPU ac
 SlotInfoTest.FieldExtractionExtractorWorks	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 SlotInfoTest.SlotKindHelpers	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 SlotInfoTest.WithFieldExtraction	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
+SlotTaskContextTest.InitialStatus	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SlotTaskContextTest.MultipleElementProperties	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SlotTaskContextTest.ResourceEstimates	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SlotTaskContextTest.SingleElementProperties	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SlotTaskContextTest.TaskIndexing	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+SlotTaskContextTest.TaskStatusTransitions	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 SlotTaskManagerTest.CalculateOptimalParallelism_NoEstimates	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 SlotTaskManagerTest.CalculateOptimalParallelism_WithEstimates	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 SlotTaskManagerTest.ExecuteParallel_AllSuccess	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
@@ -1727,6 +2398,12 @@ SlotTaskManagerTest.ReportActualMemory_TracksUsage	cpu	test_slot_task	a786e34631
 SlotTaskManagerTest.ResetStats_ClearsAll	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 SlotTaskManagerTest.TaskContext_GetResourceScope	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
 SlotTaskManagerTest.TaskContext_SingleElementHelper	cpu	test_slot_task	a786e3463193	no GPU action in a passing run
+SnapshotUndo.GenericOverFootprintSize	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
+SnapshotUndo.InverseAndSnapshotParity	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
+SnapshotUndo.MixedGroupUndoesAsOneUnit	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
+SnapshotUndo.RuntimeToggleLayerAndUndoFireOnChanged	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
+SnapshotUndo.SnapshotRedoReappliesForward	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
+SnapshotUndo.SnapshotRestoresFootprintOnUndo	cpu	test_snapshot_undo	aa27c8fe27aa	no GPU action in a passing run
 SoaMipSerialize.ConcatenateSdfWithMipsMipPoolBaseAdvances	cpu	test_soa_mip_serialize	9f7e5ee5b82e	no GPU action in a passing run
 SoaMipSerialize.MipPoolByteSizeMatchesNodeCountTimesChannelCount	cpu	test_soa_mip_serialize	9f7e5ee5b82e	no GPU action in a passing run
 SoaMipSerialize.MipPoolBytesMatchBakeTimeSamplesAtExpectedOrdinal	cpu	test_soa_mip_serialize	9f7e5ee5b82e	no GPU action in a passing run
@@ -1746,8 +2423,26 @@ SoaSdfSerialize.MaterialBricksUnchanged	cpu	test_soa_sdf_serialize	2b0ba0abc470	
 SoaSdfSerialize.MultiChannelBakedColorRoughness	cpu	test_soa_sdf_serialize	2b0ba0abc470	no GPU action in a passing run
 SoaSdfSerialize.MultiChannelPoolLayout	cpu	test_soa_sdf_serialize	2b0ba0abc470	no GPU action in a passing run
 SoaSdfSerialize.SurfaceVoxelHoldsSignedDistance	cpu	test_soa_sdf_serialize	2b0ba0abc470	no GPU action in a passing run
+SpirvAccess.ReflectsAccessQualifiers	cpu	test_spirv_access	6ed9a18404e3	no GPU action in a passing run
+SpirvLoader.EmptyFileFailsCleanly	cpu	test_spirv_loader	20f04f608ea0	no GPU action in a passing run
+SpirvLoader.MissingFileFailsCleanly	cpu	test_spirv_loader	20f04f608ea0	no GPU action in a passing run
+SpirvLoader.SevenByteFileFailsCleanly	cpu	test_spirv_loader	20f04f608ea0	no GPU action in a passing run
+SpirvLoader.ValidMagicWordAlignedFileLoadsSuccessfully	cpu	test_spirv_loader	20f04f608ea0	no GPU action in a passing run
+SpirvLoader.WrongMagicFailsCleanly	cpu	test_spirv_loader	20f04f608ea0	no GPU action in a passing run
+StagingBufferPoolTest.AcquireAndRelease	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.BufferReuse	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.ClearPool	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.ConcurrentAcquireRelease	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.ReleaseAndDestroy	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.SizeClassBucketing	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.StatsAccuracy	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
+StagingBufferPoolTest.TrimPool	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 StampAndSelectActiveConfigs.NoShellCacheSelectsSourceConfigs	cpu	test_residency_default	491372de8ddd	no GPU action in a passing run
 StampAndSelectActiveConfigs.ShellCachePresentSelectsCompactConfigsStamped	cpu	test_residency_default	491372de8ddd	no GPU action in a passing run
+StatefulContainerTest.BulkStateOperations	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+StatefulContainerTest.ContainerSize	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+StatefulContainerTest.ElementStateTracking	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+StatefulContainerTest.ElementValueStorage	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 StoredSdfMarchMirror.DiagAsciiSilhouette	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
 StoredSdfMarchMirror.DiagBrickSelectionDisagreement	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
 StoredSdfMarchMirror.DiagFindExactMisses	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
@@ -1764,11 +2459,14 @@ StoredSdfMarchMirror.ReproducesBrickAlignedHoles	cpu	test_stored_sdf_march_mirro
 StoredSdfMarchMirror.RootCause_DisplacedOctree1MultiOctree	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
 StoredSdfMarchMirror.RootCause_EsvoBrickVsFloorBrick	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
 StoredSdfMarchMirror.RootCause_SentinelContaminationOrigin	cpu	test_stored_sdf_march_mirror	28396dde189a	no GPU action in a passing run
-SubGraphNodesTest.ExpansionRejectsTypeCyclesAndDepthBeyondEight	cpu	test_rendergraph_subgraph	2cfe287f292a	no GPU action in a passing run
-SubGraphNodesTest.ExpansionRejectsUnboundAndDoublyBoundPorts	cpu	test_rendergraph_subgraph	2cfe287f292a	no GPU action in a passing run
-SubGraphNodesTest.FlattenedSubGraphProducesTheHandWiredTaskPlan	cpu	test_rendergraph_subgraph	2cfe287f292a	no GPU action in a passing run
-SubGraphNodesTest.ScopePrefixesNamesRecordsMembersAndPreservesEdges	cpu	test_rendergraph_subgraph	2cfe287f292a	no GPU action in a passing run
-SubGraphNodesTest.ScopedNameCollisionStillUsesRenderGraphDiagnostic	cpu	test_rendergraph_subgraph	2cfe287f292a	no GPU action in a passing run
+SubGraphNodesTest.ExpansionRejectsTypeCyclesAndDepthBeyondEight	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.ExpansionRejectsUnboundAndDoublyBoundPorts	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.FlattenedSubGraphProducesTheHandWiredTaskPlan	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.OptionalInputStaysUnconnectedWhenProviderCapabilityIsAbsent	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.RegisteredGroupCanBeExpandedByRegistryName	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.RegisteredGroupUsesRegistrySchemaAndCapabilitySelectedWiring	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.ScopePrefixesNamesRecordsMembersAndPreservesEdges	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
+SubGraphNodesTest.ScopedNameCollisionStillUsesRenderGraphDiagnostic	cpu	test_rendergraph_subgraph	ddc10f249ff0	no GPU action in a passing run
 SubmitRecord.CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 SubmitRecord.DrainCounterKeepsTwoBatchesOutstandingAcrossRecords	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 SubmitRecord.RetirementFailureStopsBeforeTheNextChunkAndFinalSignal	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
@@ -1794,6 +2492,17 @@ SwitchCostIsolationTest.N100_TinyMi_LowKi_Decoupling	gpu	test_switch_cost_isolat
 SwitchCostIsolationTest.N10_LargeMi_HighKi_Decoupling	gpu	test_switch_cost_isolation	fd3fe0be9108	first: vkCreateInstance; seen: vkCreateInstance
 SwitchCostIsolationTest.N10_RandomizedStress	gpu	test_switch_cost_isolation	fd3fe0be9108	first: vkCreateInstance; seen: vkCreateInstance
 SwitchCostIsolationTest.N3_RandomizedStress	gpu	test_switch_cost_isolation	fd3fe0be9108	first: vkCreateInstance; seen: vkCreateInstance
+TLASInstanceManagerTest.AddInstance	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.AddMultipleInstances	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.Clear	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.ClearDirty	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.DirtyLevelPrecedence	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.GenerateVulkanInstances	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.IdReuse	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.InitialState	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.InvalidIdOperations	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.RemoveInstance	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
+TLASInstanceManagerTest.UpdateTransform	cpu	test_tlas_phase3	89d896db77de	no GPU action in a passing run
 TargetSynchronization.MissingWindowAcquireIsAnError	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 TargetSynchronization.MissingWindowPresentIsAnError	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 TargetSynchronization.NodeWiringAndRuntimeUseTheSameCapability	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
@@ -1851,6 +2560,7 @@ TaskQueueTest.StrictModeAcceptsZeroCostTasks	cpu	test_rendergraph_dispatch	810a3
 TaskQueueTest.StrictModePreventsOverflow	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 TaskQueueTest.StrictModeRejectsAllTasksWhenBudgetZero	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 TaskQueueTest.StrictModeRejectsTaskExceedingBudget	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
+ThreadSafetyTest.ConcurrentAllocations	cpu	test_budget_manager_integration	6b8b8f8dac90	no GPU action in a passing run
 TierAddress.DefaultConstructedIsRootWithZeroDepth	cpu	test_tier_address	a6ffcfaf130e	no GPU action in a passing run
 TierAddress.EqualityFailsForDifferentDepthEvenWithSharedPrefix	cpu	test_tier_address	a6ffcfaf130e	no GPU action in a passing run
 TierAddress.EqualityFailsForSameDepthDifferentHop	cpu	test_tier_address	a6ffcfaf130e	no GPU action in a passing run
@@ -2006,20 +2716,33 @@ Trees/EmitterPowerSizes.SigmaLeafPowerEqualsRootPower/32	cpu	test_emitter_power	
 Trees/EmitterPowerSizes.SigmaLeafPowerEqualsRootPower/64	cpu	test_emitter_power	7a8167dddec9	no GPU action in a passing run
 TypedAccessorEmitter.GeneratedAccessorsMatchRawStoreDecodedValues	cpu	test_typed_accessor_emitter	d26aa044b914	no GPU action in a passing run
 TypedAccessorEmitter.VectorFieldRoundTripsExactly	cpu	test_typed_accessor_emitter	d26aa044b914	no GPU action in a passing run
-TypedInputValidation.ConnectedPointerIsPreservedForEitherNullability	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedInputValidation.OptionalWindowMayBeUnconnected	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedInputValidation.ProductionInputNodeCompilesWithoutAWindow	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedInputValidation.RequiredNullInputKeepsItsDiagnostic	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedNodeLifecycle.StrictConsumerCallbacksCompileWithoutOverloadHiding	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedNode_ActiveBundleIndex.MarkInputUsedRespectsActiveIndex	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-TypedNode_ExecuteOnly.ExecuteOnlyDoesNotMarkCompileUsage	cpu	test_rendergraph_core	411dede241dc	no GPU action in a passing run
-UberShaderSplice.LegacyAndRegistryRecipesCoexist	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.MarkerIsPresentInRealShaderSource	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.MissingMarkerThrows	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.OneHundredDeclarePositionRecipesCompile	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.SingleRegisteredRecipeCompiles	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.TenRegisteredRecipesCompile	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
-UberShaderSplice.ZeroRegistrationsLeavesSourceCompiling	cpu	test_uber_shader_splice	030cedc6c4b9	no GPU action in a passing run
+TypedCacherConcurrency.CleanupDuringConcurrentInsertsIsSafe	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.ClearDuringPendingBuildIsSafe	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.ConcurrentSameKeyCreatesExactlyOnce	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.ConcurrentSameKeyDoesNotDeadlock	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.EraseTombstonesAndRebuilds	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.FailedBuildReleasesWaitersAndRebuilds	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.ManyKeysManyThreads_ExactlyOncePerKey_AcrossGrowth	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.SameKeyStress_OneBuilderPerKey_NoDeadlock	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedCacherConcurrency.WaitersHoldNothing_UnrelatedKeysProgress	cpu	test_typed_cacher_concurrency	aa42fc0a3f79	no GPU action in a passing run
+TypedInputValidation.ConnectedPointerIsPreservedForEitherNullability	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedInputValidation.OptionalWindowMayBeUnconnected	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedInputValidation.ProductionInputNodeCompilesWithoutAWindow	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedInputValidation.RequiredNullInputKeepsItsDiagnostic	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedNodeLifecycle.StrictConsumerCallbacksCompileWithoutOverloadHiding	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedNode_ActiveBundleIndex.MarkInputUsedRespectsActiveIndex	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+TypedNode_ExecuteOnly.ExecuteOnlyDoesNotMarkCompileUsage	cpu	test_rendergraph_core	60eb81ec0185	no GPU action in a passing run
+UberShaderSplice.AuthoredBinary32WordsSurviveGlslCompilation	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.BoundsAndOccupancyMetadataKeepAuthoredBits	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.CompileDiagnosticShaderDirectory	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.LegacyAndRegistryRecipesCoexist	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.MarkerIsPresentInRealShaderSource	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.MissingMarkerThrows	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.OneHundredDeclarePositionRecipesCompile	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.SharedTraversalConsumersCompileTheSameRegisteredFields	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.SingleRegisteredRecipeCompiles	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.TenRegisteredRecipesCompile	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
+UberShaderSplice.ZeroRegistrationsLeavesSourceCompiling	cpu	test_uber_shader_splice	afc255ce0cbf	no GPU action in a passing run
 UiCompositionHostTest.BuildingInspectorFragmentLoadsAndBindsResolve	cpu	test_ui_composition_host	4e853085fa00	no GPU action in a passing run
 UiCompositionHostTest.DegenerateLayoutIsDetectable	cpu	test_ui_composition_host	4e853085fa00	no GPU action in a passing run
 UiCompositionHostTest.DuplicateModelNameIsRejected	cpu	test_ui_composition_host	4e853085fa00	no GPU action in a passing run
@@ -2054,6 +2777,11 @@ UnifiedConnectTest.ValidateConnectionAccumulation	cpu	test_connection_rule	9fe5b
 UnifiedConnectTest.ValidateConnectionDirect	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 UnifiedConnectTest.ValidateConnectionInvalidSourceInput	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 UnifiedConnectTest.ValidateConnectionVariadic	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
+VMAAllocatorTest.CreateWithNullHandlesReturnsNull	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+VMAAllocatorTest.DirectConstructionWithNullHandles	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+VMAAllocatorTest.InvalidAllocatorReturnsEmptyStats	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+VMAAllocatorTest.InvalidAllocatorReturnsErrorOnAllocate	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
+VMAAllocatorTest.SetBudgetManager	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 VariadicConnectionRuleTest.CanHandleBindingTarget	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 VariadicConnectionRuleTest.CannotHandleStaticSlotTarget	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 VariadicConnectionRuleTest.Name	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
@@ -2065,6 +2793,9 @@ VariadicConnectionRuleTest.ValidateTargetMustBeBinding	cpu	test_connection_rule	
 VariadicModifierAPI.MultipleModifiersStreamlinedSyntax	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 VariadicModifierAPI.SingleModifierStreamlinedSyntax	cpu	test_connection_rule	9fe5bc41ee57	no GPU action in a passing run
 ViewBlob.ConstexprDescriptorHoldsFieldsInOrder	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
+ViewBlobEquiv.NativeHeaderAndDatafileHashesAgree	cpu	test_view_blob_equiv	f849dbfeae69	no GPU action in a passing run
+ViewBlobEquiv.ParserRoundTripEqualsHeaderStructure	cpu	test_view_blob_equiv	f849dbfeae69	no GPU action in a passing run
+ViewBlobEquiv.VersionMismatchYieldsEmptyModel	cpu	test_view_blob_equiv	f849dbfeae69	no GPU action in a passing run
 ViewBlobFile.LoadReloadsModifiedFileAndRejectsBadReplacement	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
 ViewBlobFile.ParsesModelVersionFieldsAndElems	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
 ViewBlobFile.ParsesVectorTokenForTopLevelAndElemFields	cpu	test_rendergraph_viewblob	10c234400801	no GPU action in a passing run
@@ -2104,6 +2835,24 @@ VndfMirror.SphericalCapAndHeitzHaveMatchingDensityAcrossViewAngles	cpu	test_rend
 VndfMirror.SphericalCapAndHeitzHaveMatchingDensityAtNormalIncidence	cpu	test_rendergraph_shadermirrors	5710629bf8f8	no GPU action in a passing run
 VndfMirror.TangentFrameRoundTrips	cpu	test_rendergraph_shadermirrors	5710629bf8f8	no GPU action in a passing run
 VndfMirror.WeightBoundInUnitInterval	cpu	test_rendergraph_shadermirrors	5710629bf8f8	no GPU action in a passing run
+VoxelAABBDataTest.BufferSizeCalculation	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+VoxelAABBDataTest.InvalidWithNoBuffer	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+VoxelAABBDataTest.InvalidWithZeroCount	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+VoxelAABBDataTest.ValidDataCheck	cpu	test_cacher_chain_integration	55f3fc987a01	no GPU action in a passing run
+VoxelDataIntegrationTest.BatchConversion_MultipleVoxels	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.ComponentRegistry_VisitAll	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.ComponentRegistry_VisitByName	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.ConversionPerformance_1000Voxels	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.EmptyEntity_ConversionHandling	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.InvalidEntity_ConversionHandling	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.MissingComponents_ReturnsEmpty	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_AllComponents	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_Color	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_Density	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_Emission	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_Material	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.RoundTripConversion_Normal	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
+VoxelDataIntegrationTest.TypeSafety_MacroSystemIntegration	cpu	test_voxeldata_integration	499f7fd70949	no GPU action in a passing run
 VoxelDocumentDecode.SampleTriLayerGoldenDecodesToExpectedValues	cpu	test_voxel_document_flatten	575b9d1b9b04	no GPU action in a passing run
 VoxelDocumentFlatten.DeepStackSyntheticDocumentRejectedWithClearMessage	cpu	test_voxel_document_flatten	575b9d1b9b04	no GPU action in a passing run
 VoxelDocumentFlatten.EnabledOverrideMatchesByteLevelDisable	cpu	test_voxel_document_flatten	575b9d1b9b04	no GPU action in a passing run
@@ -2115,6 +2864,84 @@ VoxelDocumentFlatten.ZeroEnabledLayersFails	cpu	test_voxel_document_flatten	575b
 VoxelInjectionNewAPITest.DenseGrid	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
 VoxelInjectionNewAPITest.MultipleVoxelsSpread	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
 VoxelInjectionNewAPITest.SparseVoxels	cpu	test_voxel_injection	613b1199d165	no GPU action in a passing run
+VoxelInjectorTest.BatchingReducesTraversals	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.BrickCoordEquality	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.BrickCoordHash_Uniqueness	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.CompactOctree	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.ComputeBrickCoord_Origin	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.CreateInjector	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GetLastInsertionStats_AfterInsertion	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GetLastInsertionStats_InitialState	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GroupByBrick_DifferentResolutions	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GroupByBrick_EmptyInput	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GroupByBrick_MultipleBricks	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GroupByBrick_NegativeCoordinates	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.GroupByBrick_SingleBrick	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntitiesBatched_MultipleBricks	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntitiesBatched_SingleBrick	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntitiesBatched_VerifyBatchingOptimization	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntities_EmptyList	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntities_InvalidEntity	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntities_MixValidAndInvalid	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntities_MultipleEntities	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertEntities_SingleEntity	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.InsertedEntitiesRetainAttributes	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.LargeBatchInsertion	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelInjectorTest.VerifyBrickGroupingPreservesEntityData	cpu	test_voxel_injector	8d961a86f5eb	no GPU action in a passing run
+VoxelSceneCacheKey.BuiltinKeysUnchangedByNameField	cpu	test_voxel_scene_key	bfc7c50e770c	no GPU action in a passing run
+VoxelSceneCacheKey.DistinctCustomGeneratorsHaveDistinctKeys	cpu	test_voxel_scene_key	bfc7c50e770c	no GPU action in a passing run
+VoxelSceneCacheKey.SameCustomGeneratorSameKey	cpu	test_voxel_scene_key	bfc7c50e770c	no GPU action in a passing run
+VoxelVolumeArchetypeTest.AddSameVoxelTwice	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.AddVoxelToVolumeTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.AddVoxelUpdatesStats	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.BatchAddUpdatesStats	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.BatchAddVoxelsTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.ClearEmptyVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.ClearVolumeRemovesAllVoxels	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.ConcurrentReads	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.CreateVolumeHasCorrectComponents	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.CreateVolumeInitializesBounds	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.CreateVolumeInitializesStats	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.CreateVolumeWithCustomSize	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.CreateVolumeWithDefaultSize	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.GetBoundsForInvalidVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.GetStatsForInvalidVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.GetStatsForNonVolumeEntity	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.GetVoxelsInVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.IsVoxelInVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.LargeVoxelBatch	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.MultipleVolumesIndependent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.RemoveNonExistentVoxel	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.RemoveVoxelFromVolumeTriggersCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.RemoveVoxelUpdatesStats	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.SetBatchThreshold	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VolumeBoundsExpand	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VolumeBoundsInitialState	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VolumeOriginComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VolumeSizeComponent	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VolumeStatsLastModified	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeArchetypeTest.VoxelInMultipleVolumes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeIntegrationTest.CompleteWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeIntegrationTest.MultipleVolumeWorkflow	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeIntegrationTest.VoxelMigrationBetweenVolumes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeSystemTest.CleanVolumesNotProcessed	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeSystemTest.ProcessCallbackReceivesCorrectVolume	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeSystemTest.ProcessDirtyVolumes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeSystemTest.ProcessMultipleDirtyVolumes	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VoxelVolumeSystemTest.ProcessWithNoCallback	cpu	test_gaia_archetypes	325b06e5558a	no GPU action in a passing run
+VulkanGlobalNamesPolicy.ExplicitIcdIsHonouredWithoutOptIn	cpu	test_vulkan_global_names_policy	00622159fce3	no GPU action in a passing run
+VulkanGlobalNamesPolicy.MissingDozenManifestThrowsByDefault	cpu	test_vulkan_global_names_policy	00622159fce3	no GPU action in a passing run
+VulkanGlobalNamesPolicy.SoftwareOptInAllowsMissingDozenManifest	cpu	test_vulkan_global_names_policy	00622159fce3	no GPU action in a passing run
+VulkanResources_CapabilityGraph.BackgroundGpuFailsClosedWithoutCandidate	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.BackgroundGpuPrefersIntegratedAndLesserDevice	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.BindingTimeAndTypedBuildFactsAreStoredOnGraphNodes	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.ConfiguredDeviceIdentityRejectsChangedDeviceOrDriver	gpu	test_vulkanresources_basic	e4b090f22b7b	unmeasured (skipped, no GPU action before it ended): kept gpu
+VulkanResources_CapabilityGraph.ConfiguredOptionalPathUsesBuildModeBinding	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.ConfiguredPathInvokesOnlyTheSelectedBody	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.FragmentStoresAndAtomicsUsesDeviceFeatureSet	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.OptionalPathUsesIndependentTwinWhenDisabledOrUnavailable	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.RayQueryAndSubgroupCompositesUseAvailabilitySets	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
+VulkanResources_CapabilityGraph.VersionRequirementsSelectIndependentPathsByToolchainAndApi	cpu	test_vulkanresources_basic	e4b090f22b7b	no GPU action in a passing run
 WaveSchedulerTest.Clear_ResetsState	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 WaveSchedulerTest.DiamondDependency_ParallelMiddle	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
 WaveSchedulerTest.EmptyGraph_ProducesNoWaves	cpu	test_rendergraph_tracking	13ab719700a4	no GPU action in a passing run
@@ -2150,7 +2977,7 @@ WindowNodeTest.ConfigSurfaceTypeIsVkSurfaceKHR	cpu	test_rendergraph_criticalnode
 WindowNodeTest.TypeNameIsWindow	cpu	test_rendergraph_criticalnodes_infra1	3a68acb61432	no GPU action in a passing run
 WorkUnitTypeTest.FromString	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
 WorkUnitTypeTest.StringConversion	cpu	test_rendergraph_dispatch	810a3e8fec98	no GPU action in a passing run
-sdi_merged_drift_check	cpu	sdi_tool	d40739323785	unmeasured (skipped, no GPU action before it ended): kept cpu
+sdi_merged_drift_check	cpu	sdi_tool	ab5271f31671	no GPU action in a passing run
 test_action_stack_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_app_run_tick_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_appflow_blob_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
@@ -2163,14 +2990,15 @@ test_attribute_storage_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action befo
 test_binding_pattern_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_binding_store_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_block_compressor_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
-test_body_instance_raymarch_rtquery_compile	cpu	-	1240b338ac91	no GPU action in a passing run
+test_body_instance_raymarch_rtquery_compile	cpu	-	325e4689dbd3	no GPU action in a passing run
 test_budget_manager_integration_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_cache_codec_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_cacher_chain_integration_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_component_system_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_editor_document_model_preview_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_emitter_sampling_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
-test_exposure_meter_mirror	cpu	test_exposure_meter_mirror	9baa11100f57	no GPU action in a passing run
+test_exposure_meter_mirror	cpu	test_exposure_meter_mirror	475ab07bc61d	no GPU action in a passing run
+test_field_extraction	cpu	test_field_extraction	b1c191dd1850	no GPU action in a passing run
 test_flow_return_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_flow_state_machine_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_gaia_archetypes_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
@@ -2192,6 +3020,7 @@ test_recipe_bucket_data_cacher_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU act
 test_recipe_content_cacher_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_recipe_content_hash_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_registration_api_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
+test_resource_gatherer	cpu	test_resource_gatherer	07beae36a985	no GPU action in a passing run
 test_resource_management_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_resourcemanagement_basic_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
 test_return_dispatch_NOT_BUILT	cpu	-	-	unmeasured (skipped, no GPU action before it ended): kept cpu
@@ -2217,16 +3046,18 @@ vixen_multiinstance_cache_gate	gpu	VIXEN	11ccf5d53567	first: vkCreateInstance; s
 vixen_wsl_capture_witness	gpu	VIXEN	9f090193c1d8	first: vkCreateInstance; seen: vkCreateInstance,vkCreateDevice,vkAllocateMemory,vkQueueSubmit
 ═══════════════════════════════════════════════════════.CONNECTION CONCEPTS TEST SUITE	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.Compile-time: All static_assert checks passed	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
-═══════════════════════════════════════════════════════.Coverage:	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.GRAPH TOPOLOGY TEST SUITE	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+═══════════════════════════════════════════════════════.Coverage:	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.GRAPH TOPOLOGY TEST SUITE	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.RESOURCE MANAGEMENT TEST SUITE	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.Runtime: All metadata accessible and correct	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.Sprint 6.0.1: C++20 Concepts	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
-═══════════════════════════════════════════════════════.Trimmed Build Compatible (Headers Only)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+═══════════════════════════════════════════════════════.Trimmed Build Compatible (Headers Only)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✅ ALL RESOURCE MANAGEMENT TESTS PASSED!	cpu	test_resource_management	c1c5d8750d75	no GPU action in a passing run
 ═══════════════════════════════════════════════════════.✅ ALL TESTS PASSED!	cpu	test_connection_concepts	99fccf09f8b7	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ ALL GRAPH TOPOLOGY TESTS PASSED!	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Circular dependency detection (direct & indirect)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Complex graphs (multiple producers/consumers)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Dependency tracking (dependencies & dependents)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Edge cases (self-loops, disconnected graphs)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Integration tests (rendering pipelines)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
-═══════════════════════════════════════════════════════.✓ Topological sorting (linear & diamond)	cpu	test_rendergraph_syncbarrier	9d3a5b606c35	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ ALL GRAPH TOPOLOGY TESTS PASSED!	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Circular dependency detection (direct & indirect)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Complex graphs (multiple producers/consumers)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Dependency tracking (dependencies & dependents)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Edge cases (self-loops, disconnected graphs)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Integration tests (rendering pipelines)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run
+═══════════════════════════════════════════════════════.✓ Topological sorting (linear & diamond)	cpu	test_rendergraph_syncbarrier	ae06a37c76ab	no GPU action in a passing run

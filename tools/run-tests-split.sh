@@ -25,6 +25,9 @@
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run
 #   --no-queue        run ctest directly (for hosts without the queue)
+#   --exclude-labels RE  ctest -LE applied to both parts (default '^(native|nightly)$': the native-only
+#                     planet aggregate and the nightly cache-collision gate stay out of lane runs, R565)
+#   --nightly         include the nightly and native labels (clears --exclude-labels)
 # Lane example:   bash tools/run-tests-split.sh --agent "$LANE"  (all correctness labels)
 # Batch example:  one call per batch with no --regex; the exit status is non-zero if either part failed.
 set -uo pipefail
@@ -43,6 +46,7 @@ gpu_jobs=1
 out_dir=""
 witness=0
 use_queue=1
+exclude_labels='^(native|nightly)$'
 extra=()
 
 while (( $# )); do
@@ -57,6 +61,8 @@ while (( $# )); do
     --out) out_dir="$2"; shift 2 ;;
     --witness) witness=1; shift ;;
     --no-queue) use_queue=0; shift ;;
+    --exclude-labels) exclude_labels="$2"; shift 2 ;;
+    --nightly) exclude_labels=""; shift ;;
     --) shift; extra=("$@"); break ;;
     -h|--help) sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d'; exit 0 ;;
     *) echo "[run-tests-split] unknown argument: $1" >&2; exit 2 ;;
@@ -71,17 +77,20 @@ label_listing="$(ctest --test-dir "$build_dir" --print-labels)" || {
   exit 2
 }
 mapfile -t available_labels < <(sed -n 's/^  //p' <<<"$label_listing")
+exclude_args=()
+[[ -n "$exclude_labels" ]] && exclude_args=(-LE "$exclude_labels")
 suite_labels=()
 for label in "${available_labels[@]}"; do
   case "$label" in
     ""|cpu|gpu|classified-*) continue ;;
   esac
+  [[ -n "$exclude_labels" && "$label" =~ $exclude_labels ]] && continue
   suite_labels+=("$label")
 done
 
 ctest_count() {
   local output count
-  output="$(ctest --test-dir "$build_dir" -N "$@")" || return $?
+  output="$(ctest --test-dir "$build_dir" -N "${exclude_args[@]}" "$@")" || return $?
   count="$(sed -n 's/^Total Tests: //p' <<<"$output")"
   [[ "$count" =~ ^[0-9]+$ ]] || return 2
   printf '%s\n' "$count"
@@ -124,7 +133,7 @@ if (( witness )); then
   rm -rf "$out_dir/witness"; mkdir -p "$out_dir/witness"
 fi
 
-select_args=()
+select_args=("${exclude_args[@]}")
 [[ -n "$suite_label" ]] && select_args+=(-L "$suite_label")
 [[ -n "$regex" ]] && select_args+=(-R "$regex")
 
@@ -159,7 +168,7 @@ run_part() {
   return "$status"
 }
 
-echo "[run-tests-split] build=$build_dir label='${suite_label:-<all correctness labels>}' regex='${regex:-<all>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
+echo "[run-tests-split] build=$build_dir label='${suite_label:-<all correctness labels>}' regex='${regex:-<all>}' exclude-labels='${exclude_labels:-<none>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
 echo "[run-tests-split] cpu: $cpu_selected   gpu: $gpu_selected"
 for label in "${suite_labels[@]}"; do
   label_cpu="$(ctest_count -L '^cpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
