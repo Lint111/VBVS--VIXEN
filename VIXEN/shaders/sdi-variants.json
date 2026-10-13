@@ -2,6 +2,7 @@
   "_comment": "Semantic Shader Wiring S0 \u2014 enumerated feature-variant sets per program. Axes listed here are boolean, interface-affecting defines. Value-defines (VIXEN_SHADOW_DBG_PX/_PY) and interface-invariant toggles (VIXEN_SHADOW_NO_MIP_ANYHIT) are deliberately excluded. VIXEN_COMPOSED_TRAVERSAL and the capability-selected VIXEN_COMPOSED_DDA_FALLBACK are internal branches inside SceneBindings.glsl/RayQueryTraversal.glsl (the W-COMPOSED far-field tier and DDA fallback) and add no bindings/interface to any .comp entrypoint -- confirmed no 'layout(set' inside either branch -- so they are not variant axes here. Regenerate: sdi_tool merge-variants shaders/sdi-variants.json ; verify: ... --check",
   "sdiDir": "../generated/sdi/merged",
   "includePaths": [
+    ".",
     "../libraries/SVO/shaders"
   ],
   "programs": [

@@ -3,7 +3,7 @@ using Yeroket.Util.KernelFramework;
 namespace Vixen.Codegen.Gpu
 {
     /// <summary>The pair-target WILDCARD marker (query generic → ::gaia::ecs::All).</summary>
-    public readonly struct All { }
+    public readonly struct All { public const string SchemaKind = "all"; }
 
     /// <summary>Schema path for aggregate_economy_cell; lowered before native dispatch.</summary>
     public struct AggregateEconomyCellRef
@@ -1437,6 +1437,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PartOfRef
     {
         public const string SchemaKind = "part_of";
+        public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for participation_counterpart; lowered before native dispatch.</summary>
@@ -3280,7 +3281,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long Sequence
+        public ulong Sequence
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3295,6 +3296,8 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
+        public const string FactionRelation = "FactionOfAggregateEconomyRel";
+        public All Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for budget_entry_row; lowered before native dispatch.</summary>
@@ -3532,7 +3535,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealDecisionRef
     {
         public const string SchemaKind = "deal_decision";
-        public long DealId
+        public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3558,7 +3561,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealPartyRef
     {
         public const string SchemaKind = "deal_party";
-        public long DealId
+        public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3595,7 +3598,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealRequirementRef
     {
         public const string SchemaKind = "deal_requirement";
-        public long DealId
+        public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3631,7 +3634,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealSessionRef
     {
         public const string SchemaKind = "deal_session";
-        public long FirstDealId
+        public ulong FirstDealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3651,7 +3654,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long PolicyRevision
+        public ulong PolicyRevision
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3662,7 +3665,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealSettlementRef
     {
         public const string SchemaKind = "deal_settlement";
-        public long DealId
+        public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3723,12 +3726,12 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long DealId
+        public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long ParentDealId
+        public ulong ParentDealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3758,12 +3761,12 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long TemplatePriceId
+        public ulong TemplatePriceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long TemplateRevision
+        public ulong TemplateRevision
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3874,7 +3877,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long RowId
+        public ulong RowId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3945,12 +3948,12 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long StableWorkKey
+        public ulong StableWorkKey
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long LocalSequence
+        public ulong LocalSequence
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4153,7 +4156,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeFragmentInstanceRowRef
     {
         public const string SchemaKind = "knowledge_fragment_instance_row";
-        public long InstanceId
+        public ulong InstanceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4168,7 +4171,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long CopiedFrom
+        public ulong CopiedFrom
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4268,12 +4271,12 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long StableWorkKey
+        public ulong StableWorkKey
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long LocalSequence
+        public ulong LocalSequence
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4288,7 +4291,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long Sequence
+        public ulong Sequence
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4338,7 +4341,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketContractRef
     {
         public const string SchemaKind = "market_contract";
-        public long Id
+        public ulong Id
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4400,7 +4403,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketOfferRef
     {
         public const string SchemaKind = "market_offer";
-        public long Id
+        public ulong Id
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4547,7 +4550,7 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long BaseVersion
+        public ulong BaseVersion
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4696,12 +4699,12 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long PriceId
+        public ulong PriceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long Revision
+        public ulong Revision
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4910,17 +4913,17 @@ namespace Vixen.Codegen.Gpu
     public struct StateDealProtocolRef
     {
         public const string SchemaKind = "state:deal-protocol";
-        public long NextDealId
+        public ulong NextDealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long HistoryRowsUsed
+        public ulong HistoryRowsUsed
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long HistoryRowsLimit
+        public ulong HistoryRowsLimit
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5022,7 +5025,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateKnowledgeFragmentsRef
     {
         public const string SchemaKind = "state:knowledge-fragments";
-        public long NextInstanceId
+        public ulong NextInstanceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5059,12 +5062,12 @@ namespace Vixen.Codegen.Gpu
     public struct StatePricingPolicyRef
     {
         public const string SchemaKind = "state:pricing-policy";
-        public long Revision
+        public ulong Revision
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long NextPriceId
+        public ulong NextPriceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5089,12 +5092,12 @@ namespace Vixen.Codegen.Gpu
     public struct StateRentRef
     {
         public const string SchemaKind = "state:rent";
-        public long NextContractId
+        public ulong NextContractId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public long NextOfferId
+        public ulong NextOfferId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5156,6 +5159,8 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
+        public const string FactionRelation = "FactionOfStockRel";
+        public All Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public const string PlaceRelation = "PlaceOfStockRel";
         public PlaceNodeRef Place => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public const string ResourceRelation = "ResourceOfStockRel";
@@ -5265,90 +5270,90 @@ namespace Vixen.Codegen.Gpu
 
     public static partial class Make
     {
-        public static AgentAssociation AgentAssociation(long id = default, bool asserted = default, float power = default, long derivedTick = default) => new AgentAssociation { id = id, asserted = asserted, power = power, derivedTick = derivedTick };
-        public static AgentAwareness AgentAwareness(long id = default, byte level = default, byte source = default) => new AgentAwareness { id = id, level = level, source = source };
-        public static AgentEdgeAwareness AgentEdgeAwareness(long id = default, long edge = default, byte level = default) => new AgentEdgeAwareness { id = id, edge = edge, level = level };
+        public static AgentAssociation AgentAssociation(ulong id = default, bool asserted = default, float power = default, long derivedTick = default) => new AgentAssociation { id = id, asserted = asserted, power = power, derivedTick = derivedTick };
+        public static AgentAwareness AgentAwareness(ulong id = default, byte level = default, byte source = default) => new AgentAwareness { id = id, level = level, source = source };
+        public static AgentEdgeAwareness AgentEdgeAwareness(ulong id = default, long edge = default, byte level = default) => new AgentEdgeAwareness { id = id, edge = edge, level = level };
         public static AgentFoundAccountRow AgentFoundAccountRow(byte index = default, byte reliability = default) => new AgentFoundAccountRow { index = index, reliability = reliability };
-        public static AgentHeldFact AgentHeldFact(long id = default, string fact = "", byte source = default, long attributor = default, long whenTick = default) => new AgentHeldFact { id = id, fact = fact, source = source, attributor = attributor, whenTick = whenTick };
-        public static AgentInvestigated AgentInvestigated(long id = default) => new AgentInvestigated { id = id };
-        public static AgentPosition AgentPosition(long id = default, float x = default, float y = default, float z = default, long tick = default) => new AgentPosition { id = id, x = x, y = y, z = z, tick = tick };
-        public static AggregateEconomy AggregateEconomy(byte kind = default, int body = default, string resource = "", long sequence = default, double amount = default, long arrivalTick = default) => new AggregateEconomy { kind = kind, body = body, resource = resource, sequence = sequence, amount = amount, arrivalTick = arrivalTick };
+        public static AgentHeldFact AgentHeldFact(ulong id = default, string fact = "", byte source = default, ulong attributor = default, long whenTick = default) => new AgentHeldFact { id = id, fact = fact, source = source, attributor = attributor, whenTick = whenTick };
+        public static AgentInvestigated AgentInvestigated(ulong id = default) => new AgentInvestigated { id = id };
+        public static AgentPosition AgentPosition(ulong id = default, float x = default, float y = default, float z = default, long tick = default) => new AgentPosition { id = id, x = x, y = y, z = z, tick = tick };
+        public static AggregateEconomy AggregateEconomy(byte kind = default, int body = default, string resource = "", ulong sequence = default, double amount = default, long arrivalTick = default, All faction = default) => new AggregateEconomy { kind = kind, body = body, resource = resource, sequence = sequence, amount = amount, arrivalTick = arrivalTick };
         public static BudgetEntryRow BudgetEntryRow(string tag = "", float amount = default) => new BudgetEntryRow { tag = tag, amount = amount };
         public static BuildingEmit BuildingEmit(int ordinal = default, BuildingInstanceRef building = default) => new BuildingEmit { ordinal = ordinal };
         public static BuildingHandle BuildingHandle(int ordinal = default, int handle = default, BuildingInstanceRef building = default) => new BuildingHandle { ordinal = ordinal, handle = handle };
-        public static BuildingInstance BuildingInstance(long id = default, long host = default, double integrity = default, string slot = "", int crewCount = default, int body = default, uint buildingDef = default, FactionRef faction = default) => new BuildingInstance { id = id, host = host, integrity = integrity, slot = slot, crewCount = crewCount, body = body, buildingDef = buildingDef };
+        public static BuildingInstance BuildingInstance(ulong id = default, ulong host = default, double integrity = default, string slot = "", int crewCount = default, int body = default, uint buildingDef = default, FactionRef faction = default) => new BuildingInstance { id = id, host = host, integrity = integrity, slot = slot, crewCount = crewCount, body = body, buildingDef = buildingDef };
         public static BuildingKnowledgeModifier BuildingKnowledgeModifier(int ordinal = default, BuildingInstanceRef building = default) => new BuildingKnowledgeModifier { ordinal = ordinal };
         public static BuildingLink BuildingLink(double buffer = default, BuildingInstanceRef building = default, EffectLinkRef effect = default) => new BuildingLink { buffer = buffer };
         public static BuildingRunRecipe BuildingRunRecipe(int ordinal = default, uint recipe = default, int body = default, long nextCycleTick = default, bool halted = default, double flowSatisfaction = default, BuildingInstanceRef building = default) => new BuildingRunRecipe { ordinal = ordinal, recipe = recipe, body = body, nextCycleTick = nextCycleTick, halted = halted, flowSatisfaction = flowSatisfaction };
-        public static BuildingStoreFlow BuildingStoreFlow(long id = default, int ordinal = default, double charge = default, BuildingInstanceRef building = default) => new BuildingStoreFlow { id = id, ordinal = ordinal, charge = charge };
+        public static BuildingStoreFlow BuildingStoreFlow(ulong id = default, int ordinal = default, double charge = default, BuildingInstanceRef building = default) => new BuildingStoreFlow { id = id, ordinal = ordinal, charge = charge };
         public static BuildingTransmitFlow BuildingTransmitFlow(int ordinal = default, BuildingInstanceRef building = default) => new BuildingTransmitFlow { ordinal = ordinal };
-        public static CharacterBindingRow CharacterBindingRow(uint id = default, long entity = default) => new CharacterBindingRow { id = id, entity = entity };
+        public static CharacterBindingRow CharacterBindingRow(uint id = default, ulong entity = default) => new CharacterBindingRow { id = id, entity = entity };
         public static ClaimOwnerRow ClaimOwnerRow(int planetIndex = default) => new ClaimOwnerRow { planetIndex = planetIndex };
         public static ClaimRow ClaimRow(byte kind = default, FactionRef faction = default) => new ClaimRow { kind = kind };
         public static CoarseArrears CoarseArrears(int body = default, double amount = default, FactionRef holder = default) => new CoarseArrears { body = body, amount = amount };
         public static ConceptIdRow ConceptIdRow(uint concept = default) => new ConceptIdRow { concept = concept };
         public static ConceptOwnerRow ConceptOwnerRow(FactionRef faction = default) => new ConceptOwnerRow {  };
-        public static DealDecision DealDecision(long id = default, long dealId = default, int partyOrdinal = default, byte decision = default, long decidedAtTick = default) => new DealDecision { id = id, dealId = dealId, partyOrdinal = partyOrdinal, decision = decision, decidedAtTick = decidedAtTick };
-        public static DealParty DealParty(long id = default, long dealId = default, int partyOrdinal = default, long actor = default, byte role = default) => new DealParty { id = id, dealId = dealId, partyOrdinal = partyOrdinal, actor = actor, role = role };
-        public static DealPolicyCadence DealPolicyCadence(long id = default, long faction = default, string policy = "", long lastNegotiationTick = default) => new DealPolicyCadence { id = id, faction = faction, policy = policy, lastNegotiationTick = lastNegotiationTick };
-        public static DealRequirement DealRequirement(long id = default, long dealId = default, int partyOrdinal = default, int nodeOrdinal = default, int parentOrdinal = default, int childOrder = default, string node = "") => new DealRequirement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, nodeOrdinal = nodeOrdinal, parentOrdinal = parentOrdinal, childOrder = childOrder, node = node };
-        public static DealSession DealSession(long id = default, long session = default, long firstDealId = default, int stepCount = default, long openedAtTick = default, string policy = "", long policyRevision = default) => new DealSession { id = id, session = session, firstDealId = firstDealId, stepCount = stepCount, openedAtTick = openedAtTick, policy = policy, policyRevision = policyRevision };
-        public static DealSettlement DealSettlement(long id = default, long dealId = default, int partyOrdinal = default, int effectOrdinal = default, int paramOrdinal = default, string effect = "", string param = "", string value = "", byte binding = default, int bindingPartyOrdinal = default, double scale = default) => new DealSettlement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, effectOrdinal = effectOrdinal, paramOrdinal = paramOrdinal, effect = effect, param = param, value = value, binding = binding, bindingPartyOrdinal = bindingPartyOrdinal, scale = scale };
-        public static DealStep DealStep(long id = default, long session = default, int stepOrdinal = default, long dealId = default, long parentDealId = default, long rootProposer = default, long proposer = default, byte stepKind = default, byte status = default, long proposedAtTick = default, long earliestReplyTick = default, long expiresAtTick = default, long templatePriceId = default, long templateRevision = default, byte subjectKind = default, long subjectEntity = default, string subjectRef = "", byte scopeKind = default, long scopeA = default, long scopeB = default, double unit = default, double quantity = default, byte executionKind = default, long recurrenceTicks = default) => new DealStep { id = id, session = session, stepOrdinal = stepOrdinal, dealId = dealId, parentDealId = parentDealId, rootProposer = rootProposer, proposer = proposer, stepKind = stepKind, status = status, proposedAtTick = proposedAtTick, earliestReplyTick = earliestReplyTick, expiresAtTick = expiresAtTick, templatePriceId = templatePriceId, templateRevision = templateRevision, subjectKind = subjectKind, subjectEntity = subjectEntity, subjectRef = subjectRef, scopeKind = scopeKind, scopeA = scopeA, scopeB = scopeB, unit = unit, quantity = quantity, executionKind = executionKind, recurrenceTicks = recurrenceTicks };
-        public static DeepFieldCell DeepFieldCell(int cellX = default, int cellY = default, string recipe = "", float presence = default, float wM = default, float wK = default, float wG = default, float wF = default, float wA = default, float wB = default, float wO = default, float wWhiteDwarf = default, float wNeutronStar = default, long rowId = default, string address = "", byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default) => new DeepFieldCell { cellX = cellX, cellY = cellY, recipe = recipe, presence = presence, wM = wM, wK = wK, wG = wG, wF = wF, wA = wA, wB = wB, wO = wO, wWhiteDwarf = wWhiteDwarf, wNeutronStar = wNeutronStar, rowId = rowId, address = address, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
+        public static DealDecision DealDecision(ulong id = default, ulong dealId = default, int partyOrdinal = default, byte decision = default, long decidedAtTick = default) => new DealDecision { id = id, dealId = dealId, partyOrdinal = partyOrdinal, decision = decision, decidedAtTick = decidedAtTick };
+        public static DealParty DealParty(ulong id = default, ulong dealId = default, int partyOrdinal = default, ulong actor = default, byte role = default) => new DealParty { id = id, dealId = dealId, partyOrdinal = partyOrdinal, actor = actor, role = role };
+        public static DealPolicyCadence DealPolicyCadence(ulong id = default, ulong faction = default, string policy = "", long lastNegotiationTick = default) => new DealPolicyCadence { id = id, faction = faction, policy = policy, lastNegotiationTick = lastNegotiationTick };
+        public static DealRequirement DealRequirement(ulong id = default, ulong dealId = default, int partyOrdinal = default, int nodeOrdinal = default, int parentOrdinal = default, int childOrder = default, string node = "") => new DealRequirement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, nodeOrdinal = nodeOrdinal, parentOrdinal = parentOrdinal, childOrder = childOrder, node = node };
+        public static DealSession DealSession(ulong id = default, ulong session = default, ulong firstDealId = default, int stepCount = default, long openedAtTick = default, string policy = "", ulong policyRevision = default) => new DealSession { id = id, session = session, firstDealId = firstDealId, stepCount = stepCount, openedAtTick = openedAtTick, policy = policy, policyRevision = policyRevision };
+        public static DealSettlement DealSettlement(ulong id = default, ulong dealId = default, int partyOrdinal = default, int effectOrdinal = default, int paramOrdinal = default, string effect = "", string param = "", string value = "", byte binding = default, int bindingPartyOrdinal = default, double scale = default) => new DealSettlement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, effectOrdinal = effectOrdinal, paramOrdinal = paramOrdinal, effect = effect, param = param, value = value, binding = binding, bindingPartyOrdinal = bindingPartyOrdinal, scale = scale };
+        public static DealStep DealStep(ulong id = default, ulong session = default, int stepOrdinal = default, ulong dealId = default, ulong parentDealId = default, ulong rootProposer = default, ulong proposer = default, byte stepKind = default, byte status = default, long proposedAtTick = default, long earliestReplyTick = default, long expiresAtTick = default, ulong templatePriceId = default, ulong templateRevision = default, byte subjectKind = default, ulong subjectEntity = default, string subjectRef = "", byte scopeKind = default, ulong scopeA = default, ulong scopeB = default, double unit = default, double quantity = default, byte executionKind = default, long recurrenceTicks = default) => new DealStep { id = id, session = session, stepOrdinal = stepOrdinal, dealId = dealId, parentDealId = parentDealId, rootProposer = rootProposer, proposer = proposer, stepKind = stepKind, status = status, proposedAtTick = proposedAtTick, earliestReplyTick = earliestReplyTick, expiresAtTick = expiresAtTick, templatePriceId = templatePriceId, templateRevision = templateRevision, subjectKind = subjectKind, subjectEntity = subjectEntity, subjectRef = subjectRef, scopeKind = scopeKind, scopeA = scopeA, scopeB = scopeB, unit = unit, quantity = quantity, executionKind = executionKind, recurrenceTicks = recurrenceTicks };
+        public static DeepFieldCell DeepFieldCell(int cellX = default, int cellY = default, string recipe = "", float presence = default, float wM = default, float wK = default, float wG = default, float wF = default, float wA = default, float wB = default, float wO = default, float wWhiteDwarf = default, float wNeutronStar = default, ulong rowId = default, string address = "", byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default) => new DeepFieldCell { cellX = cellX, cellY = cellY, recipe = recipe, presence = presence, wM = wM, wK = wK, wG = wG, wF = wF, wA = wA, wB = wB, wO = wO, wWhiteDwarf = wWhiteDwarf, wNeutronStar = wNeutronStar, rowId = rowId, address = address, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
         public static DepletionBodyRow DepletionBodyRow(int index = default, double massKg = default) => new DepletionBodyRow { index = index, massKg = massKg };
         public static DepletionLayerRow DepletionLayerRow(double massKg = default) => new DepletionLayerRow { massKg = massKg };
         public static DepletionMaterialRow DepletionMaterialRow(string material = "", double massKg = default) => new DepletionMaterialRow { material = material, massKg = massKg };
-        public static EvictionKickEnvelopeRow EvictionKickEnvelopeRow(long epoch = default, int publisherOrdinal = default, long stableWorkKey = default, long localSequence = default, int processIndex = default, int bodyIndex = default, long spawnTick = default, double rateKgPerTick = default, bool resisted = default, long resolveTick = default, byte outcome = default, FactionRef owner = default, FactionRef offender = default) => new EvictionKickEnvelopeRow { epoch = epoch, publisherOrdinal = publisherOrdinal, stableWorkKey = stableWorkKey, localSequence = localSequence, processIndex = processIndex, bodyIndex = bodyIndex, spawnTick = spawnTick, rateKgPerTick = rateKgPerTick, resisted = resisted, resolveTick = resolveTick, outcome = outcome };
+        public static EvictionKickEnvelopeRow EvictionKickEnvelopeRow(long epoch = default, int publisherOrdinal = default, ulong stableWorkKey = default, ulong localSequence = default, int processIndex = default, int bodyIndex = default, long spawnTick = default, double rateKgPerTick = default, bool resisted = default, long resolveTick = default, byte outcome = default, FactionRef owner = default, FactionRef offender = default) => new EvictionKickEnvelopeRow { epoch = epoch, publisherOrdinal = publisherOrdinal, stableWorkKey = stableWorkKey, localSequence = localSequence, processIndex = processIndex, bodyIndex = bodyIndex, spawnTick = spawnTick, rateKgPerTick = rateKgPerTick, resisted = resisted, resolveTick = resolveTick, outcome = outcome };
         public static ExtractionProcess ExtractionProcess(int planetIndex = default, int layer = default, string material = "", double rateKgPerTick = default, int accessibleDepth = default, long enforceTick = default, bool evictionSpawned = default, long evictStopTick = default, FactionRef faction = default, FactionRef enforcer = default) => new ExtractionProcess { planetIndex = planetIndex, layer = layer, material = material, rateKgPerTick = rateKgPerTick, accessibleDepth = accessibleDepth, enforceTick = enforceTick, evictionSpawned = evictionSpawned, evictStopTick = evictStopTick };
         public static FactionAmountRow FactionAmountRow(double amount = default, FactionRef faction = default) => new FactionAmountRow { amount = amount };
-        public static FactionBindingRow FactionBindingRow(uint id = default, long entity = default) => new FactionBindingRow { id = id, entity = entity };
-        public static FoundingIdeology FoundingIdeology(long id = default, string tag = "", float density = default, FactionRef faction = default) => new FoundingIdeology { id = id, tag = tag, density = density };
-        public static GateRow GateRow(long a = default, long b = default) => new GateRow { a = a, b = b };
+        public static FactionBindingRow FactionBindingRow(uint id = default, ulong entity = default) => new FactionBindingRow { id = id, entity = entity };
+        public static FoundingIdeology FoundingIdeology(ulong id = default, string tag = "", float density = default, FactionRef faction = default) => new FoundingIdeology { id = id, tag = tag, density = density };
+        public static GateRow GateRow(ulong a = default, ulong b = default) => new GateRow { a = a, b = b };
         public static GeneratedTimelineRow GeneratedTimelineRow(uint id = default, string name = "") => new GeneratedTimelineRow { id = id, name = name };
-        public static KnowledgeBudget KnowledgeBudget(long id = default, FactionRef faction = default) => new KnowledgeBudget { id = id };
-        public static KnowledgeBuilding KnowledgeBuilding(long id = default, uint map = default, long densityEntity = default, BuildingInstanceRef building = default) => new KnowledgeBuilding { id = id, map = map, densityEntity = densityEntity };
-        public static KnowledgeCentral KnowledgeCentral(long id = default, uint map = default, long densityEntity = default, FactionRef faction = default) => new KnowledgeCentral { id = id, map = map, densityEntity = densityEntity };
-        public static KnowledgeCharacter KnowledgeCharacter(long id = default, uint map = default, long densityEntity = default) => new KnowledgeCharacter { id = id, map = map, densityEntity = densityEntity };
-        public static KnowledgeFragmentInstanceRow KnowledgeFragmentInstanceRow(long instanceId = default, uint definitionId = default, long place = default, long carrier = default, float fidelity = default, int copyGeneration = default, long copiedFrom = default, byte lifecycle = default) => new KnowledgeFragmentInstanceRow { instanceId = instanceId, definitionId = definitionId, place = place, carrier = carrier, fidelity = fidelity, copyGeneration = copyGeneration, copiedFrom = copiedFrom, lifecycle = lifecycle };
-        public static KnowledgeFragmentOwnership KnowledgeFragmentOwnership(long id = default, uint map = default, FactionRef faction = default) => new KnowledgeFragmentOwnership { id = id, map = map };
-        public static KnowledgeLocal KnowledgeLocal(long id = default, uint map = default, long densityEntity = default, FactionRef faction = default, PlaceNodeRef place = default) => new KnowledgeLocal { id = id, map = map, densityEntity = densityEntity };
-        public static KnowledgeUnlockFired KnowledgeUnlockFired(long id = default, string concept = "", FactionRef faction = default) => new KnowledgeUnlockFired { id = id, concept = concept };
-        public static KnownNodeCellRow KnownNodeCellRow(long cell = default) => new KnownNodeCellRow { cell = cell };
-        public static LeverageUsed LeverageUsed(long id = default, string fact = "") => new LeverageUsed { id = id, fact = fact };
+        public static KnowledgeBudget KnowledgeBudget(ulong id = default, FactionRef faction = default) => new KnowledgeBudget { id = id };
+        public static KnowledgeBuilding KnowledgeBuilding(ulong id = default, uint map = default, ulong densityEntity = default, BuildingInstanceRef building = default) => new KnowledgeBuilding { id = id, map = map, densityEntity = densityEntity };
+        public static KnowledgeCentral KnowledgeCentral(ulong id = default, uint map = default, ulong densityEntity = default, FactionRef faction = default) => new KnowledgeCentral { id = id, map = map, densityEntity = densityEntity };
+        public static KnowledgeCharacter KnowledgeCharacter(ulong id = default, uint map = default, ulong densityEntity = default) => new KnowledgeCharacter { id = id, map = map, densityEntity = densityEntity };
+        public static KnowledgeFragmentInstanceRow KnowledgeFragmentInstanceRow(ulong instanceId = default, uint definitionId = default, ulong place = default, ulong carrier = default, float fidelity = default, int copyGeneration = default, ulong copiedFrom = default, byte lifecycle = default) => new KnowledgeFragmentInstanceRow { instanceId = instanceId, definitionId = definitionId, place = place, carrier = carrier, fidelity = fidelity, copyGeneration = copyGeneration, copiedFrom = copiedFrom, lifecycle = lifecycle };
+        public static KnowledgeFragmentOwnership KnowledgeFragmentOwnership(ulong id = default, uint map = default, FactionRef faction = default) => new KnowledgeFragmentOwnership { id = id, map = map };
+        public static KnowledgeLocal KnowledgeLocal(ulong id = default, uint map = default, ulong densityEntity = default, FactionRef faction = default, PlaceNodeRef place = default) => new KnowledgeLocal { id = id, map = map, densityEntity = densityEntity };
+        public static KnowledgeUnlockFired KnowledgeUnlockFired(ulong id = default, string concept = "", FactionRef faction = default) => new KnowledgeUnlockFired { id = id, concept = concept };
+        public static KnownNodeCellRow KnownNodeCellRow(ulong cell = default) => new KnownNodeCellRow { cell = cell };
+        public static LeverageUsed LeverageUsed(ulong id = default, string fact = "") => new LeverageUsed { id = id, fact = fact };
         public static Leveraged Leveraged(string fact = "", FactionRef f = default, FactionRef r = default) => new Leveraged { fact = fact };
-        public static LinkChargeEnvelopeRow LinkChargeEnvelopeRow(long epoch = default, int publisherOrdinal = default, long stableWorkKey = default, long localSequence = default, int linkOrdinal = default, string effect = "", long sequence = default, double amount = default, BuildingInstanceRef building = default, BuildingInstanceRef producer = default) => new LinkChargeEnvelopeRow { epoch = epoch, publisherOrdinal = publisherOrdinal, stableWorkKey = stableWorkKey, localSequence = localSequence, linkOrdinal = linkOrdinal, effect = effect, sequence = sequence, amount = amount };
+        public static LinkChargeEnvelopeRow LinkChargeEnvelopeRow(long epoch = default, int publisherOrdinal = default, ulong stableWorkKey = default, ulong localSequence = default, int linkOrdinal = default, string effect = "", ulong sequence = default, double amount = default, BuildingInstanceRef building = default, BuildingInstanceRef producer = default) => new LinkChargeEnvelopeRow { epoch = epoch, publisherOrdinal = publisherOrdinal, stableWorkKey = stableWorkKey, localSequence = localSequence, linkOrdinal = linkOrdinal, effect = effect, sequence = sequence, amount = amount };
         public static LinkTransit LinkTransit(byte transition = default, VehicleRef vehicle = default, PlaceNodeRef currentPlace = default, PlaceNodeRef terminus = default) => new LinkTransit { transition = transition };
-        public static MarketArrears MarketArrears(long id = default, double amount = default, PlaceNodeRef place = default) => new MarketArrears { id = id, amount = amount };
-        public static MarketContract MarketContract(long id = default, long seller = default, long buyer = default, long place = default, string resource = "", double ratePerTick = default, double pricePerTick = default, long expiresAtTick = default, long destPlace = default) => new MarketContract { id = id, seller = seller, buyer = buyer, place = place, resource = resource, ratePerTick = ratePerTick, pricePerTick = pricePerTick, expiresAtTick = expiresAtTick, destPlace = destPlace };
-        public static MarketContribRow MarketContribRow(long faction = default, double kg = default) => new MarketContribRow { faction = faction, kg = kg };
-        public static MarketDebt MarketDebt(long id = default, double principal = default, double owed = default, FactionRef borrower = default, FactionRef lender = default) => new MarketDebt { id = id, principal = principal, owed = owed };
-        public static MarketOffer MarketOffer(long id = default, byte kind = default, long poster = default, long place = default, string resource = "", double ratePerTick = default, double pricePerTick = default, long term = default, long expiresAtTick = default, long destPlace = default) => new MarketOffer { id = id, kind = kind, poster = poster, place = place, resource = resource, ratePerTick = ratePerTick, pricePerTick = pricePerTick, term = term, expiresAtTick = expiresAtTick, destPlace = destPlace };
-        public static MarketPool MarketPool(long id = default, string resource = "", double total = default, PlaceNodeRef place = default) => new MarketPool { id = id, resource = resource, total = total };
+        public static MarketArrears MarketArrears(ulong id = default, double amount = default, PlaceNodeRef place = default) => new MarketArrears { id = id, amount = amount };
+        public static MarketContract MarketContract(ulong id = default, ulong seller = default, ulong buyer = default, ulong place = default, string resource = "", double ratePerTick = default, double pricePerTick = default, long expiresAtTick = default, ulong destPlace = default) => new MarketContract { id = id, seller = seller, buyer = buyer, place = place, resource = resource, ratePerTick = ratePerTick, pricePerTick = pricePerTick, expiresAtTick = expiresAtTick, destPlace = destPlace };
+        public static MarketContribRow MarketContribRow(ulong faction = default, double kg = default) => new MarketContribRow { faction = faction, kg = kg };
+        public static MarketDebt MarketDebt(ulong id = default, double principal = default, double owed = default, FactionRef borrower = default, FactionRef lender = default) => new MarketDebt { id = id, principal = principal, owed = owed };
+        public static MarketOffer MarketOffer(ulong id = default, byte kind = default, ulong poster = default, ulong place = default, string resource = "", double ratePerTick = default, double pricePerTick = default, long term = default, long expiresAtTick = default, ulong destPlace = default) => new MarketOffer { id = id, kind = kind, poster = poster, place = place, resource = resource, ratePerTick = ratePerTick, pricePerTick = pricePerTick, term = term, expiresAtTick = expiresAtTick, destPlace = destPlace };
+        public static MarketPool MarketPool(ulong id = default, string resource = "", double total = default, PlaceNodeRef place = default) => new MarketPool { id = id, resource = resource, total = total };
         public static MassTrackerRow MassTrackerRow(int planetIndex = default, double originalMassKg = default, double accumulatedDeltaKg = default) => new MassTrackerRow { planetIndex = planetIndex, originalMassKg = originalMassKg, accumulatedDeltaKg = accumulatedDeltaKg };
         public static ObserverAdmission ObserverAdmission(int level = default, uint domain = default, byte regionKind = default, int regionBody = default, byte state = default, byte reason = default, long dwellUntilTick = default, byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default) => new ObserverAdmission { level = level, domain = domain, regionKind = regionKind, regionBody = regionBody, state = state, reason = reason, dwellUntilTick = dwellUntilTick, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
-        public static ObserverParkedStockBase ObserverParkedStockBase(int level = default, uint domain = default, byte regionKind = default, int regionBody = default, string resourceName = "", double baseKg = default, long parkedAtTick = default, long baseVersion = default, FactionRef faction = default) => new ObserverParkedStockBase { level = level, domain = domain, regionKind = regionKind, regionBody = regionBody, resourceName = resourceName, baseKg = baseKg, parkedAtTick = parkedAtTick, baseVersion = baseVersion };
+        public static ObserverParkedStockBase ObserverParkedStockBase(int level = default, uint domain = default, byte regionKind = default, int regionBody = default, string resourceName = "", double baseKg = default, long parkedAtTick = default, ulong baseVersion = default, FactionRef faction = default) => new ObserverParkedStockBase { level = level, domain = domain, regionKind = regionKind, regionBody = regionBody, resourceName = resourceName, baseKg = baseKg, parkedAtTick = parkedAtTick, baseVersion = baseVersion };
         public static ObserverState ObserverState(double positionXAu = default, double positionYAu = default, double positionZAu = default, byte locationMode = default, double visualReachAu = default, PlaceNodeRef place = default) => new ObserverState { positionXAu = positionXAu, positionYAu = positionYAu, positionZAu = positionZAu, locationMode = locationMode, visualReachAu = visualReachAu };
-        public static PlaceNode PlaceNode(long id = default, int body = default, byte kind = default, FactionRef owner = default) => new PlaceNode { id = id, body = body, kind = kind };
+        public static PlaceNode PlaceNode(ulong id = default, int body = default, byte kind = default, FactionRef owner = default) => new PlaceNode { id = id, body = body, kind = kind };
         public static PlaceRoleAssignment PlaceRoleAssignment(FactionRef faction = default, EconomicRoleRef role = default) => new PlaceRoleAssignment {  };
         public static PlacesAuthored PlacesAuthored(uint id = default, PlaceNodeRef entity = default) => new PlacesAuthored { id = id };
-        public static PopulationRow PopulationRow(long entity = default) => new PopulationRow { entity = entity };
-        public static PracticeLast PracticeLast(long id = default, int count = default, FactionRef faction = default, PracticeProfileRef practice = default) => new PracticeLast { id = id, count = count };
-        public static PracticeLedger PracticeLedger(long id = default, int count = default, FactionRef faction = default, PracticeProfileRef practice = default) => new PracticeLedger { id = id, count = count };
-        public static PracticeSaturation PracticeSaturation(long id = default, string tag = "", double level = default, FactionRef faction = default, PracticeProfileRef source = default) => new PracticeSaturation { id = id, tag = tag, level = level };
-        public static PriceQuote PriceQuote(long id = default, string resource = "", double amountPerUnit = default, long priceId = default, long revision = default) => new PriceQuote { id = id, resource = resource, amountPerUnit = amountPerUnit, priceId = priceId, revision = revision };
+        public static PopulationRow PopulationRow(ulong entity = default) => new PopulationRow { entity = entity };
+        public static PracticeLast PracticeLast(ulong id = default, int count = default, FactionRef faction = default, PracticeProfileRef practice = default) => new PracticeLast { id = id, count = count };
+        public static PracticeLedger PracticeLedger(ulong id = default, int count = default, FactionRef faction = default, PracticeProfileRef practice = default) => new PracticeLedger { id = id, count = count };
+        public static PracticeSaturation PracticeSaturation(ulong id = default, string tag = "", double level = default, FactionRef faction = default, PracticeProfileRef source = default) => new PracticeSaturation { id = id, tag = tag, level = level };
+        public static PriceQuote PriceQuote(ulong id = default, string resource = "", double amountPerUnit = default, ulong priceId = default, ulong revision = default) => new PriceQuote { id = id, resource = resource, amountPerUnit = amountPerUnit, priceId = priceId, revision = revision };
         public static QuestCompletionRow QuestCompletionRow(string id = "") => new QuestCompletionRow { id = id };
         public static QuestStatus QuestStatus(string id = "", byte status = default) => new QuestStatus { id = id, status = status };
         public static RecipeFlowRow RecipeFlowRow(string resource = "", double kgPerTick = default) => new RecipeFlowRow { resource = resource, kgPerTick = kgPerTick };
         public static RefineHeadRow RefineHeadRow(FactionRef faction = default) => new RefineHeadRow {  };
-        public static Region Region(long id = default, byte parentKind = default, int parentBody = default, byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default, ResourceRef material = default) => new Region { id = id, parentKind = parentKind, parentBody = parentBody, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
+        public static Region Region(ulong id = default, byte parentKind = default, int parentBody = default, byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default, ResourceRef material = default) => new Region { id = id, parentKind = parentKind, parentBody = parentBody, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
         public static RegionHeatTransfer RegionHeatTransfer(double joules = default, RegionRef region = default, BuildingStoreFlowRef container = default) => new RegionHeatTransfer { joules = joules };
         public static RuleFire RuleFire(long lastTick = default, RuleRef rule = default, FactionRef faction = default) => new RuleFire { lastTick = lastTick };
         public static SimActionRow SimActionRow(int targetBodyIndex = default, byte kind = default, uint actionId = default, byte phase = default, byte outcome = default, bool resisted = default, long spawnTick = default, long resolveTick = default, FactionRef actor = default, FactionRef target = default) => new SimActionRow { targetBodyIndex = targetBodyIndex, kind = kind, actionId = actionId, phase = phase, outcome = outcome, resisted = resisted, spawnTick = spawnTick, resolveTick = resolveTick };
         public static SpatialFire SpatialFire(byte scope = default, int index = default, long lastTick = default, RuleRef rule = default) => new SpatialFire { scope = scope, index = index, lastTick = lastTick };
-        public static Stock Stock(long id = default, double kg = default, PlaceNodeRef place = default, ResourceRef resource = default) => new Stock { id = id, kg = kg };
-        public static Vehicle Vehicle(long id = default, double ispSeconds = default, double baseEnginePowerW = default, double dryMassKg = default, string propellant = "", double propellantKg = default, int planetIndex = default, bool inTransit = default, int targetIndex = default, long departTick = default, long arrivalTick = default, string cargoResource = "", double cargoKg = default, bool inLinkTransit = default, FactionRef faction = default, FactionRef deliverTo = default) => new Vehicle { id = id, ispSeconds = ispSeconds, baseEnginePowerW = baseEnginePowerW, dryMassKg = dryMassKg, propellant = propellant, propellantKg = propellantKg, planetIndex = planetIndex, inTransit = inTransit, targetIndex = targetIndex, departTick = departTick, arrivalTick = arrivalTick, cargoResource = cargoResource, cargoKg = cargoKg, inLinkTransit = inLinkTransit };
-        public static WorldEventRow WorldEventRow(string kind = "", long perpetrator = default, long victim = default, string location = "", string questId = "", long when = default) => new WorldEventRow { kind = kind, perpetrator = perpetrator, victim = victim, location = location, questId = questId, when = when };
+        public static Stock Stock(ulong id = default, double kg = default, All faction = default, PlaceNodeRef place = default, ResourceRef resource = default) => new Stock { id = id, kg = kg };
+        public static Vehicle Vehicle(ulong id = default, double ispSeconds = default, double baseEnginePowerW = default, double dryMassKg = default, string propellant = "", double propellantKg = default, int planetIndex = default, bool inTransit = default, int targetIndex = default, long departTick = default, long arrivalTick = default, string cargoResource = "", double cargoKg = default, bool inLinkTransit = default, FactionRef faction = default, FactionRef deliverTo = default) => new Vehicle { id = id, ispSeconds = ispSeconds, baseEnginePowerW = baseEnginePowerW, dryMassKg = dryMassKg, propellant = propellant, propellantKg = propellantKg, planetIndex = planetIndex, inTransit = inTransit, targetIndex = targetIndex, departTick = departTick, arrivalTick = arrivalTick, cargoResource = cargoResource, cargoKg = cargoKg, inLinkTransit = inLinkTransit };
+        public static WorldEventRow WorldEventRow(string kind = "", ulong perpetrator = default, ulong victim = default, string location = "", string questId = "", long when = default) => new WorldEventRow { kind = kind, perpetrator = perpetrator, victim = victim, location = location, questId = questId, when = when };
     }
 
     /// <summary>Schema path for agent_belief; no native component row is required.</summary>
@@ -6492,37 +6497,37 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealSession
     {
-        public long id;
-        public long session;
-        public long firstDealId;
+        public ulong id;
+        public ulong session;
+        public ulong firstDealId;
         public int stepCount;
         public long openedAtTick;
         public string policy;
-        public long policyRevision;
+        public ulong policyRevision;
     }
 
     public struct DealStep
     {
-        public long id;
-        public long session;
+        public ulong id;
+        public ulong session;
         public int stepOrdinal;
-        public long dealId;
-        public long parentDealId;
-        public long rootProposer;
-        public long proposer;
+        public ulong dealId;
+        public ulong parentDealId;
+        public ulong rootProposer;
+        public ulong proposer;
         public byte stepKind;
         public byte status;
         public long proposedAtTick;
         public long earliestReplyTick;
         public long expiresAtTick;
-        public long templatePriceId;
-        public long templateRevision;
+        public ulong templatePriceId;
+        public ulong templateRevision;
         public byte subjectKind;
-        public long subjectEntity;
+        public ulong subjectEntity;
         public string subjectRef;
         public byte scopeKind;
-        public long scopeA;
-        public long scopeB;
+        public ulong scopeA;
+        public ulong scopeB;
         public double unit;
         public double quantity;
         public byte executionKind;
@@ -6531,17 +6536,17 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealParty
     {
-        public long id;
-        public long dealId;
+        public ulong id;
+        public ulong dealId;
         public int partyOrdinal;
-        public long actor;
+        public ulong actor;
         public byte role;
     }
 
     public struct DealRequirement
     {
-        public long id;
-        public long dealId;
+        public ulong id;
+        public ulong dealId;
         public int partyOrdinal;
         public int nodeOrdinal;
         public int parentOrdinal;
@@ -6551,8 +6556,8 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealSettlement
     {
-        public long id;
-        public long dealId;
+        public ulong id;
+        public ulong dealId;
         public int partyOrdinal;
         public int effectOrdinal;
         public int paramOrdinal;
@@ -6566,8 +6571,8 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealDecision
     {
-        public long id;
-        public long dealId;
+        public ulong id;
+        public ulong dealId;
         public int partyOrdinal;
         public byte decision;
         public long decidedAtTick;
@@ -6575,8 +6580,8 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealPolicyCadence
     {
-        public long id;
-        public long faction;
+        public ulong id;
+        public ulong faction;
         public string policy;
         public long lastNegotiationTick;
     }
@@ -6590,8 +6595,8 @@ namespace Vixen.Codegen.Gpu
 
     public struct LeverageOutcomeRequest
     {
-        public long leveragingFaction;
-        public long rivalFaction;
+        public ulong leveragingFaction;
+        public ulong rivalFaction;
         public string fact;
         public long now;
     }
@@ -6599,15 +6604,15 @@ namespace Vixen.Codegen.Gpu
     public struct WarOutcomeRequest
     {
         public byte kind;
-        public long first;
-        public long second;
+        public ulong first;
+        public ulong second;
         public float magnitude;
         public long now;
     }
 
     public struct CoarseStockDelta
     {
-        public long faction;
+        public ulong faction;
         public int body;
         public string resource;
         public double amount;
@@ -6615,7 +6620,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct CoarseHaulRequest
     {
-        public long faction;
+        public ulong faction;
         public int fromBody;
         public int toBody;
         public string resource;
@@ -6634,10 +6639,10 @@ namespace Vixen.Codegen.Gpu
         public byte kind;
         public int body;
         public string resource;
-        public long sequence;
+        public ulong sequence;
         public double amount;
         public long arrivalTick;
-        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.AllRef> faction;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.All> faction;
     }
 
     public struct DepletionBodyRow
@@ -6689,8 +6694,8 @@ namespace Vixen.Codegen.Gpu
 
     public struct BuildingInstance
     {
-        public long id;
-        public long host;
+        public ulong id;
+        public ulong host;
         public double integrity;
         public string slot;
         public int crewCount;
@@ -6712,7 +6717,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct BuildingStoreFlow
     {
-        public long id;
+        public ulong id;
         public int ordinal;
         public double charge;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingInstanceRef> building;
@@ -6745,11 +6750,11 @@ namespace Vixen.Codegen.Gpu
 
     public struct LinkChargeCommand
     {
-        public long building;
+        public ulong building;
         public int linkOrdinal;
         public string effect;
-        public long producer;
-        public long sequence;
+        public ulong producer;
+        public ulong sequence;
         public double amount;
     }
 
@@ -6757,11 +6762,11 @@ namespace Vixen.Codegen.Gpu
     {
         public long epoch;
         public int publisherOrdinal;
-        public long stableWorkKey;
-        public long localSequence;
+        public ulong stableWorkKey;
+        public ulong localSequence;
         public int linkOrdinal;
         public string effect;
-        public long sequence;
+        public ulong sequence;
         public double amount;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingInstanceRef> building;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingInstanceRef> producer;
@@ -6769,7 +6774,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct Vehicle
     {
-        public long id;
+        public ulong id;
         public double ispSeconds;
         public double baseEnginePowerW;
         public double dryMassKg;
@@ -6842,8 +6847,8 @@ namespace Vixen.Codegen.Gpu
     public struct EvictionKickRow
     {
         public int processIndex;
-        public long owner;
-        public long offender;
+        public ulong owner;
+        public ulong offender;
         public int bodyIndex;
         public long spawnTick;
         public double rateKgPerTick;
@@ -6856,8 +6861,8 @@ namespace Vixen.Codegen.Gpu
     {
         public long epoch;
         public int publisherOrdinal;
-        public long stableWorkKey;
-        public long localSequence;
+        public ulong stableWorkKey;
+        public ulong localSequence;
         public int processIndex;
         public int bodyIndex;
         public long spawnTick;
@@ -6885,8 +6890,8 @@ namespace Vixen.Codegen.Gpu
     public struct WorldEventRow
     {
         public string kind;
-        public long perpetrator;
-        public long victim;
+        public ulong perpetrator;
+        public ulong victim;
         public string location;
         public string questId;
         public long when;
@@ -6900,7 +6905,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct AgentAwareness
     {
-        public long id;
+        public ulong id;
         public byte level;
         public byte source;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
@@ -6909,7 +6914,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct AgentEdgeAwareness
     {
-        public long id;
+        public ulong id;
         public long edge;
         public byte level;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
@@ -6917,17 +6922,17 @@ namespace Vixen.Codegen.Gpu
 
     public struct AgentInvestigated
     {
-        public long id;
+        public ulong id;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> entity;
     }
 
     public struct AgentHeldFact
     {
-        public long id;
+        public ulong id;
         public string fact;
         public byte source;
-        public long attributor;
+        public ulong attributor;
         public long whenTick;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.AgentFoundAccountRow> accounts;
@@ -6941,7 +6946,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct AgentAssociation
     {
-        public long id;
+        public ulong id;
         public bool asserted;
         public float power;
         public long derivedTick;
@@ -6951,7 +6956,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct AgentPosition
     {
-        public long id;
+        public ulong id;
         public float x;
         public float y;
         public float z;
@@ -6962,7 +6967,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct LeverageUsed
     {
-        public long id;
+        public ulong id;
         public string fact;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> target;
@@ -6970,19 +6975,19 @@ namespace Vixen.Codegen.Gpu
 
     public struct KnowledgeFragmentInstanceRow
     {
-        public long instanceId;
+        public ulong instanceId;
         public uint definitionId;
-        public long place;
-        public long carrier;
+        public ulong place;
+        public ulong carrier;
         public float fidelity;
         public int copyGeneration;
-        public long copiedFrom;
+        public ulong copiedFrom;
         public byte lifecycle;
     }
 
     public struct KnowledgeBudget
     {
-        public long id;
+        public ulong id;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.BudgetEntryRow> entries;
     }
@@ -6995,14 +7000,14 @@ namespace Vixen.Codegen.Gpu
 
     public struct KnownNodeCellRow
     {
-        public long cell;
+        public ulong cell;
     }
 
     public struct KnowledgeLocal
     {
-        public long id;
+        public ulong id;
         public uint map;
-        public long densityEntity;
+        public ulong densityEntity;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PlaceNodeRef> place;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.KnownNodeCellRow> knownNodeCells;
@@ -7010,32 +7015,32 @@ namespace Vixen.Codegen.Gpu
 
     public struct KnowledgeUnlockFired
     {
-        public long id;
+        public ulong id;
         public string concept;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
     }
 
     public struct KnowledgeCharacter
     {
-        public long id;
+        public ulong id;
         public uint map;
-        public long densityEntity;
+        public ulong densityEntity;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> character;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.KnownNodeCellRow> knownNodeCells;
     }
 
     public struct KnowledgeBuilding
     {
-        public long id;
+        public ulong id;
         public uint map;
-        public long densityEntity;
+        public ulong densityEntity;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingInstanceRef> building;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.KnownNodeCellRow> knownNodeCells;
     }
 
     public struct KnowledgeFragmentOwnership
     {
-        public long id;
+        public ulong id;
         public uint map;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> anchor;
@@ -7043,16 +7048,16 @@ namespace Vixen.Codegen.Gpu
 
     public struct KnowledgeCentral
     {
-        public long id;
+        public ulong id;
         public uint map;
-        public long densityEntity;
+        public ulong densityEntity;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.KnownNodeCellRow> knownNodeCells;
     }
 
     public struct FoundingIdeology
     {
-        public long id;
+        public ulong id;
         public string tag;
         public float density;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
@@ -7060,7 +7065,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct PracticeLedger
     {
-        public long id;
+        public ulong id;
         public int count;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PracticeProfileRef> practice;
@@ -7068,7 +7073,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct PracticeLast
     {
-        public long id;
+        public ulong id;
         public int count;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PracticeProfileRef> practice;
@@ -7076,7 +7081,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct PracticeSaturation
     {
-        public long id;
+        public ulong id;
         public string tag;
         public double level;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
@@ -7086,17 +7091,17 @@ namespace Vixen.Codegen.Gpu
     public struct MarketBoardMutationRequest
     {
         public byte kind;
-        public long id;
+        public ulong id;
         public int strikes;
     }
 
     public struct PriceQuote
     {
-        public long id;
+        public ulong id;
         public string resource;
         public double amountPerUnit;
-        public long priceId;
-        public long revision;
+        public ulong priceId;
+        public ulong revision;
     }
 
     public struct FactionAmountRow
@@ -7107,7 +7112,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct MarketArrears
     {
-        public long id;
+        public ulong id;
         public double amount;
         public global::Undertow.Modding.KindRef<global::Undertow.Modding.ContentDeclared> holder;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PlaceNodeRef> place;
@@ -7115,7 +7120,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct MarketDebt
     {
-        public long id;
+        public ulong id;
         public double principal;
         public double owed;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> borrower;
@@ -7124,13 +7129,13 @@ namespace Vixen.Codegen.Gpu
 
     public struct GateRow
     {
-        public long a;
-        public long b;
+        public ulong a;
+        public ulong b;
     }
 
     public struct MarketPool
     {
-        public long id;
+        public ulong id;
         public string resource;
         public double total;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PlaceNodeRef> place;
@@ -7139,35 +7144,35 @@ namespace Vixen.Codegen.Gpu
 
     public struct MarketContribRow
     {
-        public long faction;
+        public ulong faction;
         public double kg;
     }
 
     public struct MarketContract
     {
-        public long id;
-        public long seller;
-        public long buyer;
-        public long place;
+        public ulong id;
+        public ulong seller;
+        public ulong buyer;
+        public ulong place;
         public string resource;
         public double ratePerTick;
         public double pricePerTick;
         public long expiresAtTick;
-        public long destPlace;
+        public ulong destPlace;
     }
 
     public struct MarketOffer
     {
-        public long id;
+        public ulong id;
         public byte kind;
-        public long poster;
-        public long place;
+        public ulong poster;
+        public ulong place;
         public string resource;
         public double ratePerTick;
         public double pricePerTick;
         public long term;
         public long expiresAtTick;
-        public long destPlace;
+        public ulong destPlace;
     }
 
     public struct QuestStatus
@@ -7221,7 +7226,7 @@ namespace Vixen.Codegen.Gpu
         public string resourceName;
         public double baseKg;
         public long parkedAtTick;
-        public long baseVersion;
+        public ulong baseVersion;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;
     }
 
@@ -7233,7 +7238,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct PlaceNode
     {
-        public long id;
+        public ulong id;
         public int body;
         public byte kind;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> owner;
@@ -7249,18 +7254,18 @@ namespace Vixen.Codegen.Gpu
     public struct FactionBindingRow
     {
         public uint id;
-        public long entity;
+        public ulong entity;
     }
 
     public struct CharacterBindingRow
     {
         public uint id;
-        public long entity;
+        public ulong entity;
     }
 
     public struct PopulationRow
     {
-        public long entity;
+        public ulong entity;
     }
 
     public struct RuleFire
@@ -7294,7 +7299,7 @@ namespace Vixen.Codegen.Gpu
         public float wO;
         public float wWhiteDwarf;
         public float wNeutronStar;
-        public long rowId;
+        public ulong rowId;
         public string address;
         public byte esvoAddrDepth;
         public uint esvoAddrHop0;
@@ -7309,7 +7314,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct Region
     {
-        public long id;
+        public ulong id;
         public byte parentKind;
         public int parentBody;
         public byte esvoAddrDepth;
@@ -7349,9 +7354,9 @@ namespace Vixen.Codegen.Gpu
 
     public struct Stock
     {
-        public long id;
+        public ulong id;
         public double kg;
-        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.AllRef> faction;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.All> faction;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PlaceNodeRef> place;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef> resource;
     }
