@@ -65,7 +65,7 @@
       "diagnostic": "The generated system required sceneRadianceHistoryOutput_current while graph wiring provided only sceneRadianceHistoryOutput. Added the exact-name provider alias to the current history view and filed a consolidation proposal.",
       "wsl_build": "passed",
       "native_build": "passed; retry succeeded after the first request yielded before payload launch",
-      "focused_gpu_tests": "editor capture producer retry is queued; earlier editor and HUD attempts were stopped before payload launch after 29 minutes without GPU admission"
+      "focused_gpu_tests": "editor capture producer retry waited about six minutes and was terminated before payload launch at the 2026-10-13 20:47 UTC checkpoint (wrapper exit 143); earlier editor and HUD attempts were stopped before payload launch after 29 minutes without GPU admission"
     },
     {
       "id": "native-parity",
@@ -138,7 +138,7 @@
         ],
         "current": ["AppFlowBlob.InteriorEditPreservesShapeHash"]
       },
-      "gpu_status": "Same-base GPU run was explicitly interrupted at 596/607 because its 12-state PlanetCapture could not finish before the lane checkpoint (wrapper exit 143). Before interruption, base-only failures were HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams and HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground. Current full GPU run completed before the graph alias fix with 13 failures and 10 dependents not run due missing sceneRadianceHistoryOutput_current; a full post-fix split and failing-name comparison remain incomplete. Focused post-fix producer checks are queued.",
+      "gpu_status": "Same-base GPU run was explicitly interrupted at 596/607 because its 12-state PlanetCapture could not finish before the lane checkpoint (wrapper exit 143). Before interruption, base-only failures were HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams and HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground. Current full GPU run completed before the graph alias fix with 13 failures and 10 dependents not run due missing sceneRadianceHistoryOutput_current; a full post-fix split and failing-name comparison remain incomplete. The focused post-fix editor producer retry was terminated before payload launch and yielded no test result.",
       "cpu_logs": [
         "build/wsl-baseline/rjs2-split-928-base/cpu.log",
         "build/wsl/rjs2-split-928-current/cpu.log"
@@ -149,7 +149,7 @@
       "status": "not-run",
       "runs_requested": 5,
       "threshold_ms": 0.5,
-      "queue_load": "No quiet window: observed host CPU ranged from 26-87%, with one to three benchmark jobs and multiple correctness jobs queued.",
+      "queue_load": "No quiet window: observed host CPU ranged from 26-87%; at the 2026-10-13 20:47 UTC checkpoint, both shared GPU slots were held by another lane's long-running correctness work, with additional GPU jobs waiting.",
       "median_ms": null,
       "spread_ms": null,
       "reason": "The requested quiet native --gpu-benchmark window was unavailable, so no timing number is claimed."
