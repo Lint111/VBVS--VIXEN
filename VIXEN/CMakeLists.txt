@@ -361,15 +361,20 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 
 	# GLSL - use vulkan SDK's glslang library for compiling GLSL to SPIR-V
 	# This does not require offline conversion of GLSL shader to SPIR-V(.spv) form.
-	# Modern Vulkan SDK has glslang in Include directory
+	# Modern Vulkan SDK has glslang in Include directory. The Linux SDK uses a
+	# lowercase include/ directory, so accept either casing (Include first, which
+	# keeps the Windows lookup unchanged).
 	set(GLSLANGDIR "${VULKAN_PATH}/Include/glslang")
+	if(NOT EXISTS "${VULKAN_PATH}/Include/glslang" AND EXISTS "${VULKAN_PATH}/include/glslang")
+		set(GLSLANGDIR "${VULKAN_PATH}/include/glslang")
+	endif()
 
 	get_filename_component(GLSLANG_PREFIX "${GLSLANGDIR}" ABSOLUTE)
 
 	# Check if glslang directory exists
 	if(NOT EXISTS "${GLSLANG_PREFIX}")
 		message ("Fatal Error: glslang directory not found in Vulkan SDK path: ${GLSLANG_PREFIX}.")
-		message ("Note: glslang headers are expected in ${VULKAN_PATH}/Include/glslang")
+		message ("Note: glslang headers are expected in ${VULKAN_PATH}/Include/glslang or ${VULKAN_PATH}/include/glslang")
 	endif()
 
 	# Include the glslang directory (the parent Include directory is already included below)
