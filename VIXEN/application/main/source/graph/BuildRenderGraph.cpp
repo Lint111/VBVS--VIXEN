@@ -681,8 +681,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
     // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
     // SwapchainBarriers::BlitRenderTargetToSwapchain free function, now shared). Runs after
-    // DirectLightingNode, before the sky-projection/UI composite chain (which still reads the
-    // swapchain image, unchanged).
+    // DirectLightingNode, before the optional sky-projection fixture and the UI composite, which
+    // read the swapchain image.
     NodeHandle blitNode = renderGraph->AddNode<BlitNodeType>("render_target_blit");
 
     // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
@@ -1402,24 +1402,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
-    // --- Sky-projection composite pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
-    // A color-only graphics pass layered over the compute output, sitting BETWEEN the voxel
-    // compute and the UI/HUD composite (compute -> sky-projection -> UI, so the HUD still draws
-    // over everything including sky points; UI stays the LAST pass, unchanged): RenderPassNode
-    // (LOAD, initial=General, final=General — hands off to the UI composite pass's own
-    // initial=General, since UI is still the one that transitions to PresentSrc) + FramebufferNode
-    // (swapchain image views) + SkyProjectionNode. Mirrors the ui_composite_* triple exactly, one
-    // stage earlier in the chain.
-    NodeHandle skyProjectionRenderPassNode  = renderGraph->AddNode<RenderPassNodeType>("sky_projection_render_pass");
-    NodeHandle skyProjectionFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("sky_projection_framebuffer");
-    NodeHandle skyProjectionNode = renderGraph->AddNode<SkyProjectionNodeType>("sky_projection");
-    skyProjectionNode_ = skyProjectionNode;           // stored for potential live lookup
-    // Node loggers default DISABLED (NodeInstance ctor); the fixture's computed direction/
-    // magnitude values are the live-gate's ground truth (M3 Progress Log records the hand-
-    // computed expectation to compare against), so enable this node's logger to the terminal —
-    // mirrors raySizeCoefNode/voxelSelectionProviderNode's own "live-gate signal" opt-in below.
-    if (auto* skyInst = renderGraph->GetInstance(skyProjectionNode)) {
-        if (auto* sl = skyInst->GetLogger()) { sl->SetEnabled(true); sl->SetTerminalOutput(true); }
+    // --- Sky-projection fixture pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
+    // This synthetic fixture is available to focused tests with VIXEN_SKY_PROJECTION_FIXTURE=1.
+    // Keep its render-pass/framebuffer/node triple out of ordinary frames and captures by default.
+    const bool skyProjectionFixtureEnabled =
+        envFlagEnabledOrDefault("VIXEN_SKY_PROJECTION_FIXTURE", false);
+    NodeHandle skyProjectionRenderPassNode{};
+    NodeHandle skyProjectionFramebufferNode{};
+    NodeHandle skyProjectionNode{};
+    skyProjectionNode_ = {};
+    if (skyProjectionFixtureEnabled) {
+        // A color-only graphics pass layered between the compute output and UI/HUD composite.
+        // The UI remains the last pass and transitions the swapchain image to PresentSrc.
+        skyProjectionRenderPassNode = renderGraph->AddNode<RenderPassNodeType>("sky_projection_render_pass");
+        skyProjectionFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("sky_projection_framebuffer");
+        skyProjectionNode = renderGraph->AddNode<SkyProjectionNodeType>("sky_projection");
+        skyProjectionNode_ = skyProjectionNode;       // stored for potential live lookup
+        // Node loggers default disabled; expose the fixture's computed direction/magnitude values
+        // when a focused test explicitly opts in.
+        if (auto* skyInst = renderGraph->GetInstance(skyProjectionNode)) {
+            if (auto* sl = skyInst->GetLogger()) { sl->SetEnabled(true); sl->SetTerminalOutput(true); }
+        }
     }
 
     // --- UI composite pass (HUD over the voxel render) ---
@@ -3153,8 +3156,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // VIXEN_PROBE_GRID_CONFIG_ENABLED runs later in this SAME function).
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
-    // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
-    // owns the final GENERAL->PRESENT_SRC transition, unchanged by this milestone's pass-split.
+    // below beside uiComposite's own parameters) — the UI composite still owns the final
+    // GENERAL->PRESENT_SRC transition, whether the optional fixture is present or not.
     auto* blit = static_cast<BlitNode*>(renderGraph->GetInstance(blitNode));
     blit->SetParameter(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
 
@@ -7612,27 +7615,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     
 
-    // --- Sky-projection composite pass parameters (Tiered ESVO Inc1 M3) ---
-    // Sits between the compute (GENERAL) and the UI composite pass (which also expects
-    // initial=General — see its own PARAM_INITIAL_LAYOUT below, unchanged): LOADs the voxel
-    // output, draws the sky points, and leaves the image in GENERAL for the UI composite pass
-    // to LOAD in turn (this pass does NOT transition to PresentSrc — UI still owns that, as the
-    // last pass in the chain).
-    auto* skyProjectionRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(skyProjectionRenderPassNode));
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);   // compute leaves GENERAL
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::General);     // UI composite pass LOADs GENERAL next
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+    // --- Optional sky-projection fixture parameters ---
+    // When enabled, LOAD the compute output and leave it in GENERAL for the UI composite pass.
+    // The fixture does not transition to PresentSrc; the UI owns that as the final pass.
+    if (skyProjectionFixtureEnabled) {
+        auto* skyProjectionRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(skyProjectionRenderPassNode));
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::General);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
-    auto* skyProjectionFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(skyProjectionFramebufferNode));
-    skyProjectionFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+        auto* skyProjectionFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(skyProjectionFramebufferNode));
+        skyProjectionFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+    }
 
     // --- UI composite pass parameters ---
-    // The chain is now march -> DirectLighting -> BlitNode -> sky-projection -> UI. BlitNode leaves
-    // the swapchain image in GENERAL (PARAM_LEAVE_IMAGE_IN_GENERAL=true, set above beside its own
-    // parameters); the sky-projection pass LOADs+draws+leaves it in GENERAL (below); the UI render
-    // pass LOADs that image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    // The chain is march -> DirectLighting -> BlitNode -> [optional sky fixture] -> UI. BlitNode
+    // leaves the swapchain image in GENERAL; when present, the fixture LOADs and leaves it in
+    // GENERAL too. The UI render pass LOADs the image, draws the HUD, and owns the final transition.
     // Sampled Lighting Inc3 M1 (KI-018): the march itself no longer writes any presentable image —
     // PARAM_WRITES_NO_IMAGE=true skips its (now-obsolete) SWAPCHAIN_INFO layout transitions
     // entirely (see that param's doc comment); PARAM_LEAVE_IMAGE_IN_GENERAL stays true because the
@@ -8992,39 +8993,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
     // ===================================================================
-    // Sky-projection composite pass (Tiered ESVO Inc1 M3): address-derived sky points over the
-    // compute output, BEFORE the UI composite pass (compute -> sky-projection -> UI).
-    // Mirrors the UI composite triple's own RenderPassNode -> FramebufferNode -> consumer shape,
-    // one stage earlier in the chain.
+    // Optional sky-projection fixture wiring. When enabled it draws between compute and UI;
+    // otherwise the UI composite follows the blit directly.
     // ===================================================================
 
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
-    connectPresentationTargetInfo(skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+    if (skyProjectionFixtureEnabled) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
+        connectPresentationTargetInfo(skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
 
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
-    connectPresentationTargetInfo(skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
+        connectPresentationTargetInfo(skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
 
-    // SkyProjectionNode DATA-role inputs (device/cmdpool — mirrors BodyOctreeSceneNode's exact
-    // connection block) + DRAW-role inputs (swapchain-info/camera-data/render-pass/framebuffers/
-    // image-index/frame-index/fence/timeline — mirrors UIRenderNode's composite-mode wiring).
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionNode, SkyProjectionNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL);
-    connectPresentationTargetInfo(skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO);
-    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
-         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionNode, SkyProjectionNodeConfig::RENDER_PASS)
-         .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS);
-    connectPresentationImageIndex(skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX);
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, skyProjectionNode, SkyProjectionNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_SEMAPHORE_IN)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_FRAME_BASE_IN);
-    // IMAGE_AVAILABLE_SEMAPHORES_ARRAY deliberately left UNCONNECTED: this pass is never the
-    // first submit in the live composite pipeline (the upstream compute already waits the WSI
-    // acquire), so ordering vs. compute is carried solely by the timeline waitEdge above — see
-    // SkyProjectionNodeConfig.h's doc comment and SkyProjectionNode::ExecuteImpl's empty-vector
-    // guard (mirrors UIRenderNode's composite_ convention exactly).
+        // DATA-role inputs (device/cmdpool) and DRAW-role inputs (swapchain/camera/render-pass/
+        // framebuffer/frame-index/fence/timeline) mirror the existing composite-node wiring.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionNode, SkyProjectionNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL);
+        connectPresentationTargetInfo(skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
+             .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionNode, SkyProjectionNodeConfig::RENDER_PASS)
+             .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS);
+        connectPresentationImageIndex(skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX);
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, skyProjectionNode, SkyProjectionNodeConfig::IN_FLIGHT_FENCE)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_SEMAPHORE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_FRAME_BASE_IN);
+        // This pass is not first in the composite pipeline, so it does not wait on WSI acquire.
+        // The timeline edge orders it after compute, matching UIRenderNode's composite convention.
+    }
 
     // ===================================================================
     // UI composite pass: HUD render pass over the compute output, before present.
@@ -9065,7 +9062,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode + BlitNode wiring. The chain is now
     // march (HitRecord+pick-ID only) -> DirectLighting (shades, writes the render target) ->
-    // BlitNode (blits render target -> swapchain) -> sky-projection -> UI -> present.
+    // BlitNode (blits render target -> swapchain) -> [optional sky fixture] -> UI -> present.
     // ===================================================================
 
     // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
@@ -10079,7 +10076,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through
-    // DirectLighting + BlitNode first): the march->DirectLighting->Blit->sky-projection->UI
+    // DirectLighting + BlitNode first): the march->DirectLighting->Blit->[optional sky fixture]->UI
     // ordering is carried by the baked timeline edges for GPU SYNC (memory visibility), but the
     // graph still needs the TOPOLOGY edges so the execution order (and hence the timeline edges
     // the scheduler bakes from them) follows that same sequence. The FrameSyncScheduler derives
@@ -10097,14 +10094,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // output here is also VK_NULL_HANDLE in composite mode. SkyProjectionNode never WAITS its
     // COMPOSITE_WAIT_SEMAPHORE input, and UIRenderNode no longer waits compositeWait either (the M3
     // binary handoff was dropped from its submit). With the edges in the right direction the scheduler bakes
-    // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->sky-projection(GENERAL)->UI(GENERAL)
-    // timeline edges, tags the UI group as present (its render pass owns GENERAL->PRESENT_SRC,
-    // unchanged), and the timeline alone — not a binary handoff — orders every pass. WSI acquire
-    // (march waits imageAvailable) and present (UI signals its uiComplete) stay binary, unchanged.
-    batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
-    batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->[optional sky fixture]->UI(GENERAL)
+    // timeline edges tag the UI group as present (its render pass owns GENERAL->PRESENT_SRC)
+    // and order every pass. WSI acquire (march waits imageAvailable) and present (UI signals
+    // uiComplete) remain binary.
+    if (skyProjectionFixtureEnabled) {
+        batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+        batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    } else {
+        // Preserve the direct blit-to-UI ordering edge when the fixture triple is absent.
+        batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    }
 
     // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch guard,
     // wired HERE (the end of this function) rather than beside each node's OTHER
