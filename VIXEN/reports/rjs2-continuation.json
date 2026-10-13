@@ -47,33 +47,45 @@
     },
     {
       "id": "app-build-all-checks",
-      "status": "passed",
+      "status": "partial",
       "artifacts": [
         "/home/liory/.local/state/undertow/undertow-box-logs/1791910344-build-build-wsl-all-checks-app-928-merged.log",
         "/home/liory/.local/state/undertow/undertow-box-logs/1791913331-build-build-native-all-checks-app-928-post-regeneration.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791916337-build-build-same-base-wsl-928-all-struct-regens.log"
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791916337-build-build-same-base-wsl-928-all-struct-regens.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791921932-build-rjs2-post-alias-wsl-all-checks.log"
       ],
       "same_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
       "same_base_note": "No published wizard baseline matched the 2685b1e9 base and 928c40c9 kernel pair. Fresh same-base generation and all-target WSL build passed with the same override after three shared-struct schema regenerations."
     },
     {
-      "id": "native-parity",
+      "id": "render-graph-current-history-provider",
       "status": "partial",
+      "vixen_commit": "e69ab76bce4b33bdda157b85f0360a9137b69bf3",
+      "diagnostic": "The generated system required sceneRadianceHistoryOutput_current while graph wiring provided only sceneRadianceHistoryOutput. Added the exact-name provider alias to the current history view and filed a consolidation proposal.",
+      "wsl_build": "passed",
+      "native_build": "pending retry after the first request yielded before payload launch",
+      "focused_gpu_tests": "queued"
+    },
+    {
+      "id": "native-parity",
+      "status": "passed",
       "comparison": "Hand-written ExposureTonemapReference.comp versus generated ExposureTonemapSystem.comp",
-      "completed_states": ["midday", "late-afternoon", "overcast"],
-      "pending_states": ["night-service"],
-      "completed_pairs": 12,
-      "pairs_byte_identical": 12,
+      "completed_states": ["midday", "late-afternoon", "overcast", "night-service"],
+      "pending_states": [],
+      "completed_pairs": 16,
+      "pairs_byte_identical": 16,
       "resolution": "500x500",
       "pixel_diff": 0,
       "max_channel_delta": 0,
       "device": "AMD Radeon(TM) 8060S Graphics",
       "driver": "32.0.22018.5",
       "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "images_opened": ["midday-angle-0", "late-afternoon-angle-0", "overcast-angle-0", "night-service-angle-0"],
       "artifacts": [
         "/home/liory/.local/state/undertow/undertow-box-logs/1791917647-gpu-parity-midday-928.log",
         "/home/liory/.local/state/undertow/undertow-box-logs/1791917941-gpu-parity-late-afternoon-928.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791918050-gpu-parity-overcast-928.log"
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918050-gpu-parity-overcast-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791922095-gpu-parity-night-service-928.log"
       ]
     },
     {
@@ -125,7 +137,7 @@
         ],
         "current": ["AppFlowBlob.InteriorEditPreservesShapeHash"]
       },
-      "gpu_status": "Both GPU halves are queued; GPU failing names cannot yet be compared.",
+      "gpu_status": "Same-base GPU run was explicitly interrupted at 596/607 because its 12-state PlanetCapture could not finish before the lane checkpoint (wrapper exit 143). Before interruption, base-only failures were HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams and HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground. Current full GPU run completed before the graph alias fix with 13 failures and 10 dependents not run due missing sceneRadianceHistoryOutput_current; a full post-fix split and failing-name comparison remain incomplete. Focused post-fix producer checks are queued.",
       "cpu_logs": [
         "build/wsl-baseline/rjs2-split-928-base/cpu.log",
         "build/wsl/rjs2-split-928-current/cpu.log"
@@ -136,7 +148,7 @@
       "status": "not-run",
       "runs_requested": 5,
       "threshold_ms": 0.5,
-      "queue_load": "No quiet window: observed host CPU ranged from 35-60%, with two or three benchmark jobs and multiple correctness jobs queued.",
+      "queue_load": "No quiet window: observed host CPU ranged from 26-87%, with one to three benchmark jobs and multiple correctness jobs queued.",
       "median_ms": null,
       "spread_ms": null,
       "reason": "The requested quiet native --gpu-benchmark window was unavailable, so no timing number is claimed."
