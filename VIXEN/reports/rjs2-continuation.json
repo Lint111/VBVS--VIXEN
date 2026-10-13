@@ -1,0 +1,38 @@
+{
+  "format": "undertow-lane-continuation/v1",
+  "repositories": {
+    "vixen": { "commit": "868541238795c40c5ae1996be2141d0b8d04ebe9" },
+    "undertow": { "commit": "9c0136d5532c79f73d5bf85e15dd698a2e611209" },
+    "kernel": { "commit": "a97c273ff4312dc09de16ce33dc8f1a06dcedd14" }
+  },
+  "provider_pins": {
+    "vixen_yeroket_kernel_sha_override": "a97c273ff4312dc09de16ce33dc8f1a06dcedd14"
+  },
+  "checks": [
+    {
+      "id": "tone-map-codegen",
+      "status": "passed",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791893710-light-rjs2:configure-gpuarray-override-retry.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791893727-light-rjs2:regen-tonemap-system-gpuarray.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791893821-light-rjs2:gpuarray-codegen-checks.log"
+      ],
+      "reuse": "queued CMake generated-output drift checks; reuse while listed sources and provider snapshots are unchanged",
+      "source_paths": {
+        "vixen": [
+          "VIXEN/codegen/CMakeLists.txt",
+          "VIXEN/codegen/gpu-schemas",
+          "VIXEN/codegen/gpu-systems",
+          "VIXEN/codegen/generated/gpu",
+          "VIXEN/shaders/Generated/ExposureTonemapSystem.comp",
+          "VIXEN/application/main/include/Generated/ExposureTonemapSystem.g.h"
+        ],
+        "undertow": ["core/src"],
+        "kernel": [
+          "Packages/com.yeroket.utility.kernel-framework/Runtime",
+          "Packages/com.yeroket.utility.kernel-framework/CodegenTool~"
+        ]
+      }
+    }
+  ]
+}
