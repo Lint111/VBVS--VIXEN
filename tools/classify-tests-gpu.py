@@ -33,10 +33,12 @@ MANIFEST_HEADER = (
 )
 
 
-def ctest_json(build_dir, selection=None):
+def ctest_json(build_dir, selection=None, exclude=None):
     cmd = ["ctest", "--show-only=json-v1"]
     if selection:
         cmd += ["-L", selection]
+    if exclude:
+        cmd += ["-E", exclude]
     out = subprocess.run(cmd, cwd=build_dir, check=True, capture_output=True, text=True).stdout
     tests = {}
     for t in json.loads(out)["tests"]:
@@ -89,12 +91,14 @@ def load_manifest(path):
     return entries
 
 
-def run_ctest(build_dir, selection, jobs, witness_dir, junit, timeout):
+def run_ctest(build_dir, selection, jobs, witness_dir, junit, timeout, exclude=None):
     env = dict(os.environ)
     env["VIXEN_GPU_WITNESS_DIR"] = witness_dir
     cmd = ["ctest", "-j", str(jobs), "--output-junit", junit, "--timeout", str(timeout)]
     if selection:
         cmd += ["-L", selection]
+    if exclude:
+        cmd += ["-E", exclude]
     print("+ " + " ".join(cmd), flush=True)
     started = time.time()
     rc = subprocess.run(cmd, cwd=build_dir, env=env).returncode
@@ -180,6 +184,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--build-dir", required=True)
     ap.add_argument("-L", "--label", default=None, help="ctest -L selection to run (default: everything)")
+    ap.add_argument("-E", "--exclude", default=None, help="ctest -E regex: tests left out of the pass keep their manifest rows")
     ap.add_argument("-j", "--jobs", type=int, default=4)
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--manifest", default=None)
@@ -196,7 +201,7 @@ def main():
     manifest_path = os.path.abspath(manifest_path)
 
     all_tests = ctest_json(build_dir)
-    selected = ctest_json(build_dir, args.label) if args.label else all_tests
+    selected = ctest_json(build_dir, args.label, args.exclude) if (args.label or args.exclude) else all_tests
     by_file, by_target = load_exe_table(build_dir)
     plain = load_plain_table(build_dir)
     old = load_manifest(manifest_path)
@@ -209,7 +214,7 @@ def main():
         own_dir = tempfile.mkdtemp(prefix="vixen-witness.")
         witness_dir = own_dir
         junit = os.path.join(own_dir, "junit.xml")
-        rc, wall = run_ctest(build_dir, args.label, args.jobs, witness_dir, junit, args.timeout)
+        rc, wall = run_ctest(build_dir, args.label, args.jobs, witness_dir, junit, args.timeout, args.exclude)
         print(f"ctest exit {rc}, {wall:.1f}s wall (Dozen, non-representative timing)")
     status = read_junit(junit) if junit else {}
     actions = attribute(selected, read_witness(witness_dir))
