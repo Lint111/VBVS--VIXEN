@@ -20,11 +20,15 @@ foreach(_state IN LISTS _states)
         set(ENV{VIXEN_LOOKDEV_CAPTURE_STATE} "${_state}")
         set(ENV{VIXEN_LOOKDEV_CAPTURE_DIR} "${_run}")
         string(TIMESTAMP _run_start "%s")
+        # ECHO_*: the process output streams through this script to CTest while it runs, so
+        # `ctest -V` and the queue log show progress instead of one buffered dump at the end.
         execute_process(
             COMMAND "${LOOKDEV_CAPTURE_EXE}" "${_gtest_filter}"
             RESULT_VARIABLE _result
             OUTPUT_VARIABLE _stdout
-            ERROR_VARIABLE _stderr)
+            ERROR_VARIABLE _stderr
+            ECHO_OUTPUT_VARIABLE
+            ECHO_ERROR_VARIABLE)
         if(NOT _result STREQUAL "0")
             message(FATAL_ERROR "Look-dev ${_state} capture failed (${_result})\n${_stdout}\n${_stderr}")
         endif()

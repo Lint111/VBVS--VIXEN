@@ -7,13 +7,17 @@
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"
+#include "Nodes/ReservoirConfigNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -43,7 +47,44 @@ public:
 
 namespace {
 
-constexpr uint32_t kFramesPerState = 64; // Two full 32-frame reservoir-history caps.
+// Frames per state are derived, not chosen (R536, R565 C2): every per-frame ring (LightingConfig,
+// camera, previous camera, shadow config) holds kRingSlotCount slots and each must be rewritten for
+// the state, so two full rings give a warmed, verified steady state. The reservoir path carries
+// temporalCap=32 samples of history; when it is enabled the capture keeps two full caps (64).
+// The frame-count sweep that proves 8 == 64 per state is tools/planet-capture-frame-sweep.py.
+constexpr uint32_t kRingSlotCount = Vixen::RenderGraph::FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+constexpr uint32_t kReservoirHistoryCap = 32;
+constexpr uint32_t kMaxFramesPerState = 2 * kReservoirHistoryCap;
+constexpr uint32_t kDefaultFramesPerState = 2 * kRingSlotCount;
+constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
+
+using CaptureClock = std::chrono::steady_clock;
+
+uint32_t DefaultFramesPerState() {
+    return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerState : kDefaultFramesPerState;
+}
+
+uint32_t CaptureFramesPerState(std::string& error) {
+    const char* requested = std::getenv("VIXEN_PLANET_CAPTURE_FRAMES");
+    if (!requested || *requested == '\0') return DefaultFramesPerState();
+
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(requested, &end, 10);
+    if (end == requested || *end != '\0' || value == 0 || value > kMaxFramesPerState) {
+        error = "VIXEN_PLANET_CAPTURE_FRAMES must be an integer from 1 through " +
+            std::to_string(kMaxFramesPerState);
+        return 0;
+    }
+    return static_cast<uint32_t>(value);
+}
+
+double ProcessBudgetMs() {
+    const char* requested = std::getenv("VIXEN_PLANET_CAPTURE_BUDGET_MS");
+    if (!requested || *requested == '\0') return kDefaultProcessBudgetMs;
+    char* end = nullptr;
+    const double value = std::strtod(requested, &end);
+    return (end == requested || *end != '\0' || value <= 0.0) ? kDefaultProcessBudgetMs : value;
+}
 
 void SetEnvironment(const char* key, const std::string& value) {
 #ifdef _WIN32
@@ -55,8 +96,9 @@ void SetEnvironment(const char* key, const std::string& value) {
 
 class PlanetCaptureApplication final : public VulkanGraphApplication {
 public:
-    PlanetCaptureApplication(std::filesystem::path outputDir, Vixen::App::Planet::ResolvedState state)
-        : outputDir_(std::move(outputDir)), state_(std::move(state)) {
+    PlanetCaptureApplication(std::filesystem::path outputDir, Vixen::App::Planet::ResolvedState state,
+                             uint32_t framesPerState)
+        : outputDir_(std::move(outputDir)), state_(std::move(state)), framesPerState_(framesPerState) {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
@@ -184,7 +226,7 @@ public:
 
     bool Render() override {
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
-        if (++framesInState_ < kFramesPerState) return true;
+        if (++framesInState_ < framesPerState_) return true;
         const std::filesystem::path output = outputDir_ / (state_.name + ".png");
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
         if (std::getenv("VIXEN_PLANET_READBACK") && !ExportReadback()) return false;
@@ -319,6 +361,7 @@ private:
     Vixen::App::Planet::ResolvedState state_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
     Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
+    uint32_t framesPerState_ = kDefaultFramesPerState;
     uint32_t framesInState_ = 0;
     bool shadingLambert_ = false;
     bool captured_ = false;
@@ -342,16 +385,32 @@ TEST(PlanetCapture, RendersStateDeterministically) {
     std::filesystem::create_directories(outputDir, ec);
     ASSERT_FALSE(ec) << "could not create capture directory: " << outputDir.string();
 
+    std::string framesError;
+    const uint32_t framesPerState = CaptureFramesPerState(framesError);
+    ASSERT_TRUE(framesError.empty()) << framesError;
+
     SetEnvironment("VIXEN_WINDOW_WIDTH", std::to_string(state->width));
     SetEnvironment("VIXEN_WINDOW_HEIGHT", std::to_string(state->height));
-    PlanetCaptureApplication app(outputDir, *state);
-    const int result = app.Run(RunOptions{.exitAfterFrames = kFramesPerState});
+    const auto processStart = CaptureClock::now();
+    PlanetCaptureApplication app(outputDir, *state, framesPerState);
+    const int result = app.Run(RunOptions{.exitAfterFrames = framesPerState});
+    const double processMs =
+        std::chrono::duration<double, std::milli>(CaptureClock::now() - processStart).count();
     ASSERT_TRUE(result == 0 && app.Captured())
         << (app.CaptureError().empty() ? "application exited before the planet capture was written"
                                        : app.CaptureError());
     const auto path = outputDir / (state->name + ".png");
     ASSERT_TRUE(std::filesystem::exists(path) && std::filesystem::file_size(path, ec) > 0)
         << "capture file was not written: " << path.string();
+
+    // R536: every capture states its runtime budget and reports its wall time, so the runner and
+    // the queue see how long one state costs (per-frame cost is in [GPUYIELD]/VIXEN_PHASE_TIMING).
+    const double budgetMs = ProcessBudgetMs();
+    std::printf("[PLANET_CAPTURE_TIMING] state=%s frames=%u wall_ms=%.0f budget_ms=%.0f\n",
+                state->name.c_str(), framesPerState, processMs, budgetMs);
+    std::fflush(stdout);
+    ASSERT_LE(processMs, budgetMs) << "planet capture exceeded its runtime budget: " << processMs
+                                   << " ms > " << budgetMs << " ms (VIXEN_PLANET_CAPTURE_BUDGET_MS)";
 }
 
 } // namespace
