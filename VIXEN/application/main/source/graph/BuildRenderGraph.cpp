@@ -8865,6 +8865,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
     sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("sceneRadianceHistoryOutput_current", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
     sceneProviders.Provide("_ExtentX", renderTargetNode,
                            RenderTargetNodeConfig::WIDTH_OUT, SlotRole::Execute);
     sceneProviders.Provide("_ExtentY", renderTargetNode,
