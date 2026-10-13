@@ -2,57 +2,69 @@
 
 ## LANDABLE NOW
 
-- Reusable artifact checkpoint: VIXEN commit **0e0f98ca96ff25fcb89300bd7d9881c28ce4b922**. The per-build kernel override is **a99311ce7cb7e8aa5b9896c6fbb36257c5d7ed9d**; the tracked VIXEN pin remains **7a2b1f1e83310b7129fdba19975235ef94198757**.
-- CMake regeneration ran for both the tone-map GLSL and binding header. The shader now emits one Light definition before LightingConfig. The generated binding header is present and its drift check passes. The frame-target schema/reference checks and tone-map drift check pass.
-- The render-graph wiring and 32 one-frame parity capture registrations are committed. The application cannot compile until the generated system SDI header exists.
-- Native Visual Studio/Vulkan configuration and the native sdi_tool target build pass. The native compiler then exposes a remaining GLSL signature error described below.
-- S2 is not acceptance-ready: no native parity sheet, benchmark samples, look-dev A/B captures, or split-suite results are available.
+- Branch: `lane-rjs2`; the S2 implementation is in `557d4856` and the wave integration merge is `3ba81db1796589c2f42b64964e8f41195eaf1c5c`. The per-build Yeroket override was `928c40c929c09496156c7237614609f3bf4e2d87`; VIXEN's tracked `YEROKET_KERNEL_SHA` remains `7a2b1f1e83310b7129fdba19975235ef94198757`.
+- The tone-map shader and SDI binding header were regenerated with the `928c40c9` kernel. Its entry point loads singleton SSBO values at element 0 and passes value parameters into the body; per-element input still uses `linearId`. WSL and native SDI merges pass. The native Vulkan `sdi_tool` merge compiled the emitted shader; WSL has no standalone `glslangValidator`.
+- WSL and native Release app builds pass with all `_check` targets.
+- The native parity sheet is [rjs2-parity.csv](rjs2-parity.csv). Midday, late-afternoon and overcast each have a separate GPU queue job. All 12 completed reference/system angle pairs are byte-identical at 500×500: zero changed pixels and zero maximum channel delta. The compared passes are the hand-written `ExposureTonemapReference.comp` and generated `ExposureTonemapSystem.comp`. Angle 0 images for all three states were opened and inspected.
+- Look-dev A/B is complete for overcast, late-afternoon and night-service: all 12 reference/system angle pairs are byte-identical; angle 0 images for each state were opened. Midday A/B remains queued.
+- The split runner selected all correctness tests across 16 suite labels, including `RenderGraph`, `SVO`, `Application`, and the runner's default labels. CPU selected 2,398 tests for both base and current; GPU selected 607 on base and 639 on current (the current tree includes 32 parity tests). Label counts are CPU/GPU; rows overlap when a test has multiple labels.
+
+| Suite label | Base CPU/GPU | Current CPU/GPU |
+| --- | ---: | ---: |
+| AppFlow | 57/0 | 57/0 |
+| Application | 0/24 | 0/56 |
+| CashSystem | 0/117 | 0/117 |
+| GaiaArchetypes | 128/0 | 128/0 |
+| GaiaVoxelWorld | 100/0 | 100/0 |
+| RenderGraph | 1198/200 | 1198/200 |
+| ResourceManagement | 0/238 | 0/238 |
+| SVO | 783/15 | 783/15 |
+| ShaderManagement | 62/0 | 62/0 |
+| VIXENCapture | 0/1 | 0/1 |
+| VoxelComponents | 9/0 | 9/0 |
+| VoxelData | 24/0 | 24/0 |
+| VoxelDocument | 8/0 | 8/0 |
+| VulkanResources | 0/13 | 0/13 |
+| WSL | 0/1 | 0/1 |
+| logger | 28/0 | 28/0 |
+
+The base CPU run failed `AppFlowBlob.InteriorEditPreservesShapeHash` and `SdiLifecycleTest.RegisterShaderInSDIRegistry`; current CPU failed only `AppFlowBlob.InteriorEditPreservesShapeHash`. No new CPU failing name appeared. GPU halves are still queued, so their failure-name comparison is not available yet.
 
 ## STOPs
 
-**STOPPED: the a99311ce GPU-system emitter produces an illegal GLSL function signature for the tone-map storage-buffer inputs.** The generated shader body declares:
-
-    void ExposureTonemapSystem_Body(in float meter[], in LightingConfig LightingConfigSSBO[], int i) {
-
-Both the WSL SDI merger and the native SDI merger reject line 60 with:
-
-    ERROR: shader:60: '' : array size required
-
-The native VIXEN configure found Vulkan SDK 1.4.350.0 and glslang 16.2.0. The native sdi_tool compiled the reference pass and the preceding shaders, then rejected ExposureTonemapSystem with that diagnostic. This confirms that the duplicate-struct fix works; the new failure is the unsized array formals.
-
-Standalone `glslangValidator` is absent from the WSL environment. The native Vulkan SDK's `sdi_tool` merge path is the shader compile witness for this lane.
-
-The app build stops earlier at the missing merged/ExposureTonemapSystem-SDI.g.h include in BuildRenderGraph.cpp. The SDI merger cannot generate that header while the system shader fails compilation. The source experiment that changed these inputs to scalar LightingConfig and float parameters was rejected by YK_KF_4022 because LightingConfig is not a Gaia component in the schema type manifest; that experiment was restored. A separate hand-authored Gaia kind or shader patch would duplicate the declaration and is not a valid lane workaround.
-
-The required kernel-side action is to lower singleton storage-buffer inputs into a legal GLSL body interface while preserving the element-zero reads and the per-element linearId behavior. The VIXEN tracked pin remains unchanged. The assigned kernel worktree was used only as the a99311ce build input.
-
-## Required scope and recovery
-
-- Base SHA: **2685b1e980a052f85b938d7ac31b47f5930e015f**. A fresh queued baseline build of vixen_lookdev_capture passed before the S2 semantic edits (log 1791886709).
-- Required scope: generate the system shader and binding header from the a99311ce snapshot; compile the system SDI header and render-graph consumer; then run native byte parity, five native timing rounds with medians and spread, look-dev A/B captures, and the RenderGraph|SVO|Application split suites.
-- **A — invocation and provisioning:** CodeGraph exploration was attempted first but no .codegraph index existed in this worktree, so source inspection continued with rg. The native WSL kernel UNC path was rejected by Windows Git as dubious ownership. A GIT_CONFIG_COUNT retry broke FetchContent with “bogus count in GIT_CONFIG_COUNT.” Recovery: bundle the exact a99311ce commit into the assigned native checkout, create a detached local kernel snapshot there, set VIXEN_KERNEL_CACHE_DIR inside the native checkout, and configure through the Visual Studio developer environment. Native configure then passed (log 1791901198); no global Git config or tracked kernel pin was changed.
-- **B — fresh generation:** queued configure with the a99311ce override, exposure_tonemap_gpu_regen, frame_targets_schema_check, frame_targets_ref_check, and exposure_tonemap_gpu_check passed (logs 1791899041, 1791899081, and 1791899469). The generated Light dependency is emitted once and in dependency order. Native sdi_tool build passed (log 1791902255), but native and WSL SDI compilation both fail on the unsized body parameters (logs 1791902300 and 1791899182). The native application build fails because the system SDI header is consequently absent (log 1791901475).
-- **C — scope:** this red is inside the requested tone-map shader and blocks the render-graph build and every native parity/capture/timing witness. It is not an unrelated baseline red: the pre-edit renderer build passed. No narrower supported scope can prove the S2 gates without a compilable system SDI header.
+- Native timing was not run. Observed host CPU ranged from 35–60%, with two or three benchmark jobs and several correctness GPU jobs queued. This was not a quiet timing window; no median or spread is claimed, and the 0.5 ms gate is unproven.
+- The same-base and current GPU split-suite halves remain queued. GPU failing names cannot yet be compared.
+- Night-service parity and midday look-dev A/B remain queued. The first night-service A/B attempt passed the reference capture, then the wrapper was signaled during the system capture (`exit=76`, `payload_exit=143`, no diagnostic); a separate retry passed both captures. The first late-afternoon A/B attempt exited by signal before a completion record; its separate retry passed both captures.
 
 ## Verification
 
-- Passed: a99311ce override configure, tone-map shader/header regeneration, schema/reference/codegen drift checks, native Vulkan configure, and native sdi_tool build.
-- Failed: WSL and native SDI merge of ExposureTonemapSystem at shader line 60; native app build at the missing system SDI header.
-- Test inventory only: WSL CTest `-N` selected 12 RenderGraph, 0 SVO, and 44 Application entries; the requested `RenderGraph|SVO|Application` union selected 56. Native Windows inventory registered 253 total tests, including 8 RenderGraph, 0 SVO, and 44 Application entries. The inventory logs warn that some executables are absent. No suite ran, so there is no failing-name comparison or “no new failing names” result.
-- Not run: native byte comparison against the old SDI pass; native startup/per-frame timing; five --gpu-benchmark rounds; look-dev A/B captures; split correctness suites. No benchmark queue-load sample, median, or spread was measured.
-
-## SPT disposition
-
-No SPT tasks were dispatched. The proposals below are consolidation issues, not task IDs.
+- Generation / toolchain: `1791908702-light-regen-tonemap-kernel-928c40c9.log`; CodegenTool restore/build/check logs `1791918587-build-codegentool-restore-928.log`, `1791918598-build-codegentool-build-928.log`, and `1791918628-light-codegentool-check-928.log`.
+- SDI: `1791910257-light-sdi-merge-wsl-928-final.log` and `1791911328-light-sdi-merge-native-928.log`.
+- Full app builds: `1791910344-build-build-wsl-all-checks-app-928-merged.log` and `1791913331-build-build-native-all-checks-app-928-post-regeneration.log`.
+- No published wizard baseline matched base `2685b1e980a052f85b938d7ac31b47f5930e015f` and kernel `928c40c929c09496156c7237614609f3bf4e2d87`. The same-base source was freshly generated and built with that override; its all-target WSL build passed after regenerating three shared-struct schemas (`1791916337-build-build-same-base-wsl-928-all-struct-regens.log`).
+- Native parity jobs: `parity-midday-928`, `parity-late-afternoon-928`, `parity-overcast-928`; logs `1791917647-gpu-parity-midday-928.log`, `1791917941-gpu-parity-late-afternoon-928.log`, and `1791918050-gpu-parity-overcast-928.log`. Captures are under `C:/vixen-native/rjs2/build/native/runtime-captures/exposure-parity/`.
+- Completed A/B jobs: `lookdev-ab-overcast-928`, `lookdev-ab-night-service-928-retry1`, and `lookdev-ab-late-afternoon-928-retry1`; logs `1791918083-gpu-lookdev-ab-overcast-928.log`, `1791919351-gpu-lookdev-ab-night-service-928-retry1.log`, and `1791919465-gpu-lookdev-ab-late-afternoon-928-retry1.log`. Outputs are under `C:/vixen-native/rjs2/build/native/runtime-captures/lookdev-ab/`.
+- Split suite outputs: `build/wsl-baseline/rjs2-split-928-base/` and `build/wsl/rjs2-split-928-current/`; CPU logs completed, GPU logs contain queue status only so far.
+- Device: AMD Radeon(TM) 8060S Graphics, driver `32.0.22018.5`.
 
 ## CONSOLIDATION ISSUES
 
-- proposed: Support scoped schema overlays for pinned source readers
-- proposed: Launch dotnet run output from artifacts-path
-- proposed: Expose source-resolvable GLSL math intrinsics
-- proposed: Derive GPU dispatch extents from texture facets
-- proposed: Default the SDI merger to the manifest shader root
-- proposed: Lower singleton SSBO inputs into legal GLSL body parameters
-- proposed: Make native kernel snapshots work with WSL-owned sources
-- proposed: Make native multi-label CTest filters select label unions
-- proposed: Make CodeGraph indexes available in VIXEN lane worktrees
+- Support scoped schema overlays for pinned source readers
+- Launch dotnet run output from artifacts-path
+- Expose source-resolvable GLSL math intrinsics
+- Derive GPU dispatch extents from texture facets
+- Default the SDI merger to the manifest shader root
+- Lower singleton SSBO inputs into legal GLSL body parameters
+- Make native kernel snapshots work with WSL-owned sources
+- Make native multi-label CTest filters select label unions
+- Make CodeGraph indexes available in VIXEN lane worktrees
+- Couple shared shader-schema outputs to kernel override regeneration
+- Prevent trailing whitespace in native FetchContent cache paths
+- Stage native TBB runtime for GoogleTest discovery
+- Preserve VS toolchain PATH in native build launchers
+- Normalize generated code line endings for native drift checks
+- Share the WSL Vulkan SDK cache with baseline source snapshots
+- Share X11 development cache with baseline source snapshots
+- Route native CMake build-tree commands through Windows paths
+- Distinguish native correctness captures from GPU benchmarks
+- Explain wrapper signals during chained native capture jobs

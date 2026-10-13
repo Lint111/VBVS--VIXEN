@@ -2,23 +2,24 @@
   "format": "undertow-lane-continuation/v1",
   "task_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
   "repositories": {
-    "vixen": { "commit": "0e0f98ca96ff25fcb89300bd7d9881c28ce4b922" },
+    "vixen": { "commit": "3ba81db1796589c2f42b64964e8f41195eaf1c5c" },
     "undertow": { "commit": "9c0136d5532c79f73d5bf85e15dd698a2e611209" },
-    "kernel": { "commit": "a99311ce7cb7e8aa5b9896c6fbb36257c5d7ed9d" }
+    "kernel": { "commit": "928c40c929c09496156c7237614609f3bf4e2d87" }
   },
   "provider_pins": {
-    "vixen_yeroket_kernel_sha_override": "a99311ce7cb7e8aa5b9896c6fbb36257c5d7ed9d"
+    "vixen_yeroket_kernel_sha": "7a2b1f1e83310b7129fdba19975235ef94198757",
+    "vixen_yeroket_kernel_sha_override": "928c40c929c09496156c7237614609f3bf4e2d87"
   },
   "checks": [
     {
       "id": "tone-map-codegen",
       "status": "passed",
       "artifacts": [
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899041-light-rjs2:configure-gpuarray-a99311ce.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899081-light-rjs2:regen-tonemap-a99311ce.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899469-light-rjs2:codegen-check-a99311ce.log"
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791908702-light-regen-tonemap-kernel-928c40c9.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918587-build-codegentool-restore-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918598-build-codegentool-build-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918628-light-codegentool-check-928.log"
       ],
-      "reuse": "Reuse generation and drift-check evidence while listed VIXEN sources and the a99311ce provider snapshot are unchanged. This does not certify shader compilation.",
       "source_paths": {
         "vixen": [
           "VIXEN/codegen/CMakeLists.txt",
@@ -36,54 +37,109 @@
       }
     },
     {
-      "id": "native-sdi-compile",
-      "status": "failed",
-      "command": "sdi_tool merge-variants shaders/sdi-variants.json",
-      "diagnostic": "ExposureTonemapSystem line 60: array size required for unsized function parameters meter[] and LightingConfigSSBO[].",
+      "id": "sdi-merge-and-shader-compile",
+      "status": "passed",
+      "diagnostic": "WSL and native SDI merges passed; native Vulkan sdi_tool compiled the emitted shader. WSL glslangValidator is absent.",
       "artifacts": [
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791902300-light-rjs2:native-sdi-merge-a993.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899182-light-rjs2:merge-sdi-a99311ce.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791901475-build-rjs2:native-lookdev-build-a993.log"
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791910257-light-sdi-merge-wsl-928-final.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791911328-light-sdi-merge-native-928.log"
+      ]
+    },
+    {
+      "id": "app-build-all-checks",
+      "status": "passed",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791910344-build-build-wsl-all-checks-app-928-merged.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791913331-build-build-native-all-checks-app-928-post-regeneration.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791916337-build-build-same-base-wsl-928-all-struct-regens.log"
       ],
-      "reuse": "Do not reuse as a passing witness; regenerate and rebuild after the kernel lowering gap is resolved."
+      "same_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
+      "same_base_note": "No published wizard baseline matched the 2685b1e9 base and 928c40c9 kernel pair. Fresh same-base generation and all-target WSL build passed with the same override after three shared-struct schema regenerations."
     },
     {
       "id": "native-parity",
-      "status": "not-run",
-      "reason": "The system SDI header is unavailable because the generated shader does not compile; the byte-comparison executable cannot be built."
+      "status": "partial",
+      "comparison": "Hand-written ExposureTonemapReference.comp versus generated ExposureTonemapSystem.comp",
+      "completed_states": ["midday", "late-afternoon", "overcast"],
+      "pending_states": ["night-service"],
+      "completed_pairs": 12,
+      "pairs_byte_identical": 12,
+      "resolution": "500x500",
+      "pixel_diff": 0,
+      "max_channel_delta": 0,
+      "device": "AMD Radeon(TM) 8060S Graphics",
+      "driver": "32.0.22018.5",
+      "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791917647-gpu-parity-midday-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791917941-gpu-parity-late-afternoon-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918050-gpu-parity-overcast-928.log"
+      ]
+    },
+    {
+      "id": "lookdev-ab",
+      "status": "partial",
+      "completed_states": ["overcast", "late-afternoon", "night-service"],
+      "pending_states": ["midday"],
+      "completed_pairs": 12,
+      "completed_pairs_byte_identical": 12,
+      "artifact_logs": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918083-gpu-lookdev-ab-overcast-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791919351-gpu-lookdev-ab-night-service-928-retry1.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791919465-gpu-lookdev-ab-late-afternoon-928-retry1.log"
+      ],
+      "first_night_service_attempt": "Reference CTest passed; wrapper signaled during system CTest (exit 76, payload exit 143, no diagnostic); separate retry passed both captures.",
+      "first_late_afternoon_attempt": "Exited by signal before a completion record; separate retry passed both captures."
+    },
+    {
+      "id": "correctness-suite",
+      "status": "partial",
+      "selection": "All 16 suite labels containing CPU/GPU correctness tests, including RenderGraph, SVO, Application, and runner defaults.",
+      "same_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
+      "selected_totals": {
+        "base": { "cpu": 2398, "gpu": 607 },
+        "current": { "cpu": 2398, "gpu": 639 }
+      },
+      "per_label_counts_cpu_gpu": {
+        "AppFlow": { "base": "57/0", "current": "57/0" },
+        "Application": { "base": "0/24", "current": "0/56" },
+        "CashSystem": { "base": "0/117", "current": "0/117" },
+        "GaiaArchetypes": { "base": "128/0", "current": "128/0" },
+        "GaiaVoxelWorld": { "base": "100/0", "current": "100/0" },
+        "RenderGraph": { "base": "1198/200", "current": "1198/200" },
+        "ResourceManagement": { "base": "0/238", "current": "0/238" },
+        "SVO": { "base": "783/15", "current": "783/15" },
+        "ShaderManagement": { "base": "62/0", "current": "62/0" },
+        "VIXENCapture": { "base": "0/1", "current": "0/1" },
+        "VoxelComponents": { "base": "9/0", "current": "9/0" },
+        "VoxelData": { "base": "24/0", "current": "24/0" },
+        "VoxelDocument": { "base": "8/0", "current": "8/0" },
+        "VulkanResources": { "base": "0/13", "current": "0/13" },
+        "WSL": { "base": "0/1", "current": "0/1" },
+        "logger": { "base": "28/0", "current": "28/0" }
+      },
+      "cpu_failures": {
+        "base": [
+          "AppFlowBlob.InteriorEditPreservesShapeHash",
+          "SdiLifecycleTest.RegisterShaderInSDIRegistry"
+        ],
+        "current": ["AppFlowBlob.InteriorEditPreservesShapeHash"]
+      },
+      "gpu_status": "Both GPU halves are queued; GPU failing names cannot yet be compared.",
+      "cpu_logs": [
+        "build/wsl-baseline/rjs2-split-928-base/cpu.log",
+        "build/wsl/rjs2-split-928-current/cpu.log"
+      ]
     },
     {
       "id": "native-gpu-timing",
       "status": "not-run",
       "runs_requested": 5,
       "threshold_ms": 0.5,
-      "queue_load": "not measured",
+      "queue_load": "No quiet window: observed host CPU ranged from 35-60%, with two or three benchmark jobs and multiple correctness jobs queued.",
+      "median_ms": null,
       "spread_ms": null,
-      "reason": "No compiled native tone-map pipeline is available, so no benchmark samples or host-load measurements were taken."
-    },
-    {
-      "id": "lookdev-ab",
-      "status": "not-run",
-      "reason": "The native application build is blocked by the missing system SDI header."
-    },
-    {
-      "id": "correctness-suite",
-      "status": "not-run",
-      "artifacts": [
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899713-light-rjs2:list-correctness-labels.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791899903-light-rjs2:inventory-all-tests.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791902651-light-rjs2:native-all-tests-inventory.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791903225-light-rjs2:native-application-label-inventory.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-rendergraph.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791903698-light-correctness-inventory-svo.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-application.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-rendergraph-svo-application.log"
-      ],
-      "selected_label_counts": {
-        "wsl": { "total_selected": 56, "RenderGraph": 12, "SVO": 0, "Application": 44 },
-        "native_windows_inventory": { "total_registered": 253, "RenderGraph": 8, "SVO": 0, "Application": 44 }
-      },
-      "note": "Counts are inventory selections only; ctest -N emitted missing executable warnings after the failed build. No suite ran and no failing-name comparison is available."
+      "reason": "The requested quiet native --gpu-benchmark window was unavailable, so no timing number is claimed."
     }
   ]
 }
