@@ -1,28 +1,29 @@
 {
   "format": "undertow-lane-continuation/v1",
+  "task_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
   "repositories": {
-    "vixen": { "commit": "868541238795c40c5ae1996be2141d0b8d04ebe9" },
+    "vixen": { "commit": "0e0f98ca96ff25fcb89300bd7d9881c28ce4b922" },
     "undertow": { "commit": "9c0136d5532c79f73d5bf85e15dd698a2e611209" },
-    "kernel": { "commit": "a97c273ff4312dc09de16ce33dc8f1a06dcedd14" }
+    "kernel": { "commit": "a99311ce7cb7e8aa5b9896c6fbb36257c5d7ed9d" }
   },
   "provider_pins": {
-    "vixen_yeroket_kernel_sha_override": "a97c273ff4312dc09de16ce33dc8f1a06dcedd14"
+    "vixen_yeroket_kernel_sha_override": "a99311ce7cb7e8aa5b9896c6fbb36257c5d7ed9d"
   },
   "checks": [
     {
       "id": "tone-map-codegen",
       "status": "passed",
       "artifacts": [
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791893710-light-rjs2:configure-gpuarray-override-retry.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791893727-light-rjs2:regen-tonemap-system-gpuarray.log",
-        "/home/liory/.local/state/undertow/undertow-box-logs/1791893821-light-rjs2:gpuarray-codegen-checks.log"
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899041-light-rjs2:configure-gpuarray-a99311ce.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899081-light-rjs2:regen-tonemap-a99311ce.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899469-light-rjs2:codegen-check-a99311ce.log"
       ],
-      "reuse": "queued CMake generated-output drift checks; reuse while listed sources and provider snapshots are unchanged",
+      "reuse": "Reuse generation and drift-check evidence while listed VIXEN sources and the a99311ce provider snapshot are unchanged. This does not certify shader compilation.",
       "source_paths": {
         "vixen": [
           "VIXEN/codegen/CMakeLists.txt",
           "VIXEN/codegen/gpu-schemas",
-          "VIXEN/codegen/gpu-systems",
+          "VIXEN/codegen/gpu-systems/ExposureTonemapSystem.cs",
           "VIXEN/codegen/generated/gpu",
           "VIXEN/shaders/Generated/ExposureTonemapSystem.comp",
           "VIXEN/application/main/include/Generated/ExposureTonemapSystem.g.h"
@@ -33,6 +34,56 @@
           "Packages/com.yeroket.utility.kernel-framework/CodegenTool~"
         ]
       }
+    },
+    {
+      "id": "native-sdi-compile",
+      "status": "failed",
+      "command": "sdi_tool merge-variants shaders/sdi-variants.json",
+      "diagnostic": "ExposureTonemapSystem line 60: array size required for unsized function parameters meter[] and LightingConfigSSBO[].",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791902300-light-rjs2:native-sdi-merge-a993.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899182-light-rjs2:merge-sdi-a99311ce.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791901475-build-rjs2:native-lookdev-build-a993.log"
+      ],
+      "reuse": "Do not reuse as a passing witness; regenerate and rebuild after the kernel lowering gap is resolved."
+    },
+    {
+      "id": "native-parity",
+      "status": "not-run",
+      "reason": "The system SDI header is unavailable because the generated shader does not compile; the byte-comparison executable cannot be built."
+    },
+    {
+      "id": "native-gpu-timing",
+      "status": "not-run",
+      "runs_requested": 5,
+      "threshold_ms": 0.5,
+      "queue_load": "not measured",
+      "spread_ms": null,
+      "reason": "No compiled native tone-map pipeline is available, so no benchmark samples or host-load measurements were taken."
+    },
+    {
+      "id": "lookdev-ab",
+      "status": "not-run",
+      "reason": "The native application build is blocked by the missing system SDI header."
+    },
+    {
+      "id": "correctness-suite",
+      "status": "not-run",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899713-light-rjs2:list-correctness-labels.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791899903-light-rjs2:inventory-all-tests.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791902651-light-rjs2:native-all-tests-inventory.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791903225-light-rjs2:native-application-label-inventory.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-rendergraph.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791903698-light-correctness-inventory-svo.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-application.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791903696-light-correctness-inventory-rendergraph-svo-application.log"
+      ],
+      "selected_label_counts": {
+        "wsl": { "total_selected": 56, "RenderGraph": 12, "SVO": 0, "Application": 44 },
+        "native_windows_inventory": { "total_registered": 253, "RenderGraph": 8, "SVO": 0, "Application": 44 }
+      },
+      "note": "Counts are inventory selections only; ctest -N emitted missing executable warnings after the failed build. No suite ran and no failing-name comparison is available."
     }
   ]
 }
