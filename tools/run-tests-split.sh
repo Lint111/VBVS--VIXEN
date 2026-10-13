@@ -9,12 +9,14 @@
 # CPU part never holds a GPU slot and the GPU part never holds CPU slots it does not use.
 #
 # Usage:
-#   tools/run-tests-split.sh --build-dir build/wsl --label 'RenderGraph|SVO' --agent mylane
+#   tools/run-tests-split.sh --build-dir build/wsl --agent mylane
+#   tools/run-tests-split.sh --build-dir build/wsl --label 'RenderGraph|SVO|Application' --agent mylane
 #   tools/run-tests-split.sh --build-dir build/wsl -- --timeout 120      # extra args go to both ctest runs
 #
 # Options:
 #   --build-dir DIR   CMake build tree (default build/wsl)
-#   --label RE        ctest -L suite selection, ANDed with the class label (e.g. 'RenderGraph|SVO')
+#   --label RE        ctest -L suite selection, ANDed with the class label (narrows the default)
+#   --all-correctness-labels  include every suite label containing cpu/gpu tests (the default)
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
 #   --cpu-jobs N      ctest -j for the cpu part (default: nproc/2, max 8)
@@ -23,7 +25,7 @@
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run
 #   --no-queue        run ctest directly (for hosts without the queue)
-# Lane example:   bash tools/run-tests-split.sh --agent "$LANE" --label 'RenderGraph|SVO'
+# Lane example:   bash tools/run-tests-split.sh --agent "$LANE"  (all correctness labels)
 # Batch example:  one call per batch with no --regex; the exit status is non-zero if either part failed.
 set -uo pipefail
 
@@ -32,6 +34,7 @@ queue_wrapper="${VIXEN_BOX_QUEUE_WRAPPER:-/home/liory/.local/bin/with-test-lock.
 build_dir="build/wsl"
 regex=""
 suite_label=""
+all_correctness_labels=1
 agent="$(basename "$root")"
 cpu_jobs="$(( $(nproc) / 2 ))"
 (( cpu_jobs < 1 )) && cpu_jobs=1
@@ -45,7 +48,8 @@ extra=()
 while (( $# )); do
   case "$1" in
     --build-dir) build_dir="$2"; shift 2 ;;
-    --label) suite_label="$2"; shift 2 ;;
+    --label) suite_label="$2"; all_correctness_labels=0; shift 2 ;;
+    --all-correctness-labels) suite_label=""; all_correctness_labels=1; shift ;;
     --regex) regex="$2"; shift 2 ;;
     --agent) agent="$2"; shift 2 ;;
     --cpu-jobs) cpu_jobs="$2"; shift 2 ;;
@@ -61,6 +65,58 @@ done
 
 [[ "$build_dir" = /* ]] || build_dir="$root/$build_dir"
 [[ -f "$build_dir/CTestTestfile.cmake" ]] || { echo "[run-tests-split] not a configured build tree: $build_dir" >&2; exit 2; }
+
+label_listing="$(ctest --test-dir "$build_dir" --print-labels)" || {
+  echo "[run-tests-split] could not list CTest labels for $build_dir" >&2
+  exit 2
+}
+mapfile -t available_labels < <(sed -n 's/^  //p' <<<"$label_listing")
+suite_labels=()
+for label in "${available_labels[@]}"; do
+  case "$label" in
+    ""|cpu|gpu|classified-*) continue ;;
+  esac
+  suite_labels+=("$label")
+done
+
+ctest_count() {
+  local output count
+  output="$(ctest --test-dir "$build_dir" -N "$@")" || return $?
+  count="$(sed -n 's/^Total Tests: //p' <<<"$output")"
+  [[ "$count" =~ ^[0-9]+$ ]] || return 2
+  printf '%s\n' "$count"
+}
+
+if (( all_correctness_labels )); then
+  correctness_labels=()
+  for label in "${suite_labels[@]}"; do
+    count="$(ctest_count -L '^(cpu|gpu)$' -L "^${label}$")" || {
+      echo "[run-tests-split] failed to count correctness tests for label '$label'" >&2
+      exit 2
+    }
+    (( count > 0 )) && correctness_labels+=("$label")
+  done
+  if ((${#correctness_labels[@]} == 0)); then
+    echo "[run-tests-split] no suite labels contain cpu/gpu correctness tests" >&2
+    exit 2
+  fi
+  joined_labels="$(IFS='|'; printf '%s' "${correctness_labels[*]}")"
+  suite_label="^(${joined_labels})$"
+
+  all_cpu="$(ctest_count -L '^cpu$')" || exit 2
+  all_gpu="$(ctest_count -L '^gpu$')" || exit 2
+  selected_cpu="$(ctest_count -L '^cpu$' -L "$suite_label")" || exit 2
+  selected_gpu="$(ctest_count -L '^gpu$' -L "$suite_label")" || exit 2
+  if (( selected_cpu != all_cpu || selected_gpu != all_gpu )); then
+    unlabelled_cpu=$((all_cpu - selected_cpu))
+    unlabelled_gpu=$((all_gpu - selected_gpu))
+    echo "[run-tests-split] suite labels omit classified tests (cpu $selected_cpu/$all_cpu, gpu $selected_gpu/$all_gpu); using all correctness tests (without suite label: cpu=$unlabelled_cpu gpu=$unlabelled_gpu)"
+    suite_label=""
+  else
+    echo "[run-tests-split] selection=all-correctness-labels labels='$joined_labels'"
+  fi
+fi
+
 [[ -n "$out_dir" ]] || out_dir="$build_dir/split-run"
 mkdir -p "$out_dir"
 rm -f "$out_dir"/cpu.log "$out_dir"/gpu.log "$out_dir"/cpu.xml "$out_dir"/gpu.xml
@@ -71,6 +127,9 @@ fi
 select_args=()
 [[ -n "$suite_label" ]] && select_args+=(-L "$suite_label")
 [[ -n "$regex" ]] && select_args+=(-R "$regex")
+
+cpu_selected="$(ctest_count -L '^cpu$' "${select_args[@]}")" || exit 2
+gpu_selected="$(ctest_count -L '^gpu$' "${select_args[@]}")" || exit 2
 
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
@@ -100,8 +159,13 @@ run_part() {
   return "$status"
 }
 
-echo "[run-tests-split] build=$build_dir label='${suite_label:-<all>}' regex='${regex:-<all>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
-echo "[run-tests-split] cpu: $(ctest --test-dir "$build_dir" -N -L '^cpu$' "${select_args[@]}" | sed -n 's/^Total Tests: //p')   gpu: $(ctest --test-dir "$build_dir" -N -L '^gpu$' "${select_args[@]}" | sed -n 's/^Total Tests: //p')"
+echo "[run-tests-split] build=$build_dir label='${suite_label:-<all correctness labels>}' regex='${regex:-<all>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
+echo "[run-tests-split] cpu: $cpu_selected   gpu: $gpu_selected"
+for label in "${suite_labels[@]}"; do
+  label_cpu="$(ctest_count -L '^cpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
+  label_gpu="$(ctest_count -L '^gpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
+  echo "[run-tests-split] label=$label cpu=$label_cpu gpu=$label_gpu selected=$((label_cpu + label_gpu))"
+done
 
 wall_start=$SECONDS
 run_part cpu test "$cpu_jobs" &
