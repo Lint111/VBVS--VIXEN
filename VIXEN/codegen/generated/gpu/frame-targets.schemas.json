@@ -36,9 +36,9 @@
   "dataPipes": [
     { "id": "core:coarse_haul_request", "payloadType": "Undertow.Content.Core.Systems.Economy.CoarseHaulRequest", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-history", "producers": ["core:coarse-history"], "consumers": ["core:coarse-history"], "capacity": "Unbounded" },
     { "id": "core:coarse_stock_delta", "payloadType": "Undertow.Content.Core.Systems.Economy.CoarseStockDelta", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-history", "producers": ["core:extraction", "core:refine", "core:coarse-structures", "core:coarse-history"], "consumers": ["core:coarse-history"], "capacity": "Unbounded" },
-    { "id": "core:eviction_kick_row", "payloadType": "Undertow.Content.Core.Systems.Economy.EvictionKickRow", "delivery": "Queue", "orderFields": ["Offender.Value", "Owner.Value"], "savePolicy": "OutstandingOnly", "owner": "core:actions", "producers": ["core:extraction"], "consumers": ["core:actions"], "capacity": "Unbounded" },
+    { "id": "core:eviction_kick_row", "payloadType": "Undertow.Content.Core.Systems.Economy.EvictionKickRow", "delivery": "Queue", "orderFields": ["Offender", "Owner"], "savePolicy": "OutstandingOnly", "owner": "core:actions", "producers": ["core:extraction"], "consumers": ["core:actions"], "capacity": "Unbounded" },
     { "id": "core:leverage_outcome_request", "payloadType": "Undertow.Content.Core.Systems.Diplomacy.LeverageOutcomeRequest", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-leverage", "producers": ["core:coarse-leverage"], "consumers": ["core:coarse-leverage"], "capacity": "Unbounded" },
-    { "id": "core:link_charge_command", "payloadType": "Undertow.Content.Core.Systems.Economy.LinkChargeCommand", "delivery": "Queue", "orderFields": ["Building.Value", "LinkOrdinal", "Producer.Value", "Sequence"], "savePolicy": "OutstandingOnly", "owner": "core:link", "producers": ["core:directed_effects"], "consumers": ["core:link"], "capacity": "Unbounded" },
+    { "id": "core:link_charge_command", "payloadType": "Undertow.Content.Core.Systems.Economy.LinkChargeCommand", "delivery": "Queue", "orderFields": ["Building", "LinkOrdinal", "Producer", "Sequence"], "savePolicy": "OutstandingOnly", "owner": "core:link", "producers": ["core:directed_effects"], "consumers": ["core:link"], "capacity": "Unbounded" },
     { "id": "core:market_board_mutation_request", "payloadType": "Undertow.Content.Core.Systems.Market.MarketBoardMutationRequest", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:faction-economy", "producers": ["core:flow_settlement"], "consumers": ["core:faction-economy"], "capacity": "Unbounded" },
     { "id": "core:war_outcome_request", "payloadType": "Undertow.Content.Core.Systems.Diplomacy.WarOutcomeRequest", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:live_wars", "producers": ["core:live_wars"], "consumers": ["core:live_wars"], "capacity": "Unbounded" }
   ],
@@ -1763,6 +1763,19 @@
     { "name": "mean_anomaly_at_epoch_deg", "required": true, "detail": "mean anomaly at the authored epoch in degrees", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "period_years", "required": true, "detail": "orbital period in years", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "epoch_years", "required": true, "detail": "explicit orbital epoch in years", "value": { "kind": "scalar", "scalar": "number" } }
+  ] },
+  "pair_payload_fixture_payload": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "amount", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "count", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "int" } },
+    { "name": "enabled", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "bool" } }
+  ] },
+  "pair_payload_fixture_relation": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "id", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "target", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "all", "refRelation": "PartOf" } },
+    { "name": "payload", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "pair_payload_fixture_payload" } }
+  ], "relationship": { "form": "container", "name": "PairPayloadFixtureRelation" } },
+  "pair_payload_fixture_result": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "sum", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "float" } }
   ] },
   "part_of": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id" } },

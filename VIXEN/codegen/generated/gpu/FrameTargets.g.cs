@@ -1433,6 +1433,46 @@ namespace Vixen.Codegen.Gpu
         }
     }
 
+    /// <summary>Schema path for pair_payload_fixture_payload; lowered before native dispatch.</summary>
+    public struct PairPayloadFixturePayloadRef
+    {
+        public const string SchemaKind = "pair_payload_fixture_payload";
+        public float Amount
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public int Count
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public bool Enabled
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
+    /// <summary>Schema path for pair_payload_fixture_relation; lowered before native dispatch.</summary>
+    public readonly struct PairPayloadFixtureRelationRef
+    {
+        public const string SchemaKind = "pair_payload_fixture_relation";
+        public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public PairPayloadFixturePayloadRef Payload => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+    }
+
+    /// <summary>Schema path for pair_payload_fixture_result; lowered before native dispatch.</summary>
+    public struct PairPayloadFixtureResultRef
+    {
+        public const string SchemaKind = "pair_payload_fixture_result";
+        public float Sum
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
     /// <summary>Schema path for part_of; lowered before native dispatch.</summary>
     public readonly struct PartOfRef
     {
@@ -5874,6 +5914,20 @@ namespace Vixen.Codegen.Gpu
         public double epoch_years;
     }
 
+    public struct PairPayloadFixturePayload
+    {
+        public float amount;
+        public int count;
+        public bool enabled;
+    }
+
+    public struct PairPayloadFixtureRelation { }
+
+    public struct PairPayloadFixtureResult
+    {
+        public float sum;
+    }
+
     public struct PartOf { }
 
     public struct ParticipationCounterpart { }
@@ -8529,6 +8583,33 @@ namespace Undertow.Modding
         public static void SET(global::Vixen.Codegen.Gpu.OrbitalElementsRef[] path, global::Vixen.Codegen.Gpu.OrbitalElements value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void SET(global::Vixen.Codegen.Gpu.OrbitalElementsRef[] path, global::Vixen.Codegen.Gpu.OrbitalElementsRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void REMOVE(global::Vixen.Codegen.Gpu.OrbitalElementsRef path, global::Vixen.Codegen.Gpu.OrbitalElementsRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef path, global::Vixen.Codegen.Gpu.PairPayloadFixturePayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureRelationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResult value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResult value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResult value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef ADD(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResult value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef[] path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef path, global::Vixen.Codegen.Gpu.PairPayloadFixtureResultRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.PartOfRef ADD(global::Vixen.Codegen.Gpu.PartOfRef path, global::Vixen.Codegen.Gpu.PartOf value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.PartOfRef ADD(global::Vixen.Codegen.Gpu.PartOfRef path, global::Vixen.Codegen.Gpu.PartOfRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void SET(global::Vixen.Codegen.Gpu.PartOfRef path, global::Vixen.Codegen.Gpu.PartOf value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
