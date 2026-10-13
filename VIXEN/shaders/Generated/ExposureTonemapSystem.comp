@@ -57,9 +57,9 @@ layout(push_constant, std430) uniform ExposureTonemapSystemPushConstants
     uint _ExtentY;
 } pc;
 
-void ExposureTonemapSystem_Body(in float meter[], in LightingConfig LightingConfigSSBO[], int i) {
+void ExposureTonemapSystem_Body(in float meter, in LightingConfig LightingConfigSSBO, int i) {
     vec4 source = imageLoad(sceneRadianceHistoryOutput_current, ivec2(int(i) % imageSize(sceneRadianceHistoryOutput_current).x, int(i) / imageSize(sceneRadianceHistoryOutput_current).x));
-    float exposure = pow(2.0, meter[0] + LightingConfigSSBO[0].exposureCompensationEV);
+    float exposure = pow(2.0, meter + LightingConfigSSBO.exposureCompensationEV);
     float red = max(source.x * exposure, 0.0);
     red = clamp((red * (2.51 * red + 0.03)) / (red * (2.43 * red + 0.59) + 0.14), 0.0, 1.0);
     float redLinear = 12.92 * red;
@@ -84,5 +84,5 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    ExposureTonemapSystem_Body(meter, LightingConfigSSBO, int(linearId));
+    ExposureTonemapSystem_Body(meter[0], LightingConfigSSBO[0], int(linearId));
 }

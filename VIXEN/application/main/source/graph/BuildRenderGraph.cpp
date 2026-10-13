@@ -79,8 +79,8 @@ namespace ExposureSystemSdi = ShaderInterface::ExposureTonemapSystem;
 
 static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeX == 8u);
 static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeY == 8u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_sceneRadianceHistoryOutput == 0u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_outputImage == 1u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_sceneRadianceHistoryOutput_current == 0u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_outputImage_current == 1u);
 static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_meter == 2u);
 static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_LightingConfigSSBO == 3u);
 static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[0].set == 0u);
