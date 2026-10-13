@@ -15,7 +15,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             --gtest_filter=HeadlessStarfieldGraph.CaptureSingleRun)
     set_tests_properties(HeadlessStarfieldGraph.CaptureFirst PROPERTIES
         ENVIRONMENT "${VIXEN_CTEST_GPU_ENVIRONMENT};VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}"
-        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
+        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_HDR_EXPOSURE=set:0"
         LABELS "Application")
 
     add_test(NAME HeadlessStarfieldGraph.CaptureSecond
@@ -23,7 +23,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             --gtest_filter=HeadlessStarfieldGraph.CaptureSingleRun)
     set_tests_properties(HeadlessStarfieldGraph.CaptureSecond PROPERTIES
         ENVIRONMENT "${VIXEN_CTEST_GPU_ENVIRONMENT};VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}-repeat"
-        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
+        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_HDR_EXPOSURE=set:0"
         LABELS "Application")
 
     add_test(NAME HeadlessStarfieldGraph.CompareIndependentCaptures
