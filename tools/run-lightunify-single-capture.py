@@ -33,6 +33,10 @@ def main() -> int:
             environment.pop(name, None)
         elif operation.startswith("set:"):
             environment[name] = operation.removeprefix("set:")
+        elif operation.startswith("path_list_prepend:"):
+            prefix = operation.removeprefix("path_list_prepend:")
+            inherited = environment.get(name)
+            environment[name] = prefix if not inherited else f"{prefix}{os.pathsep}{inherited}"
         else:
             raise ValueError(f"unsupported CTest environment operation: {entry}")
 
