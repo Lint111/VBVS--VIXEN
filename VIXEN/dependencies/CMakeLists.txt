@@ -290,6 +290,13 @@ set(MSDFGEN_USE_VCPKG        OFF CACHE BOOL "Use VIXEN FetchContent dependencies
 set(MSDFGEN_INSTALL          OFF CACHE BOOL "Do not install msdfgen" FORCE)
 set(MSDFGEN_USE_SKIA         OFF CACHE BOOL "Do not build the Skia extension" FORCE)
 set(MSDFGEN_USE_OPENMP       OFF CACHE BOOL "Keep glyph generation single-threaded" FORCE)
+if(MSVC)
+    # VIXEN's Windows targets use the dynamic CRT (/MD). msdfgen defaults to
+    # the static CRT (/MT), which makes any final executable linking Text fail
+    # with LNK2038 even though msdfgen-core itself compiles successfully.
+    set(MSDFGEN_DYNAMIC_RUNTIME ON CACHE BOOL
+        "Use the same dynamic MSVC runtime as VIXEN" FORCE)
+endif()
 FetchContent_MakeAvailable(msdfgen)
 if(TARGET msdfgen-core)
     set_target_properties(msdfgen-core PROPERTIES FOLDER "Dependencies")
