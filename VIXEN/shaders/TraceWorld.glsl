@@ -986,7 +986,12 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 pT *= worldUnitsPerInstUnit;
                 pNormal = instanceLocalToWorldNormal(instanceIndex, pNormal);
             }
-            if (pHit && pT >= tmin && pT <= tmax) {
+            // The origin has already been offset by the surface bias. At very
+            // large scales, float rounding can leave it just inside this same
+            // procedural surface; the SDF marcher then reports that starting
+            // sample at t=0. Do not treat the origin itself as an occluder.
+            const float kProceduralShadowTMin = 1e-3;  // world metres
+            if (pHit && pT >= max(tmin, kProceduralShadowTMin) && pT <= tmax) {
 #ifdef VIXEN_COMPOSITION_COUNTERS
                 g_lastShadowCompositionSourceMask |= 1u;
 #endif
