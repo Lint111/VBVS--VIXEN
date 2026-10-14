@@ -1,5 +1,6 @@
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/UIRenderNode.h"
+#include "Text/RmlFontEngine.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
@@ -85,7 +86,10 @@ std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string
 }
 
 UIRenderNode::UIRenderNode(const std::string& instanceName, NodeType* nodeType)
-    : TypedNode<UIRenderNodeConfig>(instanceName, nodeType) {}
+    : TypedNode<UIRenderNodeConfig>(instanceName, nodeType),
+      fontEngine_(std::make_unique<Vixen::Text::RmlFontEngine>()) {}
+
+UIRenderNode::~UIRenderNode() = default;
 
 void UIRenderNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {}
 
@@ -263,6 +267,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
                               &device->SubmitMutex(device->queue));
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
+        Rml::SetFontEngineInterface(fontEngine_.get());
         Rml::Initialise();
         const std::string fontPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::FONT_PATH, "assets/ui/LatoLatin-Regular.ttf"));
         const std::string docPath = ResolveUiAsset(

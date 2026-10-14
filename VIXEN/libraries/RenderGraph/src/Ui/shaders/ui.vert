@@ -8,6 +8,7 @@ layout(location = 2) in vec2 inUV;
 layout(push_constant) uniform PushConstants {
     vec2 translation;  // per-RenderGeometry() call, in pixels
     vec2 viewport;     // context dimensions in pixels
+    uint isMsdf;       // explicit texture mode shared with the fragment stage
 } pc;
 
 layout(location = 0) out vec4 vColour;

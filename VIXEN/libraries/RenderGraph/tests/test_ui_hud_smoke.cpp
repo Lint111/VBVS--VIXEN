@@ -33,6 +33,7 @@
 
 #include "graph/HudView.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 #include <chrono>
 #include <span>
@@ -62,6 +63,7 @@ protected:
     void SetUp() override {
         Rml::SetSystemInterface(&sysIface_);
         Rml::SetRenderInterface(&renderIface_);
+        Rml::SetFontEngineInterface(&fontEngine_);
         ASSERT_TRUE(Rml::Initialise());
         // Font must load for the document to parse (RmlUi logs a warning but doesn't crash without it;
         // load it so the text-resolve path works as it would in production).
@@ -78,6 +80,7 @@ protected:
 
     Vixen::Ui::VixenRmlSystemInterface sysIface_;
     NullRenderInterface renderIface_;
+    Vixen::Text::RmlFontEngine fontEngine_;
     Rml::Context* ctx_ = nullptr;
 };
 

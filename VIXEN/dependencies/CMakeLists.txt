@@ -276,6 +276,28 @@ if(TARGET freetype)
         $<$<CXX_COMPILER_ID:GNU>:-w>
         $<$<CXX_COMPILER_ID:Clang>:-w>)
 endif()
+
+# Multi-channel signed-distance glyph generation. The renderer only needs the
+# dependency-free core; font loading remains owned by the existing FreeType
+# target above, and the atlas packing/upload lives in VIXEN's Text module.
+FetchContent_Declare(msdfgen
+    GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
+    GIT_TAG        v1.13
+    GIT_SHALLOW    TRUE)
+set(MSDFGEN_CORE_ONLY        ON  CACHE BOOL "Build only msdfgen core" FORCE)
+set(MSDFGEN_BUILD_STANDALONE OFF CACHE BOOL "Do not build the msdfgen CLI" FORCE)
+set(MSDFGEN_USE_VCPKG        OFF CACHE BOOL "Use VIXEN FetchContent dependencies" FORCE)
+set(MSDFGEN_INSTALL          OFF CACHE BOOL "Do not install msdfgen" FORCE)
+set(MSDFGEN_USE_SKIA         OFF CACHE BOOL "Do not build the Skia extension" FORCE)
+set(MSDFGEN_USE_OPENMP       OFF CACHE BOOL "Keep glyph generation single-threaded" FORCE)
+FetchContent_MakeAvailable(msdfgen)
+if(TARGET msdfgen-core)
+    set_target_properties(msdfgen-core PROPERTIES FOLDER "Dependencies")
+    target_compile_options(msdfgen-core PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>)
+endif()
 # RmlUi locates FreeType by the find_package target name Freetype::Freetype; FetchContent only
 # provides the lowercase `freetype` target, so alias it before RmlUi is configured below.
 if(TARGET freetype AND NOT TARGET Freetype::Freetype)
@@ -297,7 +319,7 @@ set(RMLUI_LUA_BINDINGS   OFF CACHE BOOL "" FORCE)
 set(_vixen_build_testing_saved ${BUILD_TESTING})
 set(BUILD_TESTING        OFF CACHE BOOL "" FORCE)
 # Hand RmlUi the FetchContent FreeType target rather than a system find_package.
-set(RMLUI_FONT_ENGINE    freetype CACHE STRING "" FORCE)
+set(RMLUI_FONT_ENGINE    none CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(rmlui)
 set(BUILD_TESTING ${_vixen_build_testing_saved} CACHE BOOL "" FORCE)
 unset(_vixen_build_testing_saved)

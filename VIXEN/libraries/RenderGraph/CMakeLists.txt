@@ -520,8 +520,7 @@ target_link_libraries(RenderGraphUiSupport
     PUBLIC
         RenderGraphCore
         glfw
-        rmlui_core
-        freetype
+        Text
     PRIVATE
         stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
@@ -560,7 +559,6 @@ foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
             RenderGraphCore
             glfw
             rmlui_core
-            freetype
     )
     target_compile_definitions(${node_target} PUBLIC RMLUI_STATIC_LIB)
     target_compile_features(${node_target} PUBLIC cxx_std_23)

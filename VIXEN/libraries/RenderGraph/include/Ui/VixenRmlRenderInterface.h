@@ -55,12 +55,13 @@ private:
         VkImage image = VK_NULL_HANDLE; VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE; VkSampler sampler = VK_NULL_HANDLE;
         VkDescriptorSet set = VK_NULL_HANDLE;
+        bool isMsdf = false;
     };
 
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const;
     void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
                       VkBuffer& outBuf, VkDeviceMemory& outMem);
-    Texture* CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height);
+    Texture* CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height, bool isMsdf = false);
     void CreatePipeline();
 
     // Per-struct Vulkan teardown — shared by the deferred-free path (BeginFrame) and Shutdown so the
