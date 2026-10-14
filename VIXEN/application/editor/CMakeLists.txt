@@ -75,8 +75,7 @@ vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST 
 # DISPLAY. The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     set(VIXEN_EDITOR_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/editor")
-    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
-    file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}" "${VIXEN_HUD_CAPTURE_DIR}")
+    file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
     # SaveDocument writes beside its input. Give the capture producer a build-tree copy so its
     # save/reopen script never mutates the tracked BuiltAssets sample.
     set(VIXEN_EDITOR_TEST_DOCUMENT "${VIXEN_EDITOR_CAPTURE_DIR}/sample_tri_layer.vxd")
@@ -101,20 +100,6 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
             "VIXEN_EXIT_AFTER_FRAMES=140")
 
-    add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
-    set_tests_properties(vixen_hud_capture_producer PROPERTIES
-        FIXTURES_SETUP VixenHudCapture
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-        TIMEOUT 180)
-    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_hud_capture_producer
-        TEST_ENVIRONMENT
-            "VIXEN_HUD_SCRIPT=A@30,B@60"
-            "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
-            "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
-            "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
-            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
-            "VIXEN_EXIT_AFTER_FRAMES=85")
-
     if(VIXEN_FAIL_SCENARIOS)
         set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
         add_test(NAME vixen_device_loss_recovery
@@ -130,6 +115,28 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
                 "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
                 "VIXEN_EXIT_AFTER_FRAMES=85")
     endif()
+endif()
+
+# Keep the HUD fixture available to the native Windows capture lane as well as Dozen. Look-dev
+# scene captures intentionally suppress the HUD, so text parity has its own independently queued
+# producer and label on every platform.
+if(BUILD_TESTS AND TARGET VIXEN)
+    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
+    file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
+    add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    set_tests_properties(vixen_hud_capture_producer PROPERTIES
+        FIXTURES_SETUP VixenHudCapture
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
+        TIMEOUT 180)
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_hud_capture_producer
+        TEST_ENVIRONMENT
+            "VIXEN_HUD_SCRIPT=A@30,B@60"
+            "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
+            "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
+            "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
+            "VIXEN_EXIT_AFTER_FRAMES=85")
+    set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
 endif()
 
 # The native windowed witness is WSLg-specific. Keep its display contract in

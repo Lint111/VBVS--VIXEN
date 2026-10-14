@@ -6,6 +6,7 @@
 #include <msdfgen.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -73,6 +74,12 @@ std::uint8_t ToByte(float value) {
     return static_cast<std::uint8_t>(std::lround(clamped * 255.0f));
 }
 
+void AddRectangleContour(msdfgen::Shape& shape, const std::array<msdfgen::Point2, 4>& points) {
+    msdfgen::Contour& contour = shape.addContour();
+    for (std::size_t i = 0; i < points.size(); ++i)
+        contour.addEdge(msdfgen::EdgeHolder(points[i], points[(i + 1) % points.size()]));
+}
+
 } // namespace
 
 struct GlyphAtlas::Impl {
@@ -110,6 +117,66 @@ struct GlyphAtlas::Impl {
         return true;
     }
 
+    bool StoreGlyph(AtlasGlyph glyph, FT_Face face, msdfgen::Shape& shape,
+                    double xMin, double yMin, double xMax, double yMax) {
+        if (!(xMax > xMin) || !(yMax > yMin)) {
+            glyphs.emplace(glyph.glyphIndex, glyph);
+            return true;
+        }
+
+        msdfgen::edgeColoringSimple(shape, 3.0, static_cast<unsigned long long>(glyph.glyphIndex) + 1ULL);
+
+        const double emScale = static_cast<double>(kAtlasDesignPixelsPerEm) / static_cast<double>(face->units_per_EM);
+        const double pixelRange = static_cast<double>(distanceRange);
+        const int width = static_cast<int>(std::ceil((xMax - xMin) * emScale + 2.0 * pixelRange));
+        const int height = static_cast<int>(std::ceil((yMax - yMin) * emScale + 2.0 * pixelRange));
+        int atlasX = 0;
+        int atlasY = 0;
+        if (!Pack(width, height, atlasX, atlasY))
+            return false;
+
+        if (currentSource) {
+            retainedSources.push_back(std::move(currentSource));
+            pixels = std::make_shared<std::vector<std::uint8_t>>(*pixels);
+            std::copy(std::begin(kAtlasFormatMarker), std::end(kAtlasFormatMarker), pixels->begin());
+        }
+
+        msdfgen::Bitmap<float, 3> field(width, height, msdfgen::Y_UPWARD);
+        msdfgen::Projection projection(
+            {emScale, emScale},
+            {pixelRange - xMin * emScale, pixelRange - yMin * emScale});
+        msdfgen::generateMSDF(field, shape, projection, msdfgen::Range(pixelRange * 2.0));
+
+        for (int y = 0; y < height; ++y) {
+            const int destinationY = atlasY + height - 1 - y;
+            for (int x = 0; x < width; ++x) {
+                const float* sample = field(x, y);
+                const std::size_t destination =
+                    (static_cast<std::size_t>(destinationY) * pageDimension + atlasX + x) * 4;
+                (*pixels)[destination + 0] = ToByte(sample[0]);
+                (*pixels)[destination + 1] = ToByte(sample[1]);
+                (*pixels)[destination + 2] = ToByte(sample[2]);
+                (*pixels)[destination + 3] = 255;
+            }
+        }
+
+        const double rangeInFontUnits = pixelRange * static_cast<double>(face->units_per_EM) /
+                                        static_cast<double>(kAtlasDesignPixelsPerEm);
+        glyph.padding = static_cast<float>(pixelRange / static_cast<double>(kAtlasDesignPixelsPerEm));
+        glyph.bearingX = static_cast<float>((xMin - rangeInFontUnits) / face->units_per_EM);
+        glyph.bearingY = static_cast<float>((yMax + rangeInFontUnits) / face->units_per_EM);
+        glyph.width = static_cast<float>(width) / static_cast<float>(kAtlasDesignPixelsPerEm);
+        glyph.height = static_cast<float>(height) / static_cast<float>(kAtlasDesignPixelsPerEm);
+        glyph.u0 = static_cast<float>(atlasX) / static_cast<float>(pageDimension);
+        glyph.v0 = static_cast<float>(atlasY) / static_cast<float>(pageDimension);
+        glyph.u1 = static_cast<float>(atlasX + width) / static_cast<float>(pageDimension);
+        glyph.v1 = static_cast<float>(atlasY + height) / static_cast<float>(pageDimension);
+
+        glyphs.emplace(glyph.glyphIndex, glyph);
+        ++version;
+        return true;
+    }
+
     std::uint32_t pageDimension;
     float distanceRange;
     std::shared_ptr<std::vector<std::uint8_t>> pixels;
@@ -130,14 +197,16 @@ bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex) {
         return false;
     if (impl_->glyphs.contains(glyphIndex))
         return true;
+    if (glyphIndex == 0)
+        return false;
 
     constexpr FT_Int32 loadFlags = FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP;
     if (FT_Load_Glyph(face, glyphIndex, loadFlags) != 0)
         return false;
 
-    const FT_GlyphSlot slot = face->glyph;
     AtlasGlyph glyph;
     glyph.glyphIndex = glyphIndex;
+    const FT_GlyphSlot slot = face->glyph;
     glyph.advance = static_cast<float>(slot->advance.x) / static_cast<float>(face->units_per_EM);
     if (slot->format != FT_GLYPH_FORMAT_OUTLINE || slot->outline.n_contours == 0 || slot->outline.n_points == 0) {
         impl_->glyphs.emplace(glyphIndex, glyph);
@@ -160,66 +229,41 @@ bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex) {
     if (!builder.shape.validate())
         return false;
 
-    double xMin = 0.0;
-    double yMin = 0.0;
-    double xMax = 0.0;
-    double yMax = 0.0;
-    builder.shape.bound(xMin, yMin, xMax, yMax);
-    if (!(xMax > xMin) || !(yMax > yMin)) {
-        impl_->glyphs.emplace(glyphIndex, glyph);
+    const double xMin = static_cast<double>(slot->metrics.horiBearingX);
+    const double yMax = static_cast<double>(slot->metrics.horiBearingY);
+    const double xMax = xMin + static_cast<double>(slot->metrics.width);
+    const double yMin = yMax - static_cast<double>(slot->metrics.height);
+    return impl_->StoreGlyph(glyph, face, builder.shape, xMin, yMin, xMax, yMax);
+}
+
+bool GlyphAtlas::AddReplacementGlyph(FT_Face face, int fontSize) {
+    if (!face || face->units_per_EM == 0 || fontSize <= 0 || impl_->pageDimension == 0 ||
+        impl_->distanceRange <= 0.0f)
+        return false;
+    if (impl_->glyphs.contains(0))
         return true;
-    }
 
-    msdfgen::edgeColoringSimple(builder.shape, 3.0, static_cast<unsigned long long>(glyphIndex) + 1ULL);
-
-    const double emScale = static_cast<double>(kAtlasDesignPixelsPerEm) / static_cast<double>(face->units_per_EM);
-    const double pixelRange = static_cast<double>(impl_->distanceRange);
-    const int width = static_cast<int>(std::ceil((xMax - xMin) * emScale + 2.0 * pixelRange));
-    const int height = static_cast<int>(std::ceil((yMax - yMin) * emScale + 2.0 * pixelRange));
-    int atlasX = 0;
-    int atlasY = 0;
-    if (!impl_->Pack(width, height, atlasX, atlasY))
+    const double fontUnitsPerPixel = static_cast<double>(face->units_per_EM) / static_cast<double>(fontSize);
+    const double xMin = fontUnitsPerPixel;
+    const double yMin = 0.0;
+    const double xMax = xMin + static_cast<double>(std::max(fontSize / 3, 1)) * fontUnitsPerPixel;
+    const double yMax = static_cast<double>((fontSize * 2) / 3) * fontUnitsPerPixel;
+    const double stroke = fontUnitsPerPixel;
+    if (!(yMax > yMin) || xMax - xMin <= 2.0 * stroke || yMax - yMin <= 2.0 * stroke)
         return false;
 
-    if (impl_->currentSource) {
-        impl_->retainedSources.push_back(std::move(impl_->currentSource));
-        impl_->pixels = std::make_shared<std::vector<std::uint8_t>>(*impl_->pixels);
-        std::copy(std::begin(kAtlasFormatMarker), std::end(kAtlasFormatMarker), impl_->pixels->begin());
-    }
+    msdfgen::Shape shape;
+    AddRectangleContour(shape, {{{xMin, yMin}, {xMax, yMin}, {xMax, yMax}, {xMin, yMax}}});
+    AddRectangleContour(shape, {{{xMin + stroke, yMin + stroke}, {xMin + stroke, yMax - stroke},
+                                 {xMax - stroke, yMax - stroke}, {xMax - stroke, yMin + stroke}}});
+    shape.setYAxisOrientation(msdfgen::Y_UPWARD);
+    shape.normalize();
+    if (!shape.validate())
+        return false;
 
-    msdfgen::Bitmap<float, 3> field(width, height, msdfgen::Y_UPWARD);
-    msdfgen::Projection projection(
-        {emScale, emScale},
-        {pixelRange - xMin * emScale, pixelRange - yMin * emScale});
-    msdfgen::generateMSDF(field, builder.shape, projection, msdfgen::Range(pixelRange * 2.0));
-
-    for (int y = 0; y < height; ++y) {
-        const int destinationY = atlasY + height - 1 - y;
-        for (int x = 0; x < width; ++x) {
-            const float* sample = field(x, y);
-            const std::size_t destination =
-                (static_cast<std::size_t>(destinationY) * impl_->pageDimension + atlasX + x) * 4;
-            (*impl_->pixels)[destination + 0] = ToByte(sample[0]);
-            (*impl_->pixels)[destination + 1] = ToByte(sample[1]);
-            (*impl_->pixels)[destination + 2] = ToByte(sample[2]);
-            (*impl_->pixels)[destination + 3] = 255;
-        }
-    }
-
-    const double fontUnitsPerPixel = static_cast<double>(face->units_per_EM) /
-                                     static_cast<double>(kAtlasDesignPixelsPerEm);
-    glyph.bearingX = static_cast<float>((xMin - pixelRange * fontUnitsPerPixel) / face->units_per_EM);
-    glyph.bearingY = static_cast<float>((yMax + pixelRange * fontUnitsPerPixel) / face->units_per_EM);
-    glyph.width = static_cast<float>(width) / static_cast<float>(kAtlasDesignPixelsPerEm);
-    glyph.height = static_cast<float>(height) / static_cast<float>(kAtlasDesignPixelsPerEm);
-    glyph.u0 = static_cast<float>(atlasX) / static_cast<float>(impl_->pageDimension);
-    glyph.v0 = static_cast<float>(atlasY) / static_cast<float>(impl_->pageDimension);
-    glyph.u1 = static_cast<float>(atlasX + width) / static_cast<float>(impl_->pageDimension);
-    glyph.v1 = static_cast<float>(atlasY + height) / static_cast<float>(impl_->pageDimension);
-
-    impl_->glyphs.emplace(glyphIndex, glyph);
-    ++impl_->version;
-    return true;
+    AtlasGlyph glyph;
+    glyph.glyphIndex = 0;
+    return impl_->StoreGlyph(glyph, face, shape, xMin, yMin, xMax, yMax);
 }
 
 const AtlasGlyph* GlyphAtlas::FindGlyph(std::uint32_t glyphIndex) const {

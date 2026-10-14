@@ -19,7 +19,7 @@ namespace Vixen::Text {
 namespace {
 
 constexpr const char* kBundledLatoFamily = "LatoLatin";
-constexpr FT_Int32 kGlyphLoadFlags = FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP;
+constexpr FT_Int32 kSizedGlyphLoadFlags = FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP;
 
 struct FontFace {
     FT_Face face = nullptr;
@@ -28,8 +28,6 @@ struct FontFace {
     Rml::Style::FontStyle style = Rml::Style::FontStyle::Normal;
     Rml::Style::FontWeight weight = Rml::Style::FontWeight::Normal;
     bool fallback = false;
-    GlyphAtlas atlas;
-
     ~FontFace() {
         if (face)
             FT_Done_Face(face);
@@ -40,7 +38,12 @@ struct FontHandle {
     FontFace* font = nullptr;
     int size = 16;
     Rml::FontMetrics metrics{};
+    GlyphAtlas atlas;
 };
+
+float MissingGlyphAdvance(int fontSize) {
+    return static_cast<float>(std::max(fontSize / 3, 1) + 2);
+}
 
 FontHandle* FromHandle(Rml::FontFaceHandle handle) {
     return reinterpret_cast<FontHandle*>(handle);
@@ -54,10 +57,10 @@ FT_UInt GlyphIndex(FT_Face face, Rml::Character character) {
     return FT_Get_Char_Index(face, static_cast<FT_ULong>(character));
 }
 
-float UnitScale(const FontHandle& handle) {
-    return handle.font && handle.font->face && handle.font->face->units_per_EM > 0
-        ? static_cast<float>(handle.size) / static_cast<float>(handle.font->face->units_per_EM)
-        : 0.0f;
+bool SetFontSize(FT_Face face, int size) {
+    if (!face || size <= 0)
+        return false;
+    return FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(size) * 64, 0, 0) == 0;
 }
 
 float MeasureWidth(FontHandle& handle, Rml::StringView string, const Rml::TextShapingContext& context,
@@ -66,7 +69,10 @@ float MeasureWidth(FontHandle& handle, Rml::StringView string, const Rml::TextSh
         return 0.0f;
 
     FT_Face face = handle.font->face;
-    float advance = 0.0f;
+    if (!SetFontSize(face, handle.size))
+        return 0.0f;
+
+    int advance = 0;
     FT_UInt previousGlyph = priorCharacter == Rml::Character::Null ? 0 : GlyphIndex(face, priorCharacter);
     const bool kerningEnabled = context.font_kerning != Rml::Style::FontKerning::None && FT_HAS_KERNING(face);
 
@@ -74,15 +80,17 @@ float MeasureWidth(FontHandle& handle, Rml::StringView string, const Rml::TextSh
         const FT_UInt glyphIndex = GlyphIndex(face, *it);
         if (kerningEnabled && previousGlyph != 0 && glyphIndex != 0) {
             FT_Vector kerning{};
-            if (FT_Get_Kerning(face, previousGlyph, glyphIndex, FT_KERNING_UNSCALED, &kerning) == 0)
-                advance += static_cast<float>(kerning.x) * UnitScale(handle);
+            if (FT_Get_Kerning(face, previousGlyph, glyphIndex, FT_KERNING_DEFAULT, &kerning) == 0)
+                advance += static_cast<int>(kerning.x >> 6);
         }
-        if (FT_Load_Glyph(face, glyphIndex, kGlyphLoadFlags) == 0)
-            advance += static_cast<float>(face->glyph->advance.x) * UnitScale(handle);
-        advance += context.letter_spacing;
+        if (glyphIndex == 0)
+            advance += static_cast<int>(MissingGlyphAdvance(handle.size));
+        else if (FT_Load_Glyph(face, glyphIndex, kSizedGlyphLoadFlags) == 0)
+            advance += static_cast<int>(face->glyph->metrics.horiAdvance >> 6);
+        advance += static_cast<int>(context.letter_spacing);
         previousGlyph = glyphIndex;
     }
-    return advance;
+    return static_cast<float>(std::max(advance, 0));
 }
 
 bool IsBundledFacePath(const Rml::String& fileName) {
@@ -114,19 +122,24 @@ struct RmlFontEngine::Impl {
         auto handle = std::make_unique<FontHandle>();
         handle->font = face;
         handle->size = std::max(size, 1);
-        const float scale = UnitScale(*handle);
         FT_Face ftFace = face->face;
         handle->metrics.size = handle->size;
-        handle->metrics.ascent = static_cast<float>(ftFace->ascender) * scale;
-        handle->metrics.descent = static_cast<float>(-ftFace->descender) * scale;
-        handle->metrics.line_spacing = static_cast<float>(ftFace->height) * scale;
-        handle->metrics.underline_position = std::max(0.0f, static_cast<float>(-ftFace->underline_position) * scale);
-        handle->metrics.underline_thickness = std::max(0.0f, static_cast<float>(ftFace->underline_thickness) * scale);
         handle->metrics.has_ellipsis = FT_Get_Char_Index(ftFace, 0x2026) != 0;
-        if (FT_Load_Char(ftFace, static_cast<FT_ULong>('x'), kGlyphLoadFlags) == 0)
-            handle->metrics.x_height = static_cast<float>(ftFace->glyph->metrics.height) * scale;
-        else
-            handle->metrics.x_height = handle->metrics.ascent * 0.5f;
+        if (SetFontSize(ftFace, handle->size)) {
+            const FT_Size_Metrics& sizeMetrics = ftFace->size->metrics;
+            handle->metrics.ascent = static_cast<float>(sizeMetrics.ascender) / 64.0f;
+            handle->metrics.descent = static_cast<float>(-sizeMetrics.descender) / 64.0f;
+            handle->metrics.line_spacing = static_cast<float>(sizeMetrics.height) / 64.0f;
+            handle->metrics.underline_position = std::max(
+                0.0f, static_cast<float>(FT_MulFix(-ftFace->underline_position, sizeMetrics.y_scale)) / 64.0f);
+            handle->metrics.underline_thickness = std::max(
+                1.0f, static_cast<float>(FT_MulFix(ftFace->underline_thickness, sizeMetrics.y_scale)) / 64.0f);
+            const FT_UInt xGlyph = FT_Get_Char_Index(ftFace, static_cast<FT_ULong>('x'));
+            if (xGlyph != 0 && FT_Load_Glyph(ftFace, xGlyph, kSizedGlyphLoadFlags) == 0)
+                handle->metrics.x_height = static_cast<float>(ftFace->glyph->metrics.height) / 64.0f;
+            else
+                handle->metrics.x_height = 0.5f * handle->metrics.line_spacing;
+        }
 
         FontHandle* result = handle.get();
         handles.push_back(std::move(handle));
@@ -245,8 +258,9 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& renderManager, Rml::FontFa
         return 0;
 
     FT_Face face = handle->font->face;
-    GlyphAtlas& atlas = handle->font->atlas;
-    const float scale = UnitScale(*handle);
+    GlyphAtlas& atlas = handle->atlas;
+    if (!SetFontSize(face, handle->size))
+        return 0;
     const bool kerningEnabled = shapingContext.font_kerning != Rml::Style::FontKerning::None && FT_HAS_KERNING(face);
     float penX = position.x;
     FT_UInt previousGlyph = 0;
@@ -257,33 +271,42 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& renderManager, Rml::FontFa
         const FT_UInt glyphIndex = GlyphIndex(face, *it);
         if (kerningEnabled && previousGlyph != 0 && glyphIndex != 0) {
             FT_Vector kerning{};
-            if (FT_Get_Kerning(face, previousGlyph, glyphIndex, FT_KERNING_UNSCALED, &kerning) == 0)
-                penX += static_cast<float>(kerning.x) * scale;
+            if (FT_Get_Kerning(face, previousGlyph, glyphIndex, FT_KERNING_DEFAULT, &kerning) == 0)
+                penX += static_cast<float>(kerning.x >> 6);
         }
 
-        if (FT_Load_Glyph(face, glyphIndex, kGlyphLoadFlags) == 0) {
-            const float glyphAdvance = static_cast<float>(face->glyph->advance.x) * scale;
-            if (atlas.AddGlyph(face, glyphIndex)) {
-                if (const AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex); glyph && glyph->width > 0.0f && glyph->height > 0.0f) {
-                    if (!hasGeometry) {
-                        hasGeometry = true;
-                    }
-                    const float x0 = penX + glyph->bearingX * static_cast<float>(handle->size);
-                    const float y0 = position.y - glyph->bearingY * static_cast<float>(handle->size);
-                    const float x1 = x0 + glyph->width * static_cast<float>(handle->size);
-                    const float y1 = y0 + glyph->height * static_cast<float>(handle->size);
-                    const int firstVertex = static_cast<int>(textMesh.mesh.vertices.size());
-                    textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y0), colour, Rml::Vector2f(glyph->u0, glyph->v0)});
-                    textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y0), colour, Rml::Vector2f(glyph->u1, glyph->v0)});
-                    textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y1), colour, Rml::Vector2f(glyph->u1, glyph->v1)});
-                    textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y1), colour, Rml::Vector2f(glyph->u0, glyph->v1)});
-                    const int indices[6] = {firstVertex, firstVertex + 1, firstVertex + 2,
-                                            firstVertex, firstVertex + 2, firstVertex + 3};
-                    textMesh.mesh.indices.insert(textMesh.mesh.indices.end(), std::begin(indices), std::end(indices));
-                }
-            }
-            penX += glyphAdvance;
+        float glyphAdvance = 0.0f;
+        bool glyphAdded = false;
+        if (glyphIndex == 0) {
+            glyphAdvance = MissingGlyphAdvance(handle->size);
+            glyphAdded = atlas.AddReplacementGlyph(face, handle->size);
+        } else if (FT_Load_Glyph(face, glyphIndex, kSizedGlyphLoadFlags) == 0) {
+            glyphAdvance = static_cast<float>(face->glyph->metrics.horiAdvance >> 6);
+            glyphAdded = atlas.AddGlyph(face, glyphIndex);
         }
+
+        if (glyphAdded) {
+            if (const AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex); glyph && glyph->width > 0.0f && glyph->height > 0.0f) {
+                hasGeometry = true;
+                const float fontSize = static_cast<float>(handle->size);
+                const float padding = glyph->padding * fontSize;
+                const float leftBearing = std::floor((glyph->bearingX + glyph->padding) * fontSize);
+                const float topBearing = std::ceil((glyph->bearingY - glyph->padding) * fontSize);
+                const float x0 = penX + leftBearing - padding;
+                const float y0 = position.y - topBearing - padding;
+                const float x1 = x0 + glyph->width * fontSize;
+                const float y1 = y0 + glyph->height * fontSize;
+                const int firstVertex = static_cast<int>(textMesh.mesh.vertices.size());
+                textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y0), colour, Rml::Vector2f(glyph->u0, glyph->v0)});
+                textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y0), colour, Rml::Vector2f(glyph->u1, glyph->v0)});
+                textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y1), colour, Rml::Vector2f(glyph->u1, glyph->v1)});
+                textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y1), colour, Rml::Vector2f(glyph->u0, glyph->v1)});
+                const int indices[6] = {firstVertex, firstVertex + 1, firstVertex + 2,
+                                        firstVertex, firstVertex + 2, firstVertex + 3};
+                textMesh.mesh.indices.insert(textMesh.mesh.indices.end(), std::begin(indices), std::end(indices));
+            }
+        }
+        penX += glyphAdvance;
         penX += shapingContext.letter_spacing;
         previousGlyph = glyphIndex;
     }
@@ -297,7 +320,7 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& renderManager, Rml::FontFa
 
 int RmlFontEngine::GetVersion(Rml::FontFaceHandle handle) {
     FontHandle* fontHandle = FromHandle(handle);
-    return fontHandle && fontHandle->font ? static_cast<int>(fontHandle->font->atlas.Version()) : 0;
+    return fontHandle && fontHandle->font ? static_cast<int>(fontHandle->atlas.Version()) : 0;
 }
 
 void RmlFontEngine::ReleaseFontResources() {

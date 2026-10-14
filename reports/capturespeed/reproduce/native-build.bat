@@ -39,6 +39,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts
 if errorlevel 1 exit /b %errorlevel%
 set "VIXEN_MAX_BUILD_JOBS=4"
 set "VIXEN_KERNEL_CACHE_DIR=%VIXEN_NATIVE_KERNEL_CACHE_DIR%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target VIXEN -BuildId "nativerunner-hud-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-hud-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
+if errorlevel 1 exit /b %errorlevel%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target vixen_lookdev_capture -BuildId "nativerunner-lookdev-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-lookdev-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
 if errorlevel 1 exit /b %errorlevel%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target vixen_planet_capture -BuildId "nativerunner-planet-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-planet-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
