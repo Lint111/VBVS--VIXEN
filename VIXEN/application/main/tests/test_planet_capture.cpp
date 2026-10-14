@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -23,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -59,6 +61,17 @@ constexpr uint32_t kDefaultFramesPerState = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 
 using CaptureClock = std::chrono::steady_clock;
+
+double MsBetween(CaptureClock::time_point from, CaptureClock::time_point to) {
+    return std::chrono::duration<double, std::milli>(to - from).count();
+}
+
+double Percentile(std::vector<double> samples, double fraction) {
+    if (samples.empty()) return 0.0;
+    std::sort(samples.begin(), samples.end());
+    const auto index = static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1) + 0.5);
+    return samples[std::min(index, samples.size() - 1)];
+}
 
 uint32_t DefaultFramesPerState() {
     return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerState : kDefaultFramesPerState;
@@ -225,7 +238,9 @@ public:
 
 
     bool Render() override {
+        const auto frameStart = CaptureClock::now();
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        frameWallMs_.push_back(MsBetween(frameStart, CaptureClock::now()));
         if (++framesInState_ < framesPerState_) return true;
         const std::filesystem::path output = outputDir_ / (state_.name + ".png");
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
@@ -236,6 +251,7 @@ public:
 
     bool Captured() const { return captured_; }
     const std::string& CaptureError() const { return captureError_; }
+    const std::vector<double>& FrameWallMs() const { return frameWallMs_; }
 
 private:
     static void WriteVec(std::ostream& out, const glm::dvec3& v) {
@@ -366,6 +382,7 @@ private:
     bool shadingLambert_ = false;
     bool captured_ = false;
     std::string captureError_;
+    std::vector<double> frameWallMs_;
     VkDevice snapshotDevice_ = VK_NULL_HANDLE;
     VkBuffer snapshotBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory snapshotMemory_ = VK_NULL_HANDLE;
@@ -403,11 +420,14 @@ TEST(PlanetCapture, RendersStateDeterministically) {
     ASSERT_TRUE(std::filesystem::exists(path) && std::filesystem::file_size(path, ec) > 0)
         << "capture file was not written: " << path.string();
 
-    // R536: every capture states its runtime budget and reports its wall time, so the runner and
-    // the queue see how long one state costs (per-frame cost is in [GPUYIELD]/VIXEN_PHASE_TIMING).
+    // R536: every capture reports process wall time and its runtime budget. Per-frame values cover
+    // each VulkanGraphApplication::Render call; process wall also includes startup and PNG export.
     const double budgetMs = ProcessBudgetMs();
-    std::printf("[PLANET_CAPTURE_TIMING] state=%s frames=%u wall_ms=%.0f budget_ms=%.0f\n",
-                state->name.c_str(), framesPerState, processMs, budgetMs);
+    const double frameTotalMs = std::accumulate(app.FrameWallMs().begin(), app.FrameWallMs().end(), 0.0);
+    std::printf("[PLANET_CAPTURE_TIMING] state=%s frames=%u wall_ms=%.0f frame_total_ms=%.1f "
+                "frame_p50_ms=%.2f frame_p95_ms=%.2f budget_ms=%.0f\n",
+                state->name.c_str(), framesPerState, processMs, frameTotalMs,
+                Percentile(app.FrameWallMs(), 0.50), Percentile(app.FrameWallMs(), 0.95), budgetMs);
     std::fflush(stdout);
     ASSERT_LE(processMs, budgetMs) << "planet capture exceeded its runtime budget: " << processMs
                                    << " ms > " << budgetMs << " ms (VIXEN_PLANET_CAPTURE_BUDGET_MS)";
