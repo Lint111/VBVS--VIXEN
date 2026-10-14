@@ -4,7 +4,7 @@
     {
       "name": "capturespeed-native",
       "inherits": "vixen-ninja",
-      "binaryDir": "${sourceDir}/../build/capturespeed-native",
+      "binaryDir": "$env{VIXEN_NATIVE_BUILD_DIR}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "cl",
@@ -14,7 +14,7 @@
         "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF",
         "VIXEN_CAPABILITY_BUILD_MODE": "FULL",
         "YEROKET_ROOT": "//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy",
-        "VIXEN_KERNEL_CACHE_DIR": "${sourceDir}/../.tmp/native-kernel-cache"
+        "VIXEN_KERNEL_CACHE_DIR": "$env{VIXEN_NATIVE_KERNEL_CACHE_DIR}"
       }
     }
   ],

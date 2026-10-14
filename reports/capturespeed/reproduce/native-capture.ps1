@@ -1,40 +1,84 @@
 param(
-  [Parameter(Mandatory=$true)][string]$Tag,
-  [string]$State = 'midday',
-  [string]$ExtraEnv = '',
-  [string]$Root = 'C:\vixen-native\capturespeed',
-  [int]$TimeoutSeconds = 900
+  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$Commit,
+  [Parameter(Mandatory=$true)][ValidateSet('state', 'label')][string]$Mode,
+  [ValidateSet('lookdev', 'planet')][string]$Capture,
+  [string]$State,
+  [string]$CtestLabel,
+  [string]$Root = 'C:\vixen-native\nativerunner'
 )
 $ErrorActionPreference = 'Stop'
-$exe = (Get-ChildItem -Path "$Root\build\capturespeed-native" -Recurse -Filter vixen_lookdev_capture.exe | Select-Object -First 1).FullName
-if (-not $exe) { throw 'vixen_lookdev_capture.exe was not found' }
-$tbb = (Get-ChildItem -Path "$Root\build\capturespeed-native" -Recurse -Filter tbb12.dll | Select-Object -First 1).DirectoryName
-$dir = "$Root\reports\capturespeed\native\$Tag"
-if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
-New-Item -ItemType Directory -Force $dir | Out-Null
-$tmp = "$Root\.tmp\native-runtime-temp"
-New-Item -ItemType Directory -Force $tmp | Out-Null
-$psi = [Diagnostics.ProcessStartInfo]::new()
-$psi.FileName = $env:ComSpec
-$psi.Arguments = '/d /s /c ""' + $exe + '" --gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically >"' + $dir + '\stdout.log" 2>"' + $dir + '\stderr.log""'
-$psi.WorkingDirectory = Split-Path $exe
-$psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
-foreach ($key in @($psi.Environment.Keys)) { if ($key -like 'VIXEN_*') { [void]$psi.Environment.Remove($key) } }
-if ($tbb) { $psi.Environment['PATH'] = "$tbb;" + $psi.Environment['PATH'] }
-$psi.Environment['TEMP'] = $tmp
-$psi.Environment['TMP'] = $tmp
-$psi.Environment['VIXEN_HDR_EXPOSURE'] = '1'
-$psi.Environment['VIXEN_HUD_SUPPRESS'] = '1'
-$psi.Environment['VIXEN_PHASE_TIMING'] = '1'
-$psi.Environment['VIXEN_LOOKDEV_CAPTURE_STATE'] = $State
-$psi.Environment['VIXEN_LOOKDEV_CAPTURE_DIR'] = "$dir\png"
-foreach ($pair in $ExtraEnv.Split(';')) {
-  if ($pair -match '^([^=]+)=(.*)$') { $psi.Environment[$Matches[1]] = $Matches[2] }
+$buildDir = Join-Path $Root "build\native\$Commit"
+$readyFile = Join-Path $buildDir '.nativerunner-build-ready'
+if (-not (Test-Path $readyFile) -or (Get-Content -Raw $readyFile).Trim() -ne $Commit) {
+  throw "native capture build is not ready for VIXEN commit $Commit"
+}
+$ctest = 'C:\Program Files\CMake\bin\ctest.exe'
+if (-not (Test-Path $ctest)) { throw "CTest was not found: $ctest" }
+
+$testRegex = ''
+if ($Mode -eq 'state') {
+  if (-not $State) { throw 'State is required in state mode' }
+  if ($Capture -eq 'lookdev') {
+    if ($State -notin @('midday', 'late-afternoon', 'overcast', 'night-service')) {
+      throw "unsupported look-dev capture state: $State"
+    }
+    $testRegex = '^Application\.LookdevCapture\.RendersFourStatesAtFourAnglesDeterministically$'
+  } elseif ($Capture -eq 'planet') {
+    if ($State -notin @('C1', 'C1-epic', 'C2', 'C2-term', 'C4a', 'C4b', 'C4c', 'C5a-moon', 'C7', 'C7-60', 'C7-60-1p5au', 'C9')) {
+      throw "unsupported planet capture state: $State"
+    }
+    $testRegex = '^Application\.PlanetCapture\.' + [regex]::Escape($State) + '$'
+  } else {
+    throw 'Capture must be lookdev or planet in state mode'
+  }
+} elseif (-not $CtestLabel) {
+  throw 'CtestLabel is required in label mode'
+}
+
+$captureRoot = Join-Path $buildDir 'runtime-captures'
+if ($Mode -eq 'state') {
+  if ($Capture -eq 'lookdev') {
+    foreach ($path in @((Join-Path $captureRoot "lookdev\$State"), (Join-Path $captureRoot "lookdev\.repeat\$State"))) {
+      if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+    }
+  } else {
+    foreach ($suffix in @('.png', '.hits.bin', '.lighting.bin', '.meter.bin', '.scene.json')) {
+      foreach ($base in @((Join-Path $captureRoot 'planet'), (Join-Path $captureRoot 'planet\.repeat'))) {
+        $path = Join-Path $base "$State$suffix"
+        if (Test-Path $path) { Remove-Item -Force $path }
+      }
+    }
+  }
+}
+
+$temp = Join-Path $Root '.tmp\native-temp'
+$logDir = Join-Path $Root '.tmp\native-temp'
+New-Item -ItemType Directory -Force $temp | Out-Null
+$logKey = if ($Mode -eq 'state') { "$Capture-$State" } else { "label-$CtestLabel" }
+$logKey = $logKey -replace '[^A-Za-z0-9_.-]', '-'
+$log = Join-Path $logDir "ctest-$Commit-$logKey.log"
+if (Test-Path $log) { Remove-Item -Force $log }
+
+# CTest's test properties provide the capture environment. Strip inherited VIXEN and Dozen
+# overrides so the Windows run uses the native Vulkan driver and only the registered settings.
+Get-ChildItem Env: | Where-Object { $_.Name -like 'VIXEN_*' -or $_.Name -in @('VK_ICD_FILENAMES', 'VK_LAYER_PATH') } |
+  ForEach-Object { Remove-Item "Env:$($_.Name)" }
+$env:VIXEN_PHASE_TIMING = '1'
+if ($Capture -eq 'lookdev') { $env:VIXEN_LOOKDEV_CAPTURE_STATE = $State }
+$env:TEMP = $temp
+$env:TMP = $temp
+$env:VULKAN_SDK = 'C:\VulkanSDK\1.4.350.0'
+
+$ctestArgs = @('--test-dir', $buildDir, '--output-on-failure', '-V')
+if ($Mode -eq 'state') {
+  $ctestArgs += @('-R', $testRegex)
+} else {
+  $ctestArgs += @('-L', $CtestLabel)
 }
 $sw = [Diagnostics.Stopwatch]::StartNew()
-$proc = [Diagnostics.Process]::Start($psi)
-if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) { & taskkill /F /T /PID $proc.Id | Out-Null; throw "timeout after $TimeoutSeconds s" }
+& $ctest @ctestArgs 2>&1 | Tee-Object -FilePath $log
+$exitCode = $LASTEXITCODE
 $sw.Stop()
-"exit=$($proc.ExitCode) wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2))" | Tee-Object -FilePath "$dir\result.txt"
-exit $proc.ExitCode
+$result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
+$result | Tee-Object -FilePath "$log.result.txt"
+exit $exitCode
