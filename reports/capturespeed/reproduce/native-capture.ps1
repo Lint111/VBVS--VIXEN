@@ -51,6 +51,16 @@ if ($Mode -eq 'state') {
   }
 }
 
+# MSVC's CMake package layout keeps the dynamically linked oneTBB runtime under a
+# compiler-keyed directory in the build tree. The capture executables import tbb12.dll,
+# so expose that runtime directory when CTest launches them from application/main.
+$tbbRuntime = Get-ChildItem -Path $buildDir -Filter 'tbb12.dll' -File -Recurse -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if (-not $tbbRuntime) {
+  throw "tbb12.dll was not found under the native build directory: $buildDir"
+}
+$env:PATH = "$($tbbRuntime.DirectoryName);$env:PATH"
+
 $temp = Join-Path $Root '.tmp\native-temp'
 $logDir = Join-Path $Root '.tmp\native-temp'
 New-Item -ItemType Directory -Force $temp | Out-Null
