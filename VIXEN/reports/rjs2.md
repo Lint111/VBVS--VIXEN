@@ -1,51 +1,62 @@
-# rjs2 — S2 exposure tone map and native parity
+# rjs2 — render-job S2 (tracked kernel pin `dc6c87b7`)
 
 ## LANDABLE NOW
 
-- Branch: `lane-rjs2`; S2 implementation `557d4856`, wave integration merge `3ba81db1796589c2f42b64964e8f41195eaf1c5c`, graph provider fix `e69ab76bce4b33bdda157b85f0360a9137b69bf3`. The per-build Yeroket override was `928c40c929c09496156c7237614609f3bf4e2d87`; VIXEN's tracked `YEROKET_KERNEL_SHA` remains `7a2b1f1e83310b7129fdba19975235ef94198757`.
-- The tone-map shader and SDI binding header were regenerated with the `928c40c9` kernel. Its entry point loads singleton SSBO values at element 0 and passes value parameters into the body; per-element input still uses `linearId`. WSL and native SDI merges pass. The native Vulkan `sdi_tool` merge compiled the emitted shader; WSL has no standalone `glslangValidator`.
-- WSL and native Release app builds pass with all `_check` targets, including the current-history projection wiring fix.
-- The native parity sheet is [rjs2-parity.csv](rjs2-parity.csv). Each of midday, late-afternoon, overcast and night-service had its own GPU queue job. All 16 reference/system angle pairs are byte-identical at 500×500: zero changed pixels and zero maximum channel delta. The compared passes are the hand-written `ExposureTonemapReference.comp` and generated `ExposureTonemapSystem.comp`. Angle 0 images for all four states were opened and inspected.
-- Look-dev A/B is complete for overcast, late-afternoon and night-service: all 12 reference/system angle pairs are byte-identical; angle 0 images for each state were opened. Midday A/B is pending; its previous queue attempt was canceled before payload launch to avoid racing the native rebuild.
-- `tools/run-tests-split.sh --all-correctness-labels` selected all correctness tests across 16 suite labels, including `RenderGraph`, `SVO`, `Application`, and the runner's default labels. CPU selected 2,398 tests for both base and current; GPU selected 607 on base and 639 on current (the current tree includes 32 parity tests). Label counts are CPU/GPU; rows overlap when a test has multiple labels. The pre-fix full current GPU run failed 13 tests and did not run 10 dependent tests because the graph lacked the generated `sceneRadianceHistoryOutput_current` provider. The alias is committed in `e69ab76b`. A post-fix editor producer retry waited about six minutes and was terminated before payload launch at the lane checkpoint (wrapper exit 143). The same-base GPU run was stopped at 596/607 while the 12-state PlanetCapture remained active.
+- Branch: `lane-rjs2`. The authoring-convergence wave was merged as `213d54f2`; S2 and the tracked-pin update are committed in `8f312716` (`rjs2: pin VIXEN GPU codegen to dc6c87b7`). The report update is a follow-up documentation commit.
+- `VIXEN/codegen/CMakeLists.txt` now pins `YEROKET_KERNEL_SHA` to `dc6c87b7262c6791c745f37e583ca12f2f8706fe`. The build-tree override was cleared. Tone-map outputs were regenerated from the tracked pin; `ExposureTonemapSystem.comp` and `ExposureTonemapSystem.g.h` were unchanged. The regenerated FrameTargets relation references are part of the implementation commit.
+- WSL and native full Release builds passed, including every default `*_check` target. The WSL build also ran the shader golden check. `glslangValidator` is absent on WSL; the native VIXEN Vulkan build is the shader compile witness.
+- The native parity sheet is [rjs2-parity.csv](rjs2-parity.csv): all 16 state/angle reference-vs-system pairs were byte-identical at 500×500 (0 changed pixels; max channel delta 0). Captures compared the hand-written `ExposureTonemapReference.comp` with generated `ExposureTonemapSystem.comp`. The sheet was captured with kernel `928c40c9`; the dc6 regeneration left both compared tone-map outputs unchanged, but parity was not recaptured in this continuation. Angle-0 images for all four states were opened during that run.
+- Look-dev A/B remains complete for overcast, late-afternoon, and night-service: 12 pairs byte-identical, with angle-0 images opened. Midday remains pending.
 
-| Suite label | Base CPU/GPU | Current CPU/GPU |
+### Build and generation evidence
+
+- WSL configure: `/home/liory/.local/state/undertow/undertow-box-logs/1791935449-build-rjs2-pin-dc6-wsl-configure.log`.
+- WSL tone-map regeneration from the tracked pin: `1791935468-build-rjs2-pin-dc6-wsl-tonemap-regen.log` (shader/header unchanged; dependent FrameTargets references regenerated).
+- WSL all-target build: `1791935549-build-rjs2-pin-dc6-wsl-all-checks.log`, exit 0.
+- Native configure with the dc6 pin: `1791936106-build-rjs2-pin-dc6-native-configure-vcvars-retry1.log`.
+- Native all-target build: first attempt `1791936217-build-rjs2-pin-dc6-native-all-checks.log` failed during GoogleTest discovery because `tbb12.dll` was not on the discovery PATH. Retry `1791936620-build-rjs2-pin-dc6-native-all-checks-tbbpath.log` added the native TBB runtime directory and passed, exit 0.
+
+## STOPs
+
+- The required full split was started with `tools/run-tests-split.sh --build-dir build/wsl --all-correctness-labels --agent rjs2` and the runner defaults (`native` and `nightly` excluded). It selected 2,876 CPU and 172 GPU tests. The CPU leg completed with one failure, `AppFlowBlob.InteriorEditPreservesShapeHash`, matching the known CPU baseline failure. Four tests were skipped. The GPU leg was stopped at 47/172 at the three-hour lane checkpoint; the completed prefix had no failing name. Queue log: `/home/liory/.local/state/undertow/undertow-box-logs/1791936756-gpu-rjs2:split-gpu.log` (`WRAPPER_SIGNALED`, payload exit 141). No complete GPU failure-name comparison is available.
+- Per-label counts below use CPU/GPU order. The merged-wave inventory is the published capperf1 after-split baseline (`reports/capperf1.md`); the current `Application` GPU increase is the 32 S2 parity tests. Counts overlap across labels and are not additive.
+
+| Correctness label | Merged-wave baseline CPU/GPU | rjs2 current CPU/GPU |
 | --- | ---: | ---: |
 | AppFlow | 57/0 | 57/0 |
-| Application | 0/24 | 0/56 |
-| CashSystem | 0/117 | 0/117 |
+| Application | 10/25 | 10/57 |
+| CashSystem | 117/0 | 117/0 |
 | GaiaArchetypes | 128/0 | 128/0 |
 | GaiaVoxelWorld | 100/0 | 100/0 |
-| RenderGraph | 1198/200 | 1198/200 |
-| ResourceManagement | 0/238 | 0/238 |
+| RenderGraph | 1300/98 | 1300/98 |
+| ResourceManagement | 238/1 | 238/1 |
 | SVO | 783/15 | 783/15 |
 | ShaderManagement | 62/0 | 62/0 |
 | VIXENCapture | 0/1 | 0/1 |
 | VoxelComponents | 9/0 | 9/0 |
 | VoxelData | 24/0 | 24/0 |
 | VoxelDocument | 8/0 | 8/0 |
-| VulkanResources | 0/13 | 0/13 |
+| VulkanResources | 12/1 | 12/1 |
 | WSL | 0/1 | 0/1 |
 | logger | 28/0 | 28/0 |
+| **Selected total** | **2876/140** | **2876/172** |
 
-The base CPU run failed `AppFlowBlob.InteriorEditPreservesShapeHash` and `SdiLifecycleTest.RegisterShaderInSDIRegistry`; current CPU failed only `AppFlowBlob.InteriorEditPreservesShapeHash`. No new CPU failing name appeared. The same-base GPU run ended at 596/607 after explicit cancellation; its two failures so far were `HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams` and `HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground`, both absent from the pre-fix current GPU failure list. Current pre-fix GPU failures were `Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically`, `Application.PlanetCapture.RendersStatesDeterministically`, `CelShading.CaptureStarsBands2`, `CelShading.CaptureStarsBands3`, `CelShading.CaptureStarsBands5`, `CelShading.CaptureCornell`, `CelShading.ModeSwitch`, `CelShading.ParameterBounds`, `vixen_editor_capture_producer`, `vixen_hud_capture_producer`, `vixen_wsl_capture_witness`, `vixen_editor_appflow_channel_gate`, and `vixen_multiinstance_cache_gate`; seven `EditorToggleUndoCapture.*` and three `HudRenderCapture.*` dependent tests were not run. The shared startup diagnostic was the missing provider. A post-fix full split and final GPU failure-name comparison have not run.
+- The baseline CPU failure `AppFlowBlob.InteriorEditPreservesShapeHash` is unchanged. The GPU prefix ended before the S2/application capture cases; the same-base GPU run documented at the prior checkpoint was itself incomplete, so this run cannot establish the requested full GPU failure-name delta.
+- Midday look-dev A/B and the editor capture producer were not run in this continuation. Previous editor producer attempts were canceled before payload launch; no producer result is claimed.
+- Native timing was not requested before the checkpoint. No five-run median or spread is claimed and the `<0.5 ms` gate remains unverified. The controller needs to schedule a dedicated quiet native `--gpu-benchmark` window.
+- The three-hour checkpoint was reached at approximately 2026-10-14 00:15 UTC. The active GPU split was stopped at 47/172 rather than extending the lane beyond its checkpoint.
 
-## STOPs
+## SPT DISPOSITION
 
-- Native timing was not run. Observed host CPU ranged from 26–87%; at the checkpoint, both shared GPU slots were occupied by another lane's long-running correctness work, with additional GPU jobs waiting. This was not a quiet timing window; no median or spread is claimed, and the 0.5 ms gate is unproven.
-- At the checkpoint (2026-10-13 20:47 UTC), the same-base GPU split had stopped at 596/607 while PlanetCapture was still running; a full post-fix current GPU split and final GPU failure-name comparison remain unfinished. The pre-fix current failures above are not classified as post-fix regressions. The post-fix editor producer retry was terminated before payload launch and produced no test result.
-- Midday look-dev A/B remains pending after the native rebuild. The first night-service A/B attempt passed the reference capture, then the wrapper was signaled during the system capture (`exit=76`, `payload_exit=143`, no diagnostic); a separate retry passed both captures. The first late-afternoon A/B attempt exited by signal before a completion record; a separate retry passed both captures.
+The brief supplied no SPT task IDs. The existing rjs2 proposals are recorded in `.spt-proposals/rjs2.jsonl`; this continuation added no proposal.
 
-## Verification
+## VERIFICATION DETAILS
 
-- Generation / toolchain: `1791908702-light-regen-tonemap-kernel-928c40c9.log`; CodegenTool restore/build/check logs `1791918587-build-codegentool-restore-928.log`, `1791918598-build-codegentool-build-928.log`, and `1791918628-light-codegentool-check-928.log`.
-- SDI: `1791910257-light-sdi-merge-wsl-928-final.log` and `1791911328-light-sdi-merge-native-928.log`.
-- Full app builds: earlier WSL/native witnesses `1791910344-build-build-wsl-all-checks-app-928-merged.log` and `1791913331-build-build-native-all-checks-app-928-post-regeneration.log`; post-alias WSL and native all-target builds `1791921932-build-rjs2-post-alias-wsl-all-checks.log` and `1791923903-build-rjs2-post-alias-native-all-checks-retry1.log`. The first post-alias native build request yielded before the payload when the queue gave the lane turn to a pending GPU test; retry passed.
-- No published wizard baseline matched base `2685b1e980a052f85b938d7ac31b47f5930e015f` and kernel `928c40c929c09496156c7237614609f3bf4e2d87`. The same-base source was freshly generated and built with that override; its all-target WSL build passed after regenerating three shared-struct schemas (`1791916337-build-build-same-base-wsl-928-all-struct-regens.log`).
-- Native parity jobs: `parity-midday-928`, `parity-late-afternoon-928`, `parity-overcast-928`, and `parity-night-service-928`; logs `1791917647-gpu-parity-midday-928.log`, `1791917941-gpu-parity-late-afternoon-928.log`, `1791918050-gpu-parity-overcast-928.log`, and `1791922095-gpu-parity-night-service-928.log`. All 16 PNG pairs compared byte-identical. Captures are under `C:/vixen-native/rjs2/build/native/runtime-captures/exposure-parity/`.
-- Completed A/B jobs: `lookdev-ab-overcast-928`, `lookdev-ab-night-service-928-retry1`, and `lookdev-ab-late-afternoon-928-retry1`; logs `1791918083-gpu-lookdev-ab-overcast-928.log`, `1791919351-gpu-lookdev-ab-night-service-928-retry1.log`, and `1791919465-gpu-lookdev-ab-late-afternoon-928-retry1.log`. Outputs are under `C:/vixen-native/rjs2/build/native/runtime-captures/lookdev-ab/`.
-- Split suite outputs: `build/wsl-baseline/rjs2-split-928-base/` and `build/wsl/rjs2-split-928-current/`; CPU logs completed, the pre-fix current GPU run has the failure list above, and same-base GPU stopped at 596/607 before PlanetCapture completed. The post-fix editor producer retry was canceled before payload launch after about six minutes waiting for GPU tokens; earlier editor/HUD attempts were stopped before payload launch after 29 minutes without admission.
-- Device: AMD Radeon(TM) 8060S Graphics, driver `32.0.22018.5`.
+- The split output directory is `build/wsl/rjs2-split-dc6-current/`; CPU output is complete in `cpu.log`/`cpu.xml`. GPU output ends at test 1200 (47/172); the queue wrapper log records the checkpoint signal.
+- Native configure recovery: the first queued invocation failed with `powershell.exe: command not found` (exit 127; log `1791935974`). Two path-conversion attempts produced malformed `C:vixen-native...` paths (logs `1791935994`, `1791936019`). A WSL-to-Windows path conversion reached CMake but lacked the Visual Studio environment and failed the compiler probe with `C1083: stddef.h` (log `1791936029`). The queued configure using the converted path and `vcvars64.bat` passed (`1791936106`).
+- Native build recovery: GoogleTest discovery initially failed for nine executables with `0xc0000135` because `tbb12.dll` was absent from PATH (`1791936217`). Adding `C:\vixen-native\rjs2\build\native\msvc_19.44_cxx_64_md_release` to the PATH under the Visual Studio environment let the full native build pass (`1791936620`).
+- The stale build-tree kernel override required `-DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=` during configure; this is covered by the proposal “Clear stale VIXEN kernel override when returning to tracked pin.” Native snapshot fetching and TBB discovery workarounds are covered by existing rjs2 proposals.
+- Historical native parity jobs: `1791917647`, `1791917941`, `1791918050`, and `1791922095` (`928c40c9`). Historical look-dev A/B jobs: `1791918083`, `1791919351`, and `1791919465` (`928c40c9`).
 
 ## CONSOLIDATION ISSUES
 
@@ -71,3 +82,4 @@ The base CPU run failed `AppFlowBlob.InteriorEditPreservesShapeHash` and `SdiLif
 - Derive state-frame projection providers from GPU declarations
 - Keep build waiters queued through same-lane fairness turns
 - Make shared queue waitlists interoperable across wrapper versions
+- Clear stale VIXEN kernel override when returning to tracked pin

@@ -1,14 +1,76 @@
 {
   "format": "undertow-lane-continuation/v1",
-  "task_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
+  "task_base_sha": "213d54f2abfa4cebf9a550de5e28380161ba273b",
   "repositories": {
-    "vixen": { "commit": "3ba81db1796589c2f42b64964e8f41195eaf1c5c" },
+    "vixen": { "commit": "8f3127167c0ceecd3163d49775156c90c9425e7f" },
     "undertow": { "commit": "9c0136d5532c79f73d5bf85e15dd698a2e611209" },
-    "kernel": { "commit": "928c40c929c09496156c7237614609f3bf4e2d87" }
+    "kernel": { "commit": "dc6c87b7262c6791c745f37e583ca12f2f8706fe" }
   },
   "provider_pins": {
-    "vixen_yeroket_kernel_sha": "7a2b1f1e83310b7129fdba19975235ef94198757",
-    "vixen_yeroket_kernel_sha_override": "928c40c929c09496156c7237614609f3bf4e2d87"
+    "vixen_yeroket_kernel_sha": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+    "vixen_yeroket_kernel_sha_override": ""
+  },
+  "latest_continuation": {
+    "wave_merge": "213d54f2abfa4cebf9a550de5e28380161ba273b",
+    "implementation_commit": "8f3127167c0ceecd3163d49775156c90c9425e7f",
+    "kernel_pin_source": "tracked YEROKET_KERNEL_SHA",
+    "kernel_sha": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+    "tone_map_regeneration": {
+      "status": "passed",
+      "shader_and_header_content_changed": false,
+      "log": "/home/liory/.local/state/undertow/undertow-box-logs/1791935468-build-rjs2-pin-dc6-wsl-tonemap-regen.log"
+    },
+    "app_build_all_checks": {
+      "status": "passed",
+      "wsl_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791935549-build-rjs2-pin-dc6-wsl-all-checks.log",
+      "native_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791936620-build-rjs2-pin-dc6-native-all-checks-tbbpath.log",
+      "native_first_attempt": "failed during GoogleTest discovery because tbb12.dll was absent from PATH; retry passed after staging the native TBB runtime on PATH"
+    },
+    "correctness_split": {
+      "status": "partial",
+      "runner": "tools/run-tests-split.sh --build-dir build/wsl --all-correctness-labels --agent rjs2",
+      "defaults": "all correctness labels; native and nightly excluded; GPU jobs serial",
+      "merged_wave_inventory_baseline_sha": "f19b7ebb64f5abb4008eff9c9da14aaeada06dc3",
+      "selected_totals": {
+        "baseline": { "cpu": 2876, "gpu": 140 },
+        "current": { "cpu": 2876, "gpu": 172 }
+      },
+      "per_label_counts_cpu_gpu": {
+        "AppFlow": { "baseline": "57/0", "current": "57/0" },
+        "Application": { "baseline": "10/25", "current": "10/57" },
+        "CashSystem": { "baseline": "117/0", "current": "117/0" },
+        "GaiaArchetypes": { "baseline": "128/0", "current": "128/0" },
+        "GaiaVoxelWorld": { "baseline": "100/0", "current": "100/0" },
+        "RenderGraph": { "baseline": "1300/98", "current": "1300/98" },
+        "ResourceManagement": { "baseline": "238/1", "current": "238/1" },
+        "SVO": { "baseline": "783/15", "current": "783/15" },
+        "ShaderManagement": { "baseline": "62/0", "current": "62/0" },
+        "VIXENCapture": { "baseline": "0/1", "current": "0/1" },
+        "VoxelComponents": { "baseline": "9/0", "current": "9/0" },
+        "VoxelData": { "baseline": "24/0", "current": "24/0" },
+        "VoxelDocument": { "baseline": "8/0", "current": "8/0" },
+        "VulkanResources": { "baseline": "12/1", "current": "12/1" },
+        "WSL": { "baseline": "0/1", "current": "0/1" },
+        "logger": { "baseline": "28/0", "current": "28/0" }
+      },
+      "cpu_failures_current": ["AppFlowBlob.InteriorEditPreservesShapeHash"],
+      "cpu_failure_matches_baseline": true,
+      "gpu_completed": "47/172",
+      "gpu_failures_observed": [],
+      "gpu_comparison": "incomplete; the run stopped at the three-hour checkpoint before the application capture cases",
+      "queue_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791936756-gpu-rjs2:split-gpu.log"
+    },
+    "midday_lookdev_ab": { "status": "not-run-at-checkpoint" },
+    "editor_capture_producer": { "status": "not-run-at-checkpoint" },
+    "native_gpu_timing": {
+      "status": "not-run-at-checkpoint",
+      "runs_requested": 5,
+      "threshold_ms": 0.5,
+      "median_ms": null,
+      "spread_ms": null,
+      "reason": "The three-hour lane checkpoint was reached before a dedicated quiet --gpu-benchmark request; controller scheduling is needed."
+    },
+    "checkpoint_utc": "2026-10-14T00:15:00Z"
   },
   "checks": [
     {
