@@ -28,4 +28,4 @@ git -C "$native_root" checkout --detach FETCH_HEAD
 native_batch_win="$(wslpath -w "$native_batch")"
 bash "$queue" --agent nativerunner --resource build \
   --label "nativerunner:native-build-${repo_commit:0:12}" -- \
-  "$cmd_exe" /d /s /c "\"$native_batch_win\" $repo_commit"
+  "$cmd_exe" /d /c "$native_batch_win $repo_commit"
