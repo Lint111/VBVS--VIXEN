@@ -28,4 +28,20 @@ git -C "$native_root" checkout --detach FETCH_HEAD
 native_batch_win="$(wslpath -w "$native_batch")"
 bash "$queue" --agent nativerunner --resource build \
   --label "nativerunner:native-build-${repo_commit:0:12}" -- \
-  "$cmd_exe" /d /c "$native_batch_win $repo_commit"
+  bash -c '
+    set -euo pipefail
+    heartbeat() {
+      while :; do
+        sleep 60
+        printf "[heartbeat] nativerunner native Windows build active %s\\n" "$(date +%T)"
+      done
+    }
+    heartbeat &
+    heartbeat_pid=$!
+    cleanup() {
+      kill "$heartbeat_pid" 2>/dev/null || true
+      wait "$heartbeat_pid" 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+    "$@"
+  ' nativerunner-native-build "$cmd_exe" /d /c "$native_batch_win $repo_commit"
