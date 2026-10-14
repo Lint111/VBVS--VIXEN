@@ -13,6 +13,7 @@ repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
 native_root=/mnt/c/vixen-native/nativerunner
 queue=/home/liory/.local/bin/with-test-lock.sh
+powershell_exe=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 mode=state
 capture=""
 state=""
@@ -53,11 +54,11 @@ if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 
 capture_rc=0
 if [[ "$mode" == state ]]; then
-  bash "$queue" "${queue_args[@]}" -- powershell.exe -NoLogo -NoProfile -NonInteractive \
+  bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
     -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" || capture_rc=$?
 else
-  bash "$queue" "${queue_args[@]}" -- powershell.exe -NoLogo -NoProfile -NonInteractive \
+  bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
     -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" || capture_rc=$?
 fi
