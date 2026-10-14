@@ -282,20 +282,19 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& renderManager, Rml::FontFa
             glyphAdded = atlas.AddReplacementGlyph(face, handle->size);
         } else if (FT_Load_Glyph(face, glyphIndex, kSizedGlyphLoadFlags) == 0) {
             glyphAdvance = static_cast<float>(face->glyph->metrics.horiAdvance >> 6);
-            glyphAdded = atlas.AddGlyph(face, glyphIndex);
+            glyphAdded = atlas.AddGlyph(face, glyphIndex, handle->size);
         }
 
         if (glyphAdded) {
             if (const AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex); glyph && glyph->width > 0.0f && glyph->height > 0.0f) {
                 hasGeometry = true;
-                const float fontSize = static_cast<float>(handle->size);
-                const float padding = glyph->padding * fontSize;
-                const float leftBearing = std::floor((glyph->bearingX + glyph->padding) * fontSize);
-                const float topBearing = std::ceil((glyph->bearingY - glyph->padding) * fontSize);
+                const float padding = glyph->padding;
+                const float leftBearing = std::floor(glyph->bearingX + glyph->padding);
+                const float topBearing = std::ceil(glyph->bearingY - glyph->padding);
                 const float x0 = penX + leftBearing - padding;
                 const float y0 = position.y - topBearing - padding;
-                const float x1 = x0 + glyph->width * fontSize;
-                const float y1 = y0 + glyph->height * fontSize;
+                const float x1 = x0 + glyph->width;
+                const float y1 = y0 + glyph->height;
                 const int firstVertex = static_cast<int>(textMesh.mesh.vertices.size());
                 textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y0), colour, Rml::Vector2f(glyph->u0, glyph->v0)});
                 textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y0), colour, Rml::Vector2f(glyph->u1, glyph->v0)});

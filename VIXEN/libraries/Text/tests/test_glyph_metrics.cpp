@@ -16,7 +16,7 @@
 namespace {
 
 constexpr int kFontSize = 16;
-constexpr FT_Int32 kLoadFlags = FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP;
+constexpr FT_Int32 kSizedGlyphLoadFlags = FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP;
 
 int MeasureThroughFreeType(FT_Face face, const char* text) {
     if (FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(kFontSize) * 64, 0, 0) != 0)
@@ -30,7 +30,7 @@ int MeasureThroughFreeType(FT_Face face, const char* text) {
             if (FT_Get_Kerning(face, previousGlyph, glyph, FT_KERNING_DEFAULT, &kerning) == 0)
                 width += static_cast<int>(kerning.x >> 6);
         }
-        if (FT_Load_Glyph(face, glyph, FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP) == 0)
+        if (FT_Load_Glyph(face, glyph, kSizedGlyphLoadFlags) == 0)
             width += static_cast<int>(face->glyph->metrics.horiAdvance >> 6);
         previousGlyph = glyph;
     }
@@ -77,54 +77,51 @@ TEST(TextGlyphMetrics, DescenderAtlasCellsCoverFreeTypeBounds) {
     ASSERT_EQ(FT_New_Face(library, TEXT_LATO_FONT_PATH, 0, &face), 0);
 
     constexpr double distanceRange = 4.0;
-    constexpr double designPixelsPerEm = Vixen::Text::kAtlasDesignPixelsPerEm;
-    const double fontUnitsPerPixel = static_cast<double>(face->units_per_EM) / designPixelsPerEm;
-    const double padding = distanceRange * fontUnitsPerPixel;
+    constexpr double freetypePixelsPerUnit = 1.0 / 64.0;
+    ASSERT_EQ(FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(kFontSize) * 64, 0, 0), 0);
+    const double padding = distanceRange;
     Vixen::Text::GlyphAtlas atlas(1024, static_cast<float>(distanceRange));
 
     constexpr std::array<char32_t, 4> descenders{U'g', U'y', U'p', U'j'};
     for (const char32_t character : descenders) {
         const FT_UInt glyphIndex = FT_Get_Char_Index(face, character);
         ASSERT_NE(glyphIndex, 0U) << static_cast<char>(character);
-        ASSERT_EQ(FT_Load_Glyph(face, glyphIndex, kLoadFlags), 0);
+        ASSERT_EQ(FT_Load_Glyph(face, glyphIndex, kSizedGlyphLoadFlags), 0);
         const FT_Glyph_Metrics metrics = face->glyph->metrics;
         const FT_Pos advance = face->glyph->advance.x;
 
-        ASSERT_TRUE(atlas.AddGlyph(face, glyphIndex)) << static_cast<char>(character);
+        ASSERT_TRUE(atlas.AddGlyph(face, glyphIndex, kFontSize)) << static_cast<char>(character);
         const Vixen::Text::AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex);
         ASSERT_NE(glyph, nullptr) << static_cast<char>(character);
 
-        const double left = static_cast<double>(metrics.horiBearingX);
-        const double top = static_cast<double>(metrics.horiBearingY);
-        const double right = left + static_cast<double>(metrics.width);
-        const double bottom = top - static_cast<double>(metrics.height);
+        const double left = static_cast<double>(metrics.horiBearingX) * freetypePixelsPerUnit;
+        const double top = static_cast<double>(metrics.horiBearingY) * freetypePixelsPerUnit;
+        const double right = left + static_cast<double>(metrics.width) * freetypePixelsPerUnit;
+        const double bottom = top - static_cast<double>(metrics.height) * freetypePixelsPerUnit;
         ASSERT_LT(bottom, 0.0) << "fixture must exercise a real descender: " << static_cast<char>(character);
 
-        const double expectedCellWidth = std::ceil(static_cast<double>(metrics.width) / fontUnitsPerPixel +
-                                                   2.0 * distanceRange) / designPixelsPerEm;
-        const double expectedCellHeight = std::ceil(static_cast<double>(metrics.height) / fontUnitsPerPixel +
-                                                    2.0 * distanceRange) / designPixelsPerEm;
-        EXPECT_NEAR(glyph->bearingX, (left - padding) / face->units_per_EM, 1e-6) << static_cast<char>(character);
-        EXPECT_NEAR(glyph->bearingY, (top + padding) / face->units_per_EM, 1e-6) << static_cast<char>(character);
-        EXPECT_NEAR(glyph->padding, distanceRange / designPixelsPerEm, 1e-6) << static_cast<char>(character);
+        const double expectedCellWidth = std::ceil(right - left + 2.0 * distanceRange);
+        const double expectedCellHeight = std::ceil(top - bottom + 2.0 * distanceRange);
+        EXPECT_NEAR(glyph->bearingX, left - padding, 1e-6) << static_cast<char>(character);
+        EXPECT_NEAR(glyph->bearingY, top + padding, 1e-6) << static_cast<char>(character);
+        EXPECT_NEAR(glyph->padding, distanceRange, 1e-6) << static_cast<char>(character);
         EXPECT_NEAR(glyph->width, expectedCellWidth, 1e-6) << static_cast<char>(character);
         EXPECT_NEAR(glyph->height, expectedCellHeight, 1e-6) << static_cast<char>(character);
-        EXPECT_NEAR(glyph->advance, static_cast<float>(advance) / face->units_per_EM, 1e-6f)
+        EXPECT_NEAR(glyph->advance, static_cast<float>(advance) / 64.0f, 1e-6f)
             << static_cast<char>(character);
 
         // Removing the four-pixel SDF border from the cell must recover the complete FreeType
-        // bounds, with at most one atlas texel of harmless ceil padding on the right/bottom.
-        const double unpaddedLeft = glyph->bearingX + distanceRange / designPixelsPerEm;
-        const double unpaddedTop = glyph->bearingY - distanceRange / designPixelsPerEm;
-        const double unpaddedRight = glyph->bearingX + glyph->width - distanceRange / designPixelsPerEm;
-        const double unpaddedBottom = glyph->bearingY - glyph->height + distanceRange / designPixelsPerEm;
-        const double texel = 1.0 / designPixelsPerEm;
-        EXPECT_NEAR(unpaddedLeft, left / face->units_per_EM, 1e-6) << static_cast<char>(character);
-        EXPECT_NEAR(unpaddedTop, top / face->units_per_EM, 1e-6) << static_cast<char>(character);
-        EXPECT_GE(unpaddedRight, right / face->units_per_EM - 1e-6) << static_cast<char>(character);
-        EXPECT_LE(unpaddedRight, right / face->units_per_EM + texel + 1e-6) << static_cast<char>(character);
-        EXPECT_LE(unpaddedBottom, bottom / face->units_per_EM + 1e-6) << static_cast<char>(character);
-        EXPECT_GE(unpaddedBottom, bottom / face->units_per_EM - texel - 1e-6) << static_cast<char>(character);
+        // bounds, with at most one atlas pixel of harmless ceil padding on the right/bottom.
+        const double unpaddedLeft = glyph->bearingX + padding;
+        const double unpaddedTop = glyph->bearingY - padding;
+        const double unpaddedRight = glyph->bearingX + glyph->width - padding;
+        const double unpaddedBottom = glyph->bearingY - glyph->height + padding;
+        EXPECT_NEAR(unpaddedLeft, left, 1e-6) << static_cast<char>(character);
+        EXPECT_NEAR(unpaddedTop, top, 1e-6) << static_cast<char>(character);
+        EXPECT_GE(unpaddedRight, right - 1e-6) << static_cast<char>(character);
+        EXPECT_LE(unpaddedRight, right + 1.0 + 1e-6) << static_cast<char>(character);
+        EXPECT_LE(unpaddedBottom, bottom + 1e-6) << static_cast<char>(character);
+        EXPECT_GE(unpaddedBottom, bottom - 1.0 - 1e-6) << static_cast<char>(character);
     }
 
     FT_Done_Face(face);
@@ -139,22 +136,20 @@ TEST(TextGlyphMetrics, MissingCharacterUsesRmlUiOutlinedReplacementBox) {
 
     constexpr int fontSize = 28;
     constexpr double distanceRange = 4.0;
-    constexpr double designPixelsPerEm = Vixen::Text::kAtlasDesignPixelsPerEm;
     Vixen::Text::GlyphAtlas atlas(1024, static_cast<float>(distanceRange));
     ASSERT_TRUE(atlas.AddReplacementGlyph(face, fontSize));
     const Vixen::Text::AtlasGlyph* glyph = atlas.FindGlyph(0);
     ASSERT_NE(glyph, nullptr);
 
-    const double padding = distanceRange / designPixelsPerEm;
+    const double padding = distanceRange;
     const double left = glyph->bearingX + padding;
     const double top = glyph->bearingY - padding;
     const double right = glyph->bearingX + glyph->width - padding;
     const double bottom = glyph->bearingY - glyph->height + padding;
-    const double outputTexel = fontSize / designPixelsPerEm;
-    EXPECT_NEAR(left * fontSize, 1.0, 1e-4);
-    EXPECT_NEAR(top * fontSize, 18.0, 1e-4);
-    EXPECT_NEAR((right - left) * fontSize, 9.0, outputTexel);
-    EXPECT_NEAR(bottom * fontSize, 0.0, outputTexel);
+    EXPECT_NEAR(left, 1.0, 1e-4);
+    EXPECT_NEAR(top, 18.0, 1e-4);
+    EXPECT_NEAR(right - left, 9.0, 1e-4);
+    EXPECT_NEAR(bottom, 0.0, 1e-4);
 
     FT_Done_Face(face);
     FT_Done_FreeType(library);
