@@ -32,6 +32,7 @@
 #include "Generated/Hud.blob.g.h"   // Vixen::Views::kHudBlob
 #include "graph/HudView.h"
 #include "VixenHash.h"
+#include "Text/RmlFontEngine.h"
 
 #include <cstdint>
 #include <vector>
@@ -56,10 +57,12 @@ public:
 struct RmlFixture {
     Vixen::Ui::VixenRmlSystemInterface sys;
     NullRender render;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::Context* ctx = nullptr;
     RmlFixture() {
         Rml::SetSystemInterface(&sys);
         Rml::SetRenderInterface(&render);
+        Rml::SetFontEngineInterface(&fontEngine);
         Rml::Initialise();
         ctx = Rml::CreateContext("equiv", Rml::Vector2i(64, 64));
     }

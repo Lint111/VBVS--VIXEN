@@ -28,6 +28,7 @@
 #include "Generated/Hud.g.h"   // the artifact under test
 #include "Ui/IView.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 namespace {
 
@@ -115,8 +116,10 @@ TEST(ViewHudGolden, GeneratedSequenceMatchesCanonicalSchema) {
 TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     Vixen::Ui::VixenRmlSystemInterface sysIface;
     NullRenderInterface renderIface;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sysIface);
     Rml::SetRenderInterface(&renderIface);
+    Rml::SetFontEngineInterface(&fontEngine);
     ASSERT_TRUE(Rml::Initialise());
     Rml::Context* ctx = Rml::CreateContext("view-golden", Rml::Vector2i(64, 64));
     ASSERT_NE(ctx, nullptr);
@@ -148,8 +151,10 @@ struct TrivialView : Vixen::RenderGraph::IView {
 TEST(ViewHudGolden, IViewSeamIsViewAgnostic) {
     Vixen::Ui::VixenRmlSystemInterface sysIface;
     NullRenderInterface renderIface;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sysIface);
     Rml::SetRenderInterface(&renderIface);
+    Rml::SetFontEngineInterface(&fontEngine);
     ASSERT_TRUE(Rml::Initialise());
     Rml::Context* ctx = Rml::CreateContext("iview", Rml::Vector2i(64, 64));
     ASSERT_NE(ctx, nullptr);
