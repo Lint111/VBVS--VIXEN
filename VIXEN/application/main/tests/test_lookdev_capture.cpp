@@ -787,13 +787,13 @@ public:
 
         // The ordinary look-dev capture below is procedural-only, so it cannot
         // prove the composed DDA fallback. When the existing stored-SDF scene is
-        // requested, keep its six FORMAT_STORED_SDF instances and orbit that
-        // scene with the same four yaw angles and lighting presets.
+        // requested, keep its six FORMAT_STORED_SDF instances and frame the
+        // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
         const float orbitCenterX = storedSdfScene ? 64.0f : (glyphSdfScene ? 0.0f : 5.0f);
         const float orbitCenterY = storedSdfScene ? 64.0f : (glyphSdfScene ? 0.0f : 5.0f);
-        const float orbitCenterZ = storedSdfScene ? 0.0f : 5.0f;
-        const float orbitDistance = storedSdfScene ? 300.0f :
+        const float orbitCenterZ = storedSdfScene ? 64.0f : 5.0f;
+        const float orbitDistance = storedSdfScene ? 24.0f :
             (glyphSdfScene ? (glyphSdfCompare ? 16.0f :
                 (glyphSdfRtlProofPair ? 13.5f : 9.5f)) : 14.0f);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
