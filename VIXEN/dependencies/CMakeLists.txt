@@ -363,15 +363,19 @@ FetchContent_Populate(libunibreak
     GIT_REPOSITORY https://github.com/adah1972/libunibreak.git
     GIT_TAG        libunibreak_5_1
     GIT_SHALLOW    TRUE)
-add_library(VixenLibunibreak STATIC
-    ${libunibreak_SOURCE_DIR}/src/linebreak.c
-    ${libunibreak_SOURCE_DIR}/src/linebreakdata.c
-    ${libunibreak_SOURCE_DIR}/src/linebreakdef.c
-    ${libunibreak_SOURCE_DIR}/src/wordbreak.c
-    ${libunibreak_SOURCE_DIR}/src/graphemebreak.c
-    ${libunibreak_SOURCE_DIR}/src/emojidef.c
-    ${libunibreak_SOURCE_DIR}/src/unibreakbase.c
-    ${libunibreak_SOURCE_DIR}/src/unibreakdef.c)
+# Read CFILES from the pinned upstream manifest so a tag bump cannot silently drop or add a file.
+file(READ ${libunibreak_SOURCE_DIR}/src/Makefile.gcc _unibreak_makefile)
+string(REPLACE "\\\n" " " _unibreak_makefile "${_unibreak_makefile}")
+string(REGEX MATCH "CFILES[ \t]*:=[ \t]*([^\n]*)" _unibreak_cfiles_match "${_unibreak_makefile}")
+if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "libunibreak: CFILES not found in ${libunibreak_SOURCE_DIR}/src/Makefile.gcc")
+endif()
+separate_arguments(_unibreak_cfiles UNIX_COMMAND "${CMAKE_MATCH_1}")
+list(TRANSFORM _unibreak_cfiles PREPEND "${libunibreak_SOURCE_DIR}/src/")
+add_library(VixenLibunibreak STATIC ${_unibreak_cfiles})
+unset(_unibreak_makefile)
+unset(_unibreak_cfiles_match)
+unset(_unibreak_cfiles)
 target_include_directories(VixenLibunibreak PUBLIC ${libunibreak_SOURCE_DIR}/src)
 set_target_properties(VixenLibunibreak PROPERTIES FOLDER "Dependencies")
 target_compile_options(VixenLibunibreak PRIVATE
