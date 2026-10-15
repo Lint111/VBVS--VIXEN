@@ -49,7 +49,7 @@ TEST(SdfBake, NarrowBandMatchesRecipe) {
     glm::vec3 surf(38.0f, 32.0f, 32.0f);
     auto sdSurf = baked.sampleStored(surf);
     ASSERT_TRUE(sdSurf.has_value()) << "Surface voxel (38,32,32) must be stored";
-    EXPECT_NEAR(*sdSurf, evalSdf(RECIPE_SPHERE, surf, center, rp), 0.6f)
+    EXPECT_NEAR(*sdSurf, evalSdf(RECIPE_SPHERE, surf, center, rp), 1e-3f)
         << "Stored Density must approximate evalSdf";
 
     // (b) Outward non-band voxel inside an occupied brick: (41,32,32), sd = 3 (> band=2),
@@ -59,7 +59,7 @@ TEST(SdfBake, NarrowBandMatchesRecipe) {
     auto sdInBrick = baked.sampleStored(inBrick);
     ASSERT_TRUE(sdInBrick.has_value())
         << "Non-band voxel inside an OCCUPIED brick must be fully populated (full-brick fill)";
-    EXPECT_NEAR(*sdInBrick, evalSdf(RECIPE_SPHERE, inBrick, center, rp), 0.6f)
+    EXPECT_NEAR(*sdInBrick, evalSdf(RECIPE_SPHERE, inBrick, center, rp), 1e-3f)
         << "Full-brick population must store the TRUE signed distance, not 0";
 
     // (c) Far-corner voxel (0,0,0): sd = |(-32,-32,-32)| - 6 ≈ +49 (far beyond band=2)
@@ -67,6 +67,49 @@ TEST(SdfBake, NarrowBandMatchesRecipe) {
     //     unallocated. Confirms occupancy sparsity does NOT flood the whole grid.
     EXPECT_FALSE(baked.sampleStored(glm::vec3(0.0f, 0.0f, 0.0f)).has_value())
         << "Far-corner exterior voxel must NOT be stored (brick-level sparsity preserved)";
+}
+
+TEST(SdfBake, CenterSamplesStayAccurateAndSubVoxelSphereIsFiltered) {
+    const glm::vec3 gridCenter(16.0f);
+    auto plane = [](const glm::vec3& p) { return p.x - 16.125f; };
+    const auto planeBake = BakeSdfWorld(plane, gridCenter, 32, 2.0f);
+
+    // Symmetric footprint quadrature must preserve the exact signed distance
+    // for a plane at voxel centres, and its CPU reconstruction must agree at a
+    // fractional point as the GPU trilinear path does.
+    for (int x = 15; x <= 17; ++x) {
+        const glm::vec3 p(static_cast<float>(x), 16.0f, 16.0f);
+        const auto stored = planeBake.sampleStored(p);
+        ASSERT_TRUE(stored.has_value());
+        EXPECT_NEAR(*stored, plane(p), 1e-5f);
+    }
+    const auto reconstructed = planeBake.sampleStoredTrilinear(glm::vec3(16.25f, 16.4f, 16.8f));
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_NEAR(*reconstructed, 0.125f, 1e-5f);
+
+    constexpr float tinyRadius = 0.2f; // below one voxel in the bake grid
+    auto bakeTinySphere = [tinyRadius](const glm::vec3& sphereCenter) {
+        auto sphere = [sphereCenter, tinyRadius](const glm::vec3& p) {
+            return glm::length(p - sphereCenter) - tinyRadius;
+        };
+        return BakeSdfWorld(sphere, sphereCenter, 32, 2.0f);
+    };
+    const auto aligned = bakeTinySphere(gridCenter);
+    const auto halfVoxelShifted = bakeTinySphere(gridCenter + glm::vec3(0.5f, 0.0f, 0.0f));
+    const glm::vec3 probe(16.0f);
+    ASSERT_LT(glm::length(probe - gridCenter) - tinyRadius, 0.0f)
+        << "The exact source sample at the aligned centre contains the tiny sphere";
+    ASSERT_GT(glm::length(probe - (gridCenter + glm::vec3(0.5f, 0.0f, 0.0f))) - tinyRadius, 0.0f)
+        << "The same source sample misses the sphere after a half-voxel phase shift";
+    const auto alignedStored = aligned.sampleStored(probe);
+    const auto shiftedStored = halfVoxelShifted.sampleStored(probe);
+    ASSERT_TRUE(alignedStored.has_value());
+    ASSERT_TRUE(shiftedStored.has_value());
+    EXPECT_GT(*alignedStored, 0.0f)
+        << "The footprint filter removes the sub-voxel sphere instead of aliasing it into a solid voxel";
+    EXPECT_GT(*shiftedStored, 0.0f);
+    EXPECT_LT(std::abs(*alignedStored - *shiftedStored), 0.25f)
+        << "The filtered result should vary less than the point-sampled sign flip";
 }
 
 // ============================================================================
@@ -101,7 +144,7 @@ TEST(SdfBake, DeepInteriorIsStored) {
     ASSERT_TRUE(sdDeep.has_value())
         << "Deep-interior voxel (sd ≪ -band) must be stored under occupancy "
            "(fails on old thin-band predicate — the interior-hole bug)";
-    EXPECT_NEAR(*sdDeep, evalSdf(RECIPE_SPHERE, deep, center, rp), 0.6f)
+    EXPECT_NEAR(*sdDeep, evalSdf(RECIPE_SPHERE, deep, center, rp), 1e-3f)
         << "Interior must carry the TRUE (negative) signed distance, not a 0 sentinel";
 }
 
