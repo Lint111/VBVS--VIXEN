@@ -519,10 +519,13 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
     scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
     Vixen::SVO::BodyInstanceGpu storedInstance{};
-    constexpr float instanceScale = 0.30f;
+    // Stored octrees render in the existing normalized [0,1]^3 -> [0,10]^3
+    // body frame. Undo that normalization here so the baked glyph has the same
+    // world-space scale as the analytic recipe instance above.
+    constexpr float instanceScale = 0.30f * static_cast<float>(bakeResolution) / 10.0f;
     const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
     const glm::vec3 storedOrigin = storedCenter - glm::vec3(
-        static_cast<float>(bakeResolution) * 0.5f * instanceScale);
+        5.0f * instanceScale);
     const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
         glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
     Vixen::SVO::SetInstanceTransform(storedInstance, storedModel);
