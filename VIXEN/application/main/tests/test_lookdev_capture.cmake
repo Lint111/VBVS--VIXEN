@@ -79,29 +79,21 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         list(APPEND _glyphsdf_capture_tests "${_test}")
     endforeach()
 
-    # The matching mixed-script frames hold text and font constant while changing
-    # only the preset direction. Separate labels let the native GPU queue admit
-    # each capture as its own job.
-    foreach(_variant IN ITEMS rtl-proof-ltr rtl-proof-rtl)
-        set(_test "Application.LookdevCapture.GlyphSdf.RtlProof.${_variant}")
-        set(_capture_dir "${_glyphsdf_capture_dir}/${_variant}")
-        if(_variant STREQUAL "rtl-proof-ltr")
-            set(_proof_label "GlyphSdfProofLtr")
-        else()
-            set(_proof_label "GlyphSdfProofRtl")
-        endif()
-        add_test(NAME "${_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
-                    "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
-        set_tests_properties("${_test}" PROPERTIES
-            LABELS "Application;${_proof_label}"
-            TIMEOUT 1200
-            ENVIRONMENT
-                "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_RTL_PROOF=1;VIXEN_GLYPHSDF_VARIANT=${_variant};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_capture_dir}"
-            ENVIRONMENT_MODIFICATION
-                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
-        list(APPEND _glyphsdf_capture_tests "${_test}")
-    endforeach()
+    # Both shaped layouts share one graph and frame so the same mixed-script
+    # literal can be compared side by side without a second cold pipeline build.
+    set(_glyphsdf_rtl_pair_test "Application.LookdevCapture.GlyphSdf.RtlProof.Pair")
+    set(_glyphsdf_rtl_pair_dir "${_glyphsdf_capture_dir}/rtl-proof-pair")
+    add_test(NAME "${_glyphsdf_rtl_pair_test}"
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
+    set_tests_properties("${_glyphsdf_rtl_pair_test}" PROPERTIES
+        LABELS "Application;GlyphSdfProofPair"
+        TIMEOUT 1800
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_RTL_PROOF=1;VIXEN_GLYPHSDF_VARIANT=rtl-proof-pair;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_rtl_pair_dir}"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
+    list(APPEND _glyphsdf_capture_tests "${_glyphsdf_rtl_pair_test}")
 
     set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel")
     set(_glyphsdf_compare_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel")
@@ -117,5 +109,5 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
     list(APPEND _glyphsdf_capture_tests "${_glyphsdf_compare_test}")
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests})
-    message(STATUS "[Application Tests] Added: four lit GlyphOutline frames, two mixed-script direction proofs, and 256^3 analytic/voxel comparison")
+    message(STATUS "[Application Tests] Added: four lit GlyphOutline frames, one side-by-side mixed-script direction proof, and 256^3 analytic/voxel comparison")
 endif()
