@@ -318,10 +318,22 @@ TEST_F(TextShapingFixture, RmlFontEngineUsesAndClearsPresetShaping) {
 }
 
 TEST(TextBidi, RtlPresetOrdersRunsVisuallyAndMirrorsPairedBrackets) {
+    const auto ltrPreset = MakePreset(Vixen::Text::TextDirection::LeftToRight,
+                                      Vixen::Text::ShapingClass::Joining,
+                                      Vixen::Text::LineBreakingClass::Word, 2);
     const auto preset = MakePreset(Vixen::Text::TextDirection::RightToLeft,
                                    Vixen::Text::ShapingClass::Joining,
                                    Vixen::Text::LineBreakingClass::Word, 2);
     constexpr std::string_view mixed = "\xD7\x90\xD7\x91\xD7\x92" "abc";
+    const Vixen::Text::BidiResult ltr = Vixen::Text::ResolveBidi(ltrPreset, mixed);
+    ASSERT_EQ(ltr.visualRuns.size(), 2U);
+    EXPECT_EQ(ltr.visualRuns[0].byteOffset, 0U);
+    EXPECT_EQ(ltr.visualRuns[0].byteLength, 6U);
+    EXPECT_TRUE(ltr.visualRuns[0].rightToLeft);
+    EXPECT_EQ(ltr.visualRuns[1].byteOffset, 6U);
+    EXPECT_EQ(ltr.visualRuns[1].byteLength, 3U);
+    EXPECT_FALSE(ltr.visualRuns[1].rightToLeft);
+
     const Vixen::Text::BidiResult bidi = Vixen::Text::ResolveBidi(preset, mixed);
 
     ASSERT_EQ(bidi.visualRuns.size(), 2U);

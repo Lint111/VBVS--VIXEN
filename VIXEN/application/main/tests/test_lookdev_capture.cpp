@@ -280,7 +280,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         return preset;
     };
 
-    constexpr std::string_view rtlProofText = "OPEN 12 \xD8\xB3\xD9\x84\xD8\xA7\xD9\x85";
+    constexpr std::string_view rtlProofText = "\xD8\xB3\xD9\x84\xD8\xA7\xD9\x85 OPEN 12";
     const std::string_view latinText = rtlProof ? rtlProofText : "OPEN";
     const std::string_view rtlText = rtlProof ? rtlProofText : "NEPO";
     std::array<WorldTextLayout, 2> layouts{
@@ -309,9 +309,26 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         if (layouts[1].direction != Vixen::Text::TextDirection::RightToLeft ||
             !layouts[1].mirrorX || !hasRtlRun(layouts[1]) ||
             clustersInVisualOrder(layouts[0]) == clustersInVisualOrder(layouts[1])) {
+            std::ostringstream diagnostic;
+            diagnostic << "the qps-rtl proof did not produce a mirrored RTL run with a distinct cluster order"
+                       << " (direction="
+                       << (layouts[1].direction == Vixen::Text::TextDirection::RightToLeft ? "RTL" : "LTR")
+                       << ", mirror=" << (layouts[1].mirrorX ? "true" : "false")
+                       << ", rtl_run=" << (hasRtlRun(layouts[1]) ? "true" : "false")
+                       << ", clusters_differ="
+                       << (clustersInVisualOrder(layouts[0]) != clustersInVisualOrder(layouts[1])
+                               ? "true" : "false") << ")\n"
+                       << "LTR glyphs:";
+            for (const PositionedGlyphOutline& glyph : layouts[0].glyphs)
+                diagnostic << ' ' << glyph.glyphId << '@' << glyph.cluster
+                           << (glyph.rightToLeft ? 'R' : 'L');
+            diagnostic << "\nRTL glyphs:";
+            for (const PositionedGlyphOutline& glyph : layouts[1].glyphs)
+                diagnostic << ' ' << glyph.glyphId << '@' << glyph.cluster
+                           << (glyph.rightToLeft ? 'R' : 'L');
             FT_Done_Face(face);
             FT_Done_FreeType(library);
-            error = "the qps-rtl proof did not produce a mirrored RTL run with a distinct cluster order";
+            error = diagnostic.str();
             return false;
         }
     }

@@ -27,9 +27,10 @@ BidiResult ResolveBidi(const PresetDesc& preset, std::string_view utf8Text) {
     if (!algorithm)
         return result;
 
-    const SBLevel baseLevel = preset.direction == TextDirection::RightToLeft
-                                  ? SBLevelDefaultRTL
-                                  : SBLevelDefaultLTR;
+    // PresetDesc declares the paragraph direction, so use a concrete level.
+    // SheenBidi's Default levels only select a fallback when no strong
+    // character is present; strong text would otherwise override the preset.
+    const SBLevel baseLevel = preset.direction == TextDirection::RightToLeft ? 1U : 0U;
     const SBUInteger totalLength = sequence.stringLength;
     SBUInteger paragraphOffset = 0;
     while (paragraphOffset < totalLength) {
