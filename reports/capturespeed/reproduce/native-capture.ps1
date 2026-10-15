@@ -4,7 +4,7 @@ param(
   [ValidateSet('lookdev', 'planet', 'glyphsdf')][string]$Capture,
   [string]$State,
   [string]$CtestLabel,
-  [string]$Root = 'C:\vixen-native\nativerunner'
+  [string]$Root = 'C:\vixen-native\nativerunner-glyphsdf'
 )
 $ErrorActionPreference = 'Stop'
 $buildDir = Join-Path $Root "build\native\$Commit"

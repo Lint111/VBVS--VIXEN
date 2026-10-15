@@ -6,6 +6,7 @@ if "%~1"=="" (
 )
 set "VIXEN_NATIVE_BUILD_KEY=%~1"
 for /f "delims=" %%I in ("%~dp0..\..\..") do set "NATIVE_ROOT=%%~fI"
+set "NATIVE_CACHE_ROOT=C:\vixen-native\nativerunner\.tmp"
 set "VIXEN_NATIVE_BUILD_DIR=%NATIVE_ROOT%\build\native\%VIXEN_NATIVE_BUILD_KEY%"
 set "READY_FILE=%VIXEN_NATIVE_BUILD_DIR%\.nativerunner-build-ready"
 if exist "%READY_FILE%" (
@@ -22,10 +23,10 @@ cd /d "%NATIVE_ROOT%"
 if errorlevel 1 exit /b %errorlevel%
 set "TEMP=%NATIVE_ROOT%\.tmp\native-temp"
 set "TMP=%TEMP%"
-set "NUGET_PACKAGES=%NATIVE_ROOT%\.tmp\native-nuget"
-set "DOTNET_CLI_HOME=%NATIVE_ROOT%\.tmp\native-dotnet-home"
-set "VIXEN_FETCHCONTENT_CACHE=%NATIVE_ROOT%\.tmp\native-fetch"
-set "VIXEN_NATIVE_KERNEL_CACHE_DIR=%NATIVE_ROOT%\.tmp\native-kernel-cache"
+set "NUGET_PACKAGES=%NATIVE_CACHE_ROOT%\native-nuget"
+set "DOTNET_CLI_HOME=%NATIVE_CACHE_ROOT%\native-dotnet-home"
+set "VIXEN_FETCHCONTENT_CACHE=%NATIVE_CACHE_ROOT%\native-fetch"
+set "VIXEN_NATIVE_KERNEL_CACHE_DIR=%NATIVE_CACHE_ROOT%\native-kernel-cache"
 set "GIT_CONFIG_COUNT=1"
 set "GIT_CONFIG_KEY_0=safe.directory"
 set "GIT_CONFIG_VALUE_0=//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy"

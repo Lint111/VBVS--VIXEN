@@ -5,7 +5,10 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
-native_root=/mnt/c/vixen-native/nativerunner
+# Each lane keeps its own source/build checkout. The native runner and GPU queue are
+# still shared; only the mutable Git working tree is isolated so concurrent lanes
+# cannot change the source under another lane's CMake configure or CTest process.
+native_root=/mnt/c/vixen-native/nativerunner-glyphsdf
 queue=/home/liory/.local/bin/with-test-lock.sh
 cmd_exe=/mnt/c/Windows/System32/cmd.exe
 native_batch="$native_root/reports/capturespeed/reproduce/native-build.bat"
