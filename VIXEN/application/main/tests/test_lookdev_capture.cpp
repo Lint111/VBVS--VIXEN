@@ -611,17 +611,29 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
 
     const GlyphSdfRecipe& recipe = recipes.front().second;
 
-    constexpr int bakeResolution = 256;
+    int bakeResolution = 256;
+    if (const char* requestedResolution = std::getenv("VIXEN_GLYPHSDF_BAKE_RESOLUTION")) {
+        char* parseEnd = nullptr;
+        const long parsedResolution = std::strtol(requestedResolution, &parseEnd, 10);
+        if (parseEnd == requestedResolution || *parseEnd != '\0' ||
+            (parsedResolution != 128 && parsedResolution != 256)) {
+            error = "VIXEN_GLYPHSDF_BAKE_RESOLUTION must be 128 or 256";
+            return false;
+        }
+        bakeResolution = static_cast<int>(parsedResolution);
+    }
     constexpr float recipeUnitsPerVoxel = 0.5f;
-    constexpr glm::vec3 bakeCenter{128.0f, 128.0f, 128.0f};
+    const float bakeCenterCoordinate = static_cast<float>(bakeResolution) * 0.5f;
+    const glm::vec3 bakeCenter{bakeCenterCoordinate};
     constexpr float bandVoxels = 5.0f;
     std::ofstream comparison(evidenceDir / "glyphsdf-voxel-vs-analytic.txt", std::ios::out | std::ios::trunc);
     if (!comparison) {
         error = "could not write the GlyphOutline bake comparison evidence";
         return false;
     }
-    comparison << "variant bake_resolution recipe_units_per_voxel sample_width sample_height changed_pixels "
-                  "max_delta_stored max_delta_with_band_clamp unallocated_samples\n";
+    comparison << "variant bake_resolution recipe_units_per_voxel sample_width sample_height "
+                  "nearest_changed_samples trilinear_changed_samples nearest_max_delta "
+                  "trilinear_max_delta trilinear_max_delta_with_band_clamp unallocated_samples\n";
     constexpr int imageWidth = 256;
     constexpr int imageHeight = 160;
     auto evaluate = [&](const glm::vec3& gridPoint) {
@@ -632,9 +644,11 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     const auto neutralVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
     auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
                                            Vixen::SVO::NoEmission, neutralVoxelColor);
-    float maxStoredDelta = 0.0f;
-    float maxBandClampedDelta = 0.0f;
-    std::uint32_t changedPixels = 0;
+    float nearestMaxDelta = 0.0f;
+    float trilinearMaxDelta = 0.0f;
+    float trilinearMaxDeltaWithBandClamp = 0.0f;
+    std::uint32_t nearestChangedSamples = 0;
+    std::uint32_t trilinearChangedSamples = 0;
     std::uint32_t unallocatedSamples = 0;
     const float sampleZ = recipe.carved ? 0.0f : 2.35f;
     for (int y = 0; y < imageHeight; ++y) {
@@ -646,21 +660,29 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             const float analytic = Vixen::SVO::Recipe::evalRecipe(
                 recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
                 localPoint, {}, nullptr, nullptr, glyphRows);
-            const auto stored = baked.sampleStored(bakeCenter + localPoint / recipeUnitsPerVoxel);
-            const float voxel = stored.value_or(std::max(bandVoxels * recipeUnitsPerVoxel + 1.0f,
-                                                         analytic));
-            if (stored) {
-                maxStoredDelta = std::max(maxStoredDelta, std::abs(analytic - *stored));
+            const glm::vec3 gridPoint = bakeCenter + localPoint / recipeUnitsPerVoxel;
+            const auto nearest = baked.sampleStored(gridPoint);
+            const auto trilinear = baked.sampleStoredTrilinear(gridPoint);
+            const float voxel = trilinear.value_or(std::max(bandVoxels * recipeUnitsPerVoxel + 1.0f,
+                                                            analytic));
+            if (nearest) {
+                nearestMaxDelta = std::max(nearestMaxDelta, std::abs(analytic - *nearest));
+                if ((analytic < 0.0f) != (*nearest < 0.0f)) ++nearestChangedSamples;
             } else {
                 ++unallocatedSamples;
             }
-            maxBandClampedDelta = std::max(maxBandClampedDelta, std::abs(analytic - voxel));
-            if ((analytic < 0.0f) != (voxel < 0.0f)) ++changedPixels;
+            if (trilinear)
+                trilinearMaxDelta = std::max(trilinearMaxDelta, std::abs(analytic - *trilinear));
+            trilinearMaxDeltaWithBandClamp = std::max(
+                trilinearMaxDeltaWithBandClamp, std::abs(analytic - voxel));
+            if ((analytic < 0.0f) != (voxel < 0.0f)) ++trilinearChangedSamples;
         }
     }
     comparison << recipe.label << ' ' << bakeResolution << ' ' << recipeUnitsPerVoxel << ' '
                << imageWidth << ' ' << imageHeight
-               << ' ' << changedPixels << ' ' << maxStoredDelta << ' ' << maxBandClampedDelta
+               << ' ' << nearestChangedSamples << ' ' << trilinearChangedSamples << ' '
+               << nearestMaxDelta << ' ' << trilinearMaxDelta << ' '
+               << trilinearMaxDeltaWithBandClamp
                << ' ' << unallocatedSamples << '\n';
 
     auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);

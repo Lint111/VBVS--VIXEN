@@ -47,6 +47,11 @@ struct SdfBakeResult {
     // Returns the baked Density (signed distance) stored at the nearest integer
     // grid cell, or nullopt if that cell is outside the narrow band (unallocated).
     std::optional<float> sampleStored(const glm::vec3& gridPos) const;
+
+    // Reconstruct the stored field at a fractional grid position using the same
+    // 8-corner trilinear weights as StoredSdf.glsl. Returns nullopt when any
+    // stencil corner is outside the allocated narrow band.
+    std::optional<float> sampleStoredTrilinear(const glm::vec3& gridPos) const;
 };
 
 // ---------------------------------------------------------------------------
@@ -387,6 +392,28 @@ inline std::optional<float> SdfBakeResult::sampleStored(const glm::vec3& gridPos
     if (!world->exists(e)) return std::nullopt;
     auto d = world->getComponentValue<Vixen::GaiaVoxel::Density>(e);
     return d.has_value() ? std::optional<float>(d.value()) : std::nullopt;
+}
+
+inline std::optional<float> SdfBakeResult::sampleStoredTrilinear(const glm::vec3& gridPos) const {
+    const glm::vec3 base = glm::floor(gridPos);
+    const glm::vec3 f = gridPos - base;
+    const glm::ivec3 i(base);
+    const auto c000 = sampleStored(glm::vec3(i + glm::ivec3(0, 0, 0)));
+    const auto c100 = sampleStored(glm::vec3(i + glm::ivec3(1, 0, 0)));
+    const auto c010 = sampleStored(glm::vec3(i + glm::ivec3(0, 1, 0)));
+    const auto c110 = sampleStored(glm::vec3(i + glm::ivec3(1, 1, 0)));
+    const auto c001 = sampleStored(glm::vec3(i + glm::ivec3(0, 0, 1)));
+    const auto c101 = sampleStored(glm::vec3(i + glm::ivec3(1, 0, 1)));
+    const auto c011 = sampleStored(glm::vec3(i + glm::ivec3(0, 1, 1)));
+    const auto c111 = sampleStored(glm::vec3(i + glm::ivec3(1, 1, 1)));
+    if (!c000 || !c100 || !c010 || !c110 || !c001 || !c101 || !c011 || !c111)
+        return std::nullopt;
+
+    const float z0 = glm::mix(glm::mix(*c000, *c100, f.x),
+                              glm::mix(*c010, *c110, f.x), f.y);
+    const float z1 = glm::mix(glm::mix(*c001, *c101, f.x),
+                              glm::mix(*c011, *c111, f.x), f.y);
+    return glm::mix(z0, z1, f.z);
 }
 
 // ---------------------------------------------------------------------------

@@ -95,19 +95,38 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
     list(APPEND _glyphsdf_capture_tests "${_glyphsdf_rtl_pair_test}")
 
-    set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel")
-    set(_glyphsdf_compare_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel")
-    add_test(NAME "${_glyphsdf_compare_test}"
+    foreach(_resolution IN ITEMS 128 256)
+        set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel${_resolution}")
+        if(_resolution EQUAL 256)
+            set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel")
+        endif()
+        set(_glyphsdf_compare_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel-${_resolution}")
+        add_test(NAME "${_glyphsdf_compare_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
+        set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
+            LABELS "Application;GlyphSdf${_resolution}"
+            TIMEOUT 1800
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_compare_dir};VIXEN_PERF_CSV=${_glyphsdf_compare_dir}/native-perf.csv"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
+        list(APPEND _glyphsdf_capture_tests "${_glyphsdf_compare_test}")
+    endforeach()
+
+    set(_glyphsdf_nontext_test "Application.LookdevCapture.StoredSdf.Brickmap")
+    set(_glyphsdf_nontext_dir "${_glyphsdf_capture_dir}/nontext-brickmap")
+    add_test(NAME "${_glyphsdf_nontext_test}"
         COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
-                "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
-    set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
-        LABELS "Application"
+                "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
+    set_tests_properties("${_glyphsdf_nontext_test}" PROPERTIES
+        LABELS "Application;GlyphSdfNonText"
         TIMEOUT 1800
         ENVIRONMENT
-            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_compare_dir}"
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_BRICKMAP_SCENE=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_nontext_dir};VIXEN_PERF_CSV=${_glyphsdf_nontext_dir}/native-perf.csv"
         ENVIRONMENT_MODIFICATION
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
-    list(APPEND _glyphsdf_capture_tests "${_glyphsdf_compare_test}")
+    list(APPEND _glyphsdf_capture_tests "${_glyphsdf_nontext_test}")
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests})
-    message(STATUS "[Application Tests] Added: four lit GlyphOutline frames, one side-by-side mixed-script direction proof, and 256^3 analytic/voxel comparison")
+    message(STATUS "[Application Tests] Added: four lit GlyphOutline frames, one side-by-side mixed-script direction proof, 128^3/256^3 comparisons, and a baked non-text brickmap frame")
 endif()
