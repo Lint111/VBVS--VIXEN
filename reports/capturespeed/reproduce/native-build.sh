@@ -35,9 +35,12 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
       mkdir -p "$(dirname "$native_root")"
       git clone --no-hardlinks "$repo_root" "$native_root"
     fi
+    # Previous builds write tracked SPIR-V headers and copy this ignored preset into the shared clone.
+    git -C "$native_root" reset --hard
+    rm -f "$native_root/VIXEN/CMakeUserPresets.json"
     # The Windows clone is shared; serialize its exact-commit sync with every native build.
     git -C "$native_root" fetch "$repo_root" "$repo_commit"
-    git -C "$native_root" checkout --detach FETCH_HEAD
+    git -C "$native_root" checkout --force --detach FETCH_HEAD
     [[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]
     heartbeat() {
       while :; do
