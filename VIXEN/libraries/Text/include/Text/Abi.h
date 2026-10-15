@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "Text/Text.g.h"
+
 namespace Vixen::Text {
 
 // Pack-local ordinals keep preset metadata typed without sending locale strings
@@ -85,37 +87,6 @@ struct TextPlacement {
     const TextSpan* spans;
 };
 
-struct GlyphInstance {
-    float x;
-    float y;
-    float w;
-    float h;
-    float u0;
-    float v0;
-    float u1;
-    float v1;
-    std::uint32_t span;
-    std::uint32_t cluster;
-    float msdfRange;
-    std::uint32_t flags;
-};
-
-struct SpanStyle {
-    std::uint32_t rgba;
-    float weight;
-    float italic;
-    std::uint32_t effect;
-};
-
-struct SpanAnim {
-    std::uint32_t kind;
-    float t0;
-    float duration;
-    float amplitude;
-    float frequency;
-    float phase;
-};
-
 enum class TextHitPhase : std::uint8_t { Enter, Leave, Click };
 
 struct TextHitEvent {
@@ -136,12 +107,6 @@ static_assert(sizeof(TextElementSet) == 16);
 static_assert(std::is_standard_layout_v<TextElementSet> && std::is_trivially_copyable_v<TextElementSet>);
 static_assert(sizeof(TextPlacement) == 16);
 static_assert(std::is_standard_layout_v<TextPlacement> && std::is_trivially_copyable_v<TextPlacement>);
-static_assert(sizeof(GlyphInstance) == 48);
-static_assert(std::is_standard_layout_v<GlyphInstance> && std::is_trivially_copyable_v<GlyphInstance>);
-static_assert(sizeof(SpanStyle) == 16);
-static_assert(std::is_standard_layout_v<SpanStyle> && std::is_trivially_copyable_v<SpanStyle>);
-static_assert(sizeof(SpanAnim) == 24);
-static_assert(std::is_standard_layout_v<SpanAnim> && std::is_trivially_copyable_v<SpanAnim>);
 static_assert(std::is_standard_layout_v<PresetDesc> && std::is_trivially_copyable_v<PresetDesc>);
 static_assert(std::is_standard_layout_v<TextArena> && std::is_trivially_copyable_v<TextArena>);
 static_assert(std::is_standard_layout_v<TextHitEvent> && std::is_trivially_copyable_v<TextHitEvent>);

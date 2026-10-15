@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace Vixen::Text {
 
@@ -45,6 +46,9 @@ public:
     bool AddReplacementGlyph(FT_Face face, int fontSize);
     [[nodiscard]] Rml::Texture GetTexture(Rml::RenderManager& renderManager) const;
     [[nodiscard]] std::uint32_t Version() const;
+    [[nodiscard]] std::span<const std::uint8_t> Pixels() const noexcept;
+    [[nodiscard]] std::uint32_t PageDimension() const noexcept;
+    [[nodiscard]] float DistanceRange() const noexcept;
 
 private:
     struct Impl;

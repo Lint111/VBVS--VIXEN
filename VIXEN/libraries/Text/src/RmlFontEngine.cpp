@@ -187,6 +187,84 @@ void RmlFontEngine::ClearPresetDesc() {
     impl_->language.clear();
 }
 
+int RmlFontEngine::BuildGlyphInstances(Rml::FontFaceHandle faceHandle, Rml::StringView string,
+                                       Rml::Vector2f baseline, std::uint32_t span,
+                                       float letterSpacing, std::vector<GlyphInstance>& output) {
+    FontHandle* handle = FromHandle(faceHandle);
+    if (!handle || !handle->font || !handle->font->face || !SetFontSize(handle->font->face, handle->size))
+        return 0;
+
+    FT_Face face = handle->font->face;
+    GlyphAtlas& atlas = handle->atlas;
+    float penX = baseline.x;
+    float penY = baseline.y;
+    auto append = [&](std::uint32_t glyphIndex, std::uint32_t cluster, float offsetX, float offsetY) {
+        const bool added = glyphIndex == 0 ? atlas.AddReplacementGlyph(face, handle->size)
+                                           : atlas.AddGlyph(face, glyphIndex, handle->size);
+        if (!added) return;
+        const AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex);
+        if (!glyph || glyph->width <= 0.0f || glyph->height <= 0.0f) return;
+
+        const float padding = glyph->padding;
+        const float leftBearing = std::floor(glyph->bearingX + padding);
+        const float topBearing = std::ceil(glyph->bearingY - padding);
+        const float x = penX + offsetX + leftBearing - padding;
+        const float y = penY - offsetY - topBearing - padding;
+        output.push_back({x, y, glyph->width, glyph->height,
+                          glyph->u0, glyph->v0, glyph->u1, glyph->v1,
+                          span, cluster, atlas.DistanceRange(), 0u});
+    };
+
+    if (impl_->preset) {
+        const ShapedText shaped = ShapeUtf8(*impl_->preset, impl_->requiredScriptTags, face,
+                                            std::string_view(string.begin(), string.size()), impl_->language);
+        if (!shaped.visualRuns.empty()) {
+            std::unordered_map<std::uint32_t, std::uint32_t> clusterOrdinals;
+            std::uint32_t nextCluster = 0;
+            for (const ShapedRun& run : shaped.visualRuns) {
+                for (std::size_t index = 0; index < run.glyphs.size(); ++index) {
+                    const ShapedGlyph& glyph = run.glyphs[index];
+                    const auto [ordinal, inserted] = clusterOrdinals.emplace(glyph.cluster, nextCluster);
+                    if (inserted) ++nextCluster;
+                    append(glyph.glyphId, ordinal->second,
+                           static_cast<float>(glyph.xOffset) / 64.0f,
+                           static_cast<float>(glyph.yOffset) / 64.0f);
+                    penX += static_cast<float>(glyph.xAdvance) / 64.0f;
+                    penY -= static_cast<float>(glyph.yAdvance) / 64.0f;
+                    if (index + 1 == run.glyphs.size() || run.glyphs[index + 1].cluster != glyph.cluster)
+                        penX += letterSpacing;
+                }
+            }
+            return RoundWidth(penX - baseline.x);
+        }
+    }
+
+    std::uint32_t cluster = 0;
+    FT_UInt previousGlyph = 0;
+    const bool kerningEnabled = FT_HAS_KERNING(face);
+    for (auto it = Rml::StringIteratorU8(string); it; ++it, ++cluster) {
+        const FT_UInt glyphIndex = GlyphIndex(face, *it);
+        if (kerningEnabled && previousGlyph != 0 && glyphIndex != 0) {
+            FT_Vector kerning{};
+            if (FT_Get_Kerning(face, previousGlyph, glyphIndex, FT_KERNING_DEFAULT, &kerning) == 0)
+                penX += static_cast<float>(kerning.x >> 6);
+        }
+
+        float advance = MissingGlyphAdvance(handle->size);
+        if (glyphIndex != 0 && FT_Load_Glyph(face, glyphIndex, kSizedGlyphLoadFlags) == 0)
+            advance = static_cast<float>(face->glyph->metrics.horiAdvance >> 6);
+        append(glyphIndex, cluster, 0.0f, 0.0f);
+        penX += advance + letterSpacing;
+        previousGlyph = glyphIndex;
+    }
+    return RoundWidth(penX - baseline.x);
+}
+
+GlyphAtlas* RmlFontEngine::GetGlyphAtlas(Rml::FontFaceHandle faceHandle) const {
+    FontHandle* handle = FromHandle(faceHandle);
+    return handle ? &handle->atlas : nullptr;
+}
+
 void RmlFontEngine::Initialize() {
     if (impl_->initialized)
         return;

@@ -1,15 +1,19 @@
 #pragma once
 
+#include "Text/Abi.h"
+
 #include <RmlUi/Core/FontEngineInterface.h>
 
 #include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace Vixen::Text {
 
 struct PresetDesc;
+class GlyphAtlas;
 
 // The ordinary RmlUi label path uses bundled font faces and the module's
 // FreeType metrics/MSDF atlas. SetPresetDesc opts measurement and drawing into
@@ -30,6 +34,13 @@ public:
                        std::span<const std::uint32_t> requiredScriptTags,
                        std::string_view language = {});
     void ClearPresetDesc();
+
+    // Build the instanced MSDF representation used by the generated text shader. Coordinates use
+    // the same top-left pixel baseline as GenerateString; callers choose a style/animation span.
+    int BuildGlyphInstances(Rml::FontFaceHandle handle, Rml::StringView string,
+                            Rml::Vector2f baseline, std::uint32_t span,
+                            float letterSpacing, std::vector<GlyphInstance>& output);
+    [[nodiscard]] GlyphAtlas* GetGlyphAtlas(Rml::FontFaceHandle handle) const;
 
     void Initialize() override;
     void Shutdown() override;

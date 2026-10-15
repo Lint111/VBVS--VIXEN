@@ -1,6 +1,7 @@
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/UIRenderNode.h"
 #include "Text/RmlFontEngine.h"
+#include "Text/GlyphAtlas.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
@@ -17,11 +18,13 @@
 #include <RmlUi/Core/Factory.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace Vixen::RenderGraph {
@@ -385,7 +388,73 @@ void UIRenderNode::DestroyCompositeSemaphores() {
     uiCompleteSemaphores_.clear();
 }
 
+void UIRenderNode::DrawTextShaderCapture(float timeSeconds) {
+    if (!fontEngine_) return;
+    const Rml::FontFaceHandle font = fontEngine_->GetFontFaceHandle(
+        "LatoLatin", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 26);
+    Vixen::Text::GlyphAtlas* atlas = fontEngine_->GetGlyphAtlas(font);
+    if (!font || !atlas)
+        return;
+
+    auto rgba = [](std::uint32_t red, std::uint32_t green, std::uint32_t blue) {
+        return red | (green << 8u) | (blue << 16u) | 0xff000000u;
+    };
+    const std::uint32_t emphasis = static_cast<std::uint32_t>(Vixen::Text::TextTagEffect::CoreEmphasis);
+    auto append = [&](std::vector<Vixen::Text::GlyphInstance>& glyphs, std::string_view text,
+                      std::uint32_t span, float& x, float baselineY) {
+        const Rml::StringView view(text.data(), text.data() + text.size());
+        x += static_cast<float>(fontEngine_->BuildGlyphInstances(
+            font, view, Rml::Vector2f(x, baselineY), span, 0.0f, glyphs));
+    };
+
+    std::vector<Vixen::Text::GlyphInstance> hudGlyphs;
+    const std::array<Vixen::Text::SpanStyle, 2> hudStyles{{
+        {rgba(235, 242, 255), 0.0f, 0.0f, 0u},
+        {rgba(255, 206, 92), 0.12f, 0.0f, emphasis},
+    }};
+    const std::array<Vixen::Text::SpanAnim, 2> hudAnimations{{
+        {Vixen::Text::TextAnimationKind::None, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {Vixen::Text::TextAnimationKind::Pulse, 0.0f, 2.0f, 0.22f, 4.0f, 0.0f},
+    }};
+    float hudX = 28.0f;
+    append(hudGlyphs, "HUD: ", 0, hudX, 48.0f);
+    append(hudGlyphs, "READY", 1, hudX, 48.0f);
+    renderInterface_.DrawText(*atlas, hudGlyphs, hudStyles, hudAnimations, timeSeconds);
+
+    // Resolve the dialogue through the same arena/ref shape emitted by textbake. The trailing
+    // offset is the row boundary; all spans below are byte ranges into this UTF-8 row.
+    constexpr char dialogueBytes[] = "She remembers the stars.";
+    constexpr std::uint32_t dialogueOffsets[] = {0u, sizeof(dialogueBytes) - 1u};
+    const Vixen::Text::TextArena arena{dialogueBytes, dialogueOffsets,
+                                       static_cast<std::uint32_t>(sizeof(dialogueBytes) - 1u), 1u};
+    const Vixen::Text::TextRef dialogueRef{0u, 0u};
+    if (dialogueRef.key >= arena.rowCount) return;
+    const std::uint32_t rowStart = arena.rowOffsets[dialogueRef.key];
+    const std::uint32_t rowEnd = arena.rowOffsets[dialogueRef.key + 1u];
+    if (rowStart > rowEnd || rowEnd > arena.byteCount) return;
+    const std::string_view dialogue(arena.utf8Bytes + rowStart, rowEnd - rowStart);
+
+    std::vector<Vixen::Text::GlyphInstance> dialogueGlyphs;
+    const std::array<Vixen::Text::SpanStyle, 3> dialogueStyles{{
+        {rgba(236, 226, 210), 0.0f, 0.0f, 0u},
+        {rgba(255, 192, 115), 0.12f, 0.0f, emphasis},
+        {rgba(137, 220, 255), 0.04f, 0.0f, 0u},
+    }};
+    const std::array<Vixen::Text::SpanAnim, 3> dialogueAnimations{{
+        {Vixen::Text::TextAnimationKind::None, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {Vixen::Text::TextAnimationKind::None, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {Vixen::Text::TextAnimationKind::Wave, 0.0f, 4.0f, 5.0f, 5.0f, 0.0f},
+    }};
+    float dialogueX = 28.0f;
+    append(dialogueGlyphs, dialogue.substr(0, 4), 0, dialogueX, 160.0f);
+    append(dialogueGlyphs, dialogue.substr(4, 9), 1, dialogueX, 160.0f);
+    append(dialogueGlyphs, dialogue.substr(13, 5), 0, dialogueX, 160.0f);
+    append(dialogueGlyphs, dialogue.substr(18), 2, dialogueX, 160.0f);
+    renderInterface_.DrawText(*atlas, dialogueGlyphs, dialogueStyles, dialogueAnimations, timeSeconds);
+}
+
 void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex) {
+    ++renderedFrameCounter_;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &bi);
 
@@ -422,6 +491,9 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
         context_->Update();
         context_->Render();
     }
+    const char* textCapture = std::getenv("VIXEN_TEXT_SHADER_CAPTURE");
+    if (textCapture && *textCapture && std::string(textCapture) != "0")
+        DrawTextShaderCapture(static_cast<float>(renderedFrameCounter_) / 60.0f);
 
     vkCmdEndRenderPass(cmd);
 

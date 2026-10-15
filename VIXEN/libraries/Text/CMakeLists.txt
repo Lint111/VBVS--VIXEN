@@ -3,12 +3,17 @@ project(Text VERSION 1.0.0 LANGUAGES CXX)
 
 set(TEXT_HEADERS
     include/Text/Abi.h
+    include/Text/Text.g.h
+    include/Text/TextShaderSpirv.g.h
     include/Text/AtlasFormat.h
     include/Text/GlyphAtlas.h
     include/Text/Bidi.h
     include/Text/LineBreaker.h
     include/Text/RmlFontEngine.h
     include/Text/Shaper.h
+    src/shaders/text.g.glsl
+    src/shaders/text.vert
+    src/shaders/text.frag
 )
 
 set(TEXT_SOURCES

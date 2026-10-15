@@ -137,6 +137,26 @@ if(BUILD_TESTS AND TARGET VIXEN)
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=85")
     set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
+
+    # Separate opt-in producer for the generated MSDF text shader. Its own directory and label keep
+    # the baseline HUD producer byte-stable while native and Dozen runs capture animation at frames
+    # 5 and 45.
+    set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/textshader")
+    file(MAKE_DIRECTORY "${VIXEN_TEXT_SHADER_CAPTURE_DIR}")
+    add_test(NAME vixen_text_shader_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    set_tests_properties(vixen_text_shader_capture_producer PROPERTIES
+        FIXTURES_SETUP VixenTextShaderCapture
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
+        TIMEOUT 180)
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_text_shader_capture_producer
+        TEST_ENVIRONMENT
+            "VIXEN_TEXT_SHADER_CAPTURE=1"
+            "VIXEN_HUD_CAPTURE_FRAMES=5,45"
+            "VIXEN_HUD_CAPTURE_DIR=${VIXEN_TEXT_SHADER_CAPTURE_DIR}"
+            "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
+            "VIXEN_EXIT_AFTER_FRAMES=55")
+    set_property(TEST vixen_text_shader_capture_producer APPEND PROPERTY LABELS VIXEN_TEXT_SHADER_CAPTURE)
 endif()
 
 # The native windowed witness is WSLg-specific. Keep its display contract in
