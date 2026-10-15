@@ -626,16 +626,19 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         }
         bakeResolution = static_cast<int>(parsedResolution);
     }
-    constexpr float recipeUnitsPerVoxel = 0.5f;
+    // Keep the same 64-unit world-space bake volume at both resolutions. A
+    // 256^3 bake therefore halves voxel spacing rather than adding empty margin.
+    const float recipeUnitsPerVoxel = 64.0f / static_cast<float>(bakeResolution);
     const float bakeCenterCoordinate = static_cast<float>(bakeResolution) * 0.5f;
     const glm::vec3 bakeCenter{bakeCenterCoordinate};
-    constexpr float bandVoxels = 5.0f;
+    constexpr float bandRecipeUnits = 2.5f;
+    const float bandVoxels = bandRecipeUnits / recipeUnitsPerVoxel;
     std::ofstream comparison(evidenceDir / "glyphsdf-voxel-vs-analytic.txt", std::ios::out | std::ios::trunc);
     if (!comparison) {
         error = "could not write the GlyphOutline bake comparison evidence";
         return false;
     }
-    comparison << "variant bake_resolution recipe_units_per_voxel sample_width sample_height "
+    comparison << "variant bake_resolution recipe_units_per_voxel band_recipe_units sample_width sample_height "
                   "nearest_changed_samples trilinear_changed_samples nearest_max_delta "
                   "trilinear_max_delta trilinear_max_delta_with_band_clamp unallocated_samples\n";
     constexpr int imageWidth = 256;
@@ -683,6 +686,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         }
     }
     comparison << recipe.label << ' ' << bakeResolution << ' ' << recipeUnitsPerVoxel << ' '
+               << bandRecipeUnits << ' '
                << imageWidth << ' ' << imageHeight
                << ' ' << nearestChangedSamples << ' ' << trilinearChangedSamples << ' '
                << nearestMaxDelta << ' ' << trilinearMaxDelta << ' '
