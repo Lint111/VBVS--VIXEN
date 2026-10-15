@@ -618,7 +618,7 @@ public:
         const float orbitCenterY = storedSdfScene ? 64.0f : (glyphSdfScene ? 0.0f : 5.0f);
         const float orbitCenterZ = storedSdfScene ? 0.0f : 5.0f;
         const float orbitDistance = storedSdfScene ? 300.0f :
-            (glyphSdfScene ? (glyphSdfCompare ? 16.0f : 7.5f) : 14.0f);
+            (glyphSdfScene ? (glyphSdfCompare ? 16.0f : 9.5f) : 14.0f);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
