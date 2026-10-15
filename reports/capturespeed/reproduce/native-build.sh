@@ -32,7 +32,7 @@ if [[ -n "${UNDERTOW_ROOT:-}" ]]; then
     echo "native-build: UNDERTOW_ROOT does not contain core/src/Undertow.Authoring/Schema: $UNDERTOW_ROOT" >&2
     exit 2
   fi
-  undertow_root_win="$(wslpath -w "$UNDERTOW_ROOT")"
+  undertow_root_win="$(wslpath -w "$UNDERTOW_ROOT" | sed 's#\\#/#g')"
   native_command="$native_batch_win $repo_commit $undertow_root_win"
 fi
 bash "$queue" --agent nativerunner --resource build \
