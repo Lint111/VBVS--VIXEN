@@ -3,48 +3,58 @@
 #include "Text/Bidi.h"
 #include "Text/LineBreaker.h"
 #include "Text/Shaper.h"
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
 
 namespace Vixen::Text {
 
-enum class GlyphOutlineFillRule : std::uint8_t { NonZeroWinding, EvenOdd };
-enum class GlyphOutlineSegmentKind : std::uint8_t { Line, Quadratic, Cubic };
+using GlyphOutlineInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
+using GlyphOutlineSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
+using GlyphOutlinePoint = Yeroket::Sdf::Generated::GlyphOutlinePoint;
+class GlyphAtlas;
 
-struct GlyphOutlinePoint {
-    float x = 0.0f;
-    float y = 0.0f;
+enum class GlyphOutlineBakeDiagnosticCode : std::uint8_t {
+    None,
+    InvalidFace,
+    GlyphLoadFailed,
+    SegmentCapacityExceeded,
 };
 
-// Segment starts are implicit: the first segment begins at its contour's start
-// point, and every later segment begins at the previous segment's end point.
-// A segment kind consumes one, two, or three points respectively (line end;
-// quadratic control + end; cubic controls + end).
-struct GlyphOutlineContour {
-    GlyphOutlinePoint start;
-    std::uint32_t firstSegment = 0;
-    std::uint32_t segmentCount = 0;
-};
+// World-space contour evaluation keeps its geometric detail while the glyph is
+// large enough on screen. At the final small-size band, reuse the atlas MSDF
+// generated from this same contour bucket.
+enum class WorldTextRenderBand : std::uint8_t { AnalyticSdf, MsdfScreen };
+inline constexpr float kMsdfScreenFallbackMaxGlyphHeightPixels = 16.0f;
 
-struct GlyphOutline {
-    GlyphOutlineFillRule fillRule = GlyphOutlineFillRule::NonZeroWinding;
-    std::vector<GlyphOutlineContour> contours;
-    std::vector<GlyphOutlineSegmentKind> segmentKinds;
-    std::vector<GlyphOutlinePoint> controlAndEndPoints;
+[[nodiscard]] inline WorldTextRenderBand SelectWorldTextRenderBand(
+    float projectedGlyphHeightPixels, bool msdfAvailable) noexcept {
+    return msdfAvailable && projectedGlyphHeightPixels <= kMsdfScreenFallbackMaxGlyphHeightPixels
+        ? WorldTextRenderBand::MsdfScreen
+        : WorldTextRenderBand::AnalyticSdf;
+}
+
+struct GlyphOutlineBakeDiagnostic {
+    std::uint32_t glyphId = 0;
+    GlyphOutlineBakeDiagnosticCode code = GlyphOutlineBakeDiagnosticCode::None;
+    std::uint32_t requiredSegments = 0;
+    std::uint32_t segmentCapacity = 0;
 };
 
 // Position values use the same 26.6 pixel units as FreeType and HarfBuzz.
-// outlineIndex refers to the request-local deduplicated outlines array.
+// Each positioned glyph refers directly to the atlas-owned typed instance row;
+// repeated glyphs across strings share that same immutable bucket.
 struct PositionedGlyphOutline {
     std::uint32_t glyphId = 0;
     std::uint32_t cluster = 0;
-    std::uint32_t outlineIndex = 0;
+    std::shared_ptr<const GlyphOutlineInstance> instance;
     std::int32_t x = 0;
     std::int32_t y = 0;
     std::int32_t xAdvance = 0;
@@ -58,23 +68,27 @@ struct WorldTextLayout {
     bool mirrorX = false;
     TextDirection direction = TextDirection::LeftToRight;
     std::vector<LineBreakOpportunity> lineBreaks;
-    std::vector<GlyphOutline> outlines;
+    std::vector<GlyphOutlineBakeDiagnostic> diagnostics;
     std::vector<PositionedGlyphOutline> glyphs;
 };
 
-// Extract one already-shaped FreeType glyph. Empty outlines are valid (for
-// example, the space glyph); malformed glyphs and FreeType errors return false.
-bool LoadGlyphOutline(FT_Face fontFace, std::uint32_t glyphId, GlyphOutline& outline);
+// Bake one already-shaped FreeType glyph into the existing fixed-width GPU
+// bucket. Capacity overflow is returned as a bake diagnostic; it never grows
+// the bucket or throws from runtime evaluation.
+bool LoadGlyphOutline(FT_Face fontFace, std::uint32_t glyphId,
+                      GlyphOutlineInstance& instance,
+                      GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
 
 // Shape a literal with the selected preset, preserve its visual bidi run order,
-// and attach one outline reference to every positioned glyph. The caller
-// applies worldUnitsPerPixel / 64 to both the contour coordinates and the
+// and attach one typed glyph-instance reference to every positioned glyph. The
+// caller applies worldUnitsPerPixel / 64 to both contour coordinates and
 // instance positions. RTL layouts carry mirrorX so the scene transform can
 // mirror the sign as a whole.
 WorldTextLayout ShapeWorldText(const PresetDesc& preset,
                                std::span<const std::uint32_t> requiredScriptTags,
+                               GlyphAtlas& glyphAtlas,
                                FT_Face fontFace,
                                std::string_view utf8Text,
-                               std::string_view language = {});
+                               std::string_view language);
 
 } // namespace Vixen::Text

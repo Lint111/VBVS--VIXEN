@@ -96,6 +96,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <regex>
@@ -109,6 +111,9 @@
 
 #ifndef SDF_CORE_KERNELS_GLSL_PATH
 #  error "SDF_CORE_KERNELS_GLSL_PATH must be defined via CMake compile_definitions"
+#endif
+#ifndef GLYPH_OUTLINE_INSTANCE_GLSL_PATH
+#  error "GLYPH_OUTLINE_INSTANCE_GLSL_PATH must be defined via CMake compile_definitions"
 #endif
 
 namespace {
@@ -232,6 +237,27 @@ void main() {
     return ss.str();
 }
 
+std::string ComposeGlyphComputeShader(const std::string& glyphInstanceGlsl,
+                                      const std::string& sdfCoreGlsl,
+                                      const std::string& emittedFieldFn) {
+    std::ostringstream ss;
+    ss << "#version 450\n" << glyphInstanceGlsl << "\n" << sdfCoreGlsl << "\n";
+    ss << emittedFieldFn << "\n";
+    ss << R"GLSL(
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };
+layout(set = 0, binding = 2, std430) readonly buffer InParams { float params[6]; };
+layout(set = 0, binding = 3, std430) readonly buffer InGlyphs { GlyphOutlineInstance glyphOutlineInstances[]; };
+void main() {
+    if (gl_GlobalInvocationID.x >= points.length()) return;
+    float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);
+    values[gl_GlobalInvocationID.x] = sdfRecipe_0(points[gl_GlobalInvocationID.x].xyz, p);
+}
+)GLSL";
+    return ss.str();
+}
+
 // ---------------------------------------------------------------------------
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype variant.
 // Same shape as ComposeComputeShader above, but the wrapper main() also reads back the
@@ -304,6 +330,12 @@ protected:
 
     void SetUp() override {
         VixenSelectWslGpuIcd();
+        const ::testing::TestInfo* currentTest =
+            ::testing::UnitTest::GetInstance()->current_test_info();
+        const bool glyphOutlineParity = currentTest &&
+            std::string(currentTest->name()) == "GlyphOutlineBucketMatchesCpu";
+        const char* icdPath = std::getenv("VK_ICD_FILENAMES");
+        const bool dozenSelected = icdPath && std::string(icdPath).find("dzn") != std::string::npos;
 
         VkApplicationInfo appInfo{};
         appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -331,7 +363,7 @@ protected:
         for (VkPhysicalDevice dev : devices) {
             VkPhysicalDeviceProperties props{};
             vkGetPhysicalDeviceProperties(dev, &props);
-            if (IsRealGpu(props)) {
+            if (IsRealGpu(props) || (glyphOutlineParity && dozenSelected)) {
                 physicalDevice_     = dev;
                 selectedDeviceName_ = props.deviceName;
                 realGpuConfirmed_   = true;
@@ -442,8 +474,9 @@ protected:
     void DispatchAndReadback(const std::vector<uint32_t>& spirv,
                               const std::vector<glm::vec3>& points,
                               std::vector<float>& outValues,
-                              const std::array<float, 6>& params = {}) {
-        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
+                              const std::array<float, 6>& params = {},
+                              std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
+        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed GPU target; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
         const uint32_t pointCount = static_cast<uint32_t>(points.size());
@@ -482,6 +515,22 @@ protected:
             vkUnmapMemory(logicalDevice_, paramsMem);
         }
 
+        const Yeroket::Sdf::Generated::GlyphOutlineInstance emptyGlyph{};
+        const std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphRows =
+            glyphInstances.empty()
+                ? std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&emptyGlyph, 1)
+                : glyphInstances;
+        const VkDeviceSize glyphSize = static_cast<VkDeviceSize>(glyphRows.size_bytes());
+        VkBuffer glyphBuf = VK_NULL_HANDLE; VkDeviceMemory glyphMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(glyphSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, glyphBuf, glyphMem));
+        {
+            void* mapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, glyphMem, 0, glyphSize, 0, &mapped), VK_SUCCESS);
+            std::memcpy(mapped, glyphRows.data(), static_cast<size_t>(glyphSize));
+            vkUnmapMemory(logicalDevice_, glyphMem);
+        }
+
         VkShaderModuleCreateInfo smci{};
         smci.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smci.codeSize = spirv.size() * sizeof(uint32_t);
@@ -489,23 +538,17 @@ protected:
         VkShaderModule shaderModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
 
-        VkDescriptorSetLayoutBinding bindings[3]{};
-        bindings[0].binding         = 0;
-        bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bindings[0].descriptorCount = 1;
-        bindings[0].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
-        bindings[1].binding         = 1;
-        bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bindings[1].descriptorCount = 1;
-        bindings[1].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
-        bindings[2].binding         = 2;
-        bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bindings[2].descriptorCount = 1;
-        bindings[2].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+        VkDescriptorSetLayoutBinding bindings[4]{};
+        for (uint32_t i = 0; i < 4; ++i) {
+            bindings[i].binding         = i;
+            bindings[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
 
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 3;
+        dslci.bindingCount = 4;
         dslci.pBindings    = bindings;
         VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
@@ -528,7 +571,7 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline),
                   VK_SUCCESS);
 
-        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets       = 1;
@@ -545,29 +588,18 @@ protected:
         VkDescriptorSet descSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &descSet), VK_SUCCESS);
 
-        VkDescriptorBufferInfo inInfo{inBuf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo outInfo{outBuf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo paramsInfo{paramsBuf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[3]{};
-        writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[0].dstSet          = descSet;
-        writes[0].dstBinding      = 0;
-        writes[0].descriptorCount = 1;
-        writes[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writes[0].pBufferInfo     = &inInfo;
-        writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet          = descSet;
-        writes[1].dstBinding      = 1;
-        writes[1].descriptorCount = 1;
-        writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writes[1].pBufferInfo     = &outInfo;
-        writes[2].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[2].dstSet          = descSet;
-        writes[2].dstBinding      = 2;
-        writes[2].descriptorCount = 1;
-        writes[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writes[2].pBufferInfo     = &paramsInfo;
-        vkUpdateDescriptorSets(logicalDevice_, 3, writes, 0, nullptr);
+        VkDescriptorBufferInfo infos[4]{{inBuf, 0, VK_WHOLE_SIZE}, {outBuf, 0, VK_WHOLE_SIZE},
+                                        {paramsBuf, 0, VK_WHOLE_SIZE}, {glyphBuf, 0, VK_WHOLE_SIZE}};
+        VkWriteDescriptorSet writes[4]{};
+        for (uint32_t i = 0; i < 4; ++i) {
+            writes[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet          = descSet;
+            writes[i].dstBinding      = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo     = &infos[i];
+        }
+        vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
 
         VkCommandBufferAllocateInfo cbai{};
         cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -608,7 +640,7 @@ protected:
         si.commandBufferCount = 1;
         si.pCommandBuffers    = &cmd;
 
-        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
+        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed GPU target; refusing vkQueueSubmit.";
         ASSERT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
         ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
 
@@ -630,6 +662,8 @@ protected:
         vkFreeMemory(logicalDevice_, inMem, nullptr);
         vkDestroyBuffer(logicalDevice_, paramsBuf, nullptr);
         vkFreeMemory(logicalDevice_, paramsMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, glyphBuf, nullptr);
+        vkFreeMemory(logicalDevice_, glyphMem, nullptr);
     }
 
     // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype variant
@@ -902,6 +936,111 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
                 << samplePoints[i].x << ", " << samplePoints[i].y << ", " << samplePoints[i].z
                 << "): gpu=" << gpuValues[i] << " cpu=" << cpuRef[i]
                 << " |diff|=" << std::fabs(gpuValues[i] - cpuRef[i]);
+        }
+    }
+}
+
+TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
+    using GlyphInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
+    using GlyphSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
+
+    auto appendContour = [](GlyphInstance& glyph, std::initializer_list<glm::vec2> vertices) {
+        ASSERT_GE(vertices.size(), 3U);
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            ASSERT_LT(glyph.SegmentCount, std::size(glyph.Segments));
+            const auto current = *(vertices.begin() + static_cast<std::ptrdiff_t>(i));
+            const auto next = *(vertices.begin() + static_cast<std::ptrdiff_t>((i + 1) % vertices.size()));
+            GlyphSegment segment{};
+            segment.P0.X = current.x; segment.P0.Y = current.y;
+            segment.P1.X = next.x;    segment.P1.Y = next.y;
+            segment.P2.X = next.x;    segment.P2.Y = next.y;
+            segment.P3.X = next.x;    segment.P3.Y = next.y;
+            segment.Kind = 0U;
+            segment.ContourStart = i == 0U ? 1U : 0U;
+            glyph.Segments[glyph.SegmentCount++] = segment;
+        }
+    };
+
+    auto makeGlyph = [&](bool doubleHole) {
+        GlyphInstance glyph{};
+        glyph.BoundsMin.X = -1.0f; glyph.BoundsMin.Y = doubleHole ? -1.0f : -1.4f;
+        glyph.BoundsMax.X = 1.0f;  glyph.BoundsMax.Y = 1.0f;
+        glyph.FillRule = 0U; // FreeType's non-zero winding rule.
+        appendContour(glyph, {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}});
+        if (doubleHole) {
+            appendContour(glyph, {{-0.3f, 0.18f}, {-0.3f, 0.62f}, {0.3f, 0.62f}, {0.3f, 0.18f}});
+            appendContour(glyph, {{-0.3f, -0.62f}, {-0.3f, -0.18f}, {0.3f, -0.18f}, {0.3f, -0.62f}});
+        } else {
+            appendContour(glyph, {{-0.4f, -0.4f}, {-0.4f, 0.4f}, {0.4f, 0.4f}, {0.4f, -0.4f}});
+            // Keep the closed winding while exercising the actual quadratic and cubic
+            // evaluator branches used by FreeType outlines.
+            glyph.Segments[0].Kind = 2U;
+            glyph.Segments[0].P1.X = -0.5f; glyph.Segments[0].P1.Y = -1.35f;
+            glyph.Segments[0].P2.X = 0.5f;  glyph.Segments[0].P2.Y = -1.35f;
+            glyph.Segments[7].Kind = 1U;
+            glyph.Segments[7].P1.X = 0.0f;  glyph.Segments[7].P1.Y = -0.62f;
+            glyph.Segments[7].P2.X = -0.4f;  glyph.Segments[7].P2.Y = -0.4f;
+            glyph.Segments[7].P3.X = -0.4f;  glyph.Segments[7].P3.Y = -0.4f;
+        }
+        return glyph;
+    };
+
+    std::array<GlyphInstance, 2> glyphInstances{makeGlyph(false), makeGlyph(true)};
+    const std::span<const GlyphInstance> glyphRows(glyphInstances);
+
+    std::ifstream glyphFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
+    ASSERT_TRUE(glyphFile.good()) << "Cannot open generated glyph layout: "
+                                 << GLYPH_OUTLINE_INSTANCE_GLSL_PATH;
+    std::ostringstream glyphSource;
+    glyphSource << glyphFile.rdbuf();
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good()) << "Cannot open generated SDF kernels: "
+                                   << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kernelSource;
+    kernelSource << kernelFile.rdbuf();
+
+    const std::array<std::vector<glm::vec3>, 2> samples{{
+        {{0.7f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.5f, 0.0f, 0.0f}},
+        {{0.0f, 0.4f, 0.0f}, {0.0f, -0.4f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.5f, 0.0f, 0.0f}},
+    }};
+    const std::array<std::array<float, 4>, 2> expectedSigns{{
+        {{-1.0f, 1.0f, 1.0f, 0.0f}},
+        {{1.0f, 1.0f, -1.0f, 1.0f}},
+    }};
+
+    ShaderManagement::ShaderCompiler compiler;
+    for (uint32_t glyphIndex = 0; glyphIndex < glyphInstances.size(); ++glyphIndex) {
+        SCOPED_TRACE(glyphIndex == 0 ? "o: one winding hole" : "8: two winding holes");
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<uint8_t>(SdfOpCode::GlyphOutline);
+        instruction.data[0] = std::bit_cast<float>(glyphIndex);
+
+        std::vector<float> cpuValues(samples[glyphIndex].size());
+        for (size_t i = 0; i < samples[glyphIndex].size(); ++i) {
+            cpuValues[i] = Vixen::SVO::Recipe::evalRecipe(
+                &instruction, 1U, samples[glyphIndex][i], std::span<const float>{}, nullptr, nullptr, glyphRows);
+            EXPECT_EQ(std::signbit(cpuValues[i]), expectedSigns[glyphIndex][i] < 0.0f)
+                << "wrong fill sign at sample " << i << ": " << cpuValues[i];
+        }
+
+        const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+            &instruction, 1U, /*recipeId=*/0, false, nullptr, glyphRows);
+        const std::string shaderSource = ComposeGlyphComputeShader(
+            glyphSource.str(), kernelSource.str(), fieldFn);
+        ShaderManagement::CompilationOptions options;
+        options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+        auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSource, "main", options);
+        ASSERT_TRUE(compiled.success) << compiled.GetFullLog() << "\n--- emitted function ---\n" << fieldFn;
+        ASSERT_FALSE(compiled.spirv.empty());
+
+        std::vector<float> gpuValues;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(
+            compiled.spirv, samples[glyphIndex], gpuValues, {}, glyphRows));
+        ASSERT_EQ(gpuValues.size(), cpuValues.size());
+        for (size_t i = 0; i < gpuValues.size(); ++i) {
+            EXPECT_TRUE(NearlyEqual(gpuValues[i], cpuValues[i]))
+                << "distance mismatch at sample " << i << ": gpu=" << gpuValues[i]
+                << " cpu=" << cpuValues[i] << " |diff|=" << std::fabs(gpuValues[i] - cpuValues[i]);
         }
     }
 }

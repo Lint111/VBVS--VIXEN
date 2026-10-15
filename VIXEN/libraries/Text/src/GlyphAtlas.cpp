@@ -1,6 +1,8 @@
 #include "Text/GlyphAtlas.h"
 
 #include "Text/AtlasFormat.h"
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/SdfCoreKernels.g.hpp"
 
 #include FT_OUTLINE_H
 #include <msdfgen.h>
@@ -30,6 +32,11 @@ msdfgen::Point2 ToPoint(const FT_Vector& point) {
     constexpr double kFreeTypePixelScale = 1.0 / 64.0;
     return {static_cast<double>(point.x) * kFreeTypePixelScale,
             static_cast<double>(point.y) * kFreeTypePixelScale};
+}
+
+msdfgen::Point2 ToPoint(const GlyphOutlinePoint& point, float pointsToPixels) {
+    return {static_cast<double>(point.X) * static_cast<double>(pointsToPixels),
+            static_cast<double>(point.Y) * static_cast<double>(pointsToPixels)};
 }
 
 void CloseContour(OutlineBuilder& builder) {
@@ -66,10 +73,56 @@ int ConicTo(const FT_Vector* control, const FT_Vector* to, void* user) {
 int CubicTo(const FT_Vector* control1, const FT_Vector* control2, const FT_Vector* to, void* user) {
     auto& builder = *static_cast<OutlineBuilder*>(user);
     const msdfgen::Point2 end = ToPoint(*to);
-    builder.contour->addEdge(msdfgen::EdgeHolder(builder.current, ToPoint(*control1), ToPoint(*control2), end));
+    builder.contour->addEdge(msdfgen::EdgeHolder(builder.current, ToPoint(*control1),
+                                                  ToPoint(*control2), end));
     builder.current = end;
     return 0;
 }
+
+std::unique_ptr<msdfgen::Shape> BuildMsdfShapeFromBucket(const GlyphOutlineInstance& glyph,
+                                                         float pointsToPixels) {
+    auto shape = std::make_unique<msdfgen::Shape>();
+    msdfgen::Contour* contour = nullptr;
+    for (std::uint32_t index = 0; index < glyph.SegmentCount; ++index) {
+        const GlyphOutlineSegment& segment = glyph.Segments[index];
+        if (segment.ContourStart != 0U)
+            contour = &shape->addContour();
+        if (!contour)
+            return {};
+
+        const msdfgen::Point2 p0 = ToPoint(segment.P0, pointsToPixels);
+        const msdfgen::Point2 p1 = ToPoint(segment.P1, pointsToPixels);
+        const msdfgen::Point2 p2 = ToPoint(segment.P2, pointsToPixels);
+        const msdfgen::Point2 p3 = ToPoint(segment.P3, pointsToPixels);
+        switch (segment.Kind) {
+            case 0U:
+                if (p0 != p1)
+                    contour->addEdge(msdfgen::EdgeHolder(p0, p1));
+                break;
+            case 1U:
+                contour->addEdge(msdfgen::EdgeHolder(p0, p1, p2));
+                break;
+            case 2U:
+                contour->addEdge(msdfgen::EdgeHolder(p0, p1, p2, p3));
+                break;
+            default:
+                return {};
+        }
+    }
+    shape->setYAxisOrientation(msdfgen::Y_UPWARD);
+    shape->normalize();
+    if (!shape->validate())
+        return {};
+    return shape;
+}
+
+constexpr FT_Outline_Funcs kOutlineCallbacks{
+    &MoveTo,
+    &LineTo,
+    &ConicTo,
+    &CubicTo,
+    0,
+    0};
 
 std::uint8_t ToByte(float value) {
     const float clamped = std::clamp(value, 0.0f, 1.0f);
@@ -210,6 +263,7 @@ struct GlyphAtlas::Impl {
     Placement placement;
     std::uint32_t version = 1;
     std::unordered_map<std::uint32_t, AtlasGlyph> glyphs;
+    std::unordered_map<std::uint32_t, std::shared_ptr<const GlyphOutlineInstance>> outlineInstances;
     std::unique_ptr<Rml::CallbackTextureSource> currentSource;
     std::vector<std::unique_ptr<Rml::CallbackTextureSource>> retainedSources;
 };
@@ -218,6 +272,36 @@ GlyphAtlas::GlyphAtlas(std::uint32_t pageDimension, float distanceRange)
     : impl_(std::make_unique<Impl>(pageDimension, distanceRange)) {}
 
 GlyphAtlas::~GlyphAtlas() = default;
+
+std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
+    FT_Face face, std::uint32_t glyphIndex, GlyphOutlineBakeDiagnostic* diagnostic) {
+    const auto found = impl_->outlineInstances.find(glyphIndex);
+    if (found != impl_->outlineInstances.end()) {
+        if (diagnostic) {
+            diagnostic->glyphId = glyphIndex;
+            diagnostic->code = GlyphOutlineBakeDiagnosticCode::None;
+            diagnostic->requiredSegments = found->second->SegmentCount;
+            diagnostic->segmentCapacity = static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity);
+        }
+        return found->second;
+    }
+    if (!face)
+        return {};
+
+    GlyphOutlineInstance instance{};
+    GlyphOutlineBakeDiagnostic localDiagnostic;
+    if (!LoadGlyphOutline(face, glyphIndex, instance, &localDiagnostic)) {
+        if (diagnostic)
+            *diagnostic = localDiagnostic;
+        return {};
+    }
+
+    auto sharedInstance = std::make_shared<const GlyphOutlineInstance>(instance);
+    impl_->outlineInstances.emplace(glyphIndex, sharedInstance);
+    if (diagnostic)
+        *diagnostic = localDiagnostic;
+    return sharedInstance;
+}
 
 bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) {
     if (!face || fontSize <= 0 || impl_->pageDimension == 0 || impl_->distanceRange <= 0.0f)
@@ -241,14 +325,7 @@ bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) 
     }
 
     OutlineBuilder builder;
-    FT_Outline_Funcs functions{};
-    functions.move_to = MoveTo;
-    functions.line_to = LineTo;
-    functions.conic_to = ConicTo;
-    functions.cubic_to = CubicTo;
-    functions.shift = 0;
-    functions.delta = 0;
-    if (FT_Outline_Decompose(&slot->outline, &functions, &builder) != 0)
+    if (FT_Outline_Decompose(&slot->outline, &kOutlineCallbacks, &builder) != 0)
         return false;
     CloseContour(builder);
     builder.shape.setYAxisOrientation(msdfgen::Y_UPWARD);
@@ -262,6 +339,34 @@ bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) 
     const double xMax = xMin + static_cast<double>(slot->metrics.width) * kFreeTypePixelScale;
     const double yMin = yMax - static_cast<double>(slot->metrics.height) * kFreeTypePixelScale;
     return impl_->StoreGlyph(glyph, &builder.shape, xMin, yMin, xMax, yMax);
+}
+
+bool GlyphAtlas::AddGlyphFromOutline(std::uint32_t glyphIndex, const GlyphOutlineInstance& outline,
+                                     float pointsToPixels) {
+    if (glyphIndex == 0 || impl_->pageDimension == 0 || impl_->distanceRange <= 0.0f ||
+        outline.SegmentCount > static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity) ||
+        !std::isfinite(pointsToPixels) || pointsToPixels <= 0.0f)
+        return false;
+    if (impl_->glyphs.contains(glyphIndex))
+        return true;
+
+    AtlasGlyph glyph;
+    glyph.glyphIndex = glyphIndex;
+    if (outline.SegmentCount == 0U) {
+        impl_->glyphs.emplace(glyphIndex, glyph);
+        return true;
+    }
+
+    std::unique_ptr<msdfgen::Shape> shape = BuildMsdfShapeFromBucket(outline, pointsToPixels);
+    if (!shape)
+        return false;
+
+    const double scale = static_cast<double>(pointsToPixels);
+    const double xMin = static_cast<double>(outline.BoundsMin.X) * scale;
+    const double yMin = static_cast<double>(outline.BoundsMin.Y) * scale;
+    const double xMax = static_cast<double>(outline.BoundsMax.X) * scale;
+    const double yMax = static_cast<double>(outline.BoundsMax.Y) * scale;
+    return impl_->StoreGlyph(glyph, shape.get(), xMin, yMin, xMax, yMax);
 }
 
 bool GlyphAtlas::AddReplacementGlyph(FT_Face face, int fontSize) {

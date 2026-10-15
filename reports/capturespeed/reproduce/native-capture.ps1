@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$Commit,
   [Parameter(Mandatory=$true)][ValidateSet('state', 'label')][string]$Mode,
-  [ValidateSet('lookdev', 'planet')][string]$Capture,
+  [ValidateSet('lookdev', 'planet', 'glyphsdf')][string]$Capture,
   [string]$State,
   [string]$CtestLabel,
   [string]$Root = 'C:\vixen-native\nativerunner'
@@ -28,8 +28,13 @@ if ($Mode -eq 'state') {
       throw "unsupported planet capture state: $State"
     }
     $testRegex = '^Application\.PlanetCapture\.' + [regex]::Escape($State) + '$'
+  } elseif ($Capture -eq 'glyphsdf') {
+    if ($State -ne 'localized-sign') {
+      throw "unsupported glyph SDF capture state: $State"
+    }
+    $testRegex = '^Application\.LookdevCapture\.GlyphSdfLocalizedSign$'
   } else {
-    throw 'Capture must be lookdev or planet in state mode'
+    throw 'Capture must be lookdev, planet, or glyphsdf in state mode'
   }
 } elseif (-not $CtestLabel) {
   throw 'CtestLabel is required in label mode'
@@ -39,6 +44,10 @@ $captureRoot = Join-Path $buildDir 'runtime-captures'
 if ($Mode -eq 'state') {
   if ($Capture -eq 'lookdev') {
     foreach ($path in @((Join-Path $captureRoot "lookdev\$State"), (Join-Path $captureRoot "lookdev\.repeat\$State"))) {
+      if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+    }
+  } elseif ($Capture -eq 'glyphsdf') {
+    foreach ($path in @((Join-Path $captureRoot 'glyphsdf'), (Join-Path $captureRoot 'glyphsdf\.repeat'))) {
       if (Test-Path $path) { Remove-Item -Recurse -Force $path }
     }
   } else {

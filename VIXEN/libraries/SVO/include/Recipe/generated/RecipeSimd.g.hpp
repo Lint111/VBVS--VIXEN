@@ -511,7 +511,7 @@ inline constexpr std::array<RecipeValueTypePolicy, 3> RecipeValueTypePolicies{{
     {RecipeValueType::Q16_16, RecipeOverflowBehavior::SaturatingCap, -2147483648ll, 2147483647ull, 16, "int"},
 }};
 struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; RecipeIntervalRule intervalRule; std::int8_t intervalData0, intervalData1; const char* name; };
-inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
+inline constexpr std::array<RecipeOpcodeMetadata, 123> RecipeOpcodeTable{{
     {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Sphere, 0, 3, "Sphere"},
     {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::AxisAlignedBox, 0, -1, "Box"},
     {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "BoxRounded"},
@@ -634,6 +634,7 @@ inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
     {179, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToFloat"},
     {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamU32"},
     {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamQ16"},
+    {182, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "GlyphOutline"},
 }};
 } // namespace Yeroket::Sdf::Generated
 // BEGIN GENERATED RECIPE ANALYSIS (CPU proof, compiled consumers; R441/R442)
@@ -922,7 +923,7 @@ inline RecipeRange RecipeTransfer_81(RecipeRange cond, RecipeRange a, RecipeRang
 
 }
 struct RecipeAnalysisCoverage { std::uint8_t opcode; bool cpu, simd, gpu, pure; const char* name; const char* reason; bool vulkanPreserve, dznPrecise, extent, occupancy; };
-inline constexpr std::array<RecipeAnalysisCoverage, 184> RecipeAnalysisCoverageTable{{
+inline constexpr std::array<RecipeAnalysisCoverage, 185> RecipeAnalysisCoverageTable{{
     {0, true, true, false, true, "Sphere", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {1, true, true, false, true, "Box", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {2, false, false, false, false, "BoxRounded", "unsupported or opaque body/control/type; unknown", false, false, false, false},
@@ -1107,6 +1108,7 @@ inline constexpr std::array<RecipeAnalysisCoverage, 184> RecipeAnalysisCoverageT
     {179, false, false, false, false, "U32ToFloat", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {180, false, false, false, false, "ReadParamU32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {181, false, false, false, false, "ReadParamQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {182, false, false, false, false, "GlyphOutline", "unsupported or opaque body/control/type; unknown", false, false, false, false},
 }};
 inline const RecipeAnalysisCoverage* FindRecipeAnalysisCoverage(std::uint8_t opcode) { for(const auto& entry:RecipeAnalysisCoverageTable) if(entry.opcode==opcode) return &entry; return nullptr; }
 inline bool RecipeBackendCovered(const RecipeAnalysisCoverage& entry, RecipeProofBackend backend) { switch(backend) { case RecipeProofBackend::CpuStrict: return entry.cpu; case RecipeProofBackend::SimdStrict: return entry.simd; case RecipeProofBackend::GpuVulkanPreserve: return entry.vulkanPreserve; case RecipeProofBackend::GpuDznPrecise: return entry.dznPrecise; default: return false; } }
@@ -3006,6 +3008,16 @@ inline yk::simd4::f32 SdfCore_U32ToFloatSimd4(yk::simd4::f32 value) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::f32 SdfCore_GlyphOutlineSimd4(yk::simd4::f32x3 p, GlyphOutlineInstance glyph) {
+    alignas(16) float p_x[4], p_y[4], p_z[4];
+    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_GlyphOutline(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), glyph);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
 } // namespace Yeroket::Sdf::Generated
 namespace Vixen::SVO::Recipe {
 using Yeroket::Sdf::Generated::RecipeOpcodeMetadata;
@@ -3783,6 +3795,7 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::U32ToFloat: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32ToFloat>;
         case Recipe::SdfOpCode::ReadParamU32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamU32>;
         case Recipe::SdfOpCode::ReadParamQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamQ16>;
+        case Recipe::SdfOpCode::GlyphOutline: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::GlyphOutline>;
         default: return nullptr;
     }
 }

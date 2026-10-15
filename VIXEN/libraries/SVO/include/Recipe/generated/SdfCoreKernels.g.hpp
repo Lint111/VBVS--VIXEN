@@ -7,6 +7,73 @@
 
 namespace Yeroket::Sdf::Generated {
 
+inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
+    float minimumDistance = 1.0e20f;
+    uint32_t crossings = 0u;
+    int32_t winding = 0;
+    uint32_t segmentCount = glm::min(glyph.SegmentCount, (uint32_t)static_cast<int32_t>(64));
+    bool checkWinding = p.x >= glyph.BoundsMin.X && p.x <= glyph.BoundsMax.X && p.y >= glyph.BoundsMin.Y && p.y <= glyph.BoundsMax.Y;
+    for (uint32_t segmentIndex = 0u; segmentIndex < segmentCount; ++segmentIndex)
+    {
+        GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
+        glm::vec2 p0 = glm::vec2(segment.P0.X, segment.P0.Y);
+        glm::vec2 p1 = glm::vec2(segment.P1.X, segment.P1.Y);
+        glm::vec2 p2 = glm::vec2(segment.P2.X, segment.P2.Y);
+        glm::vec2 p3 = glm::vec2(segment.P3.X, segment.P3.Y);
+        glm::vec2 previous = p0;
+        for (uint32_t sampleIndex = 1u; sampleIndex <= 16u; ++sampleIndex)
+        {
+            float t = (float)sampleIndex / 16.0f;
+            float u = 1.0f - t;
+            glm::vec2 current = glm::vec2(0.0f, 0.0f);
+            if (segment.Kind == 0u)
+            {
+                current = p0 * u + p1 * t;
+            }
+            else
+            {
+                if (segment.Kind == 1u)
+                {
+                    current = p0 * (u * u) + p1 * (2.0f * u * t) + p2 * (t * t);
+                }
+                else
+                {
+                    current = p0 * (u * u * u) + p1 * (3.0f * u * u * t) + p2 * (3.0f * u * t * t) + p3 * (t * t * t);
+                }
+            }
+            glm::vec2 edge = current - previous;
+            float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
+            float projection = (edgeLengthSquared > 0.0f ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared : 0.0f);
+            if (projection < 0.0f)
+            {
+                projection = 0.0f;
+            }
+            if (projection > 1.0f)
+            {
+                projection = 1.0f;
+            }
+            glm::vec2 closest = previous + edge * projection;
+            float distance = glm::length(glm::vec2(p.x - closest.x, p.y - closest.y));
+            if (distance < minimumDistance)
+            {
+                minimumDistance = distance;
+            }
+            if (checkWinding && ((previous.y <= p.y && current.y > p.y) || (previous.y > p.y && current.y <= p.y)))
+            {
+                float crossingX = previous.x + (p.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+                if (crossingX > p.x)
+                {
+                    crossings += 1u;
+                    winding += (current.y > previous.y ? 1 : -1);
+                }
+            }
+            previous = current;
+        }
+    }
+    bool inside = checkWinding && ((glyph.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0));
+    return (inside ? -minimumDistance : minimumDistance);
+}
+
 inline float SdfCore_Sphere(glm::vec3 p, glm::vec3 center, float radius) {
     return glm::length(p - center) - radius;
 }

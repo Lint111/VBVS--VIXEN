@@ -13,11 +13,20 @@
 #include "Nodes/ReservoirConfigNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
+#include "Text/GlyphAtlas.h"
+#include "Text/GlyphOutline.h"
+#include "SdfBake.h"
+#include "ShellOctreeGpu.h"
 
 #include <gtest/gtest.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <array>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -27,11 +36,14 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <numeric>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -189,6 +201,14 @@ std::vector<CaptureScenario> BuildScenarios() {
         }
     }
     std::vector<CaptureScenario> scenarios;
+    if (std::getenv("VIXEN_GLYPHSDF_SCENE")) {
+        const auto preset = std::find_if(presets.begin(), presets.end(), [](const auto& value) {
+            return value.name == "midday";
+        });
+        if (preset != presets.end())
+            scenarios.push_back({*preset, 0.0f, "glyphsdf-localized-sign.png"});
+        return scenarios;
+    }
     scenarios.reserve(presets.size() * yaws.size());
     for (const auto& preset : presets) {
         if (requestedState && preset.name != std::string(requestedState)) continue;
@@ -199,6 +219,259 @@ std::vector<CaptureScenario> BuildScenarios() {
         }
     }
     return scenarios;
+}
+
+struct GlyphSdfSceneBundle {
+    Vixen::SVO::ConcatenatedOctrees pool;
+    std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+};
+
+struct GlyphSdfRecipe {
+    std::string label;
+    std::vector<Vixen::SVO::Recipe::SdfInstruction> instructions;
+    glm::vec3 bodyCenter{0.0f};
+    glm::vec3 color{1.0f};
+    bool carved = false;
+};
+
+bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path& evidenceDir,
+                        std::string& error) {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    using Vixen::Text::GlyphOutlineInstance;
+    using Vixen::Text::PositionedGlyphOutline;
+    using Vixen::Text::WorldTextLayout;
+
+    FT_Library library = nullptr;
+    FT_Face face = nullptr;
+    if (FT_Init_FreeType(&library) != 0 ||
+        FT_New_Face(library, TEXT_LATO_FONT_PATH, 0, &face) != 0 ||
+        FT_Set_Char_Size(face, 0, 24 * 64, 0, 0) != 0) {
+        if (face) FT_Done_Face(face);
+        if (library) FT_Done_FreeType(library);
+        error = "could not initialize the bundled Lato face for GlyphOutline scene capture";
+        return false;
+    }
+
+    Vixen::Text::GlyphAtlas glyphAtlas;
+    constexpr std::array<std::uint32_t, 1> requiredScripts{{
+        (static_cast<std::uint32_t>('L') << 24U) | (static_cast<std::uint32_t>('a') << 16U) |
+        (static_cast<std::uint32_t>('t') << 8U) | static_cast<std::uint32_t>('n')}};
+    const auto makePreset = [](Vixen::Text::TextDirection direction) {
+        Vixen::Text::PresetDesc preset{};
+        preset.direction = direction;
+        preset.shapingClass = Vixen::Text::ShapingClass::Default;
+        preset.lineBreakingClass = Vixen::Text::LineBreakingClass::Word;
+        preset.requiredScriptOrdinalCount = 1;
+        return preset;
+    };
+
+    std::array<WorldTextLayout, 2> layouts{
+        Vixen::Text::ShapeWorldText(makePreset(Vixen::Text::TextDirection::LeftToRight),
+                                    requiredScripts, glyphAtlas, face, "OPEN", "en"),
+        Vixen::Text::ShapeWorldText(makePreset(Vixen::Text::TextDirection::RightToLeft),
+                                    requiredScripts, glyphAtlas, face, "NEPO", "qps-rtl")};
+    if (!layouts[0].valid || !layouts[1].valid || layouts[0].glyphs.empty() || layouts[1].glyphs.empty()) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        error = "HarfBuzz did not produce positioned Latin and qps-rtl glyph runs";
+        return false;
+    }
+
+    constexpr float kGridUnitsPerPixel = 0.30f;
+    constexpr float kOutlineScale = kGridUnitsPerPixel / 64.0f;
+    std::vector<GlyphOutlineInstance> glyphRows;
+    std::unordered_map<const GlyphOutlineInstance*, std::uint32_t> glyphRowsByIdentity;
+    std::array<std::vector<std::uint32_t>, 2> layoutRows;
+    auto rowFor = [&](const PositionedGlyphOutline& glyph, std::uint32_t& row) {
+        if (!glyph.instance) return false;
+        if (const auto found = glyphRowsByIdentity.find(glyph.instance.get());
+            found != glyphRowsByIdentity.end()) {
+            row = found->second;
+            return true;
+        }
+        GlyphOutlineInstance normalized = *glyph.instance;
+        const float centerX = (normalized.BoundsMin.X + normalized.BoundsMax.X) * 0.5f;
+        const float centerY = (normalized.BoundsMin.Y + normalized.BoundsMax.Y) * 0.5f;
+        for (std::uint32_t segmentIndex = 0; segmentIndex < normalized.SegmentCount; ++segmentIndex) {
+            auto& segment = normalized.Segments[segmentIndex];
+            for (Vixen::Text::GlyphOutlinePoint* point :
+                 {&segment.P0, &segment.P1, &segment.P2, &segment.P3}) {
+                point->X = (point->X - centerX) * kOutlineScale;
+                point->Y = (point->Y - centerY) * kOutlineScale;
+            }
+        }
+        normalized.BoundsMin.X = (normalized.BoundsMin.X - centerX) * kOutlineScale;
+        normalized.BoundsMin.Y = (normalized.BoundsMin.Y - centerY) * kOutlineScale;
+        normalized.BoundsMax.X = (normalized.BoundsMax.X - centerX) * kOutlineScale;
+        normalized.BoundsMax.Y = (normalized.BoundsMax.Y - centerY) * kOutlineScale;
+        row = static_cast<std::uint32_t>(glyphRows.size());
+        glyphRows.push_back(std::move(normalized));
+        glyphRowsByIdentity.emplace(glyph.instance.get(), row);
+        return true;
+    };
+
+    for (std::size_t layoutIndex = 0; layoutIndex < layouts.size(); ++layoutIndex) {
+        for (const PositionedGlyphOutline& glyph : layouts[layoutIndex].glyphs) {
+            std::uint32_t row = 0;
+            if (!rowFor(glyph, row)) {
+                FT_Done_Face(face);
+                FT_Done_FreeType(library);
+                error = "positioned text glyph did not carry its typed GlyphOutline bucket";
+                return false;
+            }
+            layoutRows[layoutIndex].push_back(row);
+        }
+    }
+
+    auto instruction = [](SdfOpCode opCode) {
+        SdfInstruction result{};
+        result.opCode = static_cast<std::uint8_t>(opCode);
+        return result;
+    };
+    auto makeRecipe = [&](std::size_t layoutIndex, bool carved, glm::vec3 bodyCenter,
+                          glm::vec3 color, std::string label) {
+        GlyphSdfRecipe result;
+        result.label = std::move(label);
+        result.bodyCenter = bodyCenter;
+        result.color = color;
+        result.carved = carved;
+        SdfInstruction plaque = instruction(SdfOpCode::BoxRounded);
+        plaque.data[0] = 14.0f;
+        plaque.data[1] = 10.0f;
+        plaque.data[2] = 1.8f;
+        plaque.data[3] = 0.9f;
+        result.instructions.push_back(plaque);
+
+        const WorldTextLayout& layout = layouts[layoutIndex];
+        float minX = std::numeric_limits<float>::max();
+        float minY = std::numeric_limits<float>::max();
+        float maxX = std::numeric_limits<float>::lowest();
+        float maxY = std::numeric_limits<float>::lowest();
+        for (const PositionedGlyphOutline& glyph : layout.glyphs) {
+            minX = std::min(minX, static_cast<float>(glyph.x) + glyph.instance->BoundsMin.X);
+            minY = std::min(minY, static_cast<float>(glyph.y) + glyph.instance->BoundsMin.Y);
+            maxX = std::max(maxX, static_cast<float>(glyph.x) + glyph.instance->BoundsMax.X);
+            maxY = std::max(maxY, static_cast<float>(glyph.y) + glyph.instance->BoundsMax.Y);
+        }
+        const float textCenterX = (minX + maxX) * 0.5f;
+        const float textCenterY = (minY + maxY) * 0.5f;
+        const float bevel = 0.12f;
+        const float halfDepth = carved ? 3.0f : 0.95f;
+        const float textDepth = carved ? 0.0f : 2.25f;
+
+        for (std::size_t glyphIndex = 0; glyphIndex < layout.glyphs.size(); ++glyphIndex) {
+            const PositionedGlyphOutline& glyph = layout.glyphs[glyphIndex];
+            const float glyphCenterX = (glyph.instance->BoundsMin.X + glyph.instance->BoundsMax.X) * 0.5f;
+            const float glyphCenterY = (glyph.instance->BoundsMin.Y + glyph.instance->BoundsMax.Y) * 0.5f;
+            const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
+            const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
+            SdfInstruction transform = instruction(SdfOpCode::Transform);
+            transform.data[0] = (layout.mirrorX ? -rawX : rawX) * kOutlineScale;
+            transform.data[1] = rawY * kOutlineScale;
+            transform.data[2] = textDepth;
+            transform.data[4] = 0.0f;
+            transform.data[5] = 0.0f;
+            transform.data[6] = 0.0f;
+            transform.data[7] = 1.0f;
+            transform.data[8] = 1.0f;
+            transform.data[9] = 1.0f;
+            transform.data[10] = 1.0f;
+            transform.data[11] = 1.0f;
+            result.instructions.push_back(transform);
+
+            SdfInstruction glyphOp = instruction(SdfOpCode::GlyphOutline);
+            glyphOp.data[0] = std::bit_cast<float>(layoutRows[layoutIndex][glyphIndex]);
+            result.instructions.push_back(glyphOp);
+
+            SdfInstruction extrusion = instruction(SdfOpCode::Box);
+            extrusion.data[0] = (glyph.instance->BoundsMax.X - glyph.instance->BoundsMin.X) *
+                kOutlineScale * 0.5f + bevel;
+            extrusion.data[1] = (glyph.instance->BoundsMax.Y - glyph.instance->BoundsMin.Y) *
+                kOutlineScale * 0.5f + bevel;
+            extrusion.data[2] = halfDepth;
+            result.instructions.push_back(extrusion);
+            result.instructions.push_back(instruction(SdfOpCode::Intersect));
+
+            SdfInstruction round = instruction(SdfOpCode::Round);
+            round.data[0] = 0.035f;
+            result.instructions.push_back(round);
+            result.instructions.push_back(instruction(SdfOpCode::RestorePos));
+            result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
+        }
+        return result;
+    };
+
+    std::vector<GlyphSdfRecipe> recipes;
+    recipes.push_back(makeRecipe(0, true,  {0.7f, 6.9f, 5.0f}, {0.88f, 0.56f, 0.19f}, "latin-carved"));
+    recipes.push_back(makeRecipe(0, false, {9.3f, 6.9f, 5.0f}, {0.24f, 0.62f, 0.88f}, "latin-embossed"));
+    recipes.push_back(makeRecipe(1, true,  {0.7f, 0.1f, 5.0f}, {0.75f, 0.35f, 0.21f}, "qps-rtl-carved"));
+    recipes.push_back(makeRecipe(1, false, {9.3f, 0.1f, 5.0f}, {0.28f, 0.74f, 0.48f}, "qps-rtl-embossed"));
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
+
+    constexpr glm::vec3 bakeCenter{16.0f, 16.0f, 16.0f};
+    constexpr int bakeResolution = 32;
+    constexpr float bandVoxels = 2.5f;
+    std::ofstream comparison(evidenceDir / "glyphsdf-voxel-vs-analytic.txt", std::ios::out | std::ios::trunc);
+    if (!comparison) {
+        error = "could not write the GlyphOutline bake comparison evidence";
+        return false;
+    }
+    comparison << "variant changed_pixels max_distance\n";
+    std::vector<Vixen::SVO::SdfBodyOctree> bodies;
+    bodies.reserve(recipes.size());
+    std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers;
+    bodyPointers.reserve(recipes.size());
+    scene.instances.reserve(recipes.size());
+
+    constexpr int imageWidth = 96;
+    constexpr int imageHeight = 64;
+    for (std::size_t recipeIndex = 0; recipeIndex < recipes.size(); ++recipeIndex) {
+        const GlyphSdfRecipe& recipe = recipes[recipeIndex];
+        auto baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
+            recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
+            bakeCenter, bakeResolution, bandVoxels, 3, {}, glyphRows);
+        float maxDistance = 0.0f;
+        std::uint32_t changedPixels = 0;
+        const float sampleZ = recipe.carved ? 0.0f : 2.35f;
+        for (int y = 0; y < imageHeight; ++y) {
+            for (int x = 0; x < imageWidth; ++x) {
+                const glm::vec3 localPoint(
+                    -15.0f + (static_cast<float>(x) + 0.5f) * 30.0f / imageWidth,
+                    -10.0f + (static_cast<float>(y) + 0.5f) * 20.0f / imageHeight,
+                    sampleZ);
+                const float analytic = Vixen::SVO::Recipe::evalRecipe(
+                    recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
+                    localPoint, {}, nullptr, nullptr, glyphRows);
+                const auto stored = baked.sampleStored(bakeCenter + localPoint);
+                const float voxel = stored.value_or(std::max(bandVoxels + 1.0f, analytic));
+                maxDistance = std::max(maxDistance, std::abs(analytic - voxel));
+                if ((analytic < 0.0f) != (voxel < 0.0f)) ++changedPixels;
+            }
+        }
+        comparison << recipe.label << ' ' << changedPixels << ' ' << maxDistance << '\n';
+
+        bodies.push_back(Vixen::SVO::BuildSdfBodyOctree(baked, 3));
+        bodyPointers.push_back(&bodies.back());
+
+        Vixen::SVO::BodyInstanceGpu instance{};
+        constexpr float instanceScale = 0.30f;
+        const glm::vec3 translation = recipe.bodyCenter - glm::vec3(16.0f * instanceScale);
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), translation) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+        Vixen::SVO::SetInstanceTransform(instance, model);
+        instance.material.color[0] = recipe.color.r;
+        instance.material.color[1] = recipe.color.g;
+        instance.material.color[2] = recipe.color.b;
+        instance.material.octreeIndex = static_cast<std::uint32_t>(recipeIndex);
+        instance.material.providerKind = 0U;
+        scene.instances.push_back(instance);
+    }
+    comparison.flush();
+    scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
+    return true;
 }
 
 class LookdevCaptureApplication final : public VulkanGraphApplication {
@@ -263,10 +536,11 @@ public:
         // requested, keep its six FORMAT_STORED_SDF instances and orbit that
         // scene with the same four yaw angles and lighting presets.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
-        const float orbitCenterX = storedSdfScene ? 64.0f : 5.0f;
-        const float orbitCenterY = storedSdfScene ? 64.0f : 5.0f;
+        const bool glyphSdfScene = std::getenv("VIXEN_GLYPHSDF_SCENE") != nullptr;
+        const float orbitCenterX = storedSdfScene ? 64.0f : (glyphSdfScene ? 2.0f : 5.0f);
+        const float orbitCenterY = storedSdfScene ? 64.0f : (glyphSdfScene ? 2.4f : 5.0f);
         const float orbitCenterZ = storedSdfScene ? 0.0f : 5.0f;
-        const float orbitDistance = storedSdfScene ? 300.0f : 14.0f;
+        const float orbitDistance = storedSdfScene ? 300.0f : (glyphSdfScene ? 16.0f : 14.0f);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
@@ -284,7 +558,12 @@ public:
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             Vixen::App::Lookdev::SceneLookDeclaration());
-        if (!storedSdfScene) {
+        if (glyphSdfScene) {
+            GlyphSdfSceneBundle glyphScene;
+            if (!BuildGlyphSdfScene(glyphScene, outputDir_, captureError_)) return;
+            SetRecipePool(std::move(glyphScene.pool));
+            SetBodyInstances(std::move(glyphScene.instances));
+        } else if (!storedSdfScene) {
             SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
                 recipes, scenarios_.front().lighting));
         }
@@ -661,6 +940,20 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const bool oneAngleRequested = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE") != nullptr;
     ASSERT_EQ(scenarios.size(), oneAngleRequested ? 1u : 4u)
         << "CTest must select one supported look-dev lighting preset";
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
+    ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
+        << "CTest must enable the fixed-bucket localized sign scene";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the glyph look-dev capture directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 1U);
     std::string error;
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;

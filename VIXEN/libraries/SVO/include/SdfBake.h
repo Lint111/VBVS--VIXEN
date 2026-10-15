@@ -345,9 +345,12 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
                                                       const glm::vec3& center,
                                                       int n, float bandVoxels,
                                                       int brickDepth = 3,
-                                                      std::span<const float> params = {}) {
+                                                      std::span<const float> params = {},
+                                                      std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center, params); },
+        [&](const glm::vec3& p) {
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances);
+        },
         center, n, bandVoxels, brickDepth);
 }
 
@@ -364,9 +367,13 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorldWithEmission(const Recipe::
                                                                   uint32_t count,
                                                                   const glm::vec3& center,
                                                                   int n, float bandVoxels,
-                                                                  EmitFn&& emit, int brickDepth = 3) {
+                                                                  EmitFn&& emit, int brickDepth = 3,
+                                                                  std::span<const float> params = {},
+                                                                  std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center); },
+        [&](const glm::vec3& p) {
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances);
+        },
         center, n, bandVoxels, brickDepth,
         std::forward<EmitFn>(emit));
 }

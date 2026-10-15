@@ -6,7 +6,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
-    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main)
+    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text)
+    target_compile_definitions(vixen_lookdev_capture PRIVATE
+        TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf")
     set_target_properties(vixen_lookdev_capture PROPERTIES FOLDER "Tests/Application")
     set(_lookdev_test_environment
         ${VIXEN_CTEST_GPU_ENVIRONMENT}
@@ -57,4 +59,18 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_exposure_parity_tests})
     message(STATUS "[Application Tests] Added: 32 one-frame native tone-map parity captures")
+
+    set(_glyphsdf_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf")
+    add_test(NAME Application.LookdevCapture.GlyphSdfLocalizedSign
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
+    set_tests_properties(Application.LookdevCapture.GlyphSdfLocalizedSign PROPERTIES
+        LABELS "Application"
+        TIMEOUT 1200
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_GLYPHSDF_SCENE=1;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_capture_dir}"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+    vixen_lock_gpu_tests(TESTS Application.LookdevCapture.GlyphSdfLocalizedSign)
+    message(STATUS "[Application Tests] Added: GlyphOutline localized carve/emboss capture")
 endif()

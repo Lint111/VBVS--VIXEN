@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Text/GlyphOutline.h"
+
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -39,6 +41,13 @@ public:
     GlyphAtlas& operator=(const GlyphAtlas&) = delete;
 
     bool AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize);
+    // Rasterize the same bounded contour instance used by world-space recipes.
+    // pointsToPixels converts FreeType's 26.6 outline units to atlas pixels.
+    bool AddGlyphFromOutline(std::uint32_t glyphIndex, const GlyphOutlineInstance& outline,
+                             float pointsToPixels = 1.0f / 64.0f);
+    [[nodiscard]] std::shared_ptr<const GlyphOutlineInstance> GetOrAddOutline(
+        FT_Face face, std::uint32_t glyphIndex,
+        GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
     [[nodiscard]] const AtlasGlyph* FindGlyph(std::uint32_t glyphIndex) const;
     // Preserve RmlUi's small outlined replacement glyph when no bundled face
     // provides a requested codepoint. The adapter owns one atlas per font size.
