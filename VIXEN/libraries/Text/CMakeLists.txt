@@ -44,6 +44,7 @@ set(TEXT_HEADERS
     include/Text/TextShaderSpirv.g.h
     include/Text/AtlasFormat.h
     include/Text/GlyphAtlas.h
+    include/Text/GlyphOutline.h
     include/Text/Bidi.h
     include/Text/LineBreaker.h
     include/Text/RmlFontEngine.h
@@ -56,6 +57,7 @@ set(TEXT_HEADERS
 set(TEXT_SOURCES
     src/Bidi.cpp
     src/GlyphAtlas.cpp
+    src/GlyphOutline.cpp
     src/LineBreaker.cpp
     src/RmlFontEngine.cpp
     src/Shaper.cpp
@@ -66,6 +68,7 @@ add_dependencies(Text vixen_text_shader_headers)
 target_include_directories(Text PUBLIC
     $<BUILD_INTERFACE:${TEXT_SHADER_INTERFACE_ROOT}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../SVO/include>
     $<INSTALL_INTERFACE:include>)
 target_compile_features(Text PUBLIC cxx_std_23)
 target_compile_definitions(Text PUBLIC RMLUI_STATIC_LIB)
@@ -83,6 +86,12 @@ target_link_libraries(Text
         SheenBidi::SheenBidi
         VixenLibunibreak
 )
+if(TARGET sdf_core_kernels_check)
+    add_dependencies(Text sdf_core_kernels_check)
+endif()
+if(TARGET glyph_outline_instance_check)
+    add_dependencies(Text glyph_outline_instance_check)
+endif()
 if(MSVC)
     target_compile_options(Text PRIVATE /W4 /WX)
 else()

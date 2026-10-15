@@ -918,3 +918,10 @@ case SdfOpCode::ReadParamQ16: {
     const size_t typedParameterIndex = static_cast<size_t>(in.data[0]);
     stack[sp++] = typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f;
 } break;
+case SdfOpCode::GlyphOutline: {
+    assert(sp - 0 + 1 <= 64 && "GlyphOutline: value stack overflow");
+    const int recipeStackBase = sp - 0;
+    float recipeValue = SdfCore_GlyphOutline(pos, glyphInstances[std::bit_cast<std::uint32_t>(in.data[0])]);
+    sp = recipeStackBase;
+    stack[sp++] = recipeValue;
+} break;

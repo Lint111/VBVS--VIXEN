@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Sync this exact VIXEN commit to its persistent NTFS clone and build its capture tests.
+# Sync this exact VIXEN commit to its lane-isolated NTFS clone and build its capture tests.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
 undertow_root="${UNDERTOW_ROOT:-}"
-native_root=/mnt/c/vixen-native/nativerunner
+# Each lane keeps its own source/build checkout. The native runner and GPU queue are
+# still shared; only the mutable Git working tree is isolated so concurrent lanes
+# cannot change the source under another lane's CMake configure or CTest process.
+native_root=/mnt/c/vixen-native/nativerunner-textshader
 queue=/home/liory/.local/bin/with-test-lock.sh
 cmd_exe=/mnt/c/Windows/System32/cmd.exe
 native_batch="$native_root/reports/capturespeed/reproduce/native-build.bat"
@@ -17,6 +20,10 @@ if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
 fi
 if [[ -z "$undertow_root" ]]; then
   echo "native-build: set UNDERTOW_ROOT to the paired Undertow worktree" >&2
+  exit 2
+fi
+if [[ ! -d "$undertow_root/core/src/Undertow.Authoring/Schema" ]]; then
+  echo "native-build: UNDERTOW_ROOT does not contain core/src/Undertow.Authoring/Schema: $undertow_root" >&2
   exit 2
 fi
 undertow_root="$(cd "$undertow_root" && pwd -P)"
@@ -35,10 +42,10 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
       mkdir -p "$(dirname "$native_root")"
       git clone --no-hardlinks "$repo_root" "$native_root"
     fi
-    # Previous builds write tracked SPIR-V headers and copy this ignored preset into the shared clone.
+    # Previous builds write tracked SPIR-V headers and copy this ignored preset into the lane clone.
     git -C "$native_root" reset --hard
     rm -f "$native_root/VIXEN/CMakeUserPresets.json"
-    # The Windows clone is shared; serialize its exact-commit sync with every native build.
+    # Keep exact-commit sync and build together in the shared build admission.
     git -C "$native_root" fetch "$repo_root" "$repo_commit"
     git -C "$native_root" checkout --force --detach FETCH_HEAD
     [[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]

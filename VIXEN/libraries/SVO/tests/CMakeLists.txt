@@ -827,9 +827,9 @@ vixen_gtest_discover_tests(SVO test_recipe_parity_fixture_export)
 # Recipe GLSL Numerical Parity Tests (Lazy-Procedural-Delta-Baseline Inc1 M4
 # Task 9 — GLSL field-function emitter vs CPU evalRecipe, across the full
 # ParityCorpus. CPU-eval + glslang-compile run on every machine; the actual
-# GPU dispatch+compare only runs on a REAL (non-lavapipe, non-Dozen) GPU —
-# the fixture SetUp() GTEST_SKIPs otherwise. See file header for the
-# Windows-native hand-off command.)
+# GPU dispatch+compare runs on a real GPU, or on Dozen for the glyph bucket
+# parity fixture only; the fixture SetUp() GTEST_SKIPs otherwise. See file
+# header for the Windows-native hand-off command.)
 # ===========================================================================
 add_executable(test_recipe_glsl_numerical_parity test_recipe_glsl_numerical_parity.cpp)
 if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
@@ -843,6 +843,7 @@ else()
 endif()
 target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
     SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
+    GLYPH_OUTLINE_INSTANCE_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl"
 )
 set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)

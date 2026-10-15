@@ -4828,18 +4828,47 @@ namespace Vixen.Codegen.Gpu
     }
 
     /// <summary>Schema path for region_heat_transfer; lowered before native dispatch.</summary>
-    public struct RegionHeatTransferRef
+    public readonly struct RegionHeatTransferRef
     {
         public const string SchemaKind = "region_heat_transfer";
+        public const string AttachTarget = "building_store_flow";
+        public const string TargetRelation = "TargetOfRegionHeatTransferRel";
+        public RegionRef Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public const string PayloadRelation = "PayloadOfRegionHeatTransferRel";
+        public RegionHeatTransferPayloadRef Payload => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+    }
+
+    /// <summary>Schema path for region_heat_transfer_payload; lowered before native dispatch.</summary>
+    public struct RegionHeatTransferPayloadRef
+    {
+        public const string SchemaKind = "region_heat_transfer_payload";
         public double Joules
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public const string RegionRelation = "RegionOfRegionHeatTransferRel";
-        public RegionRef Region => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        public const string ContainerRelation = "ContainerOfRegionHeatTransferRel";
-        public BuildingStoreFlowRef Container => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+    }
+
+    /// <summary>Schema path for region_pressure_transfer; lowered before native dispatch.</summary>
+    public readonly struct RegionPressureTransferRef
+    {
+        public const string SchemaKind = "region_pressure_transfer";
+        public const string AttachTarget = "region";
+        public const string TargetRelation = "TargetOfRegionPressureTransferRel";
+        public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public const string PayloadRelation = "PayloadOfRegionPressureTransferRel";
+        public RegionPressureTransferPayloadRef Payload => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+    }
+
+    /// <summary>Schema path for region_pressure_transfer_payload; lowered before native dispatch.</summary>
+    public struct RegionPressureTransferPayloadRef
+    {
+        public const string SchemaKind = "region_pressure_transfer_payload";
+        public double Pascals
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
     }
 
     /// <summary>Schema path for rule_fire; lowered before native dispatch.</summary>
@@ -4988,6 +5017,9 @@ namespace Vixen.Codegen.Gpu
         public DeepFieldCellRef[] Cells => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public RegionRef[] Regions => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public RegionHeatTransferRef[] HeatTransfers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public RegionHeatTransferPayloadRef[] HeatTransferPayloads => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public RegionPressureTransferRef[] PressureTransfers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public RegionPressureTransferPayloadRef[] PressureTransferPayloads => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for state:depletion; lowered before native dispatch.</summary>
@@ -5329,7 +5361,7 @@ namespace Vixen.Codegen.Gpu
         public static BuildingKnowledgeModifier BuildingKnowledgeModifier(int ordinal = default, BuildingInstanceRef building = default) => new BuildingKnowledgeModifier { ordinal = ordinal };
         public static BuildingLink BuildingLink(double buffer = default, BuildingInstanceRef building = default, EffectLinkRef effect = default) => new BuildingLink { buffer = buffer };
         public static BuildingRunRecipe BuildingRunRecipe(int ordinal = default, uint recipe = default, int body = default, long nextCycleTick = default, bool halted = default, double flowSatisfaction = default, BuildingInstanceRef building = default) => new BuildingRunRecipe { ordinal = ordinal, recipe = recipe, body = body, nextCycleTick = nextCycleTick, halted = halted, flowSatisfaction = flowSatisfaction };
-        public static BuildingStoreFlow BuildingStoreFlow(ulong id = default, int ordinal = default, double charge = default, BuildingInstanceRef building = default) => new BuildingStoreFlow { id = id, ordinal = ordinal, charge = charge };
+        public static BuildingStoreFlow BuildingStoreFlow(int ordinal = default, double charge = default, BuildingInstanceRef building = default) => new BuildingStoreFlow { ordinal = ordinal, charge = charge };
         public static BuildingTransmitFlow BuildingTransmitFlow(int ordinal = default, BuildingInstanceRef building = default) => new BuildingTransmitFlow { ordinal = ordinal };
         public static CharacterBindingRow CharacterBindingRow(uint id = default, ulong entity = default) => new CharacterBindingRow { id = id, entity = entity };
         public static ClaimOwnerRow ClaimOwnerRow(int planetIndex = default) => new ClaimOwnerRow { planetIndex = planetIndex };
@@ -5391,7 +5423,10 @@ namespace Vixen.Codegen.Gpu
         public static RecipeFlowRow RecipeFlowRow(string resource = "", double kgPerTick = default) => new RecipeFlowRow { resource = resource, kgPerTick = kgPerTick };
         public static RefineHeadRow RefineHeadRow(FactionRef faction = default) => new RefineHeadRow {  };
         public static Region Region(ulong id = default, byte parentKind = default, int parentBody = default, byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default, ResourceRef material = default) => new Region { id = id, parentKind = parentKind, parentBody = parentBody, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
-        public static RegionHeatTransfer RegionHeatTransfer(double joules = default, RegionRef region = default, BuildingStoreFlowRef container = default) => new RegionHeatTransfer { joules = joules };
+        public static RegionHeatTransfer RegionHeatTransfer(uint id = default, RegionRef target = default, RegionHeatTransferPayloadRef payload = default) => new RegionHeatTransfer { id = id };
+        public static RegionHeatTransferPayload RegionHeatTransferPayload(ulong id = default, double joules = default) => new RegionHeatTransferPayload { id = id, joules = joules };
+        public static RegionPressureTransfer RegionPressureTransfer(uint id = default, All target = default, RegionPressureTransferPayloadRef payload = default) => new RegionPressureTransfer { id = id };
+        public static RegionPressureTransferPayload RegionPressureTransferPayload(ulong id = default, double pascals = default) => new RegionPressureTransferPayload { id = id, pascals = pascals };
         public static RuleFire RuleFire(long lastTick = default, RuleRef rule = default, FactionRef faction = default) => new RuleFire { lastTick = lastTick };
         public static SimActionRow SimActionRow(int targetBodyIndex = default, byte kind = default, uint actionId = default, byte phase = default, byte outcome = default, bool resisted = default, long spawnTick = default, long resolveTick = default, FactionRef actor = default, FactionRef target = default) => new SimActionRow { targetBodyIndex = targetBodyIndex, kind = kind, actionId = actionId, phase = phase, outcome = outcome, resisted = resisted, spawnTick = spawnTick, resolveTick = resolveTick };
         public static SpatialFire SpatialFire(byte scope = default, int index = default, long lastTick = default, RuleRef rule = default) => new SpatialFire { scope = scope, index = index, lastTick = lastTick };
@@ -6775,7 +6810,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct BuildingStoreFlow
     {
-        public ulong id;
         public int ordinal;
         public double charge;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingInstanceRef> building;
@@ -7395,9 +7429,15 @@ namespace Vixen.Codegen.Gpu
 
     public struct RegionHeatTransfer
     {
+        public uint id;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.RegionRef> target;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.RegionHeatTransferPayloadRef> payload;
+    }
+
+    public struct RegionHeatTransferPayload
+    {
+        public ulong id;
         public double joules;
-        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.RegionRef> region;
-        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.BuildingStoreFlowRef> container;
     }
 
     public struct RegionPressure
@@ -7407,6 +7447,14 @@ namespace Vixen.Codegen.Gpu
 
     public struct RegionPressureTransfer
     {
+        public uint id;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.All> target;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.RegionPressureTransferPayloadRef> payload;
+    }
+
+    public struct RegionPressureTransferPayload
+    {
+        public ulong id;
         public double pascals;
     }
 
@@ -10027,6 +10075,24 @@ namespace Undertow.Modding
         public static global::Vixen.Codegen.Gpu.RegionHeatTransferRef ADD(global::Vixen.Codegen.Gpu.RegionHeatTransferRef[] path, global::Vixen.Codegen.Gpu.RegionHeatTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void REMOVE(global::Vixen.Codegen.Gpu.RegionHeatTransferRef path, global::Vixen.Codegen.Gpu.RegionHeatTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void REMOVE(global::Vixen.Codegen.Gpu.RegionHeatTransferRef[] path, global::Vixen.Codegen.Gpu.RegionHeatTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionHeatTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferRef path, global::Vixen.Codegen.Gpu.RegionPressureTransfer value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferRef path, global::Vixen.Codegen.Gpu.RegionPressureTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransfer value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionPressureTransferRef path, global::Vixen.Codegen.Gpu.RegionPressureTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionPressureTransferRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransferRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayload value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef ADD(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef[] path, global::Vixen.Codegen.Gpu.RegionPressureTransferPayloadRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.RuleFireRef ADD(global::Vixen.Codegen.Gpu.RuleFireRef path, global::Vixen.Codegen.Gpu.RuleFire value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.RuleFireRef ADD(global::Vixen.Codegen.Gpu.RuleFireRef path, global::Vixen.Codegen.Gpu.RuleFireRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.RuleFireRef ADD(global::Vixen.Codegen.Gpu.RuleFireRef[] path, global::Vixen.Codegen.Gpu.RuleFire value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");

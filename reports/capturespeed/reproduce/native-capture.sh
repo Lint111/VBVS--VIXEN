@@ -5,13 +5,14 @@ set -euo pipefail
 usage() {
   echo "usage: native-capture.sh lookdev <state> [--gpu-benchmark]" >&2
   echo "       native-capture.sh planet <state> [--gpu-benchmark]" >&2
+  echo "       native-capture.sh glyphsdf <latin-carved|latin-embossed|qps-rtl-carved|qps-rtl-embossed|analytic-vs-voxel> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
-native_root=/mnt/c/vixen-native/nativerunner
+native_root=/mnt/c/vixen-native/nativerunner-textshader
 queue=/home/liory/.local/bin/with-test-lock.sh
 powershell_exe=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 mode=state
@@ -29,7 +30,7 @@ else
   [[ $# -ge 2 ]] || { usage; exit 2; }
   capture="$1"
   state="$2"
-  [[ "$capture" == lookdev || "$capture" == planet ]] || { usage; exit 2; }
+  [[ "$capture" == lookdev || "$capture" == planet || "$capture" == glyphsdf ]] || { usage; exit 2; }
   shift 2
 fi
 while (($#)); do

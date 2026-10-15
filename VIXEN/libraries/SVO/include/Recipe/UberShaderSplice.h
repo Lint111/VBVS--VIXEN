@@ -98,7 +98,9 @@ inline std::string SpliceProceduralRecipesIntoSource(
         out << EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
                                                static_cast<uint32_t>(entry->bytecode.size()),
                                                id,
-                                               usesDeclarePosition(entry))
+                                               usesDeclarePosition(entry),
+                                               &registry,
+                                               entry->glyphInstances)
             << "\n";
     }
 

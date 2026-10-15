@@ -41,12 +41,18 @@ namespace Vixen::SVO {
 struct SdfBakeResult {
     std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> world;
     std::unique_ptr<AttributeRegistry> registry;
-    int n = 0;        // Grid side length (cells in [0,n))
+    int n = 0;        // Grid side length; integer grid coordinates are voxel centres
     glm::vec3 center{0.0f};
 
-    // Returns the baked Density (signed distance) stored at the nearest integer
-    // grid cell, or nullopt if that cell is outside the narrow band (unallocated).
+    // Fetches the baked Density at one integer grid cell. This is a storage
+    // lookup for interpolation stencils, not a fractional-position reconstruction.
+    // Returns nullopt if that cell is outside the narrow band (unallocated).
     std::optional<float> sampleStored(const glm::vec3& gridPos) const;
+
+    // Reconstruct the stored field at a fractional grid position using the same
+    // 8-corner trilinear weights as StoredSdf.glsl. Returns nullopt when any
+    // stencil corner is outside the allocated narrow band.
+    std::optional<float> sampleStoredTrilinear(const glm::vec3& gridPos) const;
 };
 
 // ---------------------------------------------------------------------------
@@ -103,6 +109,50 @@ inline void EvalSdfBatch4(EvalFn& eval, const glm::vec3* points,
         for (std::size_t lane = 0; lane < count; ++lane)
             values[lane] = eval(points[lane]);
     }
+}
+
+// Filter under-resolved detail over one voxel footprint before storing it. The
+// two-point Gauss-Legendre rule on each axis gives eight symmetric samples at
+// +/-1/(2*sqrt(3)); affine distance fields (notably planes) therefore retain
+// their exact centre value. Broad, low-curvature surfaces also keep their exact
+// centre sample: the filter is blended in only when its footprint average
+// materially differs from that sample, which identifies curvature/detail at or
+// below the voxel scale. This keeps sub-voxel features from changing sign only
+// because they happen to align with a voxel centre.
+template<class EvalFn>
+inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
+                                                const glm::vec3& gridCenter,
+                                                float centerDistance) {
+    constexpr float kFilterBand = 1.5f;
+    constexpr float kGaussOffset = 0.28867513459481287f; // 1 / (2 * sqrt(3))
+    constexpr float kCorrectionStart = 0.0625f;
+    constexpr float kCorrectionFull = 0.25f;
+    if (std::abs(centerDistance) >= kFilterBand) return centerDistance;
+
+    std::array<glm::vec3, 8> footprintPoints{};
+    std::array<float, 8> footprintDistances{};
+    std::size_t sampleIndex = 0;
+    constexpr std::array<float, 2> kGaussSigns{-1.0f, 1.0f};
+    for (float zSign : kGaussSigns)
+        for (float ySign : kGaussSigns)
+            for (float xSign : kGaussSigns) {
+                const glm::vec3 offset(xSign * kGaussOffset,
+                                       ySign * kGaussOffset,
+                                       zSign * kGaussOffset);
+                footprintPoints[sampleIndex++] = gridCenter + offset;
+            }
+    for (std::size_t batch = 0; batch < footprintPoints.size(); batch += 4)
+        EvalSdfBatch4(eval, footprintPoints.data() + batch, 4,
+                      footprintDistances.data() + batch);
+    float footprintAverage = 0.0f;
+    for (float distance : footprintDistances) footprintAverage += distance;
+    footprintAverage *= 0.125f;
+
+    const float correction = std::abs(footprintAverage - centerDistance);
+    const float t = glm::clamp((correction - kCorrectionStart) /
+                               (kCorrectionFull - kCorrectionStart), 0.0f, 1.0f);
+    const float weight = t * t * (3.0f - 2.0f * t);
+    return centerDistance + (footprintAverage - centerDistance) * weight;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +325,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
             EvalSdfBatch4(eval, points, count, values);
             for (std::size_t lane = 0; lane < count; ++lane) {
                 const glm::vec3& p = points[lane];
-                const float sd = values[lane];
+                // Keep exact centre samples on resolved fields. Near the surface,
+                // low-pass only the sub-voxel detail that the grid cannot represent.
+                const float sd = FilterSubVoxelDistanceAtGridCenter(eval, p, values[lane]);
                 // Per-voxel color from the caller's ColorFn (defaults to DefaultBandColor's
                 // smooth RGB bands; a scene wanting a flat authored tint passes its own).
                 const glm::vec3 col = colorFn(p);
@@ -345,9 +397,12 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
                                                       const glm::vec3& center,
                                                       int n, float bandVoxels,
                                                       int brickDepth = 3,
-                                                      std::span<const float> params = {}) {
+                                                      std::span<const float> params = {},
+                                                      std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center, params); },
+        [&](const glm::vec3& p) {
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances);
+        },
         center, n, bandVoxels, brickDepth);
 }
 
@@ -364,9 +419,13 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorldWithEmission(const Recipe::
                                                                   uint32_t count,
                                                                   const glm::vec3& center,
                                                                   int n, float bandVoxels,
-                                                                  EmitFn&& emit, int brickDepth = 3) {
+                                                                  EmitFn&& emit, int brickDepth = 3,
+                                                                  std::span<const float> params = {},
+                                                                  std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center); },
+        [&](const glm::vec3& p) {
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances);
+        },
         center, n, bandVoxels, brickDepth,
         std::forward<EmitFn>(emit));
 }
@@ -380,6 +439,28 @@ inline std::optional<float> SdfBakeResult::sampleStored(const glm::vec3& gridPos
     if (!world->exists(e)) return std::nullopt;
     auto d = world->getComponentValue<Vixen::GaiaVoxel::Density>(e);
     return d.has_value() ? std::optional<float>(d.value()) : std::nullopt;
+}
+
+inline std::optional<float> SdfBakeResult::sampleStoredTrilinear(const glm::vec3& gridPos) const {
+    const glm::vec3 base = glm::floor(gridPos);
+    const glm::vec3 f = gridPos - base;
+    const glm::ivec3 i(base);
+    const auto c000 = sampleStored(glm::vec3(i + glm::ivec3(0, 0, 0)));
+    const auto c100 = sampleStored(glm::vec3(i + glm::ivec3(1, 0, 0)));
+    const auto c010 = sampleStored(glm::vec3(i + glm::ivec3(0, 1, 0)));
+    const auto c110 = sampleStored(glm::vec3(i + glm::ivec3(1, 1, 0)));
+    const auto c001 = sampleStored(glm::vec3(i + glm::ivec3(0, 0, 1)));
+    const auto c101 = sampleStored(glm::vec3(i + glm::ivec3(1, 0, 1)));
+    const auto c011 = sampleStored(glm::vec3(i + glm::ivec3(0, 1, 1)));
+    const auto c111 = sampleStored(glm::vec3(i + glm::ivec3(1, 1, 1)));
+    if (!c000 || !c100 || !c010 || !c110 || !c001 || !c101 || !c011 || !c111)
+        return std::nullopt;
+
+    const float z0 = glm::mix(glm::mix(*c000, *c100, f.x),
+                              glm::mix(*c010, *c110, f.x), f.y);
+    const float z1 = glm::mix(glm::mix(*c001, *c101, f.x),
+                              glm::mix(*c011, *c111, f.x), f.y);
+    return glm::mix(z0, z1, f.z);
 }
 
 // ---------------------------------------------------------------------------

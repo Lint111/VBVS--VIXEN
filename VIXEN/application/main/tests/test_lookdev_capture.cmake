@@ -6,7 +6,10 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
-    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main)
+    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text)
+    target_compile_definitions(vixen_lookdev_capture PRIVATE
+        TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
+        TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf")
     set_target_properties(vixen_lookdev_capture PROPERTIES FOLDER "Tests/Application")
     set(_lookdev_test_environment
         ${VIXEN_CTEST_GPU_ENVIRONMENT}
@@ -57,4 +60,86 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_exposure_parity_tests})
     message(STATUS "[Application Tests] Added: 32 one-frame native tone-map parity captures")
+
+    set(_glyphsdf_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf")
+    set(_glyphsdf_capture_tests)
+    foreach(_variant IN ITEMS latin-carved latin-embossed qps-rtl-carved qps-rtl-embossed)
+        set(_test "Application.LookdevCapture.GlyphSdf.${_variant}")
+        set(_capture_dir "${_glyphsdf_capture_dir}/${_variant}")
+        add_test(NAME "${_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
+        set_tests_properties("${_test}" PROPERTIES
+            LABELS "Application"
+            TIMEOUT 1200
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_VARIANT=${_variant};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_capture_dir}"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
+        list(APPEND _glyphsdf_capture_tests "${_test}")
+    endforeach()
+
+    # Both shaped layouts share one graph and frame so the same mixed-script
+    # literal can be compared side by side without a second cold pipeline build.
+    set(_glyphsdf_rtl_pair_test "Application.LookdevCapture.GlyphSdf.RtlProof.Pair")
+    set(_glyphsdf_rtl_pair_dir "${_glyphsdf_capture_dir}/rtl-proof-pair")
+    add_test(NAME "${_glyphsdf_rtl_pair_test}"
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
+    set_tests_properties("${_glyphsdf_rtl_pair_test}" PROPERTIES
+        LABELS "Application;GlyphSdfProofPair"
+        TIMEOUT 1800
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_RTL_PROOF=1;VIXEN_GLYPHSDF_VARIANT=rtl-proof-pair;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_rtl_pair_dir}"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
+    list(APPEND _glyphsdf_capture_tests "${_glyphsdf_rtl_pair_test}")
+
+    foreach(_resolution IN ITEMS 128 256)
+        set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel${_resolution}")
+        if(_resolution EQUAL 256)
+            set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel")
+        endif()
+        set(_glyphsdf_compare_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel-${_resolution}")
+        add_test(NAME "${_glyphsdf_compare_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
+        set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
+            LABELS "Application;GlyphSdf${_resolution}"
+            TIMEOUT 1800
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_compare_dir};VIXEN_PERF_CSV=${_glyphsdf_compare_dir}/native-perf.csv"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
+        list(APPEND _glyphsdf_capture_tests "${_glyphsdf_compare_test}")
+    endforeach()
+
+    set(_stored_sdf_brickmap_test "Application.LookdevCapture.StoredSdf.Brickmap")
+    set(_stored_sdf_brickmap_dir "${_glyphsdf_capture_dir}/nontext-brickmap")
+    add_test(NAME "${_stored_sdf_brickmap_test}"
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
+    set_tests_properties("${_stored_sdf_brickmap_test}" PROPERTIES
+        LABELS "Application;StoredSdfBrickmap"
+        TIMEOUT 1800
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_BRICKMAP_SCENE=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_stored_sdf_brickmap_dir};VIXEN_PERF_CSV=${_stored_sdf_brickmap_dir}/native-perf.csv"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
+
+    set(_sdf_filter_nontext_test "Application.LookdevCapture.SdfFilter.NonText")
+    set(_sdf_filter_nontext_dir "${_glyphsdf_capture_dir}/sdf-filter-nontext")
+    add_test(NAME "${_sdf_filter_nontext_test}"
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                "--gtest_filter=LookdevCapture.RendersSdfFilterNonText")
+    set_tests_properties("${_sdf_filter_nontext_test}" PROPERTIES
+        LABELS "Application;GlyphSdfNonText"
+        TIMEOUT 1200
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_SDF_FILTER_NON_TEXT=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_sdf_filter_nontext_dir};VIXEN_PERF_CSV=${_sdf_filter_nontext_dir}/native-perf.csv"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:;VIXEN_GLYPHSDF_SCENE=unset:;VIXEN_GLYPHSDF_COMPARE=unset:;VIXEN_BRICKMAP_SCENE=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
+    list(APPEND _glyphsdf_capture_tests "${_sdf_filter_nontext_test}")
+    vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests})
+    message(STATUS "[Application Tests] Added: four lit GlyphOutline frames, one side-by-side mixed-script direction proof, 128^3/256^3 comparisons, and an analytic-vs-stored non-text SDF frame")
 endif()

@@ -229,7 +229,8 @@ inline std::string EmitSpecializedRecipeComputeShader(
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
         fieldFn = EmitProceduralFieldFunctionGlsl(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
+            false, nullptr, entry.glyphInstances);
     }
     std::cout << "[RecipeBucketedDispatch] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
@@ -390,7 +391,8 @@ inline std::string EmitSpecializedRecipeShadeShader(
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
         fieldFn = EmitProceduralFieldFunctionGlsl(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
+            false, nullptr, entry.glyphInstances);
     }
     std::cout << "[BucketShade] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;

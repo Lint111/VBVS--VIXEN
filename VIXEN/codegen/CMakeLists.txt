@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "7c87b39148dea3666205f28c54ce024eebc8aae5")
+set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -259,8 +259,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # render-param block, via the new --struct-precision emitter.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
@@ -353,8 +358,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_sparseemitterentry_glsl_run "${VIXEN_ROOT}/shaders/Generated/SparseEmitterEntry.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
+        set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
+        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
+        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
+        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
+        set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
         set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
@@ -554,6 +564,25 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
+    # The text recipe carries one fixed-width contour bucket in each typed glyph
+    # instance. Keep its C++/GLSL std430 faces and width-sensitive layout hash
+    # generated from the same [GpuStruct] declaration as SdfCore_GlyphOutline.
+    set(_glyph_outline_args
+        "${_yk_dll_run}"
+        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
+        --out-cpp "${_out_glyph_outline_cpp_run}"
+        --out-glsl "${_out_glyph_outline_glsl_run}"
+        --out-layout-hash "${_out_glyph_outline_layout_run}")
+    vixen_add_codegen_check(glyph_outline_instance_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
+        COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"
+        VERBATIM)
+    add_custom_target(glyph_outline_instance_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args}
+        COMMENT "[codegen] regenerate GlyphOutlineInstance C++/GLSL faces and layout fingerprint"
+        JOB_POOL msbuild
+        VERBATIM)
+
     # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
     # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
     set(_recipe_simd_args
@@ -562,6 +591,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_recipe_simd_run}"
@@ -583,6 +613,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-cpp
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_core_cpp_run}"
@@ -603,6 +634,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_opcodes_run}")

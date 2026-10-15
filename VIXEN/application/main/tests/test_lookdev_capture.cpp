@@ -13,11 +13,20 @@
 #include "Nodes/ReservoirConfigNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
+#include "Text/GlyphAtlas.h"
+#include "Text/GlyphOutline.h"
+#include "SdfBake.h"
+#include "ShellOctreeGpu.h"
 
 #include <gtest/gtest.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <array>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -27,11 +36,16 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <numeric>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -128,6 +142,8 @@ constexpr uint32_t kMaxFramesPerScenario = 2 * kReservoirHistoryCap;
 constexpr uint32_t kDefaultFramesPerScenario = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 constexpr float kPitchRadians = 0.45f;
+constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
+constexpr uint32_t kSdfFilterNonTextRecipeId = 0x5344464eu; // SDFN
 
 using CaptureClock = std::chrono::steady_clock;
 
@@ -189,6 +205,21 @@ std::vector<CaptureScenario> BuildScenarios() {
         }
     }
     std::vector<CaptureScenario> scenarios;
+    if (std::getenv("VIXEN_GLYPHSDF_SCENE") || std::getenv("VIXEN_SDF_FILTER_NON_TEXT")) {
+        const char* variant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
+        const bool compare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr ||
+            std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
+        const auto preset = std::find_if(presets.begin(), presets.end(), [](const auto& value) {
+            return value.name == "midday";
+        });
+        if (preset != presets.end())
+            scenarios.push_back({*preset, 0.0f, compare
+                ? (std::getenv("VIXEN_SDF_FILTER_NON_TEXT")
+                    ? "sdf-filter-nontext-analytic-vs-voxel.png"
+                    : "glyphsdf-analytic-vs-voxel.png")
+                : std::string("glyphsdf-") + (variant ? variant : "latin-carved") + ".png"});
+        return scenarios;
+    }
     scenarios.reserve(presets.size() * yaws.size());
     for (const auto& preset : presets) {
         if (requestedState && preset.name != std::string(requestedState)) continue;
@@ -199,6 +230,566 @@ std::vector<CaptureScenario> BuildScenarios() {
         }
     }
     return scenarios;
+}
+
+struct GlyphSdfSceneBundle {
+    Vixen::SVO::ConcatenatedOctrees pool;
+    std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+    std::vector<std::pair<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry>> proceduralRecipes;
+};
+
+struct GlyphSdfRecipe {
+    std::string label;
+    std::vector<Vixen::SVO::Recipe::SdfInstruction> instructions;
+    glm::vec3 bodyCenter{0.0f};
+    glm::vec3 color{1.0f};
+    bool carved = false;
+};
+
+bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path& evidenceDir,
+                        bool compareAnalyticAndVoxel, std::string& error) {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    using Vixen::Text::GlyphOutlineInstance;
+    using Vixen::Text::PositionedGlyphOutline;
+    using Vixen::Text::WorldTextLayout;
+
+    const bool rtlProof = std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr;
+    FT_Library library = nullptr;
+    FT_Face face = nullptr;
+    const char* fontPath = rtlProof ? TEXT_NOTO_ARABIC_FONT_PATH : TEXT_LATO_FONT_PATH;
+    if (FT_Init_FreeType(&library) != 0 ||
+        FT_New_Face(library, fontPath, 0, &face) != 0 ||
+        FT_Set_Char_Size(face, 0, 24 * 64, 0, 0) != 0) {
+        if (face) FT_Done_Face(face);
+        if (library) FT_Done_FreeType(library);
+        error = "could not initialize the bundled Lato face for GlyphOutline scene capture";
+        return false;
+    }
+
+    Vixen::Text::GlyphAtlas glyphAtlas;
+    constexpr std::array<std::uint32_t, 2> requiredScriptTags{{
+        (static_cast<std::uint32_t>('L') << 24U) | (static_cast<std::uint32_t>('a') << 16U) |
+        (static_cast<std::uint32_t>('t') << 8U) | static_cast<std::uint32_t>('n'),
+        (static_cast<std::uint32_t>('A') << 24U) | (static_cast<std::uint32_t>('r') << 16U) |
+        (static_cast<std::uint32_t>('a') << 8U) | static_cast<std::uint32_t>('b')}};
+    const std::span<const std::uint32_t> requiredScripts(
+        requiredScriptTags.data(), rtlProof ? requiredScriptTags.size() : 1U);
+    const auto makePreset = [rtlProof](Vixen::Text::TextDirection direction) {
+        Vixen::Text::PresetDesc preset{};
+        preset.direction = direction;
+        preset.shapingClass = Vixen::Text::ShapingClass::Default;
+        preset.lineBreakingClass = Vixen::Text::LineBreakingClass::Word;
+        preset.requiredScriptOrdinalCount = rtlProof ? 2 : 1;
+        return preset;
+    };
+
+    constexpr std::string_view rtlProofText = "\xD8\xB3\xD9\x84\xD8\xA7\xD9\x85 ABC";
+    const std::string_view latinText = rtlProof ? rtlProofText : "OPEN";
+    const std::string_view rtlText = rtlProof ? rtlProofText : "NEPO";
+    std::array<WorldTextLayout, 2> layouts{
+        Vixen::Text::ShapeWorldText(makePreset(Vixen::Text::TextDirection::LeftToRight),
+                                    requiredScripts, glyphAtlas, face, latinText, "en"),
+        Vixen::Text::ShapeWorldText(makePreset(Vixen::Text::TextDirection::RightToLeft),
+                                    requiredScripts, glyphAtlas, face, rtlText, "qps-rtl")};
+    if (!layouts[0].valid || !layouts[1].valid || layouts[0].glyphs.empty() || layouts[1].glyphs.empty()) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        error = "HarfBuzz did not produce positioned Latin and qps-rtl glyph runs";
+        return false;
+    }
+    if (rtlProof) {
+        const auto hasRtlRun = [](const WorldTextLayout& layout) {
+            return std::any_of(layout.glyphs.begin(), layout.glyphs.end(),
+                               [](const PositionedGlyphOutline& glyph) { return glyph.rightToLeft; });
+        };
+        const auto clustersInVisualOrder = [](const WorldTextLayout& layout) {
+            std::vector<std::uint32_t> clusters;
+            clusters.reserve(layout.glyphs.size());
+            for (const PositionedGlyphOutline& glyph : layout.glyphs)
+                clusters.push_back(glyph.cluster);
+            return clusters;
+        };
+        if (layouts[1].direction != Vixen::Text::TextDirection::RightToLeft ||
+            !layouts[1].mirrorX || !hasRtlRun(layouts[1]) ||
+            clustersInVisualOrder(layouts[0]) == clustersInVisualOrder(layouts[1])) {
+            std::ostringstream diagnostic;
+            diagnostic << "the qps-rtl proof did not produce a mirrored RTL run with a distinct cluster order"
+                       << " (direction="
+                       << (layouts[1].direction == Vixen::Text::TextDirection::RightToLeft ? "RTL" : "LTR")
+                       << ", mirror=" << (layouts[1].mirrorX ? "true" : "false")
+                       << ", rtl_run=" << (hasRtlRun(layouts[1]) ? "true" : "false")
+                       << ", clusters_differ="
+                       << (clustersInVisualOrder(layouts[0]) != clustersInVisualOrder(layouts[1])
+                               ? "true" : "false") << ")\n"
+                       << "LTR glyphs:";
+            for (const PositionedGlyphOutline& glyph : layouts[0].glyphs)
+                diagnostic << ' ' << glyph.glyphId << '@' << glyph.cluster
+                           << (glyph.rightToLeft ? 'R' : 'L');
+            diagnostic << "\nRTL glyphs:";
+            for (const PositionedGlyphOutline& glyph : layouts[1].glyphs)
+                diagnostic << ' ' << glyph.glyphId << '@' << glyph.cluster
+                           << (glyph.rightToLeft ? 'R' : 'L');
+            FT_Done_Face(face);
+            FT_Done_FreeType(library);
+            error = diagnostic.str();
+            return false;
+        }
+    }
+
+    struct Variant {
+        const char* name;
+        std::size_t layoutIndex;
+        bool carved;
+    };
+    constexpr std::array<Variant, 4> variants{{
+        {"latin-carved", 0, true}, {"latin-embossed", 0, false},
+        {"qps-rtl-carved", 1, true}, {"qps-rtl-embossed", 1, false}}};
+    constexpr std::array<Variant, 1> rtlProofVariants{{
+        {"rtl-proof-pair", 0, true}}};
+    const char* requestedVariant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
+    const std::span<const Variant> selectedVariants = rtlProof
+        ? std::span<const Variant>(rtlProofVariants)
+        : std::span<const Variant>(variants);
+    const auto selected = requestedVariant
+        ? std::find_if(selectedVariants.begin(), selectedVariants.end(), [&](const Variant& value) {
+              return value.name == std::string(requestedVariant);
+          })
+        : selectedVariants.begin();
+    if (selected == selectedVariants.end()) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        error = rtlProof
+            ? "VIXEN_GLYPHSDF_VARIANT must select rtl-proof-pair"
+            : "VIXEN_GLYPHSDF_VARIANT must select latin-carved, latin-embossed, "
+              "qps-rtl-carved, or qps-rtl-embossed";
+        return false;
+    }
+    if (compareAnalyticAndVoxel && selected->name != std::string("latin-carved")) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        error = "the analytic-vs-voxel frame is authored for the Latin carved sign";
+        return false;
+    }
+
+    if (rtlProof) {
+        std::ofstream shaping(evidenceDir / "glyphsdf-shaping.txt", std::ios::out | std::ios::trunc);
+        if (!shaping) {
+            FT_Done_Face(face);
+            FT_Done_FreeType(library);
+            error = "could not write the GlyphOutline shaping evidence";
+            return false;
+        }
+        shaping << "font=" << fontPath << '\n'
+                << "input_utf8=" << rtlProofText << '\n'
+                << "same_literal_for_both_presets=true\n"
+                << "capture=side-by-side\n"
+                << "screen_assignment=left:ltr(en),right:qps-rtl\n\n";
+        const std::array<const char*, 2> labels{{"ltr", "qps-rtl"}};
+        const std::array<const char*, 2> languages{{"en", "qps-rtl"}};
+        for (std::size_t layoutIndex = 0; layoutIndex < layouts.size(); ++layoutIndex) {
+            const WorldTextLayout& layout = layouts[layoutIndex];
+            shaping << '[' << labels[layoutIndex] << "]\n"
+                    << "language=" << languages[layoutIndex] << '\n'
+                    << "direction=" << (layout.direction == Vixen::Text::TextDirection::RightToLeft
+                                               ? "RightToLeft" : "LeftToRight") << '\n'
+                    << "mirror_x=" << (layout.mirrorX ? "true" : "false") << '\n'
+                    << "required_script_table_matches_preset="
+                    << (layout.requiredScriptTableMatchesPreset ? "true" : "false") << '\n'
+                    << "glyphs_in_visual_run_order=\n";
+            for (const PositionedGlyphOutline& glyph : layout.glyphs) {
+                shaping << "  glyph_id=" << glyph.glyphId
+                        << " cluster=" << glyph.cluster
+                        << " x=" << glyph.x
+                        << " y=" << glyph.y
+                        << " advance_x=" << glyph.xAdvance
+                        << " rtl_run=" << (glyph.rightToLeft ? "true" : "false") << '\n';
+            }
+            shaping << '\n';
+        }
+    }
+
+    const float kGridUnitsPerPixel = rtlProof ? 0.22f : 0.30f;
+    const float kOutlineScale = kGridUnitsPerPixel / 64.0f;
+    std::vector<GlyphOutlineInstance> glyphRows;
+    std::unordered_map<const GlyphOutlineInstance*, std::uint32_t> glyphRowsByIdentity;
+    std::array<std::vector<std::uint32_t>, 2> layoutRows;
+    auto rowFor = [&](const PositionedGlyphOutline& glyph, std::uint32_t& row) {
+        if (!glyph.instance) return false;
+        if (const auto found = glyphRowsByIdentity.find(glyph.instance.get());
+            found != glyphRowsByIdentity.end()) {
+            row = found->second;
+            return true;
+        }
+        GlyphOutlineInstance normalized = *glyph.instance;
+        const float centerX = (normalized.BoundsMin.X + normalized.BoundsMax.X) * 0.5f;
+        const float centerY = (normalized.BoundsMin.Y + normalized.BoundsMax.Y) * 0.5f;
+        for (std::uint32_t segmentIndex = 0; segmentIndex < normalized.SegmentCount; ++segmentIndex) {
+            auto& segment = normalized.Segments[segmentIndex];
+            for (Vixen::Text::GlyphOutlinePoint* point :
+                 {&segment.P0, &segment.P1, &segment.P2, &segment.P3}) {
+                point->X = (point->X - centerX) * kOutlineScale;
+                point->Y = (point->Y - centerY) * kOutlineScale;
+            }
+        }
+        normalized.BoundsMin.X = (normalized.BoundsMin.X - centerX) * kOutlineScale;
+        normalized.BoundsMin.Y = (normalized.BoundsMin.Y - centerY) * kOutlineScale;
+        normalized.BoundsMax.X = (normalized.BoundsMax.X - centerX) * kOutlineScale;
+        normalized.BoundsMax.Y = (normalized.BoundsMax.Y - centerY) * kOutlineScale;
+        row = static_cast<std::uint32_t>(glyphRows.size());
+        glyphRows.push_back(std::move(normalized));
+        glyphRowsByIdentity.emplace(glyph.instance.get(), row);
+        return true;
+    };
+
+    const bool rtlProofPair = rtlProof && selected->name == std::string("rtl-proof-pair");
+    for (std::size_t layoutIndex = 0; layoutIndex < layouts.size(); ++layoutIndex) {
+        if (!rtlProofPair && layoutIndex != selected->layoutIndex) continue;
+        for (const PositionedGlyphOutline& glyph : layouts[layoutIndex].glyphs) {
+            std::uint32_t row = 0;
+            if (!rowFor(glyph, row)) {
+                FT_Done_Face(face);
+                FT_Done_FreeType(library);
+                error = "positioned text glyph did not carry its typed GlyphOutline bucket";
+                return false;
+            }
+            layoutRows[layoutIndex].push_back(row);
+        }
+    }
+
+    auto instruction = [](SdfOpCode opCode) {
+        SdfInstruction result{};
+        result.opCode = static_cast<std::uint8_t>(opCode);
+        return result;
+    };
+    struct LayoutPlacement {
+        std::size_t layoutIndex;
+        float offsetX;
+    };
+    auto makeRecipe = [&](std::span<const LayoutPlacement> placements, bool carved,
+                          glm::vec3 bodyCenter, glm::vec3 color, std::string label) {
+        GlyphSdfRecipe result;
+        result.label = std::move(label);
+        result.bodyCenter = bodyCenter;
+        result.color = color;
+        result.carved = carved;
+        const float bevel = 0.12f;
+        const float halfDepth = carved ? 3.0f : 0.95f;
+        const float textDepth = carved ? 0.0f : 2.25f;
+
+        for (std::size_t placementIndex = 0; placementIndex < placements.size(); ++placementIndex) {
+            const LayoutPlacement placement = placements[placementIndex];
+            const WorldTextLayout& layout = layouts[placement.layoutIndex];
+            if (placements.size() > 1) {
+                SdfInstruction panelTransform = instruction(SdfOpCode::Transform);
+                panelTransform.data[0] = placement.offsetX;
+                panelTransform.data[7] = 1.0f;
+                panelTransform.data[8] = 1.0f;
+                panelTransform.data[9] = 1.0f;
+                panelTransform.data[10] = 1.0f;
+                panelTransform.data[11] = 1.0f;
+                result.instructions.push_back(panelTransform);
+            }
+            SdfInstruction plaque = instruction(SdfOpCode::BoxRounded);
+            plaque.data[0] = 14.0f;
+            plaque.data[1] = 10.0f;
+            plaque.data[2] = 1.8f;
+            plaque.data[3] = 0.9f;
+            result.instructions.push_back(plaque);
+            if (placements.size() > 1) {
+                result.instructions.push_back(instruction(SdfOpCode::RestorePos));
+                if (placementIndex > 0)
+                    result.instructions.push_back(instruction(SdfOpCode::Union));
+            }
+
+            float minX = std::numeric_limits<float>::max();
+            float minY = std::numeric_limits<float>::max();
+            float maxX = std::numeric_limits<float>::lowest();
+            float maxY = std::numeric_limits<float>::lowest();
+            for (const PositionedGlyphOutline& glyph : layout.glyphs) {
+                minX = std::min(minX, static_cast<float>(glyph.x) + glyph.instance->BoundsMin.X);
+                minY = std::min(minY, static_cast<float>(glyph.y) + glyph.instance->BoundsMin.Y);
+                maxX = std::max(maxX, static_cast<float>(glyph.x) + glyph.instance->BoundsMax.X);
+                maxY = std::max(maxY, static_cast<float>(glyph.y) + glyph.instance->BoundsMax.Y);
+            }
+            const float textCenterX = (minX + maxX) * 0.5f;
+            const float textCenterY = (minY + maxY) * 0.5f;
+
+            for (std::size_t glyphIndex = 0; glyphIndex < layout.glyphs.size(); ++glyphIndex) {
+                const PositionedGlyphOutline& glyph = layout.glyphs[glyphIndex];
+                const float glyphCenterX =
+                    (glyph.instance->BoundsMin.X + glyph.instance->BoundsMax.X) * 0.5f;
+                const float glyphCenterY =
+                    (glyph.instance->BoundsMin.Y + glyph.instance->BoundsMax.Y) * 0.5f;
+                const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
+                const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
+                SdfInstruction transform = instruction(SdfOpCode::Transform);
+                transform.data[0] = placement.offsetX +
+                    (layout.mirrorX ? -rawX : rawX) * kOutlineScale;
+                transform.data[1] = rawY * kOutlineScale;
+                transform.data[2] = textDepth;
+                transform.data[4] = 0.0f;
+                transform.data[5] = 0.0f;
+                transform.data[6] = 0.0f;
+                transform.data[7] = 1.0f;
+                transform.data[8] = 1.0f;
+                transform.data[9] = 1.0f;
+                transform.data[10] = 1.0f;
+                transform.data[11] = 1.0f;
+                result.instructions.push_back(transform);
+
+                SdfInstruction glyphOp = instruction(SdfOpCode::GlyphOutline);
+                glyphOp.data[0] = std::bit_cast<float>(layoutRows[placement.layoutIndex][glyphIndex]);
+                result.instructions.push_back(glyphOp);
+
+                SdfInstruction extrusion = instruction(SdfOpCode::Box);
+                extrusion.data[0] = (glyph.instance->BoundsMax.X - glyph.instance->BoundsMin.X) *
+                    kOutlineScale * 0.5f + bevel;
+                extrusion.data[1] = (glyph.instance->BoundsMax.Y - glyph.instance->BoundsMin.Y) *
+                    kOutlineScale * 0.5f + bevel;
+                extrusion.data[2] = halfDepth;
+                result.instructions.push_back(extrusion);
+                result.instructions.push_back(instruction(SdfOpCode::Intersect));
+
+                SdfInstruction round = instruction(SdfOpCode::Round);
+                round.data[0] = 0.035f;
+                result.instructions.push_back(round);
+                result.instructions.push_back(instruction(SdfOpCode::RestorePos));
+                result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
+            }
+        }
+        return result;
+    };
+
+    const glm::vec3 hullColor = Vixen::App::Lookdev::MaterialColor(
+        Vixen::App::Lookdev::Material::Hull);
+    std::vector<std::pair<uint32_t, GlyphSdfRecipe>> recipes;
+    if (rtlProofPair) {
+        constexpr float sideBySideOffset = 14.5f;
+        constexpr std::array<LayoutPlacement, 2> proofLayouts{{
+            {0, -sideBySideOffset}, {1, sideBySideOffset}}};
+        recipes.emplace_back(kGlyphSdfRecipeId,
+            makeRecipe(proofLayouts, true, {0.0f, 0.0f, 5.0f}, hullColor, "rtl-proof-pair"));
+    } else {
+        const std::array<LayoutPlacement, 1> selectedLayout{{
+            {selected->layoutIndex, 0.0f}}};
+        recipes.emplace_back(kGlyphSdfRecipeId,
+            makeRecipe(selectedLayout, selected->carved,
+                       {0.0f, 0.0f, 5.0f}, hullColor, selected->name));
+    }
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
+
+    for (const auto& [recipeId, recipe] : recipes) {
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+        entry.bytecode = recipe.instructions;
+        entry.glyphInstances = glyphRows;
+        entry.boundCenter = glm::vec3(0.0f);
+        entry.boundRadius = 18.0f;
+        entry.stepRelaxation = 0.9f;
+        scene.proceduralRecipes.emplace_back(recipeId, std::move(entry));
+    }
+
+    auto makeAnalyticInstance = [&](const glm::vec3& center, uint32_t recipeId,
+                                    const glm::vec3& color) {
+        Vixen::SVO::BodyInstanceGpu instance{};
+        constexpr float instanceScale = 0.30f;
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), center) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+        Vixen::SVO::SetInstanceTransform(instance, model);
+        instance.material.color[0] = color.r;
+        instance.material.color[1] = color.g;
+        instance.material.color[2] = color.b;
+        instance.material.providerKind = 1U;
+        instance.material.recipeId = recipeId;
+        return instance;
+    };
+
+    for (const auto& [recipeId, recipe] : recipes) {
+        const glm::vec3 center = compareAnalyticAndVoxel
+            ? glm::vec3(-5.25f, 0.0f, 5.0f) : recipe.bodyCenter;
+        scene.instances.push_back(makeAnalyticInstance(center, recipeId, recipe.color));
+    }
+    if (!compareAnalyticAndVoxel) return true;
+
+    const GlyphSdfRecipe& recipe = recipes.front().second;
+
+    int bakeResolution = 256;
+    if (const char* requestedResolution = std::getenv("VIXEN_GLYPHSDF_BAKE_RESOLUTION")) {
+        char* parseEnd = nullptr;
+        const long parsedResolution = std::strtol(requestedResolution, &parseEnd, 10);
+        if (parseEnd == requestedResolution || *parseEnd != '\0' ||
+            (parsedResolution != 128 && parsedResolution != 256)) {
+            error = "VIXEN_GLYPHSDF_BAKE_RESOLUTION must be 128 or 256";
+            return false;
+        }
+        bakeResolution = static_cast<int>(parsedResolution);
+    }
+    // Keep the same 64-unit world-space bake volume at both resolutions. A
+    // 256^3 bake therefore halves voxel spacing rather than adding empty margin.
+    const float recipeUnitsPerVoxel = 64.0f / static_cast<float>(bakeResolution);
+    const float bakeCenterCoordinate = static_cast<float>(bakeResolution) * 0.5f;
+    const glm::vec3 bakeCenter{bakeCenterCoordinate};
+    constexpr float bandRecipeUnits = 2.5f;
+    const float bandVoxels = bandRecipeUnits / recipeUnitsPerVoxel;
+    std::ofstream comparison(evidenceDir / "glyphsdf-voxel-vs-analytic.txt", std::ios::out | std::ios::trunc);
+    if (!comparison) {
+        error = "could not write the GlyphOutline bake comparison evidence";
+        return false;
+    }
+    comparison << "variant bake_resolution recipe_units_per_voxel band_recipe_units sample_width sample_height "
+                  "nearest_changed_samples trilinear_changed_samples nearest_max_delta "
+                  "trilinear_max_delta trilinear_max_delta_with_band_clamp unallocated_samples\n";
+    constexpr int imageWidth = 256;
+    constexpr int imageHeight = 160;
+    auto evaluate = [&](const glm::vec3& gridPoint) {
+        return Vixen::SVO::Recipe::evalRecipe(
+            recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
+            (gridPoint - bakeCenter) * recipeUnitsPerVoxel, {}, nullptr, nullptr, glyphRows);
+    };
+    const auto neutralVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
+                                           Vixen::SVO::NoEmission, neutralVoxelColor);
+    float nearestMaxDelta = 0.0f;
+    float trilinearMaxDelta = 0.0f;
+    float trilinearMaxDeltaWithBandClamp = 0.0f;
+    std::uint32_t nearestChangedSamples = 0;
+    std::uint32_t trilinearChangedSamples = 0;
+    std::uint32_t unallocatedSamples = 0;
+    const float sampleZ = recipe.carved ? 0.0f : 2.35f;
+    for (int y = 0; y < imageHeight; ++y) {
+        for (int x = 0; x < imageWidth; ++x) {
+            const glm::vec3 localPoint(
+                -15.0f + (static_cast<float>(x) + 0.5f) * 30.0f / imageWidth,
+                -10.0f + (static_cast<float>(y) + 0.5f) * 20.0f / imageHeight,
+                sampleZ);
+            const float analytic = Vixen::SVO::Recipe::evalRecipe(
+                recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
+                localPoint, {}, nullptr, nullptr, glyphRows);
+            const glm::vec3 gridPoint = bakeCenter + localPoint / recipeUnitsPerVoxel;
+            const auto nearest = baked.sampleStored(gridPoint);
+            const auto trilinear = baked.sampleStoredTrilinear(gridPoint);
+            const float voxel = trilinear.value_or(std::max(bandVoxels * recipeUnitsPerVoxel + 1.0f,
+                                                            analytic));
+            if (nearest) {
+                nearestMaxDelta = std::max(nearestMaxDelta, std::abs(analytic - *nearest));
+                if ((analytic < 0.0f) != (*nearest < 0.0f)) ++nearestChangedSamples;
+            } else {
+                ++unallocatedSamples;
+            }
+            if (trilinear)
+                trilinearMaxDelta = std::max(trilinearMaxDelta, std::abs(analytic - *trilinear));
+            trilinearMaxDeltaWithBandClamp = std::max(
+                trilinearMaxDeltaWithBandClamp, std::abs(analytic - voxel));
+            if ((analytic < 0.0f) != (voxel < 0.0f)) ++trilinearChangedSamples;
+        }
+    }
+    comparison << recipe.label << ' ' << bakeResolution << ' ' << recipeUnitsPerVoxel << ' '
+               << bandRecipeUnits << ' '
+               << imageWidth << ' ' << imageHeight
+               << ' ' << nearestChangedSamples << ' ' << trilinearChangedSamples << ' '
+               << nearestMaxDelta << ' ' << trilinearMaxDelta << ' '
+               << trilinearMaxDeltaWithBandClamp
+               << ' ' << unallocatedSamples << '\n';
+
+    auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
+    scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
+    Vixen::SVO::BodyInstanceGpu storedInstance{};
+    // Stored octrees render in the existing normalized [0,1]^3 -> [0,10]^3
+    // body frame. Undo that normalization here so the baked glyph has the same
+    // world-space scale as the analytic recipe instance above.
+    const float instanceScale = 0.30f * static_cast<float>(bakeResolution) *
+        recipeUnitsPerVoxel / 10.0f;
+    const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
+    const glm::vec3 storedOrigin = storedCenter - glm::vec3(
+        5.0f * instanceScale);
+    const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+    Vixen::SVO::SetInstanceTransform(storedInstance, storedModel);
+    storedInstance.material.color[0] = recipe.color.r;
+    storedInstance.material.color[1] = recipe.color.g;
+    storedInstance.material.color[2] = recipe.color.b;
+    storedInstance.material.octreeIndex = 0U;
+    storedInstance.material.providerKind = 0U;
+    scene.instances.push_back(storedInstance);
+    return true;
+}
+
+bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+
+    constexpr int bakeResolution = 128;
+    constexpr float recipeUnitsPerVoxel = 0.5f;
+    constexpr float bandVoxels = 5.0f;
+    constexpr float sphereRadius = 16.0f;
+    constexpr float instanceScale = 0.30f;
+    const glm::vec3 bakeCenter(static_cast<float>(bakeResolution) * 0.5f);
+
+    SdfInstruction sphere{};
+    sphere.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+    sphere.data[3] = sphereRadius;
+    const std::vector<SdfInstruction> instructions{sphere};
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry recipe{};
+    recipe.bytecode = instructions;
+    recipe.boundCenter = glm::vec3(0.0f);
+    recipe.boundRadius = sphereRadius;
+    recipe.stepRelaxation = 0.9f;
+    scene.proceduralRecipes.emplace_back(kSdfFilterNonTextRecipeId, std::move(recipe));
+
+    auto evaluate = [&](const glm::vec3& gridPoint) {
+        return Vixen::SVO::Recipe::evalRecipe(
+            instructions.data(), static_cast<std::uint32_t>(instructions.size()),
+            (gridPoint - bakeCenter) * recipeUnitsPerVoxel);
+    };
+    const auto flatVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
+                                           Vixen::SVO::NoEmission, flatVoxelColor);
+    auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
+    scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
+
+    const glm::vec3 hullColor = Vixen::App::Lookdev::MaterialColor(
+        Vixen::App::Lookdev::Material::Hull);
+    auto makeInstance = [&](const glm::vec3& center) {
+        Vixen::SVO::BodyInstanceGpu instance{};
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), center) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+        Vixen::SVO::SetInstanceTransform(instance, model);
+        instance.material.color[0] = hullColor.r;
+        instance.material.color[1] = hullColor.g;
+        instance.material.color[2] = hullColor.b;
+        return instance;
+    };
+
+    auto analytic = makeInstance(glm::vec3(-5.25f, 0.0f, 5.0f));
+    analytic.material.providerKind = 1U;
+    analytic.material.recipeId = kSdfFilterNonTextRecipeId;
+    scene.instances.push_back(analytic);
+
+    Vixen::SVO::BodyInstanceGpu stored{};
+    const float storedScale = instanceScale * static_cast<float>(bakeResolution) *
+        recipeUnitsPerVoxel / 10.0f;
+    const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
+    const glm::vec3 storedOrigin = storedCenter - glm::vec3(5.0f * storedScale);
+    const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(storedScale));
+    Vixen::SVO::SetInstanceTransform(stored, storedModel);
+    stored.material.color[0] = hullColor.r;
+    stored.material.color[1] = hullColor.g;
+    stored.material.color[2] = hullColor.b;
+    stored.material.octreeIndex = 0U;
+    stored.material.providerKind = 0U;
+    scene.instances.push_back(stored);
+
+    if (scene.pool.channelPool.empty()) {
+        error = "the non-text distance-filter recipe produced an empty stored-SDF pool";
+        return false;
+    }
+    return true;
 }
 
 class LookdevCaptureApplication final : public VulkanGraphApplication {
@@ -247,6 +838,29 @@ public:
             }
         }
 
+        const bool glyphSdfScene = std::getenv("VIXEN_GLYPHSDF_SCENE") != nullptr;
+        const bool glyphSdfCompare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr;
+        const bool sdfFilterNonText = std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
+        const char* glyphSdfVariant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
+        const bool glyphSdfRtlProofPair = glyphSdfVariant &&
+            std::string_view(glyphSdfVariant) == "rtl-proof-pair";
+        GlyphSdfSceneBundle glyphScene;
+        if (glyphSdfScene || sdfFilterNonText) {
+            const bool sceneBuilt = glyphSdfScene
+                ? BuildGlyphSdfScene(glyphScene, outputDir_, glyphSdfCompare, captureError_)
+                : BuildSdfFilterNonTextScene(glyphScene, captureError_);
+            if (!sceneBuilt) return;
+            for (auto& [recipeId, recipe] : glyphScene.proceduralRecipes) {
+                const auto result = RegisterProceduralRecipe(recipeId, std::move(recipe));
+                if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    captureError_ = "could not register GlyphOutline sign recipe " +
+                        std::to_string(recipeId) + " (status " +
+                        std::to_string(static_cast<int>(result)) + ")";
+                    return;
+                }
+            }
+        }
+
         VulkanGraphApplication::BuildRenderGraph();
         auto* graph = GetRenderGraph();
         camera_ = graph ? dynamic_cast<Vixen::RenderGraph::CameraNode*>(
@@ -260,20 +874,31 @@ public:
 
         // The ordinary look-dev capture below is procedural-only, so it cannot
         // prove the composed DDA fallback. When the existing stored-SDF scene is
-        // requested, keep its six FORMAT_STORED_SDF instances and orbit that
-        // scene with the same four yaw angles and lighting presets.
+        // requested, keep its six FORMAT_STORED_SDF instances and frame the
+        // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
-        const float orbitCenterX = storedSdfScene ? 64.0f : 5.0f;
-        const float orbitCenterY = storedSdfScene ? 64.0f : 5.0f;
-        const float orbitCenterZ = storedSdfScene ? 0.0f : 5.0f;
-        const float orbitDistance = storedSdfScene ? 300.0f : 14.0f;
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, 45.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
+        if (storedSdfScene) {
+            // The brickmap scene is authored at world-space centers near (64,64,64).
+            // Use an explicit fixed pose so this capture does not depend on the main
+            // graph's preset camera or its orbit-mode setup.
+            camera_->SetPositionForTest(glm::vec3(64.0f, 64.0f, 88.0f));
+            camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
+        } else {
+            const float orbitCenterX = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
+            const float orbitCenterY = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
+            const float orbitCenterZ = 5.0f;
+            const float orbitDistance = (glyphSdfScene || sdfFilterNonText)
+                ? ((glyphSdfCompare || sdfFilterNonText) ? 16.0f
+                    : (glyphSdfRtlProofPair ? 13.5f : 9.5f))
+                : 14.0f;
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
+        }
 
         lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
                              scenarios_.front().lighting.ambient,
@@ -284,7 +909,11 @@ public:
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             Vixen::App::Lookdev::SceneLookDeclaration());
-        if (!storedSdfScene) {
+        if (glyphSdfScene || sdfFilterNonText) {
+            if (glyphSdfCompare || sdfFilterNonText)
+                SetRecipePool(std::move(glyphScene.pool));
+            SetBodyInstances(std::move(glyphScene.instances));
+        } else if (!storedSdfScene) {
             SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
                 recipes, scenarios_.front().lighting));
         }
@@ -661,6 +1290,56 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const bool oneAngleRequested = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE") != nullptr;
     ASSERT_EQ(scenarios.size(), oneAngleRequested ? 1u : 4u)
         << "CTest must select one supported look-dev lighting preset";
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
+    ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
+        << "CTest must enable the fixed-bucket localized sign scene";
+    ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_VARIANT"), nullptr)
+        << "CTest must select one Latin or qps-rtl carve/emboss variant";
+    ASSERT_EQ(std::getenv("VIXEN_GLYPHSDF_COMPARE"), nullptr)
+        << "use the analytic-vs-voxel capture test for the split comparison frame";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the glyph look-dev capture directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 1U);
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersGlyphSdfAnalyticVsVoxel) {
+    ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
+        << "CTest must enable the fixed-bucket localized sign scene";
+    ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_COMPARE"), nullptr)
+        << "CTest must request the analytic-vs-voxel split frame";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the glyph comparison directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 1U);
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersSdfFilterNonText) {
+    ASSERT_NE(std::getenv("VIXEN_SDF_FILTER_NON_TEXT"), nullptr)
+        << "CTest must enable the analytic and stored SDF sphere pair";
+    ASSERT_EQ(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
+        << "the distance-filter witness is a non-text recipe";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the non-text SDF capture directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 1U);
     std::string error;
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;

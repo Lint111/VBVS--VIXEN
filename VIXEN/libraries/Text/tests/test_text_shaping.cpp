@@ -1,7 +1,11 @@
 #include "Text/Bidi.h"
+#include "Text/GlyphAtlas.h"
+#include "Text/GlyphOutline.h"
 #include "Text/LineBreaker.h"
 #include "Text/RmlFontEngine.h"
 #include "Text/Shaper.h"
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/SdfCoreKernels.g.hpp"
 
 #include <gtest/gtest.h>
 
@@ -10,9 +14,11 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -96,6 +102,128 @@ TEST_F(TextShapingFixture, LatinGlyphIdsAndByteClustersAreStable) {
     EXPECT_EQ(shaped.visualRuns[0].scriptTag, ScriptTag('L', 'a', 't', 'n'));
     EXPECT_TRUE(shaped.visualRuns[0].scriptRequired);
     EXPECT_EQ(FormatGlyphs(shaped.visualRuns[0].glyphs), "105:0,72:1,49:4,55:5");
+}
+
+TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    Vixen::Text::GlyphOutlineInstance round{};
+    Vixen::Text::GlyphOutlineBakeDiagnostic diagnostic;
+    ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
+        latinFace, FT_Get_Char_Index(latinFace, U'o'), round, &diagnostic));
+    EXPECT_EQ(diagnostic.code, Vixen::Text::GlyphOutlineBakeDiagnosticCode::None);
+    EXPECT_EQ(round.FillRule, 0U);
+    ASSERT_GE(round.SegmentCount, 8U);
+    EXPECT_LE(round.SegmentCount,
+              static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
+    EXPECT_GE(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
+                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                                return segment.ContourStart != 0U;
+                            }), 2);
+    EXPECT_GT(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
+                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                                return segment.Kind == 1U;
+                            }), 0);
+    EXPECT_LT(round.BoundsMin.X, round.BoundsMax.X);
+    EXPECT_LT(round.BoundsMin.Y, round.BoundsMax.Y);
+
+    const float midX = (round.BoundsMin.X + round.BoundsMax.X) * 0.5f;
+    const float midY = (round.BoundsMin.Y + round.BoundsMax.Y) * 0.5f;
+    const float lowerRingY = round.BoundsMin.Y + (round.BoundsMax.Y - round.BoundsMin.Y) * 0.1f;
+    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, midY, 0.0f), round), 0.0f);
+    EXPECT_LT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, lowerRingY, 0.0f), round), 0.0f);
+
+    Vixen::Text::GlyphOutlineInstance eight{};
+    ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
+        latinFace, FT_Get_Char_Index(latinFace, U'8'), eight, &diagnostic));
+    EXPECT_GE(std::count_if(std::begin(eight.Segments), std::begin(eight.Segments) + eight.SegmentCount,
+                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                                return segment.ContourStart != 0U;
+                            }), 3);
+    const float eightMidX = (eight.BoundsMin.X + eight.BoundsMax.X) * 0.5f;
+    const float eightLowerHoleY = eight.BoundsMin.Y + (eight.BoundsMax.Y - eight.BoundsMin.Y) * 0.25f;
+    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(
+                  glm::vec3(eightMidX, eightLowerHoleY, 0.0f), eight), 0.0f);
+}
+
+TEST_F(TextShapingFixture, ScreenAtlasDoesNotApplyWorldBucketCapacity) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    const std::uint32_t glyphId = FT_Get_Char_Index(latinFace, U'g');
+    ASSERT_NE(glyphId, 0U);
+    Vixen::Text::GlyphOutlineInstance worldOutline{};
+    Vixen::Text::GlyphOutlineBakeDiagnostic diagnostic;
+    ASSERT_FALSE(Vixen::Text::LoadGlyphOutline(latinFace, glyphId, worldOutline, &diagnostic));
+    EXPECT_EQ(diagnostic.code, Vixen::Text::GlyphOutlineBakeDiagnosticCode::SegmentCapacityExceeded);
+    EXPECT_GT(diagnostic.requiredSegments, diagnostic.segmentCapacity);
+
+    Vixen::Text::GlyphAtlas screenAtlas;
+    EXPECT_TRUE(screenAtlas.AddGlyph(latinFace, glyphId, 24));
+    EXPECT_NE(screenAtlas.FindGlyph(glyphId), nullptr);
+}
+
+TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    constexpr std::array<std::uint32_t, 1> requiredScripts{ScriptTag('L', 'a', 't', 'n')};
+    Vixen::Text::GlyphAtlas glyphAtlas;
+    const auto leftToRight = MakePreset(Vixen::Text::TextDirection::LeftToRight,
+                                        Vixen::Text::ShapingClass::Default,
+                                        Vixen::Text::LineBreakingClass::Word, 1);
+    const Vixen::Text::WorldTextLayout latin = Vixen::Text::ShapeWorldText(
+        leftToRight, requiredScripts, glyphAtlas, latinFace, "OPEN", "en");
+
+    ASSERT_TRUE(latin.valid);
+    EXPECT_FALSE(latin.mirrorX);
+    ASSERT_EQ(latin.glyphs.size(), 4U);
+    EXPECT_EQ(latin.glyphs.front().x, 0);
+    for (const Vixen::Text::PositionedGlyphOutline& glyph : latin.glyphs)
+        ASSERT_NE(glyph.instance, nullptr);
+
+    const Vixen::Text::WorldTextLayout repeated = Vixen::Text::ShapeWorldText(
+        leftToRight, requiredScripts, glyphAtlas, latinFace, "OO", "en");
+    ASSERT_TRUE(repeated.valid);
+    ASSERT_EQ(repeated.glyphs.size(), 2U);
+    EXPECT_EQ(repeated.glyphs[0].instance.get(), repeated.glyphs[1].instance.get());
+    EXPECT_EQ(repeated.glyphs[0].instance.get(), latin.glyphs.front().instance.get());
+
+    const auto rightToLeft = MakePreset(Vixen::Text::TextDirection::RightToLeft,
+                                        Vixen::Text::ShapingClass::Default,
+                                        Vixen::Text::LineBreakingClass::Word, 1);
+    const Vixen::Text::WorldTextLayout rtl = Vixen::Text::ShapeWorldText(
+        rightToLeft, requiredScripts, glyphAtlas, latinFace, "NEPO", "qps-rtl");
+
+    ASSERT_TRUE(rtl.valid);
+    EXPECT_EQ(rtl.direction, Vixen::Text::TextDirection::RightToLeft);
+    EXPECT_TRUE(rtl.mirrorX);
+    ASSERT_EQ(rtl.glyphs.size(), 4U);
+    EXPECT_TRUE(rtl.requiredScriptTableMatchesPreset);
+}
+
+TEST_F(TextShapingFixture, MsdfAtlasIsTheFinalSmallScreenTextBand) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    const std::uint32_t glyphId = FT_Get_Char_Index(latinFace, U'O');
+    Vixen::Text::GlyphAtlas outlineCache;
+    Vixen::Text::GlyphOutlineBakeDiagnostic diagnostic;
+    const auto outline = outlineCache.GetOrAddOutline(latinFace, glyphId, &diagnostic);
+    ASSERT_NE(outline, nullptr);
+    EXPECT_EQ(diagnostic.code, Vixen::Text::GlyphOutlineBakeDiagnosticCode::None);
+    Vixen::Text::GlyphAtlas msdfAtlas;
+    ASSERT_TRUE(msdfAtlas.AddGlyphFromOutline(glyphId, *outline));
+    ASSERT_NE(msdfAtlas.FindGlyph(glyphId), nullptr);
+
+    EXPECT_EQ(Vixen::Text::SelectWorldTextRenderBand(64.0f, true),
+              Vixen::Text::WorldTextRenderBand::AnalyticSdf);
+    EXPECT_EQ(Vixen::Text::SelectWorldTextRenderBand(
+                  Vixen::Text::kMsdfScreenFallbackMaxGlyphHeightPixels, true),
+              Vixen::Text::WorldTextRenderBand::MsdfScreen);
+    EXPECT_EQ(Vixen::Text::SelectWorldTextRenderBand(8.0f, false),
+              Vixen::Text::WorldTextRenderBand::AnalyticSdf);
 }
 
 TEST_F(TextShapingFixture, ArabicGlyphIdsAndByteClustersAreStable) {
@@ -190,10 +318,22 @@ TEST_F(TextShapingFixture, RmlFontEngineUsesAndClearsPresetShaping) {
 }
 
 TEST(TextBidi, RtlPresetOrdersRunsVisuallyAndMirrorsPairedBrackets) {
+    const auto ltrPreset = MakePreset(Vixen::Text::TextDirection::LeftToRight,
+                                      Vixen::Text::ShapingClass::Joining,
+                                      Vixen::Text::LineBreakingClass::Word, 2);
     const auto preset = MakePreset(Vixen::Text::TextDirection::RightToLeft,
                                    Vixen::Text::ShapingClass::Joining,
                                    Vixen::Text::LineBreakingClass::Word, 2);
     constexpr std::string_view mixed = "\xD7\x90\xD7\x91\xD7\x92" "abc";
+    const Vixen::Text::BidiResult ltr = Vixen::Text::ResolveBidi(ltrPreset, mixed);
+    ASSERT_EQ(ltr.visualRuns.size(), 2U);
+    EXPECT_EQ(ltr.visualRuns[0].byteOffset, 0U);
+    EXPECT_EQ(ltr.visualRuns[0].byteLength, 6U);
+    EXPECT_TRUE(ltr.visualRuns[0].rightToLeft);
+    EXPECT_EQ(ltr.visualRuns[1].byteOffset, 6U);
+    EXPECT_EQ(ltr.visualRuns[1].byteLength, 3U);
+    EXPECT_FALSE(ltr.visualRuns[1].rightToLeft);
+
     const Vixen::Text::BidiResult bidi = Vixen::Text::ResolveBidi(preset, mixed);
 
     ASSERT_EQ(bidi.visualRuns.size(), 2U);

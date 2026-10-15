@@ -13,6 +13,7 @@
 #include "Recipe/RecipeComposition.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 
 namespace Vixen::SVO {
 
@@ -96,6 +97,10 @@ public:
         uint32_t            occupancyGridDim       = 0;         // 0 = no grid derived
         glm::vec3           occupancyGridAabbMin   = glm::vec3(0.0f);
         float               occupancyGridCellSize  = 0.f;
+
+        // Each typed reference in bytecode indexes one complete GPU glyph instance.
+        // The instance owns its fixed-width contour bucket; no separate contour pool exists.
+        std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances;
     };
 
     enum class RegisterResult {
