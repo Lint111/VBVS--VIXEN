@@ -790,19 +790,26 @@ public:
         // requested, keep its six FORMAT_STORED_SDF instances and frame the
         // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
-        const float orbitCenterX = storedSdfScene ? 64.0f : (glyphSdfScene ? 0.0f : 5.0f);
-        const float orbitCenterY = storedSdfScene ? 64.0f : (glyphSdfScene ? 0.0f : 5.0f);
-        const float orbitCenterZ = storedSdfScene ? 64.0f : 5.0f;
-        const float orbitDistance = storedSdfScene ? 24.0f :
-            (glyphSdfScene ? (glyphSdfCompare ? 16.0f :
-                (glyphSdfRtlProofPair ? 13.5f : 9.5f)) : 14.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, 45.0f);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
+        if (storedSdfScene) {
+            // The brickmap scene is authored at world-space centers near (64,64,64).
+            // Use an explicit fixed pose so this capture does not depend on the main
+            // graph's preset camera or its orbit-mode setup.
+            camera_->SetPositionForTest(glm::vec3(64.0f, 64.0f, 88.0f));
+            camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
+        } else {
+            const float orbitCenterX = glyphSdfScene ? 0.0f : 5.0f;
+            const float orbitCenterY = glyphSdfScene ? 0.0f : 5.0f;
+            const float orbitCenterZ = 5.0f;
+            const float orbitDistance = glyphSdfScene ? (glyphSdfCompare ? 16.0f :
+                (glyphSdfRtlProofPair ? 13.5f : 9.5f)) : 14.0f;
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
+            camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
+        }
 
         lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
                              scenarios_.front().lighting.ambient,
