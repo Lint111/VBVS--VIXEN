@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   echo "usage: native-capture.sh lookdev <state> [--gpu-benchmark]" >&2
   echo "       native-capture.sh planet <state> [--gpu-benchmark]" >&2
-  echo "       native-capture.sh glyphsdf localized-sign [--gpu-benchmark]" >&2
+  echo "       native-capture.sh glyphsdf <latin-carved|latin-embossed|qps-rtl-carved|qps-rtl-embossed|analytic-vs-voxel> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
 }
 

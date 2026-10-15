@@ -29,10 +29,13 @@ if ($Mode -eq 'state') {
     }
     $testRegex = '^Application\.PlanetCapture\.' + [regex]::Escape($State) + '$'
   } elseif ($Capture -eq 'glyphsdf') {
-    if ($State -ne 'localized-sign') {
+    if ($State -in @('latin-carved', 'latin-embossed', 'qps-rtl-carved', 'qps-rtl-embossed')) {
+      $testRegex = '^Application\.LookdevCapture\.GlyphSdf\.' + [regex]::Escape($State) + '$'
+    } elseif ($State -eq 'analytic-vs-voxel') {
+      $testRegex = '^Application\.LookdevCapture\.GlyphSdf\.AnalyticVsVoxel$'
+    } else {
       throw "unsupported glyph SDF capture state: $State"
     }
-    $testRegex = '^Application\.LookdevCapture\.GlyphSdfLocalizedSign$'
   } else {
     throw 'Capture must be lookdev, planet, or glyphsdf in state mode'
   }
@@ -47,7 +50,8 @@ if ($Mode -eq 'state') {
       if (Test-Path $path) { Remove-Item -Recurse -Force $path }
     }
   } elseif ($Capture -eq 'glyphsdf') {
-    foreach ($path in @((Join-Path $captureRoot 'glyphsdf'), (Join-Path $captureRoot 'glyphsdf\.repeat'))) {
+    foreach ($path in @((Join-Path $captureRoot "glyphsdf\$State"),
+                        (Join-Path $captureRoot "glyphsdf\.repeat\$State"))) {
       if (Test-Path $path) { Remove-Item -Recurse -Force $path }
     }
   } else {
