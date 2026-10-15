@@ -143,6 +143,7 @@ constexpr uint32_t kDefaultFramesPerScenario = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 constexpr float kPitchRadians = 0.45f;
 constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
+constexpr uint32_t kSdfFilterNonTextRecipeId = 0x5344464eu; // SDFN
 
 using CaptureClock = std::chrono::steady_clock;
 
@@ -204,15 +205,18 @@ std::vector<CaptureScenario> BuildScenarios() {
         }
     }
     std::vector<CaptureScenario> scenarios;
-    if (std::getenv("VIXEN_GLYPHSDF_SCENE")) {
+    if (std::getenv("VIXEN_GLYPHSDF_SCENE") || std::getenv("VIXEN_SDF_FILTER_NON_TEXT")) {
         const char* variant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
-        const bool compare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr;
+        const bool compare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr ||
+            std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
         const auto preset = std::find_if(presets.begin(), presets.end(), [](const auto& value) {
             return value.name == "midday";
         });
         if (preset != presets.end())
             scenarios.push_back({*preset, 0.0f, compare
-                ? "glyphsdf-analytic-vs-voxel.png"
+                ? (std::getenv("VIXEN_SDF_FILTER_NON_TEXT")
+                    ? "sdf-filter-nontext-analytic-vs-voxel.png"
+                    : "glyphsdf-analytic-vs-voxel.png")
                 : std::string("glyphsdf-") + (variant ? variant : "latin-carved") + ".png"});
         return scenarios;
     }
@@ -709,6 +713,79 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     return true;
 }
 
+bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+
+    constexpr int bakeResolution = 128;
+    constexpr float recipeUnitsPerVoxel = 0.5f;
+    constexpr float bandVoxels = 5.0f;
+    constexpr float sphereRadius = 16.0f;
+    constexpr float instanceScale = 0.30f;
+    const glm::vec3 bakeCenter(static_cast<float>(bakeResolution) * 0.5f);
+
+    SdfInstruction sphere{};
+    sphere.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+    sphere.data[3] = sphereRadius;
+    const std::vector<SdfInstruction> instructions{sphere};
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry recipe{};
+    recipe.bytecode = instructions;
+    recipe.boundCenter = glm::vec3(0.0f);
+    recipe.boundRadius = sphereRadius;
+    recipe.stepRelaxation = 0.9f;
+    scene.proceduralRecipes.emplace_back(kSdfFilterNonTextRecipeId, std::move(recipe));
+
+    auto evaluate = [&](const glm::vec3& gridPoint) {
+        return Vixen::SVO::Recipe::evalRecipe(
+            instructions.data(), static_cast<std::uint32_t>(instructions.size()),
+            (gridPoint - bakeCenter) * recipeUnitsPerVoxel);
+    };
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3);
+    auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+    const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
+    scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
+
+    const glm::vec3 hullColor = Vixen::App::Lookdev::MaterialColor(
+        Vixen::App::Lookdev::Material::Hull);
+    auto makeInstance = [&](const glm::vec3& center) {
+        Vixen::SVO::BodyInstanceGpu instance{};
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), center) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+        Vixen::SVO::SetInstanceTransform(instance, model);
+        instance.material.color[0] = hullColor.r;
+        instance.material.color[1] = hullColor.g;
+        instance.material.color[2] = hullColor.b;
+        return instance;
+    };
+
+    auto analytic = makeInstance(glm::vec3(-5.25f, 0.0f, 5.0f));
+    analytic.material.providerKind = 1U;
+    analytic.material.recipeId = kSdfFilterNonTextRecipeId;
+    scene.instances.push_back(analytic);
+
+    Vixen::SVO::BodyInstanceGpu stored{};
+    const float storedScale = instanceScale * static_cast<float>(bakeResolution) *
+        recipeUnitsPerVoxel / 10.0f;
+    const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
+    const glm::vec3 storedOrigin = storedCenter - glm::vec3(5.0f * storedScale);
+    const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(storedScale));
+    Vixen::SVO::SetInstanceTransform(stored, storedModel);
+    stored.material.color[0] = hullColor.r;
+    stored.material.color[1] = hullColor.g;
+    stored.material.color[2] = hullColor.b;
+    stored.material.octreeIndex = 0U;
+    stored.material.providerKind = 0U;
+    scene.instances.push_back(stored);
+
+    if (scene.pool.channelPool.empty()) {
+        error = "the non-text distance-filter recipe produced an empty stored-SDF pool";
+        return false;
+    }
+    return true;
+}
+
 class LookdevCaptureApplication final : public VulkanGraphApplication {
 public:
     LookdevCaptureApplication(std::filesystem::path outputDir,
@@ -757,12 +834,16 @@ public:
 
         const bool glyphSdfScene = std::getenv("VIXEN_GLYPHSDF_SCENE") != nullptr;
         const bool glyphSdfCompare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr;
+        const bool sdfFilterNonText = std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
         const char* glyphSdfVariant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
         const bool glyphSdfRtlProofPair = glyphSdfVariant &&
             std::string_view(glyphSdfVariant) == "rtl-proof-pair";
         GlyphSdfSceneBundle glyphScene;
-        if (glyphSdfScene) {
-            if (!BuildGlyphSdfScene(glyphScene, outputDir_, glyphSdfCompare, captureError_)) return;
+        if (glyphSdfScene || sdfFilterNonText) {
+            const bool sceneBuilt = glyphSdfScene
+                ? BuildGlyphSdfScene(glyphScene, outputDir_, glyphSdfCompare, captureError_)
+                : BuildSdfFilterNonTextScene(glyphScene, captureError_);
+            if (!sceneBuilt) return;
             for (auto& [recipeId, recipe] : glyphScene.proceduralRecipes) {
                 const auto result = RegisterProceduralRecipe(recipeId, std::move(recipe));
                 if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -798,11 +879,13 @@ public:
             camera_->SetPositionForTest(glm::vec3(64.0f, 64.0f, 88.0f));
             camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
         } else {
-            const float orbitCenterX = glyphSdfScene ? 0.0f : 5.0f;
-            const float orbitCenterY = glyphSdfScene ? 0.0f : 5.0f;
+            const float orbitCenterX = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
+            const float orbitCenterY = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
             const float orbitCenterZ = 5.0f;
-            const float orbitDistance = glyphSdfScene ? (glyphSdfCompare ? 16.0f :
-                (glyphSdfRtlProofPair ? 13.5f : 9.5f)) : 14.0f;
+            const float orbitDistance = (glyphSdfScene || sdfFilterNonText)
+                ? ((glyphSdfCompare || sdfFilterNonText) ? 16.0f
+                    : (glyphSdfRtlProofPair ? 13.5f : 9.5f))
+                : 14.0f;
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
@@ -820,8 +903,9 @@ public:
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             Vixen::App::Lookdev::SceneLookDeclaration());
-        if (glyphSdfScene) {
-            if (glyphSdfCompare) SetRecipePool(std::move(glyphScene.pool));
+        if (glyphSdfScene || sdfFilterNonText) {
+            if (glyphSdfCompare || sdfFilterNonText)
+                SetRecipePool(std::move(glyphScene.pool));
             SetBodyInstances(std::move(glyphScene.instances));
         } else if (!storedSdfScene) {
             SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
@@ -1231,6 +1315,22 @@ TEST(LookdevCapture, RendersGlyphSdfAnalyticVsVoxel) {
         << "CTest must request the analytic-vs-voxel split frame";
     const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
     ASSERT_NE(outputEnv, nullptr) << "CTest must configure the glyph comparison directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 1U);
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersSdfFilterNonText) {
+    ASSERT_NE(std::getenv("VIXEN_SDF_FILTER_NON_TEXT"), nullptr)
+        << "CTest must enable the analytic and stored SDF sphere pair";
+    ASSERT_EQ(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
+        << "the distance-filter witness is a non-text recipe";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the non-text SDF capture directory";
     const std::filesystem::path outputDir(outputEnv);
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
     ASSERT_EQ(scenarios.size(), 1U);
