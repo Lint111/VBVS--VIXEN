@@ -129,7 +129,9 @@ inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
     constexpr float kCorrectionFull = 0.25f;
     if (std::abs(centerDistance) >= kFilterBand) return centerDistance;
 
-    float footprintAverage = 0.0f;
+    std::array<glm::vec3, 8> footprintPoints{};
+    std::array<float, 8> footprintDistances{};
+    std::size_t sampleIndex = 0;
     constexpr std::array<float, 2> kGaussSigns{-1.0f, 1.0f};
     for (float zSign : kGaussSigns)
         for (float ySign : kGaussSigns)
@@ -137,8 +139,13 @@ inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
                 const glm::vec3 offset(xSign * kGaussOffset,
                                        ySign * kGaussOffset,
                                        zSign * kGaussOffset);
-                footprintAverage += eval(gridCenter + offset);
+                footprintPoints[sampleIndex++] = gridCenter + offset;
             }
+    for (std::size_t batch = 0; batch < footprintPoints.size(); batch += 4)
+        EvalSdfBatch4(eval, footprintPoints.data() + batch, 4,
+                      footprintDistances.data() + batch);
+    float footprintAverage = 0.0f;
+    for (float distance : footprintDistances) footprintAverage += distance;
     footprintAverage *= 0.125f;
 
     const float correction = std::abs(footprintAverage - centerDistance);
