@@ -1,4 +1,5 @@
 #include "Text/Bidi.h"
+#include "Text/GlyphOutline.h"
 #include "Text/LineBreaker.h"
 #include "Text/RmlFontEngine.h"
 #include "Text/Shaper.h"
@@ -10,6 +11,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -96,6 +98,69 @@ TEST_F(TextShapingFixture, LatinGlyphIdsAndByteClustersAreStable) {
     EXPECT_EQ(shaped.visualRuns[0].scriptTag, ScriptTag('L', 'a', 't', 'n'));
     EXPECT_TRUE(shaped.visualRuns[0].scriptRequired);
     EXPECT_EQ(FormatGlyphs(shaped.visualRuns[0].glyphs), "105:0,72:1,49:4,55:5");
+}
+
+TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    Vixen::Text::GlyphOutline round;
+    ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
+        latinFace, FT_Get_Char_Index(latinFace, U'o'), round));
+    EXPECT_EQ(round.fillRule, Vixen::Text::GlyphOutlineFillRule::NonZeroWinding);
+    ASSERT_GE(round.contours.size(), 2U);
+    EXPECT_FALSE(round.segmentKinds.empty());
+    std::size_t expectedPointCount = 0;
+    for (const Vixen::Text::GlyphOutlineSegmentKind kind : round.segmentKinds) {
+        expectedPointCount += kind == Vixen::Text::GlyphOutlineSegmentKind::Line
+                                  ? 1U
+                                  : kind == Vixen::Text::GlyphOutlineSegmentKind::Quadratic
+                                        ? 2U
+                                        : 3U;
+    }
+    EXPECT_EQ(round.controlAndEndPoints.size(), expectedPointCount);
+    EXPECT_GT(std::count(round.segmentKinds.begin(), round.segmentKinds.end(),
+                         Vixen::Text::GlyphOutlineSegmentKind::Quadratic), 0);
+    for (const Vixen::Text::GlyphOutlineContour& contour : round.contours) {
+        EXPECT_GT(contour.segmentCount, 0U);
+        EXPECT_LE(contour.firstSegment + contour.segmentCount, round.segmentKinds.size());
+    }
+
+    Vixen::Text::GlyphOutline eight;
+    ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
+        latinFace, FT_Get_Char_Index(latinFace, U'8'), eight));
+    EXPECT_GE(eight.contours.size(), 3U);
+}
+
+TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    constexpr std::array<std::uint32_t, 1> requiredScripts{ScriptTag('L', 'a', 't', 'n')};
+    const auto leftToRight = MakePreset(Vixen::Text::TextDirection::LeftToRight,
+                                        Vixen::Text::ShapingClass::Default,
+                                        Vixen::Text::LineBreakingClass::Word, 1);
+    const Vixen::Text::WorldTextLayout latin = Vixen::Text::ShapeWorldText(
+        leftToRight, requiredScripts, latinFace, "OPEN", "en");
+
+    ASSERT_TRUE(latin.valid);
+    EXPECT_FALSE(latin.mirrorX);
+    ASSERT_EQ(latin.glyphs.size(), 4U);
+    EXPECT_EQ(latin.glyphs.front().x, 0);
+    for (const Vixen::Text::PositionedGlyphOutline& glyph : latin.glyphs)
+        EXPECT_LT(glyph.outlineIndex, latin.outlines.size());
+
+    const auto rightToLeft = MakePreset(Vixen::Text::TextDirection::RightToLeft,
+                                        Vixen::Text::ShapingClass::Default,
+                                        Vixen::Text::LineBreakingClass::Word, 1);
+    const Vixen::Text::WorldTextLayout rtl = Vixen::Text::ShapeWorldText(
+        rightToLeft, requiredScripts, latinFace, "NEPO", "qps-rtl");
+
+    ASSERT_TRUE(rtl.valid);
+    EXPECT_EQ(rtl.direction, Vixen::Text::TextDirection::RightToLeft);
+    EXPECT_TRUE(rtl.mirrorX);
+    ASSERT_EQ(rtl.glyphs.size(), 4U);
+    EXPECT_TRUE(rtl.requiredScriptTableMatchesPreset);
 }
 
 TEST_F(TextShapingFixture, ArabicGlyphIdsAndByteClustersAreStable) {
