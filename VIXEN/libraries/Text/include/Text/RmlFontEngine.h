@@ -2,13 +2,19 @@
 
 #include <RmlUi/Core/FontEngineInterface.h>
 
+#include <cstdint>
 #include <memory>
+#include <span>
+#include <string_view>
 
 namespace Vixen::Text {
 
-// The ordinary RmlUi label path uses the active bundled font faces and the
-// module's FreeType metrics/MSDF atlas. This adapter intentionally does not
-// enumerate operating-system fonts or provide shaping/bidi/line breaking.
+struct PresetDesc;
+
+// The ordinary RmlUi label path uses bundled font faces and the module's
+// FreeType metrics/MSDF atlas. SetPresetDesc opts measurement and drawing into
+// HarfBuzz shaping with SheenBidi run ordering; line breaking stays a separate
+// module API. The adapter never enumerates operating-system fonts.
 class RmlFontEngine final : public Rml::FontEngineInterface {
 public:
     RmlFontEngine();
@@ -16,6 +22,14 @@ public:
 
     RmlFontEngine(const RmlFontEngine&) = delete;
     RmlFontEngine& operator=(const RmlFontEngine&) = delete;
+
+    // Preset metadata is copied at this boundary, including the resolved
+    // required-script tags, so callers may release their generated table view.
+    // When no preset is active, the lane-7 legacy path remains unchanged.
+    void SetPresetDesc(const PresetDesc& preset,
+                       std::span<const std::uint32_t> requiredScriptTags,
+                       std::string_view language = {});
+    void ClearPresetDesc();
 
     void Initialize() override;
     void Shutdown() override;

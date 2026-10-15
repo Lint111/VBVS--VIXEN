@@ -311,6 +311,75 @@ if(TARGET freetype AND NOT TARGET Freetype::Freetype)
     add_library(Freetype::Freetype ALIAS freetype)
 endif()
 
+# Text shaping is a VIXEN responsibility. FreeType deliberately has its own
+# HarfBuzz integration disabled above so this stays the only shaping path.
+set(HB_HAVE_FREETYPE ON CACHE BOOL "Enable HarfBuzz's FreeType font adapter" FORCE)
+set(HB_HAVE_ICU OFF CACHE BOOL "Keep ICU out of the VIXEN text runtime" FORCE)
+set(HB_BUILD_UTILS OFF CACHE BOOL "Do not build HarfBuzz command-line tools" FORCE)
+set(HB_BUILD_SUBSET OFF CACHE BOOL "Do not build HarfBuzz subset tooling" FORCE)
+set(HB_BUILD_RASTER OFF CACHE BOOL "Use VIXEN's own glyph atlas" FORCE)
+set(HB_BUILD_VECTOR OFF CACHE BOOL "Do not build HarfBuzz vector output" FORCE)
+set(HB_BUILD_GPU OFF CACHE BOOL "Do not build HarfBuzz GPU helpers" FORCE)
+FetchContent_Declare(harfbuzz
+    GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
+    GIT_TAG        14.5.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(harfbuzz)
+if(TARGET harfbuzz)
+    set_target_properties(harfbuzz PROPERTIES FOLDER "Dependencies")
+    target_compile_options(harfbuzz PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<C_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<C_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+        $<$<C_COMPILER_ID:Clang>:-w>)
+endif()
+message(STATUS "HarfBuzz + FreeType configured for text shaping (MIT-style license)")
+
+# SheenBidi implements UAX #9 and returns visual runs that VIXEN shapes with
+# HarfBuzz. Its standalone tests and generator are not part of the product build.
+set(SB_CONFIG_EXPERIMENTAL_TEXT_API OFF CACHE BOOL "Use the stable SheenBidi API" FORCE)
+set(SB_CONFIG_UNITY ON CACHE BOOL "Build SheenBidi as its upstream unity source" FORCE)
+set(BUILD_GENERATOR OFF CACHE BOOL "Do not build SheenBidi's Unicode generator" FORCE)
+FetchContent_Declare(sheenbidi
+    GIT_REPOSITORY https://github.com/Tehreer/SheenBidi.git
+    GIT_TAG        v3.0.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(sheenbidi)
+if(TARGET SheenBidi)
+    set_target_properties(SheenBidi PROPERTIES FOLDER "Dependencies")
+    target_compile_options(SheenBidi PRIVATE
+        $<$<C_COMPILER_ID:MSVC>:/W0>
+        $<$<C_COMPILER_ID:GNU>:-w>
+        $<$<C_COMPILER_ID:Clang>:-w>)
+endif()
+message(STATUS "SheenBidi configured for Unicode bidirectional runs (Apache-2.0 license)")
+
+# libunibreak has no CMake project. Fetch its tagged source with FetchContent's
+# explicit-population form and build the same source list as upstream's
+# Makefile.gcc; the boundary owns the language class and this provides UAX #14/#29.
+FetchContent_Populate(libunibreak
+    GIT_REPOSITORY https://github.com/adah1972/libunibreak.git
+    GIT_TAG        libunibreak_5_1
+    GIT_SHALLOW    TRUE)
+add_library(VixenLibunibreak STATIC
+    ${libunibreak_SOURCE_DIR}/src/linebreak.c
+    ${libunibreak_SOURCE_DIR}/src/linebreakdata.c
+    ${libunibreak_SOURCE_DIR}/src/linebreakdef.c
+    ${libunibreak_SOURCE_DIR}/src/wordbreak.c
+    ${libunibreak_SOURCE_DIR}/src/graphemebreak.c
+    ${libunibreak_SOURCE_DIR}/src/emojidef.c
+    ${libunibreak_SOURCE_DIR}/src/unibreakbase.c
+    ${libunibreak_SOURCE_DIR}/src/unibreakdef.c)
+target_include_directories(VixenLibunibreak PUBLIC ${libunibreak_SOURCE_DIR}/src)
+set_target_properties(VixenLibunibreak PROPERTIES FOLDER "Dependencies")
+target_compile_options(VixenLibunibreak PRIVATE
+    $<$<C_COMPILER_ID:MSVC>:/W0>
+    $<$<C_COMPILER_ID:GNU>:-w>
+    $<$<C_COMPILER_ID:Clang>:-w>)
+message(STATUS "libunibreak configured for Unicode line breaking (zlib license)")
+
 FetchContent_Declare(rmlui
     GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
     GIT_TAG        6.3

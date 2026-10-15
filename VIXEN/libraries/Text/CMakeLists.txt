@@ -5,12 +5,18 @@ set(TEXT_HEADERS
     include/Text/Abi.h
     include/Text/AtlasFormat.h
     include/Text/GlyphAtlas.h
+    include/Text/Bidi.h
+    include/Text/LineBreaker.h
     include/Text/RmlFontEngine.h
+    include/Text/Shaper.h
 )
 
 set(TEXT_SOURCES
+    src/Bidi.cpp
     src/GlyphAtlas.cpp
+    src/LineBreaker.cpp
     src/RmlFontEngine.cpp
+    src/Shaper.cpp
 )
 
 add_library(Text STATIC ${TEXT_HEADERS} ${TEXT_SOURCES})
@@ -29,7 +35,15 @@ target_link_libraries(Text
         freetype
     PRIVATE
         msdfgen-core
+        harfbuzz
+        SheenBidi::SheenBidi
+        VixenLibunibreak
 )
+if(MSVC)
+    target_compile_options(Text PRIVATE /W4 /WX)
+else()
+    target_compile_options(Text PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 if(BUILD_TESTS)
     add_subdirectory(tests)

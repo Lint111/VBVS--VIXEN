@@ -2,6 +2,7 @@
 
 #include "Text/Abi.h"
 #include "Text/GlyphAtlas.h"
+#include "Text/Shaper.h"
 
 #include <RmlUi/Core/StringUtilities.h>
 
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -111,6 +113,9 @@ struct RmlFontEngine::Impl {
     std::vector<std::unique_ptr<FontFace>> faces;
     std::vector<std::unique_ptr<FontHandle>> handles;
     std::unordered_map<std::uint64_t, FontHandle*> handleLookup;
+    std::optional<PresetDesc> preset;
+    std::vector<std::uint32_t> requiredScriptTags;
+    std::string language;
     bool initialized = false;
 
     FontHandle* GetOrCreateHandle(FontFace* face, int size) {
@@ -167,6 +172,20 @@ struct RmlFontEngine::Impl {
 RmlFontEngine::RmlFontEngine() : impl_(std::make_unique<Impl>()) {}
 
 RmlFontEngine::~RmlFontEngine() = default;
+
+void RmlFontEngine::SetPresetDesc(const PresetDesc& preset,
+                                 std::span<const std::uint32_t> requiredScriptTags,
+                                 std::string_view language) {
+    impl_->preset = preset;
+    impl_->requiredScriptTags.assign(requiredScriptTags.begin(), requiredScriptTags.end());
+    impl_->language.assign(language.begin(), language.end());
+}
+
+void RmlFontEngine::ClearPresetDesc() {
+    impl_->preset.reset();
+    impl_->requiredScriptTags.clear();
+    impl_->language.clear();
+}
 
 void RmlFontEngine::Initialize() {
     if (impl_->initialized)
@@ -244,6 +263,27 @@ const Rml::FontMetrics& RmlFontEngine::GetFontMetrics(Rml::FontFaceHandle handle
 int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView string,
                                   const Rml::TextShapingContext& shapingContext, Rml::Character priorCharacter) {
     FontHandle* fontHandle = FromHandle(handle);
+    if (fontHandle && impl_->preset && fontHandle->font && fontHandle->font->face &&
+        SetFontSize(fontHandle->font->face, fontHandle->size)) {
+        const ShapedText shaped = ShapeUtf8(*impl_->preset, impl_->requiredScriptTags,
+                                            fontHandle->font->face,
+                                            std::string_view(string.begin(), string.size()),
+                                            impl_->language);
+        if (!shaped.visualRuns.empty()) {
+            float width = 0.0f;
+            const float letterSpacing = shapingContext.letter_spacing;
+            for (const ShapedRun& run : shaped.visualRuns) {
+                for (std::size_t index = 0; index < run.glyphs.size(); ++index) {
+                    const ShapedGlyph& glyph = run.glyphs[index];
+                    width += static_cast<float>(glyph.xAdvance) / 64.0f;
+                    if (index + 1 == run.glyphs.size() ||
+                        run.glyphs[index + 1].cluster != glyph.cluster)
+                        width += letterSpacing;
+                }
+            }
+            return RoundWidth(width);
+        }
+    }
     return fontHandle ? RoundWidth(MeasureWidth(*fontHandle, string, shapingContext, priorCharacter)) : 0;
 }
 
@@ -261,6 +301,69 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& renderManager, Rml::FontFa
     GlyphAtlas& atlas = handle->atlas;
     if (!SetFontSize(face, handle->size))
         return 0;
+
+    if (impl_->preset) {
+        const ShapedText shaped = ShapeUtf8(*impl_->preset, impl_->requiredScriptTags,
+                                            face, std::string_view(string.begin(), string.size()),
+                                            impl_->language);
+        if (!shaped.visualRuns.empty()) {
+            float penX = position.x;
+            float penY = position.y;
+            bool hasGeometry = false;
+            Rml::TexturedMesh textMesh;
+
+            for (const ShapedRun& run : shaped.visualRuns) {
+                for (std::size_t glyphPosition = 0; glyphPosition < run.glyphs.size(); ++glyphPosition) {
+                    const ShapedGlyph& shapedGlyph = run.glyphs[glyphPosition];
+                    const FT_UInt glyphIndex = static_cast<FT_UInt>(shapedGlyph.glyphId);
+                    const bool glyphAdded = glyphIndex == 0
+                                                ? atlas.AddReplacementGlyph(face, handle->size)
+                                                : atlas.AddGlyph(face, glyphIndex, handle->size);
+                    if (glyphAdded) {
+                        if (const AtlasGlyph* glyph = atlas.FindGlyph(glyphIndex);
+                            glyph && glyph->width > 0.0f && glyph->height > 0.0f) {
+                            hasGeometry = true;
+                            const float padding = glyph->padding;
+                            const float leftBearing = std::floor(glyph->bearingX + padding);
+                            const float topBearing = std::ceil(glyph->bearingY - padding);
+                            const float offsetX = static_cast<float>(shapedGlyph.xOffset) / 64.0f;
+                            const float offsetY = static_cast<float>(shapedGlyph.yOffset) / 64.0f;
+                            const float x0 = penX + offsetX + leftBearing - padding;
+                            const float y0 = penY - offsetY - topBearing - padding;
+                            const float x1 = x0 + glyph->width;
+                            const float y1 = y0 + glyph->height;
+                            const int firstVertex = static_cast<int>(textMesh.mesh.vertices.size());
+                            textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y0), colour,
+                                                              Rml::Vector2f(glyph->u0, glyph->v0)});
+                            textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y0), colour,
+                                                              Rml::Vector2f(glyph->u1, glyph->v0)});
+                            textMesh.mesh.vertices.push_back({Rml::Vector2f(x1, y1), colour,
+                                                              Rml::Vector2f(glyph->u1, glyph->v1)});
+                            textMesh.mesh.vertices.push_back({Rml::Vector2f(x0, y1), colour,
+                                                              Rml::Vector2f(glyph->u0, glyph->v1)});
+                            const int indices[6] = {firstVertex, firstVertex + 1, firstVertex + 2,
+                                                    firstVertex, firstVertex + 2, firstVertex + 3};
+                            textMesh.mesh.indices.insert(textMesh.mesh.indices.end(),
+                                                         std::begin(indices), std::end(indices));
+                        }
+                    }
+
+                    penX += static_cast<float>(shapedGlyph.xAdvance) / 64.0f;
+                    penY -= static_cast<float>(shapedGlyph.yAdvance) / 64.0f;
+                    if (glyphPosition + 1 == run.glyphs.size() ||
+                        run.glyphs[glyphPosition + 1].cluster != shapedGlyph.cluster)
+                        penX += shapingContext.letter_spacing;
+                }
+            }
+
+            if (hasGeometry) {
+                textMesh.texture = atlas.GetTexture(renderManager);
+                meshList.push_back(std::move(textMesh));
+            }
+            return RoundWidth(penX - position.x);
+        }
+    }
+
     const bool kerningEnabled = shapingContext.font_kerning != Rml::Style::FontKerning::None && FT_HAS_KERNING(face);
     float penX = position.x;
     FT_UInt previousGlyph = 0;
