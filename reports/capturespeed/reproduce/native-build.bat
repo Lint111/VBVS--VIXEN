@@ -17,6 +17,7 @@ if exist "%READY_FILE%" (
 )
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b %errorlevel%
+if not "%~2"=="" set "UNDERTOW_ROOT=%~2"
 cd /d "%NATIVE_ROOT%"
 if errorlevel 1 exit /b %errorlevel%
 set "TEMP=%NATIVE_ROOT%\.tmp\native-temp"

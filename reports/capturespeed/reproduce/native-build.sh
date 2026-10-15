@@ -33,7 +33,7 @@ if [[ -n "${UNDERTOW_ROOT:-}" ]]; then
     exit 2
   fi
   undertow_root_win="$(wslpath -w "$UNDERTOW_ROOT")"
-  native_command="set UNDERTOW_ROOT=$undertow_root_win && call $native_batch_win $repo_commit"
+  native_command="$native_batch_win $repo_commit $undertow_root_win"
 fi
 bash "$queue" --agent nativerunner --resource build \
   --label "nativerunner:native-build-${repo_commit:0:12}" -- \
