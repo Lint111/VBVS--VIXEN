@@ -39,7 +39,7 @@ if(TARGET GTest::gtest_main)
         Text
     )
     target_compile_definitions(test_text_shader_layout PRIVATE
-        TEXT_SHADER_GLSL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../src/shaders/text.g.glsl"
+        TEXT_SHADER_GLSL_PATH="${TEXT_SHADER_GLSL_INTERFACE}"
     )
     if(MSVC)
         target_compile_options(test_text_shader_layout PRIVATE /W4 /WX)

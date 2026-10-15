@@ -507,6 +507,7 @@ add_library(RenderGraphCore STATIC
 # OBJECT lib the same way every node target does.
 # ----------------------------------------------------------------------------
 add_library(RenderGraphUiSupport OBJECT ${RENDERGRAPH_UI_SOURCES})
+add_dependencies(RenderGraphUiSupport vixen_text_shader_headers)
 target_include_directories(RenderGraphUiSupport
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

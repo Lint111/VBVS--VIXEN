@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
+undertow_root="${UNDERTOW_ROOT:-}"
 native_root=/mnt/c/vixen-native/nativerunner
 queue=/home/liory/.local/bin/with-test-lock.sh
 cmd_exe=/mnt/c/Windows/System32/cmd.exe
@@ -14,6 +15,12 @@ if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
   echo "native-build: refusing to sync a dirty VIXEN tree; commit the runner change first" >&2
   exit 2
 fi
+if [[ -z "$undertow_root" ]]; then
+  echo "native-build: set UNDERTOW_ROOT to the paired Undertow worktree" >&2
+  exit 2
+fi
+undertow_root="$(cd "$undertow_root" && pwd -P)"
+undertow_root_win="$(wslpath -m "$undertow_root")"
 
 if [[ ! -d "$native_root/.git" ]]; then
   mkdir -p "${native_root%/*}"
@@ -44,4 +51,4 @@ bash "$queue" --agent nativerunner --resource build \
     }
     trap cleanup EXIT INT TERM
     "$@"
-  ' nativerunner-native-build "$cmd_exe" /d /c "$native_batch_win $repo_commit"
+  ' nativerunner-native-build "$cmd_exe" /d /c "$native_batch_win $repo_commit $undertow_root_win"

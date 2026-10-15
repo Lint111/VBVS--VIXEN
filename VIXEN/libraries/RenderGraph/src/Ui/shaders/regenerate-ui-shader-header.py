@@ -17,6 +17,7 @@ SHADER_DIR = ROOT / "libraries/RenderGraph/src/Ui/shaders"
 OUTPUT = ROOT / "libraries/RenderGraph/include/Ui/UiShaderSpirv.g.h"
 TEXT_SHADER_DIR = ROOT / "libraries/Text/src/shaders"
 TEXT_OUTPUT = ROOT / "libraries/Text/include/Text/TextShaderSpirv.g.h"
+DEFAULT_TEXT_INTERFACE_DIR = Path(os.environ.get("UNDERTOW_ROOT", "")) / "transpiled/textshader/Text"
 
 
 def find_glslc() -> str:
@@ -59,8 +60,18 @@ def main() -> None:
                         help="destination for the generated UI shader header")
     parser.add_argument("--text-output", type=Path, default=TEXT_OUTPUT,
                         help="destination for the generated text shader header")
+    parser.add_argument("--text-interface-dir", type=Path, default=DEFAULT_TEXT_INTERFACE_DIR,
+                        help="directory containing Undertow-generated Text.g.h and text.g.glsl")
     parser.add_argument("--check", action="store_true", help="compile and fail if either generated header is stale")
     args = parser.parse_args()
+    text_interface_dir = args.text_interface_dir.resolve()
+    text_glsl = text_interface_dir / "text.g.glsl"
+    text_header = text_interface_dir / "Text.g.h"
+    if not text_glsl.is_file() or not text_header.is_file():
+        raise SystemExit(
+            "generated text shader interface is missing under "
+            f"{text_interface_dir}; set UNDERTOW_ROOT or pass --text-interface-dir"
+        )
     glslc = args.glslc or find_glslc()
 
     with tempfile.TemporaryDirectory(prefix="vixen-ui-shader-") as temp_dir:
@@ -71,9 +82,11 @@ def main() -> None:
         text_frag_spv = temp / "text.frag.spv"
         subprocess.run([glslc, str(SHADER_DIR / "ui.vert"), "-o", str(vert_spv)], check=True)
         subprocess.run([glslc, str(SHADER_DIR / "ui.frag"), "-o", str(frag_spv)], check=True)
-        subprocess.run([glslc, "-I", str(TEXT_SHADER_DIR), str(TEXT_SHADER_DIR / "text.vert"),
+        subprocess.run([glslc, "-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
+                        str(TEXT_SHADER_DIR / "text.vert"),
                         "-o", str(text_vert_spv)], check=True)
-        subprocess.run([glslc, "-I", str(TEXT_SHADER_DIR), str(TEXT_SHADER_DIR / "text.frag"),
+        subprocess.run([glslc, "-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
+                        str(TEXT_SHADER_DIR / "text.frag"),
                         "-o", str(text_frag_spv)], check=True)
         ui_header = "\n".join(
             [
