@@ -741,7 +741,9 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
             instructions.data(), static_cast<std::uint32_t>(instructions.size()),
             (gridPoint - bakeCenter) * recipeUnitsPerVoxel);
     };
-    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3);
+    const auto flatVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
+                                           Vixen::SVO::NoEmission, flatVoxelColor);
     auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
     const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
     scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
