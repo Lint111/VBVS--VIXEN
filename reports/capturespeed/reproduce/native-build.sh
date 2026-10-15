@@ -22,21 +22,23 @@ fi
 undertow_root="$(cd "$undertow_root" && pwd -P)"
 undertow_root_win="$(wslpath -m "$undertow_root")"
 
-if [[ ! -d "$native_root/.git" ]]; then
-  mkdir -p "${native_root%/*}"
-  git clone --no-hardlinks "$repo_root" "$native_root"
-fi
-
-# The Windows clone is stable per lane; CMake output is keyed by commit below build/native/.
-git -C "$native_root" fetch "$repo_root" "$repo_commit"
-git -C "$native_root" checkout --detach FETCH_HEAD
-[[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]
-
 native_batch_win="$(wslpath -w "$native_batch")"
-bash "$queue" --agent nativerunner --resource build \
-  --label "nativerunner:native-build-${repo_commit:0:12}" -- \
-  bash -c '
+bash "$queue" --agent nativerunner --resource build --label "nativerunner:native-build-${repo_commit:0:12}" -- bash -c '
     set -euo pipefail
+    native_root="$1"
+    repo_root="$2"
+    repo_commit="$3"
+    native_batch_win="$4"
+    cmd_exe="$5"
+    undertow_root_win="$6"
+    if [[ ! -d "$native_root/.git" ]]; then
+      mkdir -p "$(dirname "$native_root")"
+      git clone --no-hardlinks "$repo_root" "$native_root"
+    fi
+    # The Windows clone is shared; serialize its exact-commit sync with every native build.
+    git -C "$native_root" fetch "$repo_root" "$repo_commit"
+    git -C "$native_root" checkout --detach FETCH_HEAD
+    [[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]
     heartbeat() {
       while :; do
         sleep 60
@@ -50,5 +52,5 @@ bash "$queue" --agent nativerunner --resource build \
       wait "$heartbeat_pid" 2>/dev/null || true
     }
     trap cleanup EXIT INT TERM
-    "$@"
-  ' nativerunner-native-build "$cmd_exe" /d /c "$native_batch_win $repo_commit $undertow_root_win"
+    "$cmd_exe" /d /c "$native_batch_win $repo_commit $undertow_root_win"
+  ' nativerunner-native-build "$native_root" "$repo_root" "$repo_commit" "$native_batch_win" "$cmd_exe" "$undertow_root_win"
