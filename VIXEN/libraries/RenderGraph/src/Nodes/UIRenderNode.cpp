@@ -419,7 +419,7 @@ void UIRenderNode::DrawTextShaderCapture(float timeSeconds) {
     float hudX = 28.0f;
     append(hudGlyphs, "HUD: ", 0, hudX, 48.0f);
     append(hudGlyphs, "READY", 1, hudX, 48.0f);
-    renderInterface_.DrawText(*atlas, hudGlyphs, hudStyles, hudAnimations, timeSeconds);
+    renderInterface_.DrawTextInstances(*atlas, hudGlyphs, hudStyles, hudAnimations, timeSeconds);
 
     // Resolve the dialogue through the same arena/ref shape emitted by textbake. The trailing
     // offset is the row boundary; all spans below are byte ranges into this UTF-8 row.
@@ -450,7 +450,7 @@ void UIRenderNode::DrawTextShaderCapture(float timeSeconds) {
     append(dialogueGlyphs, dialogue.substr(4, 9), 1, dialogueX, 160.0f);
     append(dialogueGlyphs, dialogue.substr(13, 5), 0, dialogueX, 160.0f);
     append(dialogueGlyphs, dialogue.substr(18), 2, dialogueX, 160.0f);
-    renderInterface_.DrawText(*atlas, dialogueGlyphs, dialogueStyles, dialogueAnimations, timeSeconds);
+    renderInterface_.DrawTextInstances(*atlas, dialogueGlyphs, dialogueStyles, dialogueAnimations, timeSeconds);
 }
 
 void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex) {

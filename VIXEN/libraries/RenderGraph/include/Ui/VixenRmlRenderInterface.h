@@ -42,7 +42,7 @@ public:
 
     // Record one generated MSDF batch. Text uses its own pipeline and descriptor layout; the
     // existing RmlUi geometry path remains unchanged.
-    void DrawText(const Vixen::Text::GlyphAtlas& atlas,
+    void DrawTextInstances(const Vixen::Text::GlyphAtlas& atlas,
                   std::span<const Vixen::Text::GlyphInstance> glyphs,
                   std::span<const Vixen::Text::SpanStyle> styles,
                   std::span<const Vixen::Text::SpanAnim> animations,

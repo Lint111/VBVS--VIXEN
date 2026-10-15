@@ -477,7 +477,7 @@ void VixenRmlRenderInterface::BeginFrame(VkCommandBuffer cmd, VkExtent2D extent)
     }
 }
 
-void VixenRmlRenderInterface::DrawText(const Vixen::Text::GlyphAtlas& atlas,
+void VixenRmlRenderInterface::DrawTextInstances(const Vixen::Text::GlyphAtlas& atlas,
                                        std::span<const Vixen::Text::GlyphInstance> glyphs,
                                        std::span<const Vixen::Text::SpanStyle> styles,
                                        std::span<const Vixen::Text::SpanAnim> animations,
