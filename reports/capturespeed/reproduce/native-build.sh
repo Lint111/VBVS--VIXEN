@@ -26,6 +26,15 @@ git -C "$native_root" checkout --detach FETCH_HEAD
 [[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]
 
 native_batch_win="$(wslpath -w "$native_batch")"
+native_command="$native_batch_win $repo_commit"
+if [[ -n "${UNDERTOW_ROOT:-}" ]]; then
+  if [[ ! -d "$UNDERTOW_ROOT/core/src/Undertow.Authoring/Schema" ]]; then
+    echo "native-build: UNDERTOW_ROOT does not contain core/src/Undertow.Authoring/Schema: $UNDERTOW_ROOT" >&2
+    exit 2
+  fi
+  undertow_root_win="$(wslpath -w "$UNDERTOW_ROOT")"
+  native_command="set \"UNDERTOW_ROOT=$undertow_root_win\" && call \"$native_batch_win\" $repo_commit"
+fi
 bash "$queue" --agent nativerunner --resource build \
   --label "nativerunner:native-build-${repo_commit:0:12}" -- \
   bash -c '
@@ -44,4 +53,4 @@ bash "$queue" --agent nativerunner --resource build \
     }
     trap cleanup EXIT INT TERM
     "$@"
-  ' nativerunner-native-build "$cmd_exe" /d /c "$native_batch_win $repo_commit"
+  ' nativerunner-native-build "$cmd_exe" /d /c "$native_command"
