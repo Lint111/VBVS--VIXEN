@@ -692,7 +692,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     // Stored octrees render in the existing normalized [0,1]^3 -> [0,10]^3
     // body frame. Undo that normalization here so the baked glyph has the same
     // world-space scale as the analytic recipe instance above.
-    constexpr float instanceScale = 0.30f * static_cast<float>(bakeResolution) *
+    const float instanceScale = 0.30f * static_cast<float>(bakeResolution) *
         recipeUnitsPerVoxel / 10.0f;
     const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
     const glm::vec3 storedOrigin = storedCenter - glm::vec3(
