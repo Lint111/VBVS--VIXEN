@@ -198,63 +198,66 @@ float SdfCore_GlyphOutline(vec3 p, GlyphOutlineInstance glyph) {
     float minimumDistance = uintBitsToFloat(1621981420u);
     uint crossings = 0u;
     int winding = 0;
-    uint segmentCount = min(glyph.SegmentCount, uint(SegmentCapacity));
+    int segmentCount = int(min(glyph.SegmentCount, uint(SegmentCapacity)));
     bool checkWinding = p.x >= glyph.BoundsMin.X && p.x <= glyph.BoundsMax.X && p.y >= glyph.BoundsMin.Y && p.y <= glyph.BoundsMax.Y;
-    for (uint segmentIndex = 0u; segmentIndex < segmentCount; ++segmentIndex)
+    for (int segmentIndex = 0; segmentIndex < SegmentCapacity; ++segmentIndex)
     {
-        GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
-        vec2 p0 = vec2(segment.P0.X, segment.P0.Y);
-        vec2 p1 = vec2(segment.P1.X, segment.P1.Y);
-        vec2 p2 = vec2(segment.P2.X, segment.P2.Y);
-        vec2 p3 = vec2(segment.P3.X, segment.P3.Y);
-        vec2 previous = p0;
-        for (uint sampleIndex = 1u; sampleIndex <= 16u; ++sampleIndex)
+        if (segmentIndex < segmentCount)
         {
-            float t = float(sampleIndex) / uintBitsToFloat(1098907648u);
-            float u = uintBitsToFloat(1065353216u) - t;
-            vec2 current = vec2(uintBitsToFloat(0u), uintBitsToFloat(0u));
-            if (segment.Kind == 0u)
+            GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
+            vec2 p0 = vec2(segment.P0.X, segment.P0.Y);
+            vec2 p1 = vec2(segment.P1.X, segment.P1.Y);
+            vec2 p2 = vec2(segment.P2.X, segment.P2.Y);
+            vec2 p3 = vec2(segment.P3.X, segment.P3.Y);
+            vec2 previous = p0;
+            for (int sampleIndex = 1; sampleIndex <= 16; ++sampleIndex)
             {
-                current = p0 * u + p1 * t;
-            }
-            else
-            {
-                if (segment.Kind == 1u)
+                float t = float(sampleIndex) / uintBitsToFloat(1098907648u);
+                float u = uintBitsToFloat(1065353216u) - t;
+                vec2 current = vec2(uintBitsToFloat(0u), uintBitsToFloat(0u));
+                if (segment.Kind == 0u)
                 {
-                    current = p0 * (u * u) + p1 * (uintBitsToFloat(1073741824u) * u * t) + p2 * (t * t);
+                    current = p0 * u + p1 * t;
                 }
                 else
                 {
-                    current = p0 * (u * u * u) + p1 * (uintBitsToFloat(1077936128u) * u * u * t) + p2 * (uintBitsToFloat(1077936128u) * u * t * t) + p3 * (t * t * t);
+                    if (segment.Kind == 1u)
+                    {
+                        current = p0 * (u * u) + p1 * (uintBitsToFloat(1073741824u) * u * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        current = p0 * (u * u * u) + p1 * (uintBitsToFloat(1077936128u) * u * u * t) + p2 * (uintBitsToFloat(1077936128u) * u * t * t) + p3 * (t * t * t);
+                    }
                 }
-            }
-            vec2 edge = current - previous;
-            float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
-            float projection = (edgeLengthSquared > uintBitsToFloat(0u) ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared : uintBitsToFloat(0u));
-            if (projection < uintBitsToFloat(0u))
-            {
-                projection = uintBitsToFloat(0u);
-            }
-            if (projection > uintBitsToFloat(1065353216u))
-            {
-                projection = uintBitsToFloat(1065353216u);
-            }
-            vec2 closest = previous + edge * projection;
-            float distance = length(vec2(p.x - closest.x, p.y - closest.y));
-            if (distance < minimumDistance)
-            {
-                minimumDistance = distance;
-            }
-            if (checkWinding && ((previous.y <= p.y && current.y > p.y) || (previous.y > p.y && current.y <= p.y)))
-            {
-                float crossingX = previous.x + (p.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
-                if (crossingX > p.x)
+                vec2 edge = current - previous;
+                float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
+                float projection = (edgeLengthSquared > uintBitsToFloat(0u) ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared : uintBitsToFloat(0u));
+                if (projection < uintBitsToFloat(0u))
                 {
-                    crossings += 1u;
-                    winding += (current.y > previous.y ? 1 : -1);
+                    projection = uintBitsToFloat(0u);
                 }
+                if (projection > uintBitsToFloat(1065353216u))
+                {
+                    projection = uintBitsToFloat(1065353216u);
+                }
+                vec2 closest = previous + edge * projection;
+                float distance = length(vec2(p.x - closest.x, p.y - closest.y));
+                if (distance < minimumDistance)
+                {
+                    minimumDistance = distance;
+                }
+                if (checkWinding && ((previous.y <= p.y && current.y > p.y) || (previous.y > p.y && current.y <= p.y)))
+                {
+                    float crossingX = previous.x + (p.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+                    if (crossingX > p.x)
+                    {
+                        crossings += 1u;
+                        winding += (current.y > previous.y ? 1 : -1);
+                    }
+                }
+                previous = current;
             }
-            previous = current;
         }
     }
     bool inside = checkWinding && ((glyph.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0));
