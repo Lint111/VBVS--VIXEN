@@ -175,3 +175,4 @@ vixen_gtest_discover_tests(ShaderManagement ShaderManagementTests
 )
 
 message(STATUS "ShaderManagement tests configured")
+vixen_schedule_runtime_dlls_for_current_directory()

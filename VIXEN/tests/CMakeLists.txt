@@ -15,6 +15,7 @@ cmake_minimum_required(VERSION 3.15...4.2)
 
 # This CMakeLists aggregates all per-library test subdirectories so the top-level
 # CMake can simply call add_subdirectory(tests).
+vixen_schedule_runtime_dlls_for_current_directory()
 
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest OPTIONAL)

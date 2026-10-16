@@ -37,8 +37,9 @@ function(vixen_stage_runtime_dlls_for_target target)
     )
 endfunction()
 
-# Walk the full CMake directory tree after configuration so targets from every
-# subdirectory, including included .cmake fragments, receive the same staging.
+# Attach staging to executable targets declared in the directory that owns
+# them. CMake requires TARGET POST_BUILD commands to be added from that same
+# directory (unless using newer CMake versions with the DIRECTORY option).
 function(vixen_stage_runtime_dlls_in_directory directory)
     if(NOT WIN32)
         return()
@@ -51,26 +52,28 @@ function(vixen_stage_runtime_dlls_in_directory directory)
             vixen_stage_runtime_dlls_for_target("${_target}")
         endif()
     endforeach()
-
-    get_property(_subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
-    foreach(_subdirectory IN LISTS _subdirectories)
-        vixen_stage_runtime_dlls_in_directory("${_subdirectory}")
-    endforeach()
 endfunction()
 
-function(vixen_stage_runtime_dlls_in_project)
+function(vixen_schedule_runtime_dlls_for_current_directory)
     if(NOT WIN32)
         return()
     endif()
 
-    # The root directory defers this pass until every add_subdirectory() has
-    # declared its targets. New executable targets then inherit staging without
-    # requiring a per-directory hook.
-    vixen_stage_runtime_dlls_in_directory("${CMAKE_SOURCE_DIR}")
+    get_property(_scheduled DIRECTORY PROPERTY VIXEN_RUNTIME_DLL_SCAN_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(DIRECTORY PROPERTY VIXEN_RUNTIME_DLL_SCAN_SCHEDULED TRUE)
+    cmake_language(DEFER CALL vixen_stage_runtime_dlls_in_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}")
 endfunction()
 
 if(WIN32)
-    # The runtime DLL expression is available starting in CMake 3.21, so the
-    # deferred whole-project pass uses only that supported toolchain range.
-    cmake_language(DEFER CALL vixen_stage_runtime_dlls_in_project)
+    # The root project() call has already happened before this module is
+    # included. Schedule its directory explicitly, then use CMake's project
+    # include hook to schedule every nested project at the end of its directory.
+    set(VIXEN_RUNTIME_DLLS_PREVIOUS_PROJECT_INCLUDE "${CMAKE_PROJECT_INCLUDE}")
+    set(CMAKE_PROJECT_INCLUDE
+        "${CMAKE_CURRENT_LIST_DIR}/VixenRuntimeDllProjectInclude.cmake")
+    vixen_schedule_runtime_dlls_for_current_directory()
 endif()
