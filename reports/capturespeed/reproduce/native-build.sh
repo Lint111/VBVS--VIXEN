@@ -23,9 +23,13 @@ if [[ ! -d "$native_root/.git" ]]; then
   git clone --no-hardlinks "$repo_root" "$native_root"
 fi
 
-# The Windows clone is stable per lane; CMake output is keyed by commit below build/native/.
+# This Windows clone is a build mirror, not an authoring worktree. Earlier builds update tracked
+# generated headers and leave the copied preset in VIXEN/, so restore its tracked source before
+# syncing the exact committed tree. CMake output remains keyed by commit under build/native/.
+git -C "$native_root" reset --hard
+rm -f "$native_root/VIXEN/CMakeUserPresets.json"
 git -C "$native_root" fetch "$repo_root" "$repo_commit"
-git -C "$native_root" checkout --detach FETCH_HEAD
+git -C "$native_root" checkout --force --detach FETCH_HEAD
 [[ "$(git -C "$native_root" rev-parse HEAD)" == "$repo_commit" ]]
 
 native_batch_win="$(wslpath -w "$native_batch")"
