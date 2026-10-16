@@ -138,6 +138,7 @@ target_link_libraries(test_spirv_descriptor_layout
 )
 set_target_properties(test_spirv_descriptor_layout PROPERTIES FOLDER "Tests/ShaderManagement Tests")
 include(GoogleTest)
+vixen_stage_runtime_dlls_for_target(test_spirv_descriptor_layout)
 gtest_discover_tests(test_spirv_descriptor_layout WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
@@ -174,3 +175,4 @@ vixen_gtest_discover_tests(ShaderManagement ShaderManagementTests
 )
 
 message(STATUS "ShaderManagement tests configured")
+vixen_schedule_runtime_dlls_for_current_directory()

@@ -96,6 +96,10 @@ data/*
 !libraries/*/include/Data/
 !libraries/*/include/Data/**
 
+# Exception: checked-in library test fixtures (e.g. Text shaping fonts)
+!libraries/*/tests/data/
+!libraries/*/tests/data/**
+
 # Binaries and generated logs
 binaries/
 vulkan_app_log.txt

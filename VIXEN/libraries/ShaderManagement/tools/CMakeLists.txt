@@ -39,3 +39,4 @@ set_target_properties(sdi_tool PROPERTIES FOLDER "Application")
 
 # Backward compatibility alias
 add_executable(shader_tool ALIAS sdi_tool)
+vixen_schedule_runtime_dlls_for_current_directory()
