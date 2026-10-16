@@ -291,15 +291,12 @@ void CameraNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     float deltaTime = glm::min(inputState ? inputState->deltaTime : (1.0f / 60.0f), 0.1f);
     ApplyInputDeltas(deltaTime);
 
-    // Sampled Lighting Inc2 M3: publish LAST frame's view*proj BEFORE UpdateCameraData
-    // overwrites prevViewProj with this frame's own matrices below — this is the
-    // compute-current-then-store-previous ordering the M3 plumbing needs (M4 will
-    // reproject against exactly the frame that was actually rendered last, not this one).
+    // Reference-valued outputs must retain their storage until downstream nodes
+    // consume them. Snapshot the old CURRENT matrix, then update only CURRENT.
+    prevViewProj = currentViewProj;
     ctx.Out(CameraNodeConfig::PREV_VIEW_PROJ, const_cast<const glm::mat4&>(prevViewProj));
 
-    // Update camera data with current state (also updates prevViewProj <- this frame's
-    // projection*view, for the NEXT Execute to read as its own "previous"; and currentViewProj
-    // <- this same frame's projection*view, for THIS Execute's CURRENT_VIEW_PROJ output below).
+    // Update this frame's camera without mutating the published previous matrix.
     UpdateCameraData(aspectRatio);
 
     // Recipe Bucketing Inc2 M1: publish THIS frame's view*proj, computed fresh inside
@@ -384,14 +381,7 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     currentCameraData.invProjection = glm::inverse(projection);
     currentCameraData.invView = glm::inverse(view);
 
-    // Sampled Lighting Inc2 M3: retain THIS frame's view*proj so the NEXT ExecuteImpl
-    // publishes it as ITS "previous" (see the ExecuteImpl call site above — the publish
-    // of the old value happens before this call, so this store never clobbers a value
-    // before it's been read out for the current frame).
-    prevViewProj = projection * view;
-
-    // Recipe Bucketing Inc2 M1: same matrix, retained separately so ExecuteImpl can publish
-    // it under CURRENT_VIEW_PROJ (this frame's own view*proj, not the lagged "previous").
+    // Execute snapshots this value into prevViewProj before the next update.
     currentViewProj = projection * view;
 
     // DEBUG: Log camera state once

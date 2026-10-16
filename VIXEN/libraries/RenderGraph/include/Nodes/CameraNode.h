@@ -188,13 +188,10 @@ private:
     // Current camera data struct
     CameraData currentCameraData;
 
-    // Sampled Lighting Inc2 M3: prev-frame view*proj retention. Computed fresh each
-    // ExecuteImpl/CompileImpl as `projection * view` (the current frame's own matrices,
-    // recomputed from invProjection/invView already in currentCameraData rather than a
-    // second glm::perspective/lookAt call — see UpdateCameraData), then STORED here for
-    // the NEXT frame to read as its "previous" — i.e. this always lags currentCameraData
-    // by exactly one frame/Execute. NOT a CameraData field (see PREV_VIEW_PROJ_Slot's own
-    // comment in CameraNodeConfig.h for why: CameraData's layout is push-constant-frozen).
+    // Prior frame's view-projection matrix, snapshotted from currentViewProj at
+    // the start of Execute and kept stable while downstream nodes read its reference.
+    // Compile seeds both matrices from the new projection. NOT a CameraData field
+    // (CameraData's layout is push-constant-frozen).
     // Seeded to the identity at construction; the very first frame's "previous" is
     // therefore not a real prior pose, but M3 never consumes this value (upload-only,
     // byte-identical-output gate) so an unused seed is harmless — M4 (the first real
