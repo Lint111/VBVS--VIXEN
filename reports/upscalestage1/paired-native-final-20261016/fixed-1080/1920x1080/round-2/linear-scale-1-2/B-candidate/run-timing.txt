@@ -1,0 +1,6 @@
+﻿run=1920x1080-round-2-linear-scale-1-2-B-candidate
+scale=0.5
+upscaler=linear
+started_at_utc=2026-10-16T21:42:03.2162042Z
+completed_at_utc=2026-10-16T21:42:27.0290852Z
+elapsed_ms=23812.7

@@ -43,6 +43,14 @@ CONSTEXPR_NODE_CONFIG(UpscalerModulePorts, 4, 2, SlotArrayMode::Single) {
         inputs[PRESENTATION_TARGET_Slot::index].nullable = PRESENTATION_TARGET_Slot::nullable;
         inputs[ORDERING_WAIT_Slot::index].nullable = ORDERING_WAIT_Slot::nullable;
         inputs[DEVICE_Slot::index].nullable = DEVICE_Slot::nullable;
+
+        HandleDescriptor renderTargetDesc{"IRenderTarget*"};
+        INIT_OUTPUT_DESC(UPSCALED_TARGET, "upscaled_target",
+                         ResourceLifetime::Persistent, renderTargetDesc);
+
+        HandleDescriptor completionSemaphoreDesc{"VkSemaphore"};
+        INIT_OUTPUT_DESC(RENDER_COMPLETE, "render_complete",
+                         ResourceLifetime::Transient, completionSemaphoreDesc);
     }
 };
 
@@ -63,7 +71,9 @@ struct Fsr1UpscalerParams {
     std::function<std::shared_ptr<ShaderManagement::ShaderFamily>(
         const std::string&, const std::string&)> makeShaderFamily;
     std::function<void(NodeHandle, std::shared_ptr<ShaderManagement::ShaderFamily>)> registerShaderFamily;
-    std::function<void(std::string, GPUPerformanceLogger*)> registerPassMetric;
+    // Publish stable graph identities here; ComputeStageNode creates its GPU logger only
+    // during graph compilation, after the module's Build() function has returned.
+    std::function<void(std::string, NodeHandle)> registerPassMetric;
 };
 
 inline constexpr char kLinearUpscalerModuleTypeName[] = "Upscaler.Linear";

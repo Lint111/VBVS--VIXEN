@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="3116" viewBox="0 0 1500 3116">
+<rect width="1500" height="3116" fill="#f4f5f7"/>
+<style>text{font-family:Arial,sans-serif;fill:#20242b}.title{font-size:25px;font-weight:bold}.label{font-size:15px;font-weight:bold}.sub{font-size:12px;fill:#5d6470}</style>
+<text x="24" y="34" class="title">500x500 · paired native controls and upscaler modules</text>
+<text x="24" y="58" class="sub">Round 1; coupled LOD; each candidate is shown between its adjacent native controls. Raw panels remain linked to PNG files.</text>
+<text x="24" y="120" class="label">Linear · R/D ≈ 2/3 · A-before · native control</text>
+<rect x="180" y="96" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-before/captures/midday-angle-0.png" x="180" y="96" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="334.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="96" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-before/captures/midday-angle-1.png" x="500" y="96" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="334.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="96" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-before/captures/midday-angle-2.png" x="820" y="96" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="334.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="96" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-before/captures/midday-angle-3.png" x="1140" y="96" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="334.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="370" class="label">Linear · R/D ≈ 2/3 · B · candidate</text>
+<rect x="180" y="346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/B-candidate/captures/midday-angle-0.png" x="180" y="346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="584.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/B-candidate/captures/midday-angle-1.png" x="500" y="346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="584.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/B-candidate/captures/midday-angle-2.png" x="820" y="346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="584.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/B-candidate/captures/midday-angle-3.png" x="1140" y="346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="584.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="620" class="label">Linear · R/D ≈ 2/3 · A-after · native control</text>
+<rect x="180" y="596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-after/captures/midday-angle-0.png" x="180" y="596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="834.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-after/captures/midday-angle-1.png" x="500" y="596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="834.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-after/captures/midday-angle-2.png" x="820" y="596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="834.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-2-3/A-after/captures/midday-angle-3.png" x="1140" y="596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="834.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="870" class="label">Linear · R/D 1/2 · A-before · native control</text>
+<rect x="180" y="846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-before/captures/midday-angle-0.png" x="180" y="846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="1084.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-before/captures/midday-angle-1.png" x="500" y="846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="1084.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-before/captures/midday-angle-2.png" x="820" y="846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="1084.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-before/captures/midday-angle-3.png" x="1140" y="846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="1084.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="1120" class="label">Linear · R/D 1/2 · B · candidate</text>
+<rect x="180" y="1096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/B-candidate/captures/midday-angle-0.png" x="180" y="1096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="1334.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="1096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/B-candidate/captures/midday-angle-1.png" x="500" y="1096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="1334.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="1096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/B-candidate/captures/midday-angle-2.png" x="820" y="1096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="1334.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="1096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/B-candidate/captures/midday-angle-3.png" x="1140" y="1096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="1334.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="1370" class="label">Linear · R/D 1/2 · A-after · native control</text>
+<rect x="180" y="1346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-after/captures/midday-angle-0.png" x="180" y="1346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="1584.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="1346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-after/captures/midday-angle-1.png" x="500" y="1346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="1584.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="1346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-after/captures/midday-angle-2.png" x="820" y="1346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="1584.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="1346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/linear-scale-1-2/A-after/captures/midday-angle-3.png" x="1140" y="1346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="1584.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="1620" class="label">FSR 1 · R/D ≈ 2/3 · A-before · native control</text>
+<rect x="180" y="1596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-before/captures/midday-angle-0.png" x="180" y="1596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="1834.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="1596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-before/captures/midday-angle-1.png" x="500" y="1596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="1834.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="1596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-before/captures/midday-angle-2.png" x="820" y="1596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="1834.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="1596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-before/captures/midday-angle-3.png" x="1140" y="1596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="1834.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="1870" class="label">FSR 1 · R/D ≈ 2/3 · B · candidate</text>
+<rect x="180" y="1846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/B-candidate/captures/midday-angle-0.png" x="180" y="1846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="2084.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="1846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/B-candidate/captures/midday-angle-1.png" x="500" y="1846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="2084.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="1846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/B-candidate/captures/midday-angle-2.png" x="820" y="1846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="2084.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="1846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/B-candidate/captures/midday-angle-3.png" x="1140" y="1846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="2084.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="2120" class="label">FSR 1 · R/D ≈ 2/3 · A-after · native control</text>
+<rect x="180" y="2096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-after/captures/midday-angle-0.png" x="180" y="2096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="2334.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="2096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-after/captures/midday-angle-1.png" x="500" y="2096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="2334.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="2096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-after/captures/midday-angle-2.png" x="820" y="2096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="2334.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="2096" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-2-3/A-after/captures/midday-angle-3.png" x="1140" y="2096" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="2334.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="2370" class="label">FSR 1 · R/D 1/2 · A-before · native control</text>
+<rect x="180" y="2346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-before/captures/midday-angle-0.png" x="180" y="2346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="2584.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="2346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-before/captures/midday-angle-1.png" x="500" y="2346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="2584.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="2346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-before/captures/midday-angle-2.png" x="820" y="2346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="2584.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="2346" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-before/captures/midday-angle-3.png" x="1140" y="2346" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="2584.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="2620" class="label">FSR 1 · R/D 1/2 · B · candidate</text>
+<rect x="180" y="2596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/B-candidate/captures/midday-angle-0.png" x="180" y="2596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="2834.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="2596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/B-candidate/captures/midday-angle-1.png" x="500" y="2596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="2834.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="2596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/B-candidate/captures/midday-angle-2.png" x="820" y="2596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="2834.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="2596" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/B-candidate/captures/midday-angle-3.png" x="1140" y="2596" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="2834.00" text-anchor="middle" class="sub">yaw 270°</text>
+<text x="24" y="2870" class="label">FSR 1 · R/D 1/2 · A-after · native control</text>
+<rect x="180" y="2846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-after/captures/midday-angle-0.png" x="180" y="2846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="290.0" y="3084.00" text-anchor="middle" class="sub">yaw 0°</text>
+<rect x="500" y="2846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-after/captures/midday-angle-1.png" x="500" y="2846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="610.0" y="3084.00" text-anchor="middle" class="sub">yaw 90°</text>
+<rect x="820" y="2846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-after/captures/midday-angle-2.png" x="820" y="2846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="930.0" y="3084.00" text-anchor="middle" class="sub">yaw 180°</text>
+<rect x="1140" y="2846" width="220" height="220.00" fill="#fff" stroke="#aab0ba"/>
+<image href="round-1/fsr1-scale-1-2/A-after/captures/midday-angle-3.png" x="1140" y="2846" width="220" height="220.00" preserveAspectRatio="xMidYMid meet"/>
+<text x="1250.0" y="3084.00" text-anchor="middle" class="sub">yaw 270°</text>
+</svg>

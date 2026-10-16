@@ -1,0 +1,9 @@
+﻿profile=coupled-500-scale-2-3
+width=500
+height=500
+scale=0.6666667
+lod_mode=coupled
+started_at_utc=2026-10-16T22:25:42.8173805Z
+completed_at_utc=2026-10-16T22:25:51.6911178Z
+elapsed_ms=8874.1
+capture_count=4

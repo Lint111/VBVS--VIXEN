@@ -129,6 +129,7 @@ function Invoke-Capture(
     $env:VIXEN_WINDOW_WIDTH = [string]$Width
     $env:VIXEN_WINDOW_HEIGHT = [string]$Height
     $env:VIXEN_LOOKDEV_CAPTURE_STATE = 'midday'
+    $env:VIXEN_LOOKDEV_CAPTURE_FRAMES = '64'
     $env:VIXEN_LOOKDEV_CAPTURE_DIR = $captureDir
     $env:VIXEN_PERF_CSV = $csv
     $env:VIXEN_HDR_EXPOSURE = '1'
@@ -142,9 +143,11 @@ function Invoke-Capture(
 
     $stdout = Join-Path $runDir 'stdout.log'
     $stderr = Join-Path $runDir 'stderr.log'
+    $runStartedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    $runStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $processArgs = @($testFilter, "--render-scale=$Scale", "--upscaler=$Upscaler")
     Record-GpuTelemetry $runLabel 'before'
-    Write-Host "START $runLabel scale=$Scale upscaler=$Upscaler"
+    Write-Host "START at_utc=$runStartedAtUtc $runLabel scale=$Scale upscaler=$Upscaler"
     $process = Start-Process -FilePath $exe -ArgumentList $processArgs -WorkingDirectory (Split-Path $exe) `
         -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
@@ -162,7 +165,20 @@ function Invoke-Capture(
     if (-not (Test-Path $csv)) { throw "Performance CSV was not written: $runLabel" }
     $captureCount = @(Get-ChildItem $captureDir -Filter '*.png' -ErrorAction SilentlyContinue).Count
     if ($captureCount -ne 4) { throw "Expected four stills, got ${captureCount}: $runLabel" }
-    Write-Host "DONE $runLabel"
+    $runStopwatch.Stop()
+    $runCompletedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    $elapsedMs = [string]::Format(
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        '{0:F1}', $runStopwatch.Elapsed.TotalMilliseconds)
+    @(
+        "run=$runLabel"
+        "scale=$Scale"
+        "upscaler=$Upscaler"
+        "started_at_utc=$runStartedAtUtc"
+        "completed_at_utc=$runCompletedAtUtc"
+        "elapsed_ms=$elapsedMs"
+    ) | Set-Content -Path (Join-Path $runDir 'run-timing.txt') -Encoding UTF8
+    Write-Host "DONE at_utc=$runCompletedAtUtc elapsed_ms=$elapsedMs $runLabel"
 }
 
 if ($Round -lt 0 -or $Round -gt $Rounds) { throw "Round must be 0 (all) or 1..$Rounds." }
@@ -182,7 +198,7 @@ foreach ($selectedExtent in $extents) {
             Invoke-Capture $selectedExtent.Width $selectedExtent.Height $roundNumber $config.Name 'B-candidate' $config.Scale $config.Upscaler
             Invoke-Capture $selectedExtent.Width $selectedExtent.Height $roundNumber $config.Name 'A-after' '1.0' 'none'
         }
-        "completed=${selectedExtent.Width}x${selectedExtent.Height}-round-$roundNumber" |
+        "completed=$($selectedExtent.Width)x$($selectedExtent.Height)-round-$roundNumber" |
             Add-Content -Path $manifestPath -Encoding UTF8
     }
 }

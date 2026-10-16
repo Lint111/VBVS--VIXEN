@@ -1,0 +1,9 @@
+﻿repo=C:\vixen-native\upscalestage1
+executable=C:\vixen-native\upscalestage1\build\stage1-merged-native\application\main\vixen_lookdev_capture.exe
+frames_per_yaw=64
+sequence=one FSR 1 capture per profile; four midday yaws; this sweep reports stage costs, not A/B/A gate results
+camera=orbit center (5,5,5); distance 14; FOV 45 degrees; pitch 0.45 radians; yaws 0/90/180/270 degrees
+fixed_exposure=VIXEN_HDR_EXPOSURE=1; VIXEN_HDR_EXPOSURE_FIXED=1
+recipe=static authored LookdevSceneDefinition; no per-run RNG; sky_seed=0x5a17f13d
+steady_cost_samples=frames 33-64 per yaw (128 samples)
+completed=all-eight-fsr-stage-cost-profiles

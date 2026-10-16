@@ -9471,9 +9471,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 return makeLightingFamily(sourceFile, familyName);
             };
             params.registerShaderFamily = registerModuleShaderFamily;
-            params.registerPassMetric = [this](std::string columnName,
-                                               GPUPerformanceLogger* logger) {
-                upscalerPerfPasses_.push_back({std::move(columnName), logger});
+            params.registerPassMetric = [this](std::string columnName, NodeHandle node) {
+                upscalerPerfPasses_.push_back({std::move(columnName), node});
             };
             upscalerModule = renderGraph->InstantiateRegistered(
                 kFsr1UpscalerModuleTypeName, "render_path/upscaler", std::any(std::move(params)));

@@ -2,6 +2,7 @@
 
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
+#include "Core/VariadicTypedNode.h"
 #include "Data/Core/ResourceConfig.h"
 #include "CapabilityGraph.h"
 
@@ -38,6 +39,12 @@ CONSTEXPR_NODE_CONFIG(ChainPorts, 1, 1, SlotArrayMode::Single) {
 };
 
 CONSTEXPR_NODE_CONFIG(EmptyPorts, 0, 0, SlotArrayMode::Single) {};
+
+CONSTEXPR_NODE_CONFIG(VariadicInputPorts, 1, 0, SlotArrayMode::Single) {
+    INPUT_SLOT(VariadicInput, const VkBuffer, 0, SlotNullability::Required,
+               SlotRole::Dependency | SlotRole::Execute,
+               SlotMutability::ReadOnly, SlotScope::NodeLevel);
+};
 
 CONSTEXPR_NODE_CONFIG(PassThroughPorts, 1, 1, SlotArrayMode::Single) {
     INPUT_SLOT(PassInput, const VkBuffer, 0, SlotNullability::Required,
@@ -92,9 +99,48 @@ public:
     }
 };
 
+class TestVariadicSink final : public VariadicTypedNode<EmptyPorts> {
+public:
+    TestVariadicSink(const std::string& name, NodeType* type)
+        : VariadicTypedNode(name, type) {}
+
+    void RegisterBufferInput() {
+        VariadicSlotInfo slot;
+        slot.resourceType = ResourceType::Buffer;
+        slot.slotName = "buffer_input";
+        RegisterVariadicSlot(slot);
+        SetVariadicInputConstraints(1, 1);
+    }
+
+protected:
+    void VariadicExecuteImpl(VariadicExecuteContext&) override {}
+};
+
+class TestVariadicSinkType final : public NodeType {
+public:
+    TestVariadicSinkType() : NodeType("VariadicSink") {}
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override {
+        return std::make_unique<TestVariadicSink>(name,
+                                                   const_cast<TestVariadicSinkType*>(this));
+    }
+};
+
 struct ChainParams {};
 
 struct PassThroughParams {};
+
+class VariadicInputSubGraph final : public SubGraphType<VariadicInputSubGraph> {
+public:
+    using PortConfig = VariadicInputPorts;
+    using Params = ChainParams;
+
+    void Build(GraphScope& scope, const Params&) {
+        const NodeHandle sink = scope.AddNode("VariadicSink", "sink");
+        scope.GetInstance<TestVariadicSink>(sink)->RegisterBufferInput();
+        scope.BindInputIndex(VariadicInputPorts::VariadicInput, sink, 0);
+    }
+};
 
 class RegisteredPassThroughSubGraph final
     : public SubGraphType<RegisteredPassThroughSubGraph> {
@@ -189,6 +235,7 @@ public:
         registry.RegisterNodeType(std::make_unique<TestNodeType>("Transform", 1, 1));
         registry.RegisterNodeType(std::make_unique<TestNodeType>("Sink", 1, 0));
         registry.RegisterNodeType(std::make_unique<TestNodeType>("OptionalSink", 1, 0, true));
+        registry.RegisterNodeType(std::make_unique<TestVariadicSinkType>());
     }
 
     NodeHandle AddSource(const std::string& name) { return graph.AddNode("Source", name); }
@@ -308,6 +355,25 @@ TEST(SubGraphNodesTest, RegisteredNodeGroupInstantiatesAndForwardsTheSameResourc
     const auto edge = topology.GetEdges().front();
     EXPECT_EQ(edge.source->GetInstanceName(), "source");
     EXPECT_EQ(edge.target->GetInstanceName(), "sink");
+}
+
+TEST(SubGraphNodesTest, TypedGroupInputConnectsToItsVariadicMemberSlot) {
+    GraphFixture fixture;
+    const NodeHandle source = fixture.AddSource("source");
+    const SubGraphHandle group = fixture.graph.Instantiate<VariadicInputSubGraph>("variadic_group");
+
+    ASSERT_TRUE(group.IsValid());
+    ASSERT_EQ(group.GetMembers().size(), 1u);
+    EXPECT_NO_THROW(fixture.graph.Connect(source, SourceSlots::SourceOutput,
+                                          group, VariadicInputPorts::VariadicInput));
+
+    const auto* sink = dynamic_cast<const IVariadicNode*>(
+        fixture.graph.GetInstance(group.GetMembers().front()));
+    ASSERT_NE(sink, nullptr);
+    ASSERT_NE(sink->GetVariadicSlotInfo(0), nullptr);
+    EXPECT_NE(sink->GetVariadicSlotInfo(0)->resource, nullptr);
+    ASSERT_EQ(fixture.graph.GetTopology().GetEdgeCount(), 1u);
+    EXPECT_TRUE(fixture.graph.GetTopology().GetEdges().front().isVariadic);
 }
 
 TEST(SubGraphNodesTest, ExpansionRejectsUnboundAndDoublyBoundPorts) {

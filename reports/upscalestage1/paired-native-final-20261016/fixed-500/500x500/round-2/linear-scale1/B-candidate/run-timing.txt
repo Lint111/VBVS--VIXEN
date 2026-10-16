@@ -1,0 +1,6 @@
+﻿run=500x500-round-2-linear-scale1-B-candidate
+scale=1.0
+upscaler=linear
+started_at_utc=2026-10-16T20:47:24.7785736Z
+completed_at_utc=2026-10-16T20:47:56.7036803Z
+elapsed_ms=31925.3

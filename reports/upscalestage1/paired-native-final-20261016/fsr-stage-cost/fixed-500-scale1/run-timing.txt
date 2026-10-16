@@ -1,0 +1,9 @@
+﻿profile=fixed-500-scale1
+width=500
+height=500
+scale=1.0
+lod_mode=fixed
+started_at_utc=2026-10-16T22:25:06.8604992Z
+completed_at_utc=2026-10-16T22:25:19.7308200Z
+elapsed_ms=12866.8
+capture_count=4

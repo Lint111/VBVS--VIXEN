@@ -1,0 +1,6 @@
+﻿run=500x500-round-1-fsr1-scale1-A-after
+scale=1.0
+upscaler=none
+started_at_utc=2026-10-16T20:44:09.2953162Z
+completed_at_utc=2026-10-16T20:44:28.4456739Z
+elapsed_ms=19149.5

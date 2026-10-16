@@ -175,12 +175,9 @@ public:
                       rcas, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
 
         if (params.registerPassMetric) {
-            params.registerPassMetric("fsr_input_aa",
-                scope.GetInstance<ComputeStageNode>(inputAa)->GetGPUPerformanceLogger());
-            params.registerPassMetric("fsr1_easu",
-                scope.GetInstance<ComputeStageNode>(easu)->GetGPUPerformanceLogger());
-            params.registerPassMetric("fsr1_rcas",
-                scope.GetInstance<ComputeStageNode>(rcas)->GetGPUPerformanceLogger());
+            params.registerPassMetric("fsr_input_aa", inputAa);
+            params.registerPassMetric("fsr1_easu", easu);
+            params.registerPassMetric("fsr1_rcas", rcas);
         }
     }
 };

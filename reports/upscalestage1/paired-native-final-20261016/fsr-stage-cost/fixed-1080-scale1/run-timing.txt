@@ -1,0 +1,9 @@
+﻿profile=fixed-1080-scale1
+width=1920
+height=1080
+scale=1.0
+lod_mode=fixed
+started_at_utc=2026-10-16T22:26:00.4257150Z
+completed_at_utc=2026-10-16T22:26:36.0617893Z
+elapsed_ms=35636.7
+capture_count=4

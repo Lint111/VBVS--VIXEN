@@ -1,0 +1,6 @@
+﻿run=500x500-round-1-fsr1-scale-2-3-B-candidate
+scale=0.6666667
+upscaler=fsr1
+started_at_utc=2026-10-16T20:44:52.9118031Z
+completed_at_utc=2026-10-16T20:45:06.1445751Z
+elapsed_ms=13232.5

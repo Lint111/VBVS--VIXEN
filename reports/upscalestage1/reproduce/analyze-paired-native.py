@@ -146,19 +146,25 @@ def main():
             for key in FSR_COLUMNS:
                 summary_key = key.removesuffix("_ms") + "_p50"
                 values = [trial[summary_key] for trial in trial_metrics if summary_key in trial]
-                if values:
+                # A logger that was not available to the recorder returns 0 for every frame.
+                # Do not publish that as a measured zero-cost stage; the capture can still
+                # provide valid whole-frame timing from a later pass on the same queue.
+                if values and any(value > 0.0 for value in values):
                     combined[summary_key] = summary(values)
 
             thresholds = {2.0 / 3.0: 30.0, 0.5: 50.0}
             if scale in thresholds:
                 primary_pass = combined["primary_gain_pct"]["median"] >= thresholds[scale]
                 displayed_pass = combined["displayed_gain_pct"]["median"] >= 20.0
+                no_primary_tail_regression = combined["primary_p95_delta_pct"]["max"] <= 0.0
                 no_tail_regression = combined["displayed_p95_delta_pct"]["max"] <= 0.0
                 combined["gate"] = {
                     "primary_pass": primary_pass,
                     "displayed_pass": displayed_pass,
+                    "no_primary_p95_regression": no_primary_tail_regression,
                     "no_displayed_p95_regression": no_tail_regression,
-                    "pass": primary_pass and displayed_pass and no_tail_regression,
+                    "pass": (primary_pass and displayed_pass and no_primary_tail_regression and
+                             no_tail_regression),
                 }
             else:
                 combined["gate"] = None
@@ -174,6 +180,7 @@ def main():
     for row in aggregate:
         p = row["primary_gain_pct"]
         d = row["displayed_gain_pct"]
+        primary_tail = row["primary_p95_delta_pct"]
         t = row["displayed_p95_delta_pct"]
         gate = row["gate"]
         gate_text = "n/a" if gate is None else ("PASS" if gate["pass"] else "FAIL")
@@ -181,7 +188,9 @@ def main():
             f"{row['extent']} {row['config']}: "
             f"primary gain {p['median']:.2f}% [{p['min']:.2f}, {p['max']:.2f}], "
             f"displayed gain {d['median']:.2f}% [{d['min']:.2f}, {d['max']:.2f}], "
-            f"displayed p95 delta {t['median']:+.2f}% [{t['min']:+.2f}, {t['max']:+.2f}], "
+            f"primary/displayed p95 delta {primary_tail['median']:+.2f}% "
+            f"[{primary_tail['min']:+.2f}, {primary_tail['max']:+.2f}] / "
+            f"{t['median']:+.2f}% [{t['min']:+.2f}, {t['max']:+.2f}], "
             f"gate {gate_text}"
         )
 

@@ -1,0 +1,6 @@
+﻿run=500x500-round-2-linear-scale1-A-before
+scale=1.0
+upscaler=none
+started_at_utc=2026-10-16T20:46:54.5110033Z
+completed_at_utc=2026-10-16T20:47:24.7618548Z
+elapsed_ms=30245.5

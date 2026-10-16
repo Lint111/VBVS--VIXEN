@@ -1,0 +1,6 @@
+﻿run=1920x1080-round-3-fsr1-scale-1-2-B-candidate
+scale=0.5
+upscaler=fsr1
+started_at_utc=2026-10-16T22:07:47.2274033Z
+completed_at_utc=2026-10-16T22:08:10.3746220Z
+elapsed_ms=23146.8

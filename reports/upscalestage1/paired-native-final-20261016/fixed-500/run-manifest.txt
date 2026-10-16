@@ -1,0 +1,15 @@
+﻿repo=C:\vixen-native\upscalestage1
+executable=C:\vixen-native\upscalestage1\build\stage1-merged-native\application\main\vixen_lookdev_capture.exe
+vulkan_sdk=C:\VulkanSDK\1.4.350.0
+runtime_dll_dirs=C:\vixen-native\upscalestage1\build\stage1-merged-native\msvc_19.44_cxx_64_md_release
+rounds=3
+lod_mode=fixed
+sequence=midday; four fixed yaws; 64 frames per yaw; A/B/A per candidate and round
+camera=orbit center (5,5,5); distance 14; FOV 45 degrees; pitch 0.45 radians; yaws 0/90/180/270 degrees
+recipe=static authored LookdevSceneDefinition; no per-run RNG; sky_seed=0x5a17f13d
+fixed_exposure=VIXEN_HDR_EXPOSURE=1; VIXEN_HDR_EXPOSURE_FIXED=1
+lod_policy=fixed; VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.00165685425
+scale/upscaler supplied as RenderPathConfig test args, not environment variables
+completed=500x500-round-1
+completed=500x500-round-2
+completed=500x500-round-3

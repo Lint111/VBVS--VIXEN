@@ -484,6 +484,28 @@ void ValidateDeclaredPortPair(const ResourceDescriptor& source,
                                  description);
     }
 }
+
+void ValidateDeclaredVariadicPortPair(const ResourceDescriptor& source,
+                                      const NodeInstance& target,
+                                      uint32_t targetSlot,
+                                      SlotRole targetRole,
+                                      const std::string& description) {
+    const auto* variadic = dynamic_cast<const IVariadicNode*>(&target);
+    const VariadicSlotInfo* slot = variadic ? variadic->GetVariadicSlotInfo(targetSlot) : nullptr;
+    if (!slot) {
+        throw std::runtime_error("Invalid bound sub-graph member input slot");
+    }
+
+    const bool sourceUndeclared = source.declaredType == std::type_index(typeid(void)) &&
+                                  source.role == SlotRole::None;
+    if ((!sourceUndeclared && source.role != SlotRole::Output) ||
+        targetRole == SlotRole::Output || targetRole == SlotRole::None) {
+        throw std::runtime_error("Invalid slot roles for " + description);
+    }
+    if (source.type != slot->resourceType) {
+        throw std::runtime_error("Declared slot type mismatch for " + description);
+    }
+}
 }
 
 void RenderGraph::Connect(NodeHandle source, uint32_t sourceOutput,
@@ -506,10 +528,15 @@ void RenderGraph::Connect(NodeHandle source, uint32_t sourceOutput,
         if (binding.port != targetPort) continue;
         NodeInstance* member = GetInstanceInternal(binding.member);
         if (!member) throw std::runtime_error("Invalid bound sub-graph member node");
-        const ResourceDescriptor* memberDesc =
-            member->GetNodeType()->GetInputDescriptor(binding.memberSlot);
-        if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member input slot");
-        ValidateDeclaredPortPair(*sourceDesc, *memberDesc, "node to group member input");
+        if (binding.isVariadic) {
+            ValidateDeclaredVariadicPortPair(*sourceDesc, *member, binding.memberSlot,
+                                             binding.role, "node to group member input");
+        } else {
+            const ResourceDescriptor* memberDesc =
+                member->GetNodeType()->GetInputDescriptor(binding.memberSlot);
+            if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member input slot");
+            ValidateDeclaredPortPair(*sourceDesc, *memberDesc, "node to group member input");
+        }
         ConnectNodes(source, sourceOutput, binding.member, binding.memberSlot,
                      binding.isVariadic, binding.role);
         found = true;
@@ -624,11 +651,17 @@ void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
                 targetFound = true;
                 NodeInstance* targetMember = GetInstanceInternal(targetBinding.member);
                 if (!targetMember) throw std::runtime_error("Invalid bound sub-graph input node");
-                const ResourceDescriptor* memberInput =
-                    targetMember->GetNodeType()->GetInputDescriptor(targetBinding.memberSlot);
-                if (!memberInput) throw std::runtime_error("Invalid bound sub-graph input slot");
-                ValidateDeclaredPortPair(*memberOutput, *memberInput,
-                                         "group member output to group member input");
+                if (targetBinding.isVariadic) {
+                    ValidateDeclaredVariadicPortPair(
+                        *memberOutput, *targetMember, targetBinding.memberSlot,
+                        targetBinding.role, "group member output to group member input");
+                } else {
+                    const ResourceDescriptor* memberInput =
+                        targetMember->GetNodeType()->GetInputDescriptor(targetBinding.memberSlot);
+                    if (!memberInput) throw std::runtime_error("Invalid bound sub-graph input slot");
+                    ValidateDeclaredPortPair(*memberOutput, *memberInput,
+                                             "group member output to group member input");
+                }
                 ConnectNodes(endpoint.node, endpoint.slot, targetBinding.member,
                              targetBinding.memberSlot, targetBinding.isVariadic,
                              targetBinding.role);

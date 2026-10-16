@@ -1,0 +1,6 @@
+﻿run=1920x1080-round-3-linear-scale-2-3-A-after
+scale=1.0
+upscaler=none
+started_at_utc=2026-10-16T21:59:46.9081570Z
+completed_at_utc=2026-10-16T22:00:55.9404320Z
+elapsed_ms=69031.9

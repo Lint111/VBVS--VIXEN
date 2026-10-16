@@ -538,7 +538,11 @@ private:
     PerfCsvWriter perfCsvWriter_;
     // Render-path modules publish their timed passes through the module build contract, so the
     // per-frame recorder never looks up a module's private graph members by name.
-    std::vector<PerfCsvWriter::PassSource> upscalerPerfPasses_;
+    struct UpscalerPassMetric {
+        std::string columnName;
+        Vixen::RenderGraph::NodeHandle node;
+    };
+    std::vector<UpscalerPassMetric> upscalerPerfPasses_;
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's

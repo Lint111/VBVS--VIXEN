@@ -1,0 +1,6 @@
+﻿run=1920x1080-round-3-fsr1-scale-1-2-A-before
+scale=1.0
+upscaler=none
+started_at_utc=2026-10-16T22:07:06.5267358Z
+completed_at_utc=2026-10-16T22:07:47.2238569Z
+elapsed_ms=40696.3
