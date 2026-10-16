@@ -196,6 +196,15 @@ std::vector<CaptureScenario> BuildScenarios() {
     const auto& presets = Vixen::App::Lookdev::LightingPresets();
     const char* requestedState = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
     const char* requestedAngleText = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE");
+    float storedSdfYawRadians = 0.0f;
+    if (const char* yawText = std::getenv("VIXEN_GLYPHSDF_CAPTURE_YAW_DEGREES")) {
+        char* end = nullptr;
+        const float yawDegrees = std::strtof(yawText, &end);
+        if (end != yawText && *end == '\0' && std::isfinite(yawDegrees) &&
+            yawDegrees >= -180.0f && yawDegrees <= 180.0f) {
+            storedSdfYawRadians = yawDegrees * 0.017453292519943295f;
+        }
+    }
     int requestedAngle = -1;
     if (requestedAngleText && *requestedAngleText != '\0') {
         char* end = nullptr;
@@ -213,7 +222,7 @@ std::vector<CaptureScenario> BuildScenarios() {
             return value.name == "midday";
         });
         if (preset != presets.end())
-            scenarios.push_back({*preset, 0.0f, compare
+            scenarios.push_back({*preset, storedSdfYawRadians, compare
                 ? (std::getenv("VIXEN_SDF_FILTER_NON_TEXT")
                     ? "sdf-filter-nontext-analytic-vs-voxel.png"
                     : "glyphsdf-analytic-vs-voxel.png")
@@ -721,9 +730,20 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
-    constexpr int bakeResolution = 128;
-    constexpr float recipeUnitsPerVoxel = 0.5f;
-    constexpr float bandVoxels = 5.0f;
+    int bakeResolution = 128;
+    if (const char* requestedResolution = std::getenv("VIXEN_SDF_FILTER_NON_TEXT_RESOLUTION")) {
+        char* parseEnd = nullptr;
+        const long parsedResolution = std::strtol(requestedResolution, &parseEnd, 10);
+        if (parseEnd == requestedResolution || *parseEnd != '\0' ||
+            (parsedResolution != 128 && parsedResolution != 256)) {
+            error = "VIXEN_SDF_FILTER_NON_TEXT_RESOLUTION must be 128 or 256";
+            return false;
+        }
+        bakeResolution = static_cast<int>(parsedResolution);
+    }
+    const float recipeUnitsPerVoxel = 64.0f / static_cast<float>(bakeResolution);
+    constexpr float bandRecipeUnits = 2.5f;
+    const float bandVoxels = bandRecipeUnits / recipeUnitsPerVoxel;
     constexpr float sphereRadius = 16.0f;
     constexpr float instanceScale = 0.30f;
     const glm::vec3 bakeCenter(static_cast<float>(bakeResolution) * 0.5f);
