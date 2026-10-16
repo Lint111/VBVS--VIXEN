@@ -28,6 +28,7 @@
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"
 #include "graph/UpscalerModules.h"
+#include "graph/ReconstructionDepth.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
@@ -9454,6 +9455,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
             return builder;
         });
     };
+
+    if (envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH")) {
+        ReconstructionDepthParams params;
+        params.batch = &batch;
+        params.common = lightingCommon;
+        params.sourceTarget = renderTargetNode;
+        params.camera = cameraNode;
+        params.hitRecords = hitRecordBufferNode;
+        params.makeShaderFamily = makeLightingFamily;
+        params.registerShaderFamily = registerModuleShaderFamily;
+        params.registerPassMetric = [this](std::string name, NodeHandle node) {
+            upscalerPerfPasses_.push_back({std::move(name), node});
+        };
+        const auto depth = renderGraph->Instantiate<ReconstructionDepthModule>(
+            "render_path/reconstruction_inputs", params);
+        sceneProviders.ProvideSubGraphOutput("viewDepthImage", depth,
+            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", depth,
+            ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
+    }
 
     if (fsr1UpscalerSelected || linearUpscalerRequested) {
         if (fsr1UpscalerSelected) {

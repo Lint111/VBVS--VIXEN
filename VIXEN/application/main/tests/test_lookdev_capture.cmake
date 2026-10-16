@@ -31,6 +31,22 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
     message(STATUS "[Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)")
 
+    foreach(_depth_case IN ITEMS native reduced-odd)
+        set(_depth_scale 1.0)
+        if(_depth_case STREQUAL "reduced-odd")
+            set(_depth_scale 0.5)
+        endif()
+        set(_depth_test "Application.ReconstructionInputs.Depth.${_depth_case}")
+        set(_depth_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/${_depth_case}")
+        add_test(NAME "${_depth_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+            "--render-scale=${_depth_scale}" "--upscaler=none")
+        set_tests_properties("${_depth_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+            ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_depth_dir};VIXEN_PERF_CSV=${_depth_dir}/perf.csv"
+            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+        vixen_lock_gpu_tests(TESTS "${_depth_test}")
+    endforeach()
+
     # Native S2 parity jobs capture one state/angle/mode per CTest case. Keeping
     # each GPU capture as its own test lets the box queue admit it independently;
     # the lane compares each reference/system pair after both jobs finish.

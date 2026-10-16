@@ -1,0 +1,50 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "HitRecord.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(std430, binding = 0) readonly buffer HitRecordBuffer { HitRecord hits[]; };
+layout(r32f, binding = 1) uniform writeonly image2D viewDepthImage;
+layout(r32f, binding = 2) uniform writeonly image2D normalizedDepthImage;
+
+layout(push_constant) uniform DepthPush {
+    mat4 invProjection;
+    vec3 cameraPos;
+    vec3 cameraDir;
+    // Consumer convention table: normalized scale/bias/far value, view-depth sign.
+    vec4 depthEncoding;
+} pc;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(viewDepthImage);
+    if (any(greaterThanEqual(pixel, extent))) return;
+    uint index = uint(pixel.y) * uint(extent.x) + uint(pixel.x);
+
+    float viewDepth = 1.0e30;
+    float normalizedDepth = pc.depthEncoding.z;
+    if (index < hits.length()) {
+        HitRecord hit = hits[index];
+        // worldPos = ray origin + hitT * normalized primary direction. Projecting
+        // that displacement onto cameraDir removes the off-axis ray-distance factor.
+        float z = dot(hit.worldPos - pc.cameraPos, pc.cameraDir);
+        bool valid = (hit.flags & HITRECORD_FLAG_HIT) != 0u &&
+                     hit.hitT >= 0.0 && hit.hitT < 1.0e30 &&
+                     z > 0.0 && !isnan(z) && !isinf(z);
+        if (valid) {
+            // Solve inverse-projection's z/w equation for NDC z at view z = -z.
+            // Uses the camera's actual near/far projection, including infinite far
+            // and orthographic projections; no SDK-specific near/far constants.
+            float numerator = pc.invProjection[3][2] + z * pc.invProjection[3][3];
+            float denominator = -z * pc.invProjection[2][3] - pc.invProjection[2][2];
+            float ndc = numerator / denominator;
+            if (!isnan(ndc) && !isinf(ndc)) {
+                viewDepth = z;
+                normalizedDepth = clamp(ndc, 0.0, 1.0) * pc.depthEncoding.x + pc.depthEncoding.y;
+            }
+        }
+    }
+    imageStore(viewDepthImage, pixel, vec4(viewDepth * pc.depthEncoding.w));
+    imageStore(normalizedDepthImage, pixel, vec4(normalizedDepth));
+}

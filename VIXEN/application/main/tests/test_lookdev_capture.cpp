@@ -5,6 +5,8 @@
 #include "Nodes/DeviceNode.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Nodes/RenderTargetNode.h"
+#include "Debug/RenderTargetReadback.h"
 #include "Nodes/PushConstantGathererNode.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "Nodes/BodyOctreeSceneNode.h"
@@ -1116,6 +1118,7 @@ public:
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
         captureWallMs_ += MsBetween(captureStart, CaptureClock::now());
         if (std::getenv("VIXEN_LOOKDEV_READBACK") && !ExportLightingReadback(scenario)) return false;
+        if (std::getenv("VIXEN_LOOKDEV_DEPTH_READBACK") && !ExportDepthReadback(scenario)) return false;
         ++capturedCount_;
 
         if (capturedCount_ < scenarios_.size()) {
@@ -1137,6 +1140,102 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    bool ExportDepthReadback(const CaptureScenario& scenario) {
+        using namespace Vixen::RenderGraph;
+        auto* graph = GetRenderGraph();
+        auto* deviceNode = dynamic_cast<DeviceNode*>(graph->GetInstanceByName("main_device"));
+        auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+        const auto targetByName = [graph](const char* name) {
+            auto* node = graph->GetInstanceByName(name);
+            auto* resource = node ? node->GetOutput(RenderTargetNodeConfig::RENDER_TARGET.index) : nullptr;
+            return resource ? resource->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>() : nullptr;
+        };
+        auto* source = targetByName("compute_render_target");
+        auto* view = targetByName("render_path/reconstruction_inputs/view_depth");
+        auto* normalized = targetByName("render_path/reconstruction_inputs/normalized_depth");
+        if (!device || !source || !view || !normalized ||
+            view->GetFormat() != VK_FORMAT_R32_SFLOAT || normalized->GetFormat() != VK_FORMAT_R32_SFLOAT ||
+            view->GetExtent().width != source->GetExtent().width ||
+            view->GetExtent().height != source->GetExtent().height ||
+            normalized->GetExtent().width != view->GetExtent().width ||
+            normalized->GetExtent().height != view->GetExtent().height) {
+            captureError_ = "reconstruction depth guides must be R32F at the internal extent";
+            return false;
+        }
+        std::vector<uint8_t> viewBytes, normalizedBytes;
+        if (!Debug::ReadRenderTargetBytes(device, view, device->queue, device->graphicsQueueIndex,
+                                         viewBytes, captureError_) ||
+            !Debug::ReadRenderTargetBytes(device, normalized, device->queue, device->graphicsQueueIndex,
+                                         normalizedBytes, captureError_)) return false;
+        void* mapped = nullptr;
+        if (!snapshotMemory_ || vkMapMemory(device->device, snapshotMemory_, 0, snapshotSize_, 0, &mapped) != VK_SUCCESS) {
+            captureError_ = "depth witness requires the matching primary hit-record snapshot";
+            return false;
+        }
+        const auto extent = view->GetExtent();
+        const size_t count = size_t(extent.width) * extent.height;
+        const auto& camera = camera_->GetCurrentCameraData();
+        const glm::mat4 projection = glm::inverse(camera.invProjection);
+        size_t hits = 0, misses = 0, offAxis = 0, failures = 0;
+        float maxViewError = 0.0f, maxNormalizedError = 0.0f;
+        std::vector<uint8_t> preview(count * 3);
+        if (viewBytes.size() != count * sizeof(float) || normalizedBytes.size() != viewBytes.size() ||
+            snapshotSize_ < count * 64) {
+            vkUnmapMemory(device->device, snapshotMemory_);
+            captureError_ = "depth readback byte count does not match the internal extent";
+            return false;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            float viewDepth, normalizedDepth, hitT;
+            uint32_t flags;
+            glm::vec3 world;
+            const auto* record = static_cast<const uint8_t*>(mapped) + i * 64;
+            std::memcpy(&hitT, record + 28, sizeof(hitT));
+            std::memcpy(&world, record + 32, sizeof(world));
+            std::memcpy(&flags, record + 44, sizeof(flags));
+            std::memcpy(&viewDepth, viewBytes.data() + i * 4, 4);
+            std::memcpy(&normalizedDepth, normalizedBytes.data() + i * 4, 4);
+            if ((flags & 1u) != 0u) {
+                ++hits;
+                const float expectedView = glm::dot(world - camera.cameraPos, camera.cameraDir);
+                // Independent forward projection, rather than the shader's inverse equation.
+                const glm::vec4 clip = projection * glm::vec4(0.0f, 0.0f, -expectedView, 1.0f);
+                const float expectedNormalized = glm::clamp(clip.z / clip.w, 0.0f, 1.0f);
+                maxViewError = std::max(maxViewError, std::abs(viewDepth - expectedView));
+                maxNormalizedError = std::max(maxNormalizedError, std::abs(normalizedDepth - expectedNormalized));
+                failures += !std::isfinite(viewDepth) || !std::isfinite(normalizedDepth) ||
+                    std::abs(viewDepth - expectedView) > std::max(1.0e-4f, expectedView * 2.0e-5f) ||
+                    std::abs(normalizedDepth - expectedNormalized) > 2.0e-6f;
+                offAxis += hitT > expectedView + 1.0e-3f;
+            } else {
+                ++misses;
+                failures += viewDepth != 1.0e30f || normalizedDepth != 1.0f;
+            }
+            // Fixed, documented visualization; retain unmodified R32F bytes below.
+            const uint8_t shade = (flags & 1u) ? static_cast<uint8_t>(255.0f * std::exp(-viewDepth / 20.0f)) : 0;
+            preview[i * 3] = preview[i * 3 + 1] = preview[i * 3 + 2] = shade;
+        }
+        vkUnmapMemory(device->device, snapshotMemory_);
+        const auto stem = outputDir_ / std::filesystem::path(scenario.filename).stem();
+        std::ofstream viewFile(stem.string() + ".view-depth.f32", std::ios::binary);
+        viewFile.write(reinterpret_cast<const char*>(viewBytes.data()), viewBytes.size());
+        std::ofstream normalizedFile(stem.string() + ".normalized-depth.f32", std::ios::binary);
+        normalizedFile.write(reinterpret_cast<const char*>(normalizedBytes.data()), normalizedBytes.size());
+        std::ofstream result(stem.string() + ".depth.json");
+        result << "{\"width\":" << extent.width << ",\"height\":" << extent.height
+               << ",\"hits\":" << hits << ",\"misses\":" << misses << ",\"off_axis_hits\":" << offAxis
+               << ",\"failures\":" << failures << ",\"max_view_error\":" << maxViewError
+               << ",\"max_normalized_error\":" << maxNormalizedError << "}\n";
+        const bool png = stbi_write_png((stem.string() + ".view-depth.png").c_str(),
+            int(extent.width), int(extent.height), 3, preview.data(), int(extent.width) * 3) != 0;
+        if (!viewFile || !normalizedFile || !result || !png || !hits || !misses || !offAxis || failures) {
+            captureError_ = "depth witness failed: " + std::to_string(failures) + " pixel mismatches; " +
+                std::to_string(hits) + " hits, " + std::to_string(misses) + " misses";
+            return false;
+        }
+        return true;
+    }
+
     bool ExportLightingReadback(const CaptureScenario& scenario) {
         auto* graph = GetRenderGraph();
         auto* deviceNode = dynamic_cast<Vixen::RenderGraph::DeviceNode*>(

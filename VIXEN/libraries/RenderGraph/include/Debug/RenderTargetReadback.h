@@ -19,42 +19,60 @@
 
 namespace Vixen::RenderGraph::Debug {
 
-// Copies the current graph-produced image to RGB PNG. The target owns its last recorded layout;
-// this blocking copy restores it before returning, so capture can repeat or rendering can resume.
-// Undefined images have no produced contents and cannot be captured.
-//
-// Blocking: submits a one-shot command buffer on `queue` and waits for it (vkQueueWaitIdle) --
-// fine for an unattended capture harness, not for a per-frame hot path.
-inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* device,
-                                      Vixen::Vulkan::Resources::IRenderTarget* target,
-                                      VkQueue queue,
-                                      uint32_t queueFamilyIndex,
-                                      const std::string& path,
-                                      std::string& err) {
+// Blocking raw readback of a graph-produced image. Restores the recorded layout
+// before returning; float guides retain their original bytes and precision.
+inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device,
+                                 Vixen::Vulkan::Resources::IRenderTarget* target,
+                                 VkQueue queue, uint32_t queueFamilyIndex,
+                                 std::vector<uint8_t>& bytes, std::string& err) {
     if (!device || !target || queue == VK_NULL_HANDLE) {
-        err = "CaptureRenderTargetToPng: null device/target/queue";
+        err = "ReadRenderTargetBytes: null device/target/queue";
         return false;
+    }
+    uint32_t bytesPerTexel = 0;
+    switch (target->GetFormat()) {
+        case VK_FORMAT_R32_SFLOAT:
+        case VK_FORMAT_R16G16_SFLOAT:
+        case VK_FORMAT_R8G8B8A8_UNORM:
+        case VK_FORMAT_R8G8B8A8_SRGB:
+        case VK_FORMAT_R8G8B8A8_SNORM:
+        case VK_FORMAT_R8G8B8A8_UINT:
+        case VK_FORMAT_R8G8B8A8_SINT:
+        case VK_FORMAT_B8G8R8A8_UNORM:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+        case VK_FORMAT_B8G8R8A8_SNORM:
+        case VK_FORMAT_B8G8R8A8_UINT:
+        case VK_FORMAT_B8G8R8A8_SINT:
+            bytesPerTexel = 4;
+            break;
+        case VK_FORMAT_R32G32_SFLOAT:
+        case VK_FORMAT_R16G16B16A16_SFLOAT:
+            bytesPerTexel = 8;
+            break;
+        default:
+            err = "ReadRenderTargetBytes: unsupported image format";
+            return false;
     }
     const VkDevice vkDevice = device->device;
     const VkImage image = target->GetCurrentImage();
     if (image == VK_NULL_HANDLE) {
-        err = "CaptureRenderTargetToPng: target's current image is VK_NULL_HANDLE";
+        err = "ReadRenderTargetBytes: target's current image is VK_NULL_HANDLE";
         return false;
     }
     const VkImageLayout currentLayout = target->GetCurrentLayout();
     if (currentLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
-        err = "CaptureRenderTargetToPng: current image has no graph-produced layout";
+        err = "ReadRenderTargetBytes: current image has no graph-produced layout";
         return false;
     }
     if (!(target->GetImageUsageFlags() & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
-        err = "CaptureRenderTargetToPng: target was not created with VK_IMAGE_USAGE_TRANSFER_SRC_BIT";
+        err = "ReadRenderTargetBytes: target was not created with VK_IMAGE_USAGE_TRANSFER_SRC_BIT";
         return false;
     }
 
     const VkExtent2D extent = target->GetExtent();
     const uint32_t w = extent.width, h = extent.height;
     if (w == 0 || h == 0) {
-        err = "CaptureRenderTargetToPng: target has zero extent";
+        err = "ReadRenderTargetBytes: target has zero extent";
         return false;
     }
 
@@ -66,7 +84,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     poolInfo.queueFamilyIndex = queueFamilyIndex;
     if (vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &cmdPool) != VK_SUCCESS) {
-        err = "CaptureRenderTargetToPng: vkCreateCommandPool failed";
+        err = "ReadRenderTargetBytes: vkCreateCommandPool failed";
         return false;
     }
 
@@ -77,13 +95,13 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     cbAlloc.commandBufferCount = 1;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     if (vkAllocateCommandBuffers(vkDevice, &cbAlloc, &cmd) != VK_SUCCESS) {
-        err = "CaptureRenderTargetToPng: vkAllocateCommandBuffers failed";
+        err = "ReadRenderTargetBytes: vkAllocateCommandBuffers failed";
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
     }
 
     // --- host-visible readback buffer ---
-    const VkDeviceSize bufSize = VkDeviceSize(w) * h * 4;
+    const VkDeviceSize bufSize = VkDeviceSize(w) * h * bytesPerTexel;
     VkBuffer hostBuf = VK_NULL_HANDLE;
     VkDeviceMemory hostMem = VK_NULL_HANDLE;
     VkBufferCreateInfo bufInfo{};
@@ -92,7 +110,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateBuffer(vkDevice, &bufInfo, nullptr, &hostBuf) != VK_SUCCESS) {
-        err = "CaptureRenderTargetToPng: vkCreateBuffer failed";
+        err = "ReadRenderTargetBytes: vkCreateBuffer failed";
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
     }
@@ -109,7 +127,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
         }
     }
     if (memTypeIndex == UINT32_MAX) {
-        err = "CaptureRenderTargetToPng: no host-visible/coherent memory type found";
+        err = "ReadRenderTargetBytes: no host-visible/coherent memory type found";
         vkDestroyBuffer(vkDevice, hostBuf, nullptr);
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
@@ -119,7 +137,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = memTypeIndex;
     if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &hostMem) != VK_SUCCESS) {
-        err = "CaptureRenderTargetToPng: vkAllocateMemory failed";
+        err = "ReadRenderTargetBytes: vkAllocateMemory failed";
         vkDestroyBuffer(vkDevice, hostBuf, nullptr);
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
@@ -184,38 +202,55 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     if (ok) {
         void* mapped = nullptr;
         if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
-            // Swap R and B for BGRA-family formats so the PNG matches on-screen colors (see
-            // the swapchain channel-order contract). No-op for this helper's
-            // usual RGBA offscreen targets (VK_FORMAT_R8G8B8A8_*).
-            const VkFormat fmt = target->GetFormat();
-            const bool swapRB = (fmt == VK_FORMAT_B8G8R8A8_UNORM ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SRGB  ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SNORM ||
-                                 fmt == VK_FORMAT_B8G8R8A8_UINT  ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SINT);
-            const uint32_t rIdx = swapRB ? 2u : 0u;
-            const uint32_t bIdx = swapRB ? 0u : 2u;
-            std::vector<uint8_t> rgb(size_t(w) * h * 3);
-            const auto* rgba = static_cast<const uint8_t*>(mapped);
-            for (uint32_t i = 0; i < w * h; ++i) {
-                rgb[i * 3 + 0] = rgba[i * 4 + rIdx];
-                rgb[i * 3 + 1] = rgba[i * 4 + 1];
-                rgb[i * 3 + 2] = rgba[i * 4 + bIdx];
-            }
+            bytes.resize(static_cast<size_t>(bufSize));
+            std::memcpy(bytes.data(), mapped, bytes.size());
             vkUnmapMemory(vkDevice, hostMem);
-            ok = stbi_write_png(path.c_str(), int(w), int(h), 3, rgb.data(), int(w) * 3) != 0;
-            if (!ok) err = "CaptureRenderTargetToPng: stbi_write_png failed for " + path;
         } else {
             ok = false;
-            err = "CaptureRenderTargetToPng: vkMapMemory failed";
+            err = "ReadRenderTargetBytes: vkMapMemory failed";
         }
     } else {
-        err = "CaptureRenderTargetToPng: vkQueueSubmit failed";
+        err = "ReadRenderTargetBytes: vkQueueSubmit failed";
     }
 
     vkDestroyBuffer(vkDevice, hostBuf, nullptr);
     vkFreeMemory(vkDevice, hostMem, nullptr);
     vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
+    return ok;
+}
+
+// Existing RGBA8/BGRA8 captures keep their channel order and PNG encoding.
+inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* device,
+                                    Vixen::Vulkan::Resources::IRenderTarget* target,
+                                    VkQueue queue, uint32_t queueFamilyIndex,
+                                    const std::string& path, std::string& err) {
+    if (!target) {
+        err = "CaptureRenderTargetToPng: null target";
+        return false;
+    }
+    const VkFormat fmt = target->GetFormat();
+    const bool swapRB = fmt == VK_FORMAT_B8G8R8A8_UNORM || fmt == VK_FORMAT_B8G8R8A8_SRGB ||
+                        fmt == VK_FORMAT_B8G8R8A8_SNORM || fmt == VK_FORMAT_B8G8R8A8_UINT ||
+                        fmt == VK_FORMAT_B8G8R8A8_SINT;
+    const bool rgba = fmt == VK_FORMAT_R8G8B8A8_UNORM || fmt == VK_FORMAT_R8G8B8A8_SRGB ||
+                      fmt == VK_FORMAT_R8G8B8A8_SNORM || fmt == VK_FORMAT_R8G8B8A8_UINT ||
+                      fmt == VK_FORMAT_R8G8B8A8_SINT;
+    if (!rgba && !swapRB) {
+        err = "CaptureRenderTargetToPng: expected an RGBA8 or BGRA8 image";
+        return false;
+    }
+    std::vector<uint8_t> bytes;
+    if (!ReadRenderTargetBytes(device, target, queue, queueFamilyIndex, bytes, err)) return false;
+    const auto extent = target->GetExtent();
+    std::vector<uint8_t> rgb(size_t(extent.width) * extent.height * 3);
+    for (size_t i = 0; i < size_t(extent.width) * extent.height; ++i) {
+        rgb[i * 3] = bytes[i * 4 + (swapRB ? 2u : 0u)];
+        rgb[i * 3 + 1] = bytes[i * 4 + 1];
+        rgb[i * 3 + 2] = bytes[i * 4 + (swapRB ? 0u : 2u)];
+    }
+    const bool ok = stbi_write_png(path.c_str(), int(extent.width), int(extent.height),
+                                   3, rgb.data(), int(extent.width) * 3) != 0;
+    if (!ok) err = "CaptureRenderTargetToPng: stbi_write_png failed for " + path;
     return ok;
 }
 
