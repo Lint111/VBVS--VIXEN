@@ -67,6 +67,10 @@ public:
     );
     ~DeviceNode() override = default;
 
+    bool ProducesUsableDevice() const override {
+        return vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE;
+    }
+
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {
         return vulkanDevice.get();
@@ -87,6 +91,7 @@ private:
     std::vector<VkPhysicalDevice> availableGPUs;
     uint32_t selectedGPUIndex = 0;
     VkPhysicalDevice selectedPhysicalDevice = VK_NULL_HANDLE; // Store selected GPU
+    bool memoryBudgetExtensionEnabled_ = false; // VK_EXT_memory_budget enabled on the logical device
 
     // VulkanDevice wrapper (owns logical device)
     std::shared_ptr<Vixen::Vulkan::Resources::VulkanDevice> vulkanDevice;

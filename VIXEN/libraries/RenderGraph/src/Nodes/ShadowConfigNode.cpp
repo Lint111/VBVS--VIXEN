@@ -8,6 +8,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Generated/ShadowConfig.g.h"
 #include "VulkanDevice.h"
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -39,6 +40,16 @@ Vixen::Gpu::ShadowConfig MakeDefaultShadowConfig() {
     // VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE demo-knob convention (BuildRenderGraph.cpp).
     if (const char* enabledEnv = std::getenv("VIXEN_SHADOW_CONFIG_ENABLED")) {
         cfg.enabled = (enabledEnv[0] == '0') ? 0u : 1u;
+    }
+    // Diagnostic capture control for separating shadow-origin acne from
+    // stored-SDF sampling. Normal scenes continue to use the authored default.
+    if (const char* biasEnv = std::getenv("VIXEN_SHADOW_CONFIG_BIAS_EPSILON")) {
+        char* parseEnd = nullptr;
+        const float parsedBias = std::strtof(biasEnv, &parseEnd);
+        if (parseEnd != biasEnv && *parseEnd == '\0' &&
+            std::isfinite(parsedBias) && parsedBias >= 0.0f) {
+            cfg.biasEpsilon = parsedBias;
+        }
     }
     return cfg;
 }
@@ -99,7 +110,11 @@ void ShadowConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Static default content (no UI/authoring this increment). Re-uploaded every
     // frame anyway: 16 B is negligible and this keeps the node ready for a future
     // SetShadowConfig() with no rewiring.
-    const Vixen::Gpu::ShadowConfig cfg = MakeDefaultShadowConfig();
+    Vixen::Gpu::ShadowConfig cfg = MakeDefaultShadowConfig();
+    if (overrideActive_) {
+        cfg.maxShadowDistance = overrideMaxShadowDistance_;
+        cfg.biasEpsilon       = overrideBiasEpsilon_;
+    }
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

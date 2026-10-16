@@ -351,6 +351,8 @@ private:
     // caching outright (e.g. for a clean-recompile A/B) without deleting the directory.
     ShaderManagement::ShaderCacheManager shaderCacheManager_{ MakeShaderCacheConfig() };
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
+    // Registered source families share the recipe registry and its live invalidation.
+    std::vector<NodeHandle> proceduralShaderLibNodes_;
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration state for the opt-in
     // VIXEN_RECIPE_BUCKETED_DISPATCH gate. Node handles are default-constructed/invalid when

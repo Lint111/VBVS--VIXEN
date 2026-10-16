@@ -212,10 +212,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (!leaveImageInGeneral) {
         VkResult resetResult = vkResetFences(vulkanDevice->device, 1, &inFlightFence);
         if (resetResult != VK_SUCCESS) {
-            if (resetResult == VK_ERROR_DEVICE_LOST) {
-                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkResetFences");
-            }
-            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+            NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to reset fence: " + std::to_string(resetResult));
+            GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkResetFences", resetResult);
+            return;
         }
     }
 
@@ -381,10 +380,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         const VkResult result = record.Submit(
             vulkanDevice->fpQueueSubmit2, vulkanDevice->queue);
         if (result != VK_SUCCESS) {
-            if (result == VK_ERROR_DEVICE_LOST) {
-                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
-            }
-            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
+            NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 
@@ -520,9 +518,18 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
                 : std::string(" start=cold")));
     }
     tileExtentKeys_[frameIndex] = extentKey;
-    const uint32_t edge = canTile_
-        ? chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7)
-        : std::max(1u, std::max(dispatchX, dispatchY));
+    // VIXEN_GPUYIELD_EDGE=<n> pins the tile edge in workgroups (0 = one untiled dispatch); a
+    // diagnostic for separating tiling cost from shader cost, not a production control.
+    static const long edgeOverride = [] {
+        const char* value = std::getenv("VIXEN_GPUYIELD_EDGE");
+        return value && *value ? std::strtol(value, nullptr, 10) : -1L;
+    }();
+    const uint32_t wholeEdge = std::max(1u, std::max(dispatchX, dispatchY));
+    const uint32_t edge = !canTile_ || edgeOverride == 0
+        ? wholeEdge
+        : edgeOverride > 0
+            ? static_cast<uint32_t>(edgeOverride)
+            : chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7);
     tileNominalWorkGroupCounts_[frameIndex] = std::min(edge, dispatchX) * std::min(edge, dispatchY);
     const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
     auto& extraBuffers = tileCommandBuffers_[frameIndex];

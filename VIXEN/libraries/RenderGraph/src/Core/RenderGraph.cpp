@@ -1,10 +1,14 @@
 #include "Core/ImageUsage.h"
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
+#include "Data/Core/ResourceConfig.h"
+#include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
+#include "Core/PhaseTiming.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
+#include "Core/BoundedQueueIdle.h"
 #include "RuntimeCachePaths.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -18,6 +22,7 @@
 #include <system_error>
 #include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 #include <cstring>
+#include "Nodes/Common/GpuDeviceClass.h"
 #include <limits>
 #include <thread>
 #ifdef _WIN32
@@ -151,6 +156,7 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    PhaseTiming::PrintSummary();
     // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
     // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
     lockCensus_.Report();
@@ -243,6 +249,59 @@ NodeHandle RenderGraph::AddNode(NodeTypeId typeId, const std::string& instanceNa
         throw std::runtime_error("Unknown node type ID");
     }
     return AddNodeImpl(type, instanceName);
+}
+
+SubGraphHandle RenderGraph::Instantiate(const std::string& typeName,
+                                        const std::string& instanceName) {
+    NodeType* type = typeRegistry->GetNodeType(typeName);
+    auto* groupType = dynamic_cast<IRegisteredSubGraphNodeType*>(type);
+    if (!groupType) {
+        throw std::runtime_error("Registered node type is not a SubGraphType: " + typeName);
+    }
+    return groupType->Instantiate(*this, instanceName);
+}
+
+SubGraphProviderSelection RenderGraph::InstantiateProviderForInput(
+    const Vixen::CapabilityGraph& capabilities,
+    NodeHandle target,
+    uint32_t targetInput,
+    const std::string& instanceName) {
+    NodeInstance* targetNode = GetInstanceInternal(target);
+    if (!targetNode) throw std::runtime_error("Invalid target node for module provider selection");
+    const ResourceDescriptor* targetDesc =
+        targetNode->GetNodeType()->GetInputDescriptor(targetInput);
+    if (!targetDesc) throw std::runtime_error("Invalid target input for module provider selection");
+    if (!targetDesc->nullable || !HasExecute(targetDesc->role)) {
+        throw std::runtime_error("Capability-selected module inputs must be optional Execute slots");
+    }
+
+    IRegisteredSubGraphNodeType* selectedType = nullptr;
+    uint32_t selectedPort = 0;
+    for (NodeType* candidate : typeRegistry->GetAllNodeTypes()) {
+        auto* groupType = dynamic_cast<IRegisteredSubGraphNodeType*>(candidate);
+        if (!groupType || groupType->GetCapabilityName().empty() ||
+            !capabilities.IsCapabilityAvailable(std::string(groupType->GetCapabilityName()))) {
+            continue;
+        }
+        for (uint32_t output = 0; output < candidate->GetOutputCount(); ++output) {
+            const ResourceDescriptor* outputDesc = candidate->GetOutputDescriptor(output);
+            if (!outputDesc || outputDesc->role != SlotRole::Output ||
+                outputDesc->type != targetDesc->type ||
+                outputDesc->declaredType == std::type_index(typeid(void)) ||
+                outputDesc->declaredType != targetDesc->declaredType) {
+                continue;
+            }
+            if (selectedType) {
+                throw std::runtime_error("More than one registered group provides the capability-selected input '" +
+                                         targetDesc->name + "'");
+            }
+            selectedType = groupType;
+            selectedPort = output;
+        }
+    }
+
+    if (!selectedType) return {};
+    return {selectedType->Instantiate(*this, instanceName), selectedPort};
 }
 
 void RenderGraph::ConnectNodes(
@@ -367,8 +426,9 @@ void RenderGraph::ConnectNodes(
 void RenderGraph::RemoveNode(NodeHandle handle) {
     NodeInstance* node = GetInstanceInternal(handle);
     if (!node) {
-        return;
-    }
+    return;
+}
+
 
     // Remove from topology
     topology.RemoveNode(node);
@@ -396,6 +456,207 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 
     isCompiled = false;
 }
+
+namespace {
+void ValidateDeclaredPortPair(const ResourceDescriptor& source,
+                              const ResourceDescriptor& target,
+                              const std::string& description) {
+    // Older SubGraphType declarations used only the compile-time slot types and
+    // did not initialize the runtime PortConfig descriptors. Keep those
+    // declarations compatible; their expanded member edges are checked below.
+    const bool sourceUndeclared = source.declaredType == std::type_index(typeid(void)) &&
+                                  source.role == SlotRole::None;
+    const bool targetUndeclared = target.declaredType == std::type_index(typeid(void)) &&
+                                  target.role == SlotRole::None;
+    if ((!sourceUndeclared && source.role != SlotRole::Output) ||
+        (!targetUndeclared && (target.role == SlotRole::Output ||
+                              target.role == SlotRole::None))) {
+        throw std::runtime_error("Invalid slot roles for " + description);
+    }
+    if (source.type != target.type ||
+        (!sourceUndeclared && !targetUndeclared &&
+         source.declaredType != target.declaredType)) {
+        throw std::runtime_error("Declared slot type mismatch for " + description);
+    }
+    if (source.lifetime == ResourceLifetime::Transient &&
+        target.lifetime == ResourceLifetime::Persistent) {
+        throw std::runtime_error("Transient module output cannot feed a persistent input for " +
+                                 description);
+    }
+}
+}
+
+void RenderGraph::Connect(NodeHandle source, uint32_t sourceOutput,
+                          const SubGraphHandle& target, uint32_t targetPort) {
+    NodeInstance* sourceNode = GetInstanceInternal(source);
+    if (!sourceNode || !target.state_ || target.state_->graph != this) {
+        throw std::runtime_error("Invalid node or sub-graph input handle");
+    }
+    if (targetPort >= target.state_->inputSchema.size()) {
+        throw std::runtime_error("Sub-graph input port index is out of range");
+    }
+    const ResourceDescriptor* sourceDesc =
+        sourceNode->GetNodeType()->GetOutputDescriptor(sourceOutput);
+    if (!sourceDesc) throw std::runtime_error("Invalid source output slot");
+    const ResourceDescriptor& portDesc = target.state_->inputSchema[targetPort];
+    ValidateDeclaredPortPair(*sourceDesc, portDesc, "node to group input");
+
+    bool found = false;
+    for (const SubGraphBinding& binding : target.state_->inputBindings) {
+        if (binding.port != targetPort) continue;
+        NodeInstance* member = GetInstanceInternal(binding.member);
+        if (!member) throw std::runtime_error("Invalid bound sub-graph member node");
+        const ResourceDescriptor* memberDesc =
+            member->GetNodeType()->GetInputDescriptor(binding.memberSlot);
+        if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member input slot");
+        ValidateDeclaredPortPair(*sourceDesc, *memberDesc, "node to group member input");
+        ConnectNodes(source, sourceOutput, binding.member, binding.memberSlot,
+                     binding.isVariadic, binding.role);
+        found = true;
+    }
+    for (const SubGraphBinding& output : target.state_->outputBindings) {
+        if (!output.forwardsInput || output.inputPort != targetPort) continue;
+        found = true;
+        target.state_->forwardedInputs[targetPort].push_back({source, sourceOutput});
+        for (const SubGraphEndpoint& downstream : target.state_->forwardedTargets[targetPort]) {
+            NodeInstance* downstreamNode = GetInstanceInternal(downstream.node);
+            if (!downstreamNode) throw std::runtime_error("Invalid forwarded sub-graph target node");
+            const ResourceDescriptor* downstreamDesc =
+                downstreamNode->GetNodeType()->GetInputDescriptor(downstream.slot);
+            if (!downstreamDesc) throw std::runtime_error("Invalid forwarded sub-graph target input slot");
+            ValidateDeclaredPortPair(*sourceDesc, *downstreamDesc,
+                                     "node to forwarded sub-graph target");
+            ConnectNodes(source, sourceOutput, downstream.node, downstream.slot);
+        }
+    }
+    if (!found && !portDesc.nullable) {
+        throw std::runtime_error("Sub-graph input port " + std::to_string(targetPort) +
+                                 " is not bound");
+    }
+}
+
+void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                          NodeHandle target, uint32_t targetInput) {
+    if (!source.state_ || source.state_->graph != this) {
+        throw std::runtime_error("Invalid sub-graph source handle");
+    }
+    NodeInstance* targetNode = GetInstanceInternal(target);
+    if (!targetNode || sourcePort >= source.state_->outputSchema.size()) {
+        throw std::runtime_error("Invalid sub-graph output or target node handle");
+    }
+    const ResourceDescriptor& portDesc = source.state_->outputSchema[sourcePort];
+    const ResourceDescriptor* targetDesc = targetNode->GetNodeType()->GetInputDescriptor(targetInput);
+    if (!targetDesc) throw std::runtime_error("Invalid target input slot");
+    ValidateDeclaredPortPair(portDesc, *targetDesc, "group output to node input");
+
+    size_t count = 0;
+    for (const SubGraphBinding& binding : source.state_->outputBindings) {
+        if (binding.port != sourcePort) continue;
+        ++count;
+        if (binding.forwardsInput) {
+            source.state_->forwardedTargets[binding.inputPort].push_back({target, targetInput});
+            const auto incoming = source.state_->forwardedInputs.find(binding.inputPort);
+            if (incoming != source.state_->forwardedInputs.end()) {
+                for (const SubGraphEndpoint& endpoint : incoming->second) {
+                    NodeInstance* member = GetInstanceInternal(endpoint.node);
+                    if (!member) throw std::runtime_error("Invalid forwarded sub-graph source node");
+                    const ResourceDescriptor* memberDesc =
+                        member->GetNodeType()->GetOutputDescriptor(endpoint.slot);
+                    if (!memberDesc)
+                        throw std::runtime_error("Invalid forwarded sub-graph source output slot");
+                    ValidateDeclaredPortPair(*memberDesc, *targetDesc,
+                                             "forwarded group output to node input");
+                    ConnectNodes(endpoint.node, endpoint.slot, target, targetInput);
+                }
+            }
+            continue;
+        }
+        NodeInstance* member = GetInstanceInternal(binding.member);
+        if (!member) throw std::runtime_error("Invalid bound sub-graph member node");
+        const ResourceDescriptor* memberDesc =
+            member->GetNodeType()->GetOutputDescriptor(binding.memberSlot);
+        if (!memberDesc) throw std::runtime_error("Invalid bound sub-graph member output slot");
+        ValidateDeclaredPortPair(*memberDesc, *targetDesc, "group member output to node input");
+        ConnectNodes(binding.member, binding.memberSlot, target, targetInput);
+    }
+    if (count != 1) {
+        throw std::runtime_error("Sub-graph output port must resolve to exactly one member");
+    }
+}
+
+void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
+                          const SubGraphHandle& target, uint32_t targetPort) {
+    if (!source.state_ || source.state_->graph != this ||
+        !target.state_ || target.state_->graph != this ||
+        sourcePort >= source.state_->outputSchema.size() ||
+        targetPort >= target.state_->inputSchema.size()) {
+        throw std::runtime_error("Invalid sub-graph boundary handle");
+    }
+    const ResourceDescriptor& sourceDesc = source.state_->outputSchema[sourcePort];
+    const ResourceDescriptor& targetDesc = target.state_->inputSchema[targetPort];
+    ValidateDeclaredPortPair(sourceDesc, targetDesc, "group output to group input");
+
+    size_t sourceCount = 0;
+    bool targetFound = false;
+    for (const SubGraphBinding& sourceBinding : source.state_->outputBindings) {
+        if (sourceBinding.port != sourcePort) continue;
+        ++sourceCount;
+        std::vector<SubGraphEndpoint> sourceEndpoints;
+        if (sourceBinding.forwardsInput) {
+            const auto incoming = source.state_->forwardedInputs.find(sourceBinding.inputPort);
+            if (incoming == source.state_->forwardedInputs.end() || incoming->second.empty()) {
+                throw std::runtime_error("Forwarded sub-graph output has no connected input");
+            }
+            sourceEndpoints = incoming->second;
+        } else {
+            sourceEndpoints.push_back({sourceBinding.member, sourceBinding.memberSlot});
+        }
+
+        for (const SubGraphEndpoint& endpoint : sourceEndpoints) {
+            NodeInstance* sourceMember = GetInstanceInternal(endpoint.node);
+            if (!sourceMember) throw std::runtime_error("Invalid bound sub-graph output node");
+            const ResourceDescriptor* memberOutput =
+                sourceMember->GetNodeType()->GetOutputDescriptor(endpoint.slot);
+            if (!memberOutput) throw std::runtime_error("Invalid bound sub-graph output slot");
+
+            for (const SubGraphBinding& targetBinding : target.state_->inputBindings) {
+                if (targetBinding.port != targetPort) continue;
+                targetFound = true;
+                NodeInstance* targetMember = GetInstanceInternal(targetBinding.member);
+                if (!targetMember) throw std::runtime_error("Invalid bound sub-graph input node");
+                const ResourceDescriptor* memberInput =
+                    targetMember->GetNodeType()->GetInputDescriptor(targetBinding.memberSlot);
+                if (!memberInput) throw std::runtime_error("Invalid bound sub-graph input slot");
+                ValidateDeclaredPortPair(*memberOutput, *memberInput,
+                                         "group member output to group member input");
+                ConnectNodes(endpoint.node, endpoint.slot, targetBinding.member,
+                             targetBinding.memberSlot, targetBinding.isVariadic,
+                             targetBinding.role);
+            }
+            for (const SubGraphBinding& targetOutput : target.state_->outputBindings) {
+                if (!targetOutput.forwardsInput || targetOutput.inputPort != targetPort) continue;
+                targetFound = true;
+                target.state_->forwardedInputs[targetPort].push_back(endpoint);
+                for (const SubGraphEndpoint& downstream : target.state_->forwardedTargets[targetPort]) {
+                    NodeInstance* downstreamNode = GetInstanceInternal(downstream.node);
+                    if (!downstreamNode)
+                        throw std::runtime_error("Invalid forwarded sub-graph target node");
+                    const ResourceDescriptor* downstreamDesc =
+                        downstreamNode->GetNodeType()->GetInputDescriptor(downstream.slot);
+                    if (!downstreamDesc)
+                        throw std::runtime_error("Invalid forwarded sub-graph target input slot");
+                    ValidateDeclaredPortPair(*memberOutput, *downstreamDesc,
+                                             "group member output to forwarded target");
+                    ConnectNodes(endpoint.node, endpoint.slot, downstream.node, downstream.slot);
+                }
+            }
+        }
+    }
+    if (sourceCount != 1 || (!targetFound && !targetDesc.nullable)) {
+        throw std::runtime_error("Sub-graph boundary must resolve to one output and a bound input");
+    }
+}
+
 
 void RenderGraph::Clear() {
     renderPassFinalLayouts_.clear();
@@ -772,12 +1033,60 @@ void RenderGraph::NotifyDeviceLost(const std::string& site) {
                     " — the GPU device and all its resources are now invalid; rendering halts until recovery.");
 }
 
+GpuFaultKind RenderGraph::ReportGpuFault(const std::string& site, VkResult result, bool fromBoundedWait) {
+    const GpuFaultKind kind = ClassifyGpuResult(result, fromBoundedWait);
+    if (kind == GpuFaultKind::None) return kind;
+    ++gpuFaultCounts_[static_cast<size_t>(kind)];
+    switch (kind) {
+        case GpuFaultKind::DeviceLost:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
+            NotifyDeviceLost(site);
+            break;
+        case GpuFaultKind::WatchdogTimeout:
+            if (!lossIsInjected_) genuineDeviceLoss_ = true;
+            // A bounded wait that expires means the GPU stopped making progress: same remedy as loss.
+            NotifyDeviceLost(site + " (watchdog: wait exceeded " +
+                             std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms)");
+            break;
+        default:
+            AbortCurrentFrame();
+            if (frameFault_ == VK_SUCCESS) frameFault_ = result;
+            GRAPH_LOG_ERROR("[RenderGraph::ReportGpuFault] " + std::string(GpuFaultKindName(kind)) +
+                            " (VkResult " + std::to_string(result) + ") at: " + site);
+            break;
+    }
+    return kind;
+}
+
 bool RenderGraph::RecoverFromDeviceLoss() {
     if (!deviceLost_) {
         return true;  // nothing to recover
     }
     if (deviceLostUnrecoverable_) {
         return false;  // already determined the device is gone for good — don't spin
+    }
+
+    // Recovery-storm guard: a workload that re-loses the device right after every recovery would
+    // otherwise loop forever. Fail cleanly after kMaxConsecutiveRecoveries back-to-back losses.
+    if (lastRecoveryFrame_ != 0 && (globalFrameIndex + 1) - lastRecoveryFrame_ <= kRecoveryStormWindowFrames) {
+        ++consecutiveRecoveries_;
+    } else {
+        consecutiveRecoveries_ = 1;
+    }
+    if (consecutiveRecoveries_ > kMaxConsecutiveRecoveries) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Device lost " + std::to_string(consecutiveRecoveries_) +
+                        " times within " + std::to_string(kRecoveryStormWindowFrames) +
+                        " frames each — giving up (recovery storm)");
+        return false;
+    }
+
+    if (!InProcessRecoveryIsSafe(genuineDeviceLoss_, GraphHasTranslatedDevice())) {
+        deviceLostUnrecoverable_ = true;
+        GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] genuine device loss on a translated (Dozen) device: "
+                        "in-process recreation is unsafe — failing cleanly so the process can be restarted "
+                        "(VIXEN_RECOVER_TRANSLATED_DEVICE=1 overrides)");
+        return false;
     }
 
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== DEVICE-LOSS RECOVERY: rebuilding the graph on a fresh device =====");
@@ -801,10 +1110,15 @@ bool RenderGraph::RecoverFromDeviceLoss() {
     }
 
     try {
-        // Drain in-flight work before destroying resources. On a truly-lost device vkDeviceWaitIdle
-        // returns VK_ERROR_DEVICE_LOST immediately (no hang); on a healthy device (fault-injection test)
-        // it actually drains, making the teardown safe in both cases.
-        WaitForGraphDevicesIdle();
+        // Drain in-flight work before destroying resources, bounded by the watchdog: each VulkanDevice has a
+        // single queue, so a bounded queue drain is a complete device drain. On a truly-lost device the
+        // drain returns DEVICE_LOST immediately; a wait that outlives the bound means the GPU is wedged
+        // and tearing resources down would destroy objects it is still using, so fail cleanly instead.
+        if (!DrainGraphDevicesBounded()) {
+            deviceLostUnrecoverable_ = true;
+            GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] GPU did not drain within the watchdog bound — the device is unrecoverable");
+            return false;
+        }
 
         // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
         // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
@@ -832,6 +1146,15 @@ bool RenderGraph::RecoverFromDeviceLoss() {
             node->ClearNeedsRecompile();
             node->ResetCleanupFlag();                     // allow a future teardown to run again
             cleanupStack.ResetExecuted(node->GetHandle());
+            // DeviceNode reports a failed adapter enumeration / vkCreateDevice by logging and returning,
+            // which would hand every downstream node a VulkanDevice with a null VkDevice and crash in
+            // the driver. Stop the rebuild here and fail cleanly instead.
+            if (!node->ProducesUsableDevice()) {
+                InvalidateExecutionEpoch();
+                deviceLostUnrecoverable_ = true;
+                GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Device recreation produced no VkDevice — the device is unrecoverable");
+                return false;
+            }
         }
     } catch (const std::exception& e) {
         InvalidateExecutionEpoch();
@@ -847,6 +1170,9 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 
     // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt).
     deviceLost_ = false;
+    genuineDeviceLoss_ = false;
+    lossIsInjected_ = false;
+    lastRecoveryFrame_ = globalFrameIndex + 1;  // +1 so 0 stays "never recovered"
     dirtyNodes.clear();
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
     return true;
@@ -916,6 +1242,7 @@ bool RenderGraph::PublishSubmit(NodeInstance* producer, SubmitRecord&& record) {
 // through RenderFrame's existing deviceLost_ path), replacing each node's former inline throw.
 void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave) {
     if (!submitChannel_.IsConfigured()) return;
+    PhaseTiming::ScopedWait drainTimer("queue-owner-drain");
     // Collect the ordinals of the nodes in this wave that published, then drain in ordinal order so
     // the submission sequence is the canonical executionOrder sequence regardless of TBB finish order.
     std::vector<std::size_t> ordinals;
@@ -960,13 +1287,17 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
                 // a hard failure is a channel fault. (Present result is not fed back per-node today.)
                 if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
                     submitChannel_.RecordFault("vkQueuePresentKHR (queue-owner)", r);
+                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueuePresentKHR", r);
                 }
             }
         } else {
             if (device && device->fpQueueSubmit2) {
                 const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
                                               vkQueueWaitIdle, &outstandingBatches_[device->queue]);
-                if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
+                if (r != VK_SUCCESS) {
+                    submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
+                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueueSubmit2", r);
+                }
             }
         }
     }
@@ -1064,7 +1395,8 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
     if (submitChannel_.HasFault()) {
         GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Queue-owner submit fault: " +
                         submitChannel_.FaultMessage());
-        return VK_ERROR_UNKNOWN;
+        // ReportGpuFault already latched device loss / the typed VkResult; RenderFrame returns it.
+        return (deviceLost_ || frameFault_ != VK_SUCCESS) ? VK_SUCCESS : VK_ERROR_UNKNOWN;
     }
 
     // AbortCurrentFrame is the existing successful short-circuit used for out-of-date acquire. A
@@ -1086,6 +1418,7 @@ VkResult RenderGraph::RenderFrame() {
     if (!deviceLossSimulated_ && simulateDeviceLossFrame_ >= 0 &&
         globalFrameIndex >= static_cast<uint64_t>(simulateDeviceLossFrame_)) {
         deviceLossSimulated_ = true;
+        lossIsInjected_ = true;
         GetFaultInjector()->ArmOnce(FailScenario::FaultSite::FenceWait, VK_ERROR_DEVICE_LOST);
     }
 #endif
@@ -1183,6 +1516,7 @@ VkResult RenderGraph::RenderFrame() {
 
     // Fresh frame: clear any abort latched by last frame's out-of-date acquire (AbortCurrentFrame).
     frameAborted_ = false;
+    frameFault_ = VK_SUCCESS;
     BeginExecutionEpoch();
 
     // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
@@ -1217,8 +1551,12 @@ VkResult RenderGraph::RenderFrame() {
                 // Phase 2a: catch a node Execute failure here instead of letting the exception
                 // propagate out of RenderFrame -> the app loop -> a process-fatal exit (and UB across
                 // a C# host). Record it, stop the frame, and return a non-success status to Render().
+                const auto executeStart = PhaseTiming::Enabled() ? PhaseTiming::Clock::now()
+                                                                 : PhaseTiming::Clock::time_point{};
                 try {
                     node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+                    if (PhaseTiming::Enabled())
+                        PhaseTiming::AddExecute(node->GetInstanceName(), PhaseTiming::MsSince(executeStart));
                 } catch (const std::exception& e) {
                     GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Node '" + node->GetInstanceName() +
                                     "' failed during Execute: " + e.what());
@@ -1315,6 +1653,9 @@ VkResult RenderGraph::RenderFrame() {
     if (deviceLost_) {
         return VK_ERROR_DEVICE_LOST;
     }
+    if (frameFault_ != VK_SUCCESS) {
+        return frameFault_;
+    }
 
     // Offscreen, capture, and test graphs share the same existing frame budget as
     // interactive graphs. Anchor each deadline to this frame, so an overrun never
@@ -1324,7 +1665,10 @@ VkResult RenderGraph::RenderFrame() {
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
         const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
         const auto paceStart = std::chrono::steady_clock::now();
-        PaceFrameUntil(frameExecuteStart + frameBudget);
+        {
+            PhaseTiming::ScopedWait paceTimer("frame-pace");
+            PaceFrameUntil(frameExecuteStart + frameBudget);
+        }
         if (traceYield) {
             const auto paceEnd = std::chrono::steady_clock::now();
             const auto ticks = [](auto time) {
@@ -1424,6 +1768,37 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
         return instances[handle.index].get();
     }
     return nullptr;
+}
+
+bool RenderGraph::GraphHasTranslatedDevice() const {
+    for (const auto& inst : instances) {
+        if (!inst) continue;
+        const auto* vdev = inst->GetDevice();
+        if (vdev && std::strcmp(GpuDeviceClassName(*vdev), "translated") == 0) return true;
+    }
+    return false;
+}
+
+bool RenderGraph::DrainGraphDevicesBounded() {
+    std::unordered_set<Vixen::Vulkan::Resources::VulkanDevice*> devices;
+    for (const auto& inst : instances) {
+        if (!inst) continue;
+        auto* vdev = inst->GetDevice();
+        if (vdev && vdev->device != VK_NULL_HANDLE && vdev->queue != VK_NULL_HANDLE) devices.insert(vdev);
+    }
+    for (auto* vdev : devices) {
+        BoundedQueueIdle idle;
+        const GpuWaitResult drained = idle.Wait(*vdev);
+        // DEVICE_LOST (or any hard failure) means no work is running: teardown is safe. Only a wait
+        // that outlives the bound leaves the GPU executing work that teardown would destroy.
+        if (drained.fault == GpuFaultKind::WatchdogTimeout) {
+            GRAPH_LOG_ERROR("[RenderGraph::DrainGraphDevicesBounded] queue still busy after " +
+                            std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms — GPU wedged");
+            return false;
+        }
+        idle.Destroy(vdev->device);
+    }
+    return true;
 }
 
 void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck) {
@@ -1585,7 +1960,12 @@ void RenderGraph::GeneratePipelines() {
         }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Calling Setup() on node: " + instance->GetInstanceName());
+        const auto setupStart = PhaseTiming::Clock::now();
         instance->Setup();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=node-setup node=%s ms=%.3f\n",
+                instance->GetInstanceName().c_str(), PhaseTiming::MsSince(setupStart));
+        }
     }
 
     // Load caches after all Setup() calls but before first Compile()
@@ -1618,7 +1998,12 @@ void RenderGraph::GeneratePipelines() {
         }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Calling Compile() on node: " + instance->GetInstanceName());
+        const auto compileStart = PhaseTiming::Clock::now();
         instance->Compile();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=node-compile node=%s ms=%.3f\n",
+                instance->GetInstanceName().c_str(), PhaseTiming::MsSince(compileStart));
+        }
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 

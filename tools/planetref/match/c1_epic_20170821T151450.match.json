@@ -1,0 +1,55 @@
+{
+ "attitude_quaternions": {
+  "q0": -0.78981,
+  "q1": 0.30208,
+  "q2": -0.10381,
+  "q3": 0.52361
+ },
+ "camera": {
+  "fov_source": "EPIC instrument constant (0.62 deg over 2048 px); the API does not carry it",
+  "look": "at the Earth centre",
+  "up_source": "celestial north (J2000 +Z) projected on the image plane; the attitude quaternion convention is not used",
+  "vfov_deg": 0.62
+ },
+ "centroid_coordinates": {
+  "lat": 8.620605,
+  "lon": -54.880371
+ },
+ "derived": {
+  "dscovr_earth_km": 1586082.5221365038,
+  "earth_disc_angular_diameter_deg": 0.46029432618871163,
+  "moon_earth_km": 371620.67185545864,
+  "moon_from_earth_centre_deg": 2.038409595710641,
+  "phase_fraction_k": 0.995569035330631,
+  "sun_axis_position_angle_deg": 64.21867697802683,
+  "sun_axis_position_angle_note": "degrees clockwise from image up toward image right, of the sun direction projected on the image plane",
+  "sun_earth_au": 1.0115654529098037,
+  "sun_earth_km": 151328037.82898775,
+  "sun_earth_vehicle_deg": 7.633487836822038
+ },
+ "frame": "J2000 geocentric, km (as served by the API)",
+ "id": "c1_epic_20170821T151450",
+ "identifier": "20170821151450",
+ "kind": "epic",
+ "schema": "planetref-match/v1",
+ "source": "https://epic.gsfc.nasa.gov/api/natural/date/2017-08-21",
+ "state": "C1",
+ "time_utc": "2017-08-21 15:14:50",
+ "vectors_km": {
+  "dscovr": [
+   -1262485.477708,
+   929342.273718,
+   241062.489583
+  ],
+  "moon": [
+   -310658.030895,
+   186460.90278,
+   82618.662088
+  ],
+  "sun": [
+   -129046665.333393,
+   72517752.461545,
+   31437378.666627
+  ]
+ }
+}

@@ -1,0 +1,25 @@
+{
+ "altitude_km": 356.0,
+ "camera": "Nikon D3 Electronic Still Camera",
+ "camera_tilt": "High Oblique",
+ "camera_tilt_deg": null,
+ "center": null,
+ "date": "2010.05.25",
+ "focal_length_mm": 400.0,
+ "frame_px": [
+  4256,
+  2832
+ ],
+ "nadir": [
+  -8.9,
+  74.2
+ ],
+ "nadir_to_center": null,
+ "sensor_mm": [
+  36.0,
+  23.9
+ ],
+ "sun_azimuth_deg": 289.0,
+ "sun_elevation_deg": -23.0,
+ "time_gmt": "14:25:14"
+}

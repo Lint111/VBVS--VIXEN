@@ -67,6 +67,8 @@ struct SdiMergeResult {
  * @brief Merge N compiled variants of one program into a feature-tagged interface.
  *
  * Hard-errors (success=false, human-readable errorMessage) on:
+ *  - variants spanning more than one descriptor set (R532: one set per program)
+ *  - one name at two binding indices across variants (indices are stable)
  *  - conflicting declarations at the same (set, binding) across variants
  *  - conflicting push-member offset/size for the same member name
  *  - member presence not expressible as a feature conjunction

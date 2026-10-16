@@ -1,6 +1,10 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 
+// SpatialReuseShade always exposes the optional module input. When no provider is
+// connected, the push-constant gatherer leaves this field zero-filled.
+#define VIXEN_MODULE_INDIRECT_LIGHTING 1
+
 // ============================================================================
 // SpatialReuseShade.comp - spatial reservoir reuse + shade pass (Sampled Lighting Inc3 M5)
 // ============================================================================
@@ -39,6 +43,9 @@ layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 // getRayDir via SceneCommon.glsl); the VIXEN_SHADOW_DBG variant keeps the full
 // traversal seam for its own dedicated diagnostic ray (:431 arm).
 #ifdef VIXEN_SHADOW_DBG
+layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+#include "recipe/SdfCoreKernels.g.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
 #include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
 #else
 #include "SceneCommon.glsl"     // pc + camera rays only — NO traversal machinery
@@ -628,7 +635,9 @@ vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, Light
             ? lighting.celLitHueShiftDegrees
             : lighting.celShadowHueShiftDegrees;
         vec3 sideColor = celHueShiftRgb(color, shift);
-        Lo += sideColor * celLightColor * band * shadowFactor * attenuation;
+        // dimBandFloor lifts band 0 to a dim band; geometric ramp so a floor of 0 stays a no-op.
+        float celValue = lighting.dimBandFloor > 0.0 ? pow(lighting.dimBandFloor, 1.0 - band) : band;
+        Lo += sideColor * celLightColor * celValue * shadowFactor * attenuation;
     }
     return Lo;
 }
@@ -655,7 +664,9 @@ void main() {
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
     vec3 rayDir = getRayDir(uv);
 
-    vec3 skyColor = vec3(0.02, 0.02, 0.06) * (1.0 - uv.y * 0.4);
+    vec3 skyColor = lightingConfig.skyMode == 1u
+        ? lightingConfig.skyColor
+        : lightingConfig.skyColor * (1.0 - uv.y * lightingConfig.skyGradientSlope);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
     HitRecord recReadback = hitRecords[hitRecordIdx];
@@ -718,7 +729,9 @@ void main() {
         float dLightDistance;
         vec3 dLightDir = lightDirectionAt(dlight, bestWorldPos, dLightDistance);
         float dNdotL = max(dot(bestNormal, dLightDir), 0.0);
-        vec3 dShadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
+        float dOriginBias = storedSdfShadowOriginBias(
+            recReadback._pad0[0], shadowConfig.biasEpsilon, bestNormal, dLightDir);
+        vec3 dShadowOrigin = bestWorldPos + bestNormal * dOriginBias;
         g_shadowDbgArm      = 1;
         g_shadowDbgInst     = -1;
         g_shadowDbgD        = 1e9;
@@ -799,6 +812,15 @@ void main() {
             }
         }
     }
+
+#ifdef VIXEN_MODULE_INDIRECT_LIGHTING
+    // The selected module provides incoming diffuse irradiance through the optional
+    // slot. The shader applies this surface's Lambert diffuse response exactly once.
+    if (anyHitRT) {
+        outColor += (bestColor / 3.14159265358979323846) *
+                    pc.moduleIndirectIrradiance;
+    }
+#endif
 
     // -----------------------------------------------------------------------
     // DDGI indirect diffuse (Sampled Lighting Inc4 M5): trilinear, Chebyshev-weighted

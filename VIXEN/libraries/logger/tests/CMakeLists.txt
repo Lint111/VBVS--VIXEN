@@ -17,4 +17,4 @@ endif()
 # Visual Studio solution folder organization
 set_target_properties(test_logger_basic PROPERTIES FOLDER "Tests/Logger Tests")
 
-gtest_discover_tests(test_logger_basic)
+vixen_gtest_discover_tests(logger test_logger_basic)

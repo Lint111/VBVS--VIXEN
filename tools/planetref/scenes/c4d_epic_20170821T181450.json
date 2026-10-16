@@ -1,0 +1,91 @@
+{
+ "bodies": [
+  {
+   "center_m": [
+    -127945403437.99901,
+    71339646676.688,
+    31087963479.911
+   ],
+   "emission": {
+    "color_temperature_k": 5772.0,
+    "limb": {
+     "law": "none"
+    },
+    "radiance": 14718.276069141893
+   },
+   "name": "sun",
+   "radius_m": 695700000.0,
+   "role": "star",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.3,
+   "center_m": [
+    1263846860.0019999,
+    -927217784.857,
+    -240669302.26500002
+   ],
+   "name": "earth",
+   "radius_m": 6371000.0,
+   "role": "planet",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.12,
+   "center_m": [
+    946702099.0569999,
+    -749791894.813,
+    -160817464.857
+   ],
+   "name": "moon",
+   "radius_m": 1737000.0,
+   "role": "moon",
+   "shape": "sphere"
+  }
+ ],
+ "camera": {
+  "height": 768,
+  "look_dir": [
+   0.796945490513451,
+   -0.5846768748268188,
+   -0.1517591420409961
+  ],
+  "position_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "up": [
+   0.12094376389376213,
+   -0.08873006089492891,
+   0.9769691628069808
+  ],
+  "vfov_deg": 0.62,
+  "width": 768
+ },
+ "id": "c4d_epic_20170821T181450",
+ "integrator": {
+  "max_depth": 6,
+  "seed": 1,
+  "spp": 32
+ },
+ "length_unit": "m",
+ "match": {
+  "derived": {
+   "dscovr_earth_km": 1585863.619339557,
+   "earth_disc_angular_diameter_deg": 0.46035786270990037,
+   "moon_earth_km": 372071.31277511903,
+   "moon_from_earth_centre_deg": 2.384590112581882,
+   "phase_fraction_k": 0.9955582152458439,
+   "sun_axis_position_angle_deg": 64.48774640102707,
+   "sun_axis_position_angle_note": "degrees clockwise from image up toward image right, of the sun direction projected on the image plane",
+   "sun_earth_au": 1.0115397939259145,
+   "sun_earth_km": 151324199.2996336,
+   "sun_earth_vehicle_deg": 7.642816185181379
+  }
+ },
+ "note": "airless Lambert Earth (albedo 0.3) with the EPIC 2017-08-21 18:14:50 UTC J2000 vectors; atmosphere and clouds omitted",
+ "radiance_unit_w_m2": 1361.0,
+ "schema": "planetref-scene/v1",
+ "state": "C4d"
+}

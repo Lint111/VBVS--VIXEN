@@ -49,12 +49,12 @@ TEST(LightingConfigParity, LightStd430Layout) {
 }
 
 // ---------------------------------------------------------------------------
-// LightingConfig (std430, 208 bytes): lightCount@0, ambientIntensity@4,
+// LightingConfig (std430, 240 bytes): lightCount@0, ambientIntensity@4,
 // lights[4]@16, per-light spill-purpose scales@144, cel settings@160.
 // ---------------------------------------------------------------------------
 
 TEST(LightingConfigParity, LightingConfigStd430Layout) {
-    EXPECT_EQ(sizeof(LightingConfig), 208u) << "LightingConfig std430 size drifted from the documented 208 B";
+    EXPECT_EQ(sizeof(LightingConfig), 240u) << "LightingConfig std430 size drifted from the documented 240 B";
     EXPECT_EQ(offsetof(LightingConfig, lightCount), 0u);
     EXPECT_EQ(offsetof(LightingConfig, ambientIntensity), 4u);
     EXPECT_EQ(offsetof(LightingConfig, lights), 16u)
@@ -71,6 +71,10 @@ TEST(LightingConfigParity, LightingConfigStd430Layout) {
     EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), 192u);
     EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), 196u);
     EXPECT_EQ(offsetof(LightingConfig, exposureCompensationEV), 200u);
+    EXPECT_EQ(offsetof(LightingConfig, dimBandFloor), 204u);
+    EXPECT_EQ(offsetof(LightingConfig, skyColorX), 208u);
+    EXPECT_EQ(offsetof(LightingConfig, skyMode), 220u);
+    EXPECT_EQ(offsetof(LightingConfig, skyGradientSlope), 224u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {

@@ -66,6 +66,28 @@ inline mask operator!(mask a) { return mask(_mm_xor_ps(a.value, _mm_castsi128_ps
 inline f32 select(f32 whenFalse, f32 whenTrue, mask condition) {
     return f32(_mm_or_ps(_mm_and_ps(condition.value, whenTrue.value), _mm_andnot_ps(condition.value, whenFalse.value)));
 }
+inline mask mask_from_bools(bool a, bool b, bool c, bool d) { return mask(_mm_castsi128_ps(_mm_set_epi32(d ? -1 : 0, c ? -1 : 0, b ? -1 : 0, a ? -1 : 0))); }
+struct alignas(16) f64 {
+    __m128d lo, hi;
+    f64() : lo(_mm_setzero_pd()), hi(_mm_setzero_pd()) {}
+    f64(double v) : lo(_mm_set1_pd(v)), hi(_mm_set1_pd(v)) {}
+    f64(__m128d a, __m128d b) : lo(a), hi(b) {}
+    static f64 load_aligned(const double* p) { return f64(_mm_load_pd(p), _mm_load_pd(p + 2)); }
+    static f64 from_lanes(const double* p) { return f64(_mm_loadu_pd(p), _mm_loadu_pd(p + 2)); }
+    void store_unaligned(double* p) const { _mm_storeu_pd(p, lo); _mm_storeu_pd(p + 2, hi); }
+};
+inline f64 operator+(f64 a, f64 b) { return f64(_mm_add_pd(a.lo, b.lo), _mm_add_pd(a.hi, b.hi)); }
+inline f64 operator-(f64 a, f64 b) { return f64(_mm_sub_pd(a.lo, b.lo), _mm_sub_pd(a.hi, b.hi)); }
+inline f64 operator*(f64 a, f64 b) { return f64(_mm_mul_pd(a.lo, b.lo), _mm_mul_pd(a.hi, b.hi)); }
+inline f64 operator/(f64 a, f64 b) { return f64(_mm_div_pd(a.lo, b.lo), _mm_div_pd(a.hi, b.hi)); }
+inline f64 operator-(f64 a) { const __m128d sign = _mm_set1_pd(-0.0); return f64(_mm_xor_pd(a.lo, sign), _mm_xor_pd(a.hi, sign)); }
+inline mask operator<(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmplt_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmplt_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator>(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpgt_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpgt_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator<=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmple_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmple_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator>=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpge_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpge_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator==(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpeq_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpeq_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline mask operator!=(f64 a, f64 b) { int lo = _mm_movemask_pd(_mm_cmpneq_pd(a.lo, b.lo)); int hi = _mm_movemask_pd(_mm_cmpneq_pd(a.hi, b.hi)); return mask_from_bools(lo & 1, lo & 2, hi & 1, hi & 2); }
+inline f64 select(f64 whenFalse, f64 whenTrue, mask condition) { alignas(16) double f[4], t[4], r[4]; whenFalse.store_unaligned(f); whenTrue.store_unaligned(t); int bits = _mm_movemask_ps(condition.value); for (int i=0;i<4;++i) r[i] = (bits & (1 << i)) ? t[i] : f[i]; return f64::from_lanes(r); }
 inline std::uint32_t runtime_ftz_daz_fingerprint() { return _mm_getcsr() & ((1u << 15) | (1u << 6)); }
 #else
 struct alignas(16) mask { bool lane[4]; };
@@ -92,8 +114,46 @@ inline mask operator&(mask a, mask b) { mask r{}; for (int i = 0; i < 4; ++i) r.
 inline mask operator|(mask a, mask b) { mask r{}; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] || b.lane[i]; return r; }
 inline mask operator!(mask a) { mask r{}; for (int i = 0; i < 4; ++i) r.lane[i] = !a.lane[i]; return r; }
 inline f32 select(f32 whenFalse, f32 whenTrue, mask condition) { f32 r; for (int i = 0; i < 4; ++i) r.lane[i] = condition.lane[i] ? whenTrue.lane[i] : whenFalse.lane[i]; return r; }
+inline mask mask_from_bools(bool a, bool b, bool c, bool d) { return mask{{a, b, c, d}}; }
+struct alignas(16) f64 {
+    double lane[4];
+    f64() : lane{0.0, 0.0, 0.0, 0.0} {}
+    f64(double v) : lane{v, v, v, v} {}
+    static f64 load_aligned(const double* p) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = p[i]; return r; }
+    static f64 from_lanes(const double* p) { return load_aligned(p); }
+    void store_unaligned(double* p) const { for (int i = 0; i < 4; ++i) p[i] = lane[i]; }
+};
+inline f64 operator+(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] + b.lane[i]; return r; }
+inline f64 operator-(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] - b.lane[i]; return r; }
+inline f64 operator*(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] * b.lane[i]; return r; }
+inline f64 operator/(f64 a, f64 b) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = a.lane[i] / b.lane[i]; return r; }
+inline f64 operator-(f64 a) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = -a.lane[i]; return r; }
+inline mask operator<(f64 a, f64 b) { return mask_from_bools(a.lane[0] < b.lane[0], a.lane[1] < b.lane[1], a.lane[2] < b.lane[2], a.lane[3] < b.lane[3]); }
+inline mask operator>(f64 a, f64 b) { return mask_from_bools(a.lane[0] > b.lane[0], a.lane[1] > b.lane[1], a.lane[2] > b.lane[2], a.lane[3] > b.lane[3]); }
+inline mask operator<=(f64 a, f64 b) { return mask_from_bools(a.lane[0] <= b.lane[0], a.lane[1] <= b.lane[1], a.lane[2] <= b.lane[2], a.lane[3] <= b.lane[3]); }
+inline mask operator>=(f64 a, f64 b) { return mask_from_bools(a.lane[0] >= b.lane[0], a.lane[1] >= b.lane[1], a.lane[2] >= b.lane[2], a.lane[3] >= b.lane[3]); }
+inline mask operator==(f64 a, f64 b) { return mask_from_bools(a.lane[0] == b.lane[0], a.lane[1] == b.lane[1], a.lane[2] == b.lane[2], a.lane[3] == b.lane[3]); }
+inline mask operator!=(f64 a, f64 b) { return mask_from_bools(a.lane[0] != b.lane[0], a.lane[1] != b.lane[1], a.lane[2] != b.lane[2], a.lane[3] != b.lane[3]); }
+inline f64 select(f64 whenFalse, f64 whenTrue, mask condition) { f64 r; for (int i = 0; i < 4; ++i) r.lane[i] = condition.lane[i] ? whenTrue.lane[i] : whenFalse.lane[i]; return r; }
 inline std::uint32_t runtime_ftz_daz_fingerprint() { return 0u; }
 #endif
+
+inline f32& operator+=(f32& a, f32 b) { a = a + b; return a; }
+inline f32& operator-=(f32& a, f32 b) { a = a - b; return a; }
+inline f32& operator*=(f32& a, f32 b) { a = a * b; return a; }
+inline f32& operator/=(f32& a, f32 b) { a = a / b; return a; }
+inline f32& operator++(f32& a) { a += f32(1.0f); return a; }
+inline f32 operator++(f32& a, int) { f32 old = a; ++a; return old; }
+inline f32& operator--(f32& a) { a -= f32(1.0f); return a; }
+inline f32 operator--(f32& a, int) { f32 old = a; --a; return old; }
+inline f64& operator+=(f64& a, f64 b) { a = a + b; return a; }
+inline f64& operator-=(f64& a, f64 b) { a = a - b; return a; }
+inline f64& operator*=(f64& a, f64 b) { a = a * b; return a; }
+inline f64& operator/=(f64& a, f64 b) { a = a / b; return a; }
+inline f64& operator++(f64& a) { a += f64(1.0); return a; }
+inline f64 operator++(f64& a, int) { f64 old = a; ++a; return old; }
+inline f64& operator--(f64& a) { a -= f64(1.0); return a; }
+inline f64 operator--(f64& a, int) { f64 old = a; --a; return old; }
 
 struct f32x3 {
     f32 yk_col0, yk_col1, yk_col2;
@@ -106,6 +166,33 @@ inline f32x3 operator*(f32x3 a, f32x3 b) { return {a.yk_col0*b.yk_col0, a.yk_col
 inline f32x3 operator*(f32x3 a, f32 b) { return {a.yk_col0*b, a.yk_col1*b, a.yk_col2*b}; }
 inline f32x3 operator*(f32 a, f32x3 b) { return b*a; }
 inline f32x3 operator-(f32x3 a) { return {-a.yk_col0, -a.yk_col1, -a.yk_col2}; }
+inline f32x3& operator+=(f32x3& a, f32x3 b) { a = a + b; return a; }
+inline f32x3& operator-=(f32x3& a, f32x3 b) { a = a - b; return a; }
+inline f32x3& operator*=(f32x3& a, f32x3 b) { a = a * b; return a; }
+inline f32x3& operator++(f32x3& a) { a += f32x3(f32(1.0f), f32(1.0f), f32(1.0f)); return a; }
+inline f32x3 operator++(f32x3& a, int) { f32x3 old = a; ++a; return old; }
+inline f32x3& operator--(f32x3& a) { a -= f32x3(f32(1.0f), f32(1.0f), f32(1.0f)); return a; }
+inline f32x3 operator--(f32x3& a, int) { f32x3 old = a; --a; return old; }
+struct f64x3 {
+    f64 yk_col0, yk_col1, yk_col2;
+    f64x3() = default;
+    f64x3(f64 x, f64 y, f64 z) : yk_col0(x), yk_col1(y), yk_col2(z) {}
+};
+inline f64x3 operator+(f64x3 a, f64x3 b) { return {a.yk_col0+b.yk_col0, a.yk_col1+b.yk_col1, a.yk_col2+b.yk_col2}; }
+inline f64x3 operator-(f64x3 a, f64x3 b) { return {a.yk_col0-b.yk_col0, a.yk_col1-b.yk_col1, a.yk_col2-b.yk_col2}; }
+inline f64x3 operator*(f64x3 a, f64x3 b) { return {a.yk_col0*b.yk_col0, a.yk_col1*b.yk_col1, a.yk_col2*b.yk_col2}; }
+inline f64x3 operator/(f64x3 a, f64x3 b) { return {a.yk_col0/b.yk_col0, a.yk_col1/b.yk_col1, a.yk_col2/b.yk_col2}; }
+inline f64x3 operator*(f64x3 a, f64 b) { return {a.yk_col0*b, a.yk_col1*b, a.yk_col2*b}; }
+inline f64x3 operator*(f64 a, f64x3 b) { return b*a; }
+inline f64x3 operator-(f64x3 a) { return {-a.yk_col0, -a.yk_col1, -a.yk_col2}; }
+inline f64x3& operator+=(f64x3& a, f64x3 b) { a = a + b; return a; }
+inline f64x3& operator-=(f64x3& a, f64x3 b) { a = a - b; return a; }
+inline f64x3& operator*=(f64x3& a, f64x3 b) { a = a * b; return a; }
+inline f64x3& operator/=(f64x3& a, f64x3 b) { a = a / b; return a; }
+inline f64x3& operator++(f64x3& a) { a += f64x3(f64(1.0), f64(1.0), f64(1.0)); return a; }
+inline f64x3 operator++(f64x3& a, int) { f64x3 old = a; ++a; return old; }
+inline f64x3& operator--(f64x3& a) { a -= f64x3(f64(1.0), f64(1.0), f64(1.0)); return a; }
+inline f64x3 operator--(f64x3& a, int) { f64x3 old = a; --a; return old; }
 
 struct dual {
     f32 value, gx, gy, gz;
@@ -353,6 +440,56 @@ struct LaneSpanF32 {
         }
     }
 };
+struct LaneSpanF64 {
+    double* base;
+    std::size_t logical_count;
+    std::size_t padded_capacity;
+    AccessMode access;
+    IterationMapping mapping;
+    std::uint64_t layout_fingerprint;
+    const std::uint8_t* filter = nullptr;
+    const std::size_t* indices = nullptr;
+    bool padding_is_deterministic = true;
+    bool allows(AccessMode required) const { if (required == AccessMode::ReadOnly) return access != AccessMode::WriteOnly; if (required == AccessMode::WriteOnly) return access != AccessMode::ReadOnly; return access == AccessMode::ReadWrite; }
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const {
+        if (base == nullptr && padded_capacity != 0) return {false, PromotionReason::NullBase};
+        if ((reinterpret_cast<std::uintptr_t>(base) & 15u) != 0u) return {false, PromotionReason::MisalignedBase};
+        if ((padded_capacity & 3u) != 0u) return {false, PromotionReason::CapacityNotLaneMultiple};
+        if (logical_count > padded_capacity) return {false, PromotionReason::CountExceedsCapacity};
+        if (!allows(required)) return {false, PromotionReason::AccessModeMismatch};
+        if (layout_fingerprint != expected) return {false, PromotionReason::LayoutFingerprintMismatch};
+        if (!padding_is_deterministic) return {false, PromotionReason::PaddingNotDeterministic};
+        if (mapping == IterationMapping::FilteredDense && logical_count != 0 && filter == nullptr) return {false, PromotionReason::MissingFilter};
+        if (mapping == IterationMapping::SparseMayAlias) return {false, PromotionReason::DuplicateSparseDestination};
+        if (mapping == IterationMapping::SparseUnique) {
+            if (logical_count != 0 && indices == nullptr) return {false, PromotionReason::MissingIndices};
+            for (std::size_t i = 0; i < logical_count; ++i) { if (indices[i] >= padded_capacity) return {false, PromotionReason::SparseIndexOutOfRange}; if (filter != nullptr && filter[i] == 0) continue; for (std::size_t j = 0; j < i; ++j) { if (filter != nullptr && filter[j] == 0) continue; if (indices[i] == indices[j]) return {false, PromotionReason::DuplicateSparseDestination}; } }
+        } else if (mapping != IterationMapping::Dense && mapping != IterationMapping::FilteredDense) return {false, PromotionReason::UnsupportedIterationMapping};
+        return {true, PromotionReason::Admitted};
+    }
+    std::size_t gather_index(std::size_t i) const { return mapping == IterationMapping::SparseUnique ? indices[i] : i; }
+    std::uint8_t active_mask(std::size_t laneBase) const { std::uint8_t bits = 0u; for (std::size_t lane = 0; lane < 4; ++lane) { const std::size_t logical = laneBase + lane; if (logical < logical_count && (filter == nullptr || filter[logical] != 0)) bits |= static_cast<std::uint8_t>(1u << lane); } return bits; }
+    f64 load(std::size_t laneBase) const { assert(allows(AccessMode::ReadOnly)); if (mapping != IterationMapping::SparseUnique) { assert(laneBase + 4 <= padded_capacity); return f64::load_aligned(base + laneBase); } alignas(16) double lanes[4] = {0.0, 0.0, 0.0, 0.0}; const std::uint8_t active = active_mask(laneBase); for (std::size_t lane = 0; lane < 4; ++lane) if ((active & (1u << lane)) != 0) lanes[lane] = base[gather_index(laneBase + lane)]; return f64::from_lanes(lanes); }
+    void store(std::size_t laneBase, f64 value, std::uint8_t active) const { assert(allows(AccessMode::WriteOnly)); alignas(16) double lanes[4]; value.store_unaligned(lanes); for (std::size_t lane = 0; lane < 4; ++lane) { if ((active & (1u << lane)) == 0) continue; base[gather_index(laneBase + lane)] = lanes[lane]; } }
+};
+struct LaneSpanF32x3 {
+    LaneSpanF32 x, y, z;
+    std::size_t logical_count;
+    LaneSpanF32x3(LaneSpanF32 a, LaneSpanF32 b, LaneSpanF32 c) : x(a), y(b), z(c), logical_count(a.logical_count) {}
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const { if (y.logical_count != logical_count || z.logical_count != logical_count || y.padded_capacity != x.padded_capacity || z.padded_capacity != x.padded_capacity || y.access != x.access || z.access != x.access || y.mapping != x.mapping || z.mapping != x.mapping || y.layout_fingerprint != x.layout_fingerprint || z.layout_fingerprint != x.layout_fingerprint || y.filter != x.filter || z.filter != x.filter || y.indices != x.indices || z.indices != x.indices || y.padding_is_deterministic != x.padding_is_deterministic || z.padding_is_deterministic != x.padding_is_deterministic) return {false, PromotionReason::UnsupportedIterationMapping}; PromotionDecision a = x.promotion(expected, required); if (!a.promoted) return a; a = y.promotion(expected, required); if (!a.promoted) return a; return z.promotion(expected, required); }
+    std::uint8_t active_mask(std::size_t laneBase) const { return x.active_mask(laneBase); }
+    f32x3 load(std::size_t laneBase) const { return {x.load(laneBase), y.load(laneBase), z.load(laneBase)}; }
+    void store(std::size_t laneBase, f32x3 value, std::uint8_t active) const { x.store(laneBase, value.yk_col0, active); y.store(laneBase, value.yk_col1, active); z.store(laneBase, value.yk_col2, active); }
+};
+struct LaneSpanF64x3 {
+    LaneSpanF64 x, y, z;
+    std::size_t logical_count;
+    LaneSpanF64x3(LaneSpanF64 a, LaneSpanF64 b, LaneSpanF64 c) : x(a), y(b), z(c), logical_count(a.logical_count) {}
+    PromotionDecision promotion(std::uint64_t expected, AccessMode required) const { if (y.logical_count != logical_count || z.logical_count != logical_count || y.padded_capacity != x.padded_capacity || z.padded_capacity != x.padded_capacity || y.access != x.access || z.access != x.access || y.mapping != x.mapping || z.mapping != x.mapping || y.layout_fingerprint != x.layout_fingerprint || z.layout_fingerprint != x.layout_fingerprint || y.filter != x.filter || z.filter != x.filter || y.indices != x.indices || z.indices != x.indices || y.padding_is_deterministic != x.padding_is_deterministic || z.padding_is_deterministic != x.padding_is_deterministic) return {false, PromotionReason::UnsupportedIterationMapping}; PromotionDecision a = x.promotion(expected, required); if (!a.promoted) return a; a = y.promotion(expected, required); if (!a.promoted) return a; return z.promotion(expected, required); }
+    std::uint8_t active_mask(std::size_t laneBase) const { return x.active_mask(laneBase); }
+    f64x3 load(std::size_t laneBase) const { return {x.load(laneBase), y.load(laneBase), z.load(laneBase)}; }
+    void store(std::size_t laneBase, f64x3 value, std::uint8_t active) const { x.store(laneBase, value.yk_col0, active); y.store(laneBase, value.yk_col1, active); z.store(laneBase, value.yk_col2, active); }
+};
 } // namespace yk::simd4
 #endif // YK_SIMD4_RUNTIME_V2
 
@@ -374,7 +511,7 @@ inline constexpr std::array<RecipeValueTypePolicy, 3> RecipeValueTypePolicies{{
     {RecipeValueType::Q16_16, RecipeOverflowBehavior::SaturatingCap, -2147483648ll, 2147483647ull, 16, "int"},
 }};
 struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; RecipeIntervalRule intervalRule; std::int8_t intervalData0, intervalData1; const char* name; };
-inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
+inline constexpr std::array<RecipeOpcodeMetadata, 123> RecipeOpcodeTable{{
     {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Sphere, 0, 3, "Sphere"},
     {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::AxisAlignedBox, 0, -1, "Box"},
     {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "BoxRounded"},
@@ -447,13 +584,13 @@ inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
     {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog2"},
     {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Select"},
     {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DistanceTo"},
-    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Output"},
+    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Output"},
     {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PushParam"},
     {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ReadParam"},
     {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::RestorePosition, true, false, 1, 1, 1, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RestorePos"},
     {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PushFloat3"},
-    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ComposeFloat3"},
-    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Passthrough"},
+    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ComposeFloat3"},
+    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Passthrough"},
     {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DecomposeFloat3"},
     {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Add"},
     {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Sub"},
@@ -497,6 +634,7 @@ inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
     {179, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToFloat"},
     {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamU32"},
     {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamQ16"},
+    {182, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "GlyphOutline"},
 }};
 } // namespace Yeroket::Sdf::Generated
 // BEGIN GENERATED RECIPE ANALYSIS (CPU proof, compiled consumers; R441/R442)
@@ -785,7 +923,7 @@ inline RecipeRange RecipeTransfer_81(RecipeRange cond, RecipeRange a, RecipeRang
 
 }
 struct RecipeAnalysisCoverage { std::uint8_t opcode; bool cpu, simd, gpu, pure; const char* name; const char* reason; bool vulkanPreserve, dznPrecise, extent, occupancy; };
-inline constexpr std::array<RecipeAnalysisCoverage, 184> RecipeAnalysisCoverageTable{{
+inline constexpr std::array<RecipeAnalysisCoverage, 185> RecipeAnalysisCoverageTable{{
     {0, true, true, false, true, "Sphere", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {1, true, true, false, true, "Box", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {2, false, false, false, false, "BoxRounded", "unsupported or opaque body/control/type; unknown", false, false, false, false},
@@ -970,6 +1108,7 @@ inline constexpr std::array<RecipeAnalysisCoverage, 184> RecipeAnalysisCoverageT
     {179, false, false, false, false, "U32ToFloat", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {180, false, false, false, false, "ReadParamU32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {181, false, false, false, false, "ReadParamQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {182, false, false, false, false, "GlyphOutline", "unsupported or opaque body/control/type; unknown", false, false, false, false},
 }};
 inline const RecipeAnalysisCoverage* FindRecipeAnalysisCoverage(std::uint8_t opcode) { for(const auto& entry:RecipeAnalysisCoverageTable) if(entry.opcode==opcode) return &entry; return nullptr; }
 inline bool RecipeBackendCovered(const RecipeAnalysisCoverage& entry, RecipeProofBackend backend) { switch(backend) { case RecipeProofBackend::CpuStrict: return entry.cpu; case RecipeProofBackend::SimdStrict: return entry.simd; case RecipeProofBackend::GpuVulkanPreserve: return entry.vulkanPreserve; case RecipeProofBackend::GpuDznPrecise: return entry.dznPrecise; default: return false; } }
@@ -2869,6 +3008,16 @@ inline yk::simd4::f32 SdfCore_U32ToFloatSimd4(yk::simd4::f32 value) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::f32 SdfCore_GlyphOutlineSimd4(yk::simd4::f32x3 p, GlyphOutlineInstance glyph) {
+    alignas(16) float p_x[4], p_y[4], p_z[4];
+    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_GlyphOutline(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), glyph);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
 } // namespace Yeroket::Sdf::Generated
 namespace Vixen::SVO::Recipe {
 using Yeroket::Sdf::Generated::RecipeOpcodeMetadata;
@@ -2909,10 +3058,14 @@ using yk::simd4::dual;
 using yk::simd4::dual2;
 using yk::simd4::dual3;
 
-// Output slots are selected on one recipe DAG. The gradient is an automatic slot derived from
-// the distance terminal; emission and typed material channels can add bits without minting a
-// second recipe identity once the engine-side slot ABI is complete.
-enum class RecipeOutputSlot : std::uint8_t { Distance = 1u, Gradient = 2u, Emission = 4u, Material = 8u };
+// Output channel IDs and component spans are carried by lowered opcode-94 markers.
+// This descriptor is deliberately open-ended: adding an authored channel does not
+// require changing the evaluator's C++ interface.
+struct RecipeOutputDescriptor {
+    std::uint32_t channel = 0;
+    std::uint8_t valueOffset = 0;
+    std::uint8_t elementCount = 1;
+};
 
 struct LoweredRecipeInstruction;
 struct RecipeSimdState {
@@ -3642,6 +3795,7 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::U32ToFloat: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32ToFloat>;
         case Recipe::SdfOpCode::ReadParamU32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamU32>;
         case Recipe::SdfOpCode::ReadParamQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamQ16>;
+        case Recipe::SdfOpCode::GlyphOutline: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::GlyphOutline>;
         default: return nullptr;
     }
 }
@@ -3797,6 +3951,7 @@ public:
     bool Lower(const SdfInstruction* program, std::uint32_t count,
                std::span<const float> parameters, std::string& error) {
         instructions_.clear();
+        outputs_.clear();
         error.clear();
         if (program == nullptr && count != 0) {
             error="recipe program is null";
@@ -3827,9 +3982,27 @@ public:
             }
             if (!RecipeApplyValueTypes(source.opCode,valueTypes,sp,i,error)) {
                 instructions_.clear();
+                outputs_.clear();
                 return false;
             }
             psp=psp-arity.pPop+arity.pPush;
+            if (opcode==SdfOpCode::Output) {
+                const int elementCount=source.data[1] == 3.0f ? 3
+                    : source.data[1] == 0.0f || source.data[1] == 1.0f ? 1 : 0;
+                if (elementCount == 0 || sp < elementCount ||
+                    !std::isfinite(source.data[0]) || source.data[0] < 0.0f ||
+                    source.data[0] > 65535.0f ||
+                    source.data[0] != std::floor(source.data[0])) {
+                    error="invalid recipe output descriptor at instruction "+std::to_string(i);
+                    instructions_.clear();
+                    outputs_.clear();
+                    return false;
+                }
+                outputs_.push_back(RecipeOutputDescriptor{
+                    static_cast<std::uint32_t>(std::max(0.0f, source.data[0])),
+                    static_cast<std::uint8_t>(sp-elementCount),
+                    static_cast<std::uint8_t>(elementCount)});
+            }
             if (opcode==SdfOpCode::Output || opcode==SdfOpCode::ComposeFloat3 || opcode==SdfOpCode::Passthrough || opcode==SdfOpCode::InvokeRecipe)
                 continue;
             LoweredRecipeInstruction lowered{};
@@ -3854,15 +4027,49 @@ public:
             }
             instructions_.push_back(lowered);
         }
-        if (sp!=1 || psp!=0) {
-            error="closed recipe must finish with one value and an empty position stack";
+        if (outputs_.empty() && sp==1)
+            outputs_.push_back(RecipeOutputDescriptor{0u, 0u, 1u});
+        int expectedOutputOffset=0;
+        for (const RecipeOutputDescriptor& output:outputs_) {
+            if (output.valueOffset!=expectedOutputOffset) {
+                error="recipe output markers do not describe a contiguous value stack";
+                instructions_.clear();
+                outputs_.clear();
+                return false;
+            }
+            expectedOutputOffset+=output.elementCount;
+        }
+        if (sp!=expectedOutputOffset || psp!=0 || outputs_.empty()) {
+            error="closed recipe output markers must cover the value stack and leave an empty position stack";
             instructions_.clear();
+            outputs_.clear();
             return false;
         }
         return true;
     }
 
     void Evaluate4(const glm::vec3* positions, float* output, glm::vec3* declaredPositions=nullptr) const {
+        if (output==nullptr) return;
+        alignas(16) float outputSet[64*4]{};
+        if (!EvaluateOutputSet4(positions, outputSet, 64u*4u, declaredPositions)) return;
+        const RecipeOutputDescriptor* distance=FindOutput(0u);
+        if (distance==nullptr) distance=&outputs_.front();
+        std::memcpy(output, outputSet+static_cast<std::size_t>(distance->valueOffset)*4u,
+            sizeof(float)*4u);
+    }
+
+    bool EvaluateOutputSet4(const glm::vec3* positions, float* output,
+                            std::size_t outputFloatCapacity,
+                            glm::vec3* declaredPositions=nullptr,
+                            std::string* error=nullptr) const {
+        if (positions==nullptr || output==nullptr) {
+            if (error!=nullptr) *error="output-set evaluation requires positions and output storage";
+            return false;
+        }
+        if (outputFloatCapacity < OutputValueCount()*4u) {
+            if (error!=nullptr) *error="output-set storage is smaller than the generated recipe layout";
+            return false;
+        }
         alignas(16) float x[4],y[4],z[4];
         for (int lane=0;lane<4;++lane) { x[lane]=positions[lane].x; y[lane]=positions[lane].y; z[lane]=positions[lane].z; }
         RecipeSimdState state{};
@@ -3872,14 +4079,19 @@ public:
             state.psp=instruction.positionBase;
             instruction.execute(state,instruction);
         }
-        assert(state.sp==1 && state.psp==0);
-        state.stack[0].store_unaligned(output);
+        assert(state.sp==static_cast<int>(OutputValueCount()) && state.psp==0);
+        for (const RecipeOutputDescriptor& descriptor:outputs_)
+            for (std::uint32_t component=0;component<descriptor.elementCount;++component)
+                state.stack[descriptor.valueOffset+component].store_unaligned(
+                    output+(static_cast<std::size_t>(descriptor.valueOffset)+component)*4u);
         if (declaredPositions!=nullptr) {
             state.declaredPosition.yk_col0.store_unaligned(x);
             state.declaredPosition.yk_col1.store_unaligned(y);
             state.declaredPosition.yk_col2.store_unaligned(z);
             for (int lane=0;lane<4;++lane) declaredPositions[lane]=glm::vec3(x[lane],y[lane],z[lane]);
         }
+        if (error!=nullptr) error->clear();
+        return true;
     }
 
     // Forward-mode AD over the same lowered instruction stream. This fills the Distance and
@@ -3911,15 +4123,22 @@ public:
             state.psp=instruction.positionBase;
             instruction.gradientExecute(state,instruction);
         }
-        if (state.sp!=1 || state.psp!=0) {
+        if (state.sp!=static_cast<int>(OutputValueCount()) || state.psp!=0) {
             if (error!=nullptr) *error="gradient evaluator finished with an invalid stack shape";
             return false;
         }
+        const RecipeOutputDescriptor* distance=FindOutput(0u);
+        if (distance==nullptr) distance=&outputs_.front();
+        const std::size_t distanceOffset=distance->valueOffset;
+        if (distance->elementCount!=1u) {
+            if (error!=nullptr) *error="gradient evaluation requires a scalar distance output";
+            return false;
+        }
         alignas(16) float value[4],gx[4],gy[4],gz[4];
-        state.stack[0].value.store_unaligned(value);
-        state.stack[0].gx.store_unaligned(gx);
-        state.stack[0].gy.store_unaligned(gy);
-        state.stack[0].gz.store_unaligned(gz);
+        state.stack[distanceOffset].value.store_unaligned(value);
+        state.stack[distanceOffset].gx.store_unaligned(gx);
+        state.stack[distanceOffset].gy.store_unaligned(gy);
+        state.stack[distanceOffset].gz.store_unaligned(gz);
         for (int lane=0;lane<4;++lane)
             output[lane]=value[lane], gradients[lane]=glm::vec3(gx[lane],gy[lane],gz[lane]);
         if (error!=nullptr) error->clear();
@@ -3927,6 +4146,14 @@ public:
     }
 
     std::size_t InstructionCount() const { return instructions_.size(); }
+    std::size_t OutputCount() const { return outputs_.size(); }
+    std::size_t OutputValueCount() const {
+        std::size_t count=0;
+        for (const RecipeOutputDescriptor& output:outputs_)
+            count=std::max(count,static_cast<std::size_t>(output.valueOffset)+output.elementCount);
+        return count;
+    }
+    const RecipeOutputDescriptor& OutputAt(std::size_t index) const { return outputs_.at(index); }
 
     struct NativeTiming {
         bool gradientSupported = false;
@@ -4002,7 +4229,14 @@ public:
         return MeasureNativeTiming(positions, iterations, epsilon);
     }
 private:
+    const RecipeOutputDescriptor* FindOutput(std::uint32_t channel) const {
+        for (const RecipeOutputDescriptor& output:outputs_)
+            if (output.channel==channel) return &output;
+        return nullptr;
+    }
+
     std::vector<LoweredRecipeInstruction> instructions_;
+    std::vector<RecipeOutputDescriptor> outputs_;
 };
 } // namespace Vixen::SVO::Recipe
 

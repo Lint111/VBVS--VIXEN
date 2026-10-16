@@ -91,33 +91,30 @@ inline constexpr ShaderFeature kFeatureMiningBeam{"VIXEN_MINING_BEAM"};
 /** @brief Use the fixed stage-1 exposure value instead of the frame-wide meter result. */
 inline constexpr ShaderFeature kFeatureHdrExposureFixed{"VIXEN_HDR_EXPOSURE_FIXED"};
 
-/** @brief W-BRICKMAP Slice 2: coarse-grid DDA backend for the ESVO leaf march
+/** @brief W-BRICKMAP Slice 2 / internal R505 fallback tier: coarse-grid DDA for the ESVO leaf march
  *  (traverseCoarseGridInstancedSdf[AnyHit] in SceneBindings.glsl, FORMAT_STORED_SDF
  *  only — FORMAT_BINARY bodies fall back to the ESVO path per-instance at
  *  runtime, since brickGridLookup/brickLookupBase are only populated by the
- *  SDF serialization path (round-3 retarget; round 2 had this inverted).
- *  Env-gated at the BuildRenderGraph march registration site via
- *  VIXEN_BRICKMAP_TRAVERSAL; flag-off (env unset) never pushes this feature,
- *  so the source is byte-identical to pre-slice-2. */
-inline constexpr ShaderFeature kFeatureBrickmapTraversal{"VIXEN_BRICKMAP_TRAVERSAL"};
+ *  SDF serialization path). BuildRenderGraph emits this define only when the
+ *  composed traversal's CapabilityGraph cannot select ray query. It is not a
+ *  standalone environment-controlled traversal mode. */
+inline constexpr ShaderFeature kFeatureComposedDdaFallback{"VIXEN_COMPOSED_DDA_FALLBACK"};
 
 /** @brief W-BRICKMAP Gate-B bisection: closest-hit-only diagnostic overwrite of
  *  hitColor for a hardcoded pixel rect around the two Gate-B divergent silhouette
  *  pixels (see traverseCoarseGridInstancedSdf's VIXEN_BRICKMAP_DEBUG block,
- *  SceneBindings.glsl). Env-gated separately from VIXEN_BRICKMAP_TRAVERSAL so a
- *  non-debug ON boot is unaffected; requires VIXEN_BRICKMAP_TRAVERSAL to also be
- *  set (the debug block lives inside the DDA backend it instruments). */
+ *  SceneBindings.glsl). Env-gated separately so a non-debug boot is unaffected;
+ *  requires the composed DDA fallback tier to be selected. */
 inline constexpr ShaderFeature kFeatureBrickmapDebug{"VIXEN_BRICKMAP_DEBUG"};
 
 /** @brief W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS traversal backend
  *  (traverseRayQueryInstancedSdf[AnyHit] in RayQueryTraversal.glsl, FORMAT_STORED_SDF
- *  only -- same scope restriction as kFeatureBrickmapTraversal, since the TLAS is built
+ *  only -- same scope restriction as kFeatureComposedDdaFallback, since the TLAS is built
  *  from the identical brickGridLookup source). Env-gated at the BuildRenderGraph march
  *  registration site via VIXEN_RTQUERY_TRAVERSAL; flag-off never pushes this feature, so
- *  the source is byte-identical to pre-W-RTQUERY. When BOTH VIXEN_BRICKMAP_TRAVERSAL and
- *  VIXEN_RTQUERY_TRAVERSAL are set, RTQUERY wins (see TraceWorld.glsl's dispatch order) --
- *  this is a THIRD search backend (ESVO / DDA / RT), not a replacement, isolating the
- *  search phase across all three while the sampling tail (marchBrickSdfCell) stays shared.
+ *  the source is byte-identical to pre-W-RTQUERY. In composed traversal this is selected
+ *  by the CapabilityGraph; the environment flag remains a developer A/B override. The
+ *  shader dispatch gives RTQUERY precedence if both internal tier defines are present.
  */
 inline constexpr ShaderFeature kFeatureRtQueryTraversal{"VIXEN_RTQUERY_TRAVERSAL"};
 
@@ -128,20 +125,15 @@ inline constexpr const char* kRayQueryLightingCapabilities[] = {"RayQueryLightin
 inline constexpr ShaderFeature kFeatureRayQueryLighting{
     "VIXEN_RTQUERY_TRAVERSAL", kRayQueryLightingCapabilities, 1};
 
-/** @brief W-COMPOSED: the role ruling made code -- RT-traversal + DDA-leaf +
- *  ESVO-data-access are complementary tiers of ONE traversal, not rival
- *  backends. Env-gated via VIXEN_COMPOSED_TRAVERSAL at the BuildRenderGraph
- *  march registration site: picks EITHER kFeatureRtQueryTraversal (device has
- *  RTXCapabilities.rayQuery) OR kFeatureBrickmapTraversal (software DDA
- *  fallback) as the near-field search phase -- never both, no new GLSL
- *  branching, the existing TraceWorld.glsl #ifdef/#elif chain already
- *  expresses the choice. The far-field (footprint > brick) tier mirrors the
+/** @brief R505 default-on composed traversal: RT-query search, DDA software
+ *  fallback, and ESVO data access are complementary tiers of one traversal.
+ *  BuildRenderGraph selects the near-field tier through the CapabilityGraph:
+ *  kFeatureRtQueryTraversal when RayQueryLighting is available, otherwise
+ *  kFeatureComposedDdaFallback. VIXEN_COMPOSED_TRAVERSAL remains an explicit
+ *  developer A/B override. The far-field (footprint > brick) tier mirrors the
  *  ESVO screen-space cutoff (pc.raySizeCoef) at the candidate-cell level in
  *  both traverseCoarseGridInstancedSdf (SceneBindings.glsl) and
- *  traverseRayQueryWorld (RayQueryTraversal.glsl). The three single-backend
- *  flags (kFeatureBrickmapTraversal/kFeatureRtQueryTraversal/ESVO-default)
- *  keep working unchanged for A/B instrumentation -- this is a fourth,
- *  additive axis, not a replacement. */
+ *  traverseRayQueryWorld (RayQueryTraversal.glsl). */
 inline constexpr ShaderFeature kFeatureComposedTraversal{"VIXEN_COMPOSED_TRAVERSAL"};
 
 /**

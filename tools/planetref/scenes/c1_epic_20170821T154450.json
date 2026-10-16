@@ -1,0 +1,91 @@
+{
+ "bodies": [
+  {
+   "center_m": [
+    -127811088589.121,
+    71546971804.586,
+    31178267435.975
+   ],
+   "emission": {
+    "color_temperature_k": 5772.0,
+    "limb": {
+     "law": "none"
+    },
+    "radiance": 14718.276069141893
+   },
+   "name": "sun",
+   "radius_m": 695700000.0,
+   "role": "star",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.3,
+   "center_m": [
+    1262712744.2610002,
+    -928988656.975,
+    -240996989.76500002
+   ],
+   "name": "earth",
+   "radius_m": 6371000.0,
+   "role": "planet",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.12,
+   "center_m": [
+    950953868.342,
+    -744022067.0070001,
+    -158834325.183
+   ],
+   "name": "moon",
+   "radius_m": 1737000.0,
+   "role": "moon",
+   "shape": "sphere"
+  }
+ ],
+ "camera": {
+  "height": 768,
+  "look_dir": [
+   0.7961386269240504,
+   -0.585726054602344,
+   -0.15194826645756734
+  ],
+  "position_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "up": [
+   0.1209718842210174,
+   -0.0890000586158566,
+   0.9769117243205401
+  ],
+  "vfov_deg": 0.62,
+  "width": 768
+ },
+ "id": "c1_epic_20170821T154450",
+ "integrator": {
+  "max_depth": 6,
+  "seed": 1,
+  "spp": 32
+ },
+ "length_unit": "m",
+ "match": {
+  "derived": {
+   "dscovr_earth_km": 1586046.3260520329,
+   "earth_disc_angular_diameter_deg": 0.4603048308893935,
+   "moon_earth_km": 371694.6859586277,
+   "moon_from_earth_centre_deg": 2.0916352949812453,
+   "phase_fraction_k": 0.9955672358459378,
+   "sun_axis_position_angle_deg": 64.2635663975078,
+   "sun_axis_position_angle_note": "degrees clockwise from image up toward image right, of the sun direction projected on the image plane",
+   "sun_earth_au": 1.0115611720979771,
+   "sun_earth_km": 151327397.42865363,
+   "sun_earth_vehicle_deg": 7.635040016756601
+  }
+ },
+ "note": "airless Lambert Earth (albedo 0.3) with the EPIC 2017-08-21 15:44:50 UTC J2000 vectors; atmosphere and clouds omitted",
+ "radiance_unit_w_m2": 1361.0,
+ "schema": "planetref-scene/v1",
+ "state": "C1"
+}

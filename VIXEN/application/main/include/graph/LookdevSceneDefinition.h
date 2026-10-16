@@ -1,5 +1,6 @@
 #pragma once
 
+#include "graph/SceneLook.h"
 #include "Recipe/RecipeRegistry.h"
 #include "ShellOctreeGpu.h"
 #include "Generated/LightingConfig.g.h"
@@ -15,6 +16,24 @@
 #include <vector>
 
 namespace Vixen::App::Lookdev {
+
+// Look-dev declares the engine's long-standing sky gradient and cel thresholds explicitly, so
+// the captures do not depend on LightingConfigNode defaults. Values are unchanged by R507.3.
+inline SceneLook SceneLookDeclaration() {
+    SceneLook look;
+    look.environment.background = EnvironmentDeclaration::Background::Gradient;
+    look.environment.color[0] = 0.02f;
+    look.environment.color[1] = 0.02f;
+    look.environment.color[2] = 0.06f;
+    look.environment.gradientSlope = 0.4f;
+    look.environment.starfield = false;
+    look.cel.shadowThreshold = 0.16f;   // R432 cel defaults
+    look.cel.litThreshold = 0.86f;
+    look.cel.rampSoftness = 0.08f;
+    look.cel.dimBandFloor = 0.0f;       // black shadow step: indoor and night look-dev lights fill by ambient
+    return look;
+}
+
 
 // Authored fixture data for the engine's shared visual-review stage. Geometry is
 // registered through the existing procedural SDF recipe provider; this is not a
@@ -64,9 +83,9 @@ inline constexpr int kResolution = 64;
 inline constexpr int kBrickDepth = 3;
 inline constexpr float kWorldSpan = 10.0f;
 inline constexpr glm::vec3 kFloodlightGridPosition{39.0f, 36.0f, 25.0f};
-inline constexpr glm::vec3 kNightFloodlightGridPosition{40.6f, 36.0f, 32.0f};
-inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 24.75f};
-inline constexpr glm::vec3 kWorklightGridPosition{32.0f, 47.3f, 32.0f};
+inline constexpr glm::vec3 kNightFloodlightGridPosition{47.0f, 26.0f, 16.0f};
+inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 20.0f};
+inline constexpr glm::vec3 kWorklightGridPosition{17.0f, 26.0f, 46.0f};
 
 inline const std::array<LightingPreset, 4>& LightingPresets() {
     // Directions point from the scene toward the light source. Colors are the
@@ -247,6 +266,14 @@ inline glm::vec3 EmitterOrigin(Material material, bool serviceLightsEnabled) {
     }
 }
 
+inline Primitive PrimitiveForLighting(Primitive primitive, const LightingPreset& preset) {
+    if (ServiceLightsEnabled(preset) && primitive.material == Material::Lamp) {
+        primitive.center = kNightFloodlightGridPosition;
+        primitive.extent = {1.2f, 0.9f, 1.2f};
+    }
+    return primitive;
+}
+
 inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& preset) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
@@ -254,11 +281,7 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& pr
 
     std::array<std::vector<Primitive>, static_cast<size_t>(Material::Count)> primitivesByMaterial;
     auto gather = [&](const Primitive& sourcePrimitive) {
-        Primitive primitive = sourcePrimitive;
-        if (serviceLightsEnabled && primitive.material == Material::Lamp) {
-            primitive.center = kNightFloodlightGridPosition;
-            primitive.extent = {1.2f, 0.9f, 1.2f};
-        }
+        const Primitive primitive = PrimitiveForLighting(sourcePrimitive, preset);
         primitivesByMaterial[static_cast<size_t>(primitive.material)].push_back(primitive);
     };
     for (const Primitive& primitive : Primitives()) gather(primitive);

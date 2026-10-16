@@ -183,16 +183,6 @@ message(STATUS "VIXEN: SDI headers output to ${APP_SDI_OUTPUT_DIR}")
 # ============================================================================
 # Runtime DLL dependencies + assets (staged next to the executable)
 # ============================================================================
-# Copy TBB DLL to output directory (required by SVO library)
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET VIXEN POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:VIXEN>
-        COMMENT "Copying TBB DLL for VIXEN"
-    )
-    message(STATUS "VIXEN: TBB DLL will be copied to output directory")
-endif()
 
 # Mirror the fresh executable into VIXEN_ROOT/binaries/ (source-tree, gitignored) so
 # hand-rolled capture .bat scripts that run the relative path "binaries\VIXEN.exe" from
@@ -209,6 +199,7 @@ add_custom_command(TARGET VIXEN POST_BUILD
         ${VIXEN_ROOT}/binaries/
     COMMENT "Mirroring VIXEN.exe into VIXEN_ROOT/binaries/ for relative-path capture scripts"
 )
+set_property(TARGET VIXEN PROPERTY VIXEN_RUNTIME_DLL_DESTINATIONS "${VIXEN_ROOT}/binaries")
 
 # Copy the UI assets next to the executable so the RmlUi demo is self-contained
 # (the app loads them via the relative path "assets/ui/..."). Uses the shared
@@ -230,4 +221,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_ui_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_cornell_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_starfield_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_lookdev_capture.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_planet_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)
+vixen_schedule_runtime_dlls_for_current_directory()

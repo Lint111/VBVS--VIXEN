@@ -32,6 +32,9 @@ add_subdirectory(ShaderManagement)
 # VulkanResources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
 add_subdirectory(VulkanResources)
 
+# Shared text runtime (RmlUi font engine, FreeType metrics, and MSDF glyph atlas).
+add_subdirectory(Text)
+
 # CashSystem library (caching and resource management)
 add_subdirectory(CashSystem)
 

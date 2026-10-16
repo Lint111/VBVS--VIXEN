@@ -108,10 +108,17 @@ static size_t ExtractTypedResource(
         {TypeKey{BaseType::Matrix, 4, 3, 0}, &ExtractResourceAs<glm::mat4x3>},  // mat4x3
     };
 
+    // SPIR-V reflection represents vectors as BaseType::Vector with a separate
+    // scalar component type. Dispatch on that scalar type so e.g. a reflected
+    // vec3 selects the glm::vec3 extractor below.
+    const BaseType dispatchBaseType = typeInfo.baseType == BaseType::Vector
+        ? typeInfo.componentType
+        : typeInfo.baseType;
+
     // Build lookup key: (baseType, dim1, dim2, dim3)
     TypeKey key = (typeInfo.baseType == BaseType::Matrix)
         ? TypeKey{typeInfo.baseType, static_cast<uint16_t>(typeInfo.columns), static_cast<uint16_t>(typeInfo.rows), static_cast<uint16_t>(typeInfo.arraySize)}
-        : TypeKey{typeInfo.baseType, static_cast<uint16_t>(typeInfo.vecSize), static_cast<uint16_t>(typeInfo.arraySize), 0};
+        : TypeKey{dispatchBaseType, static_cast<uint16_t>(typeInfo.vecSize), static_cast<uint16_t>(typeInfo.arraySize), 0};
 
     // O(1) hash lookup
     auto it = typeDispatch.find(key);
@@ -231,6 +238,7 @@ void PushConstantGathererNode::PreRegisterPushConstantFields(const std::shared_p
         fieldInfo.offset = member.offset;
         fieldInfo.size = member.type.sizeInBytes;
         fieldInfo.baseType = member.type.baseType;
+        fieldInfo.componentType = member.type.componentType;
         fieldInfo.vecSize = member.type.vecSize;
         fieldInfo.dynamicInputIndex = pushConstantFields_.size();
 
@@ -370,6 +378,7 @@ void PushConstantGathererNode::DiscoverPushConstants(VariadicCompileContext& ctx
         fieldInfo.offset = member.offset;
         fieldInfo.size = member.type.sizeInBytes;
         fieldInfo.baseType = member.type.baseType;
+        fieldInfo.componentType = member.type.componentType;
         fieldInfo.vecSize = member.type.vecSize;
         fieldInfo.dynamicInputIndex = pushConstantFields_.size();
 
@@ -491,6 +500,7 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
             // Pack connected field value
             ShaderManagement::SpirvTypeInfo typeInfo{};
             typeInfo.baseType = field.baseType;
+            typeInfo.componentType = field.componentType;
             typeInfo.vecSize = field.vecSize;
             typeInfo.arraySize = 0;  // Push constants don't use arrays
             typeInfo.sizeInBytes = field.size;

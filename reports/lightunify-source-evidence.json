@@ -1,0 +1,36 @@
+{
+  "source_base": "1252e3705a8247f5b0b1478f0164da55c7cd44ba",
+  "kind": "source audit; no runtime measurements",
+  "source_files": {
+    "VIXEN/application/main/include/graph/LookdevSceneDefinition.h": "a919a9f39108dbd430fbb1dd355a02b14c56dfe005354692e43d361ba0b95d07",
+    "VIXEN/application/main/source/graph/BuildRenderGraph.cpp": "ebc30ff438842254a0faf2f0756ae6ec5e6f149b38d05c22c6ff565373001d0d",
+    "VIXEN/application/main/source/VulkanGraphApplication.cpp": "04ccaa6ca96275bc6e962a09a4be1ce1a831758fdcb0359391861379bc10dd96",
+    "VIXEN/shaders/ShadowVisibilityWave.comp": "53625bbd79a04285dce19248feb5d8f649cab235d6c2c47b398aec2555d1c734",
+    "VIXEN/shaders/ShadowRayTrace.comp": "2d3cd016ae1298c29c392b68addd0d5c90843a66d499f608eb434bf9fd034c4b",
+    "VIXEN/shaders/ProbeGather.comp": "bf7039b89a768b24aca975fd6a99f5d9a10649212e458c8dee62502bcbf43407",
+    "VIXEN/shaders/BodyInstanceRayMarch.comp": "47aeca2486501e42d5d58c869b09fac7da5f91016d7401d85f5ae4e60c32c060",
+    "VIXEN/shaders/TraceWorld.glsl": "a7bf9202290f3dc3b2c5bd3cb1547a02c9fe4ec14c17e1be0f0876d53e3db1a0",
+    "VIXEN/shaders/SpatialReuseShade.comp": "3af3a7d82f48ab7a2c202787a6fa2cdf8c8de991e3eef17c34d17c8ebfd6b4f7",
+    "VIXEN/shaders/LightEvaluation.glsl": "e00b3064af3b13ab94ed30c34d93ad61169fbcc72ed623833c3b18428fbfb53b",
+    "VIXEN/libraries/RenderGraph/src/Nodes/ComputeStageNode.cpp": "3c8500e01750efb819e8b2bb8889f2635f100b3609ce283d21d7a59a6280042d"
+  },
+  "recipe_splice_marker": {
+    "VIXEN/shaders/ShadowVisibilityWave.comp": false,
+    "VIXEN/shaders/ShadowRayTrace.comp": false,
+    "VIXEN/shaders/ProbeGather.comp": false,
+    "VIXEN/shaders/BodyInstanceRayMarch.comp": true,
+    "VIXEN/shaders/SpatialReuseShade.comp": false
+  },
+  "owner_sheets": {
+    "before": {
+      "source": "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/editormaterials/reports/editormaterials14-visual/before/contact-sheet.png",
+      "copy": "reports/lightunify-visual/owner-before-contact-sheet.png",
+      "sha256": "52877877cc7d6008795d609d855a22379b86774baf33eb5d93c75e79a221ebbd"
+    },
+    "after": {
+      "source": "/home/liory/projects/VBVS--VIXEN/.claude-worktrees/editormaterials/reports/editormaterials14-visual/after/contact-sheet.png",
+      "copy": "reports/lightunify-visual/owner-after-contact-sheet.png",
+      "sha256": "6c41a593bd286258d1e8db759bd604eacdc1208ba8f10adeec68bc2214836259"
+    }
+  }
+}

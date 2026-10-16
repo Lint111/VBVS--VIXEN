@@ -54,6 +54,12 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
+// The generated recipe fields and occupancy data must precede SceneBindings:
+// TraceWorld.glsl resolves registered SDF instances through these declarations.
+layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+#include "recipe/SdfCoreKernels.g.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
+
 #include "SceneBindings.glsl"
 
 #include "Generated/LightingConfig.glsl"
@@ -156,7 +162,9 @@ void main() {
 
     bool visible = true;
     if (shadowConfig.enabled != 0u) {
-        vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
+        float originBias = storedSdfShadowOriginBias(
+            hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir);
+        vec3 shadowOrigin = worldPos + worldNormal * originBias;
         float lightDist = sqrt(dist2);
         bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
         recordCompositionShadowWave(
@@ -254,8 +262,6 @@ void main() {
     if (!leanSkip && (flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
         vec3 worldPos    = hitRecords[slot].worldPos;
         vec3 worldNormal = hitRecords[slot].worldNormal;
-        vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
-
         for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
             Light light = lightingConfig.lights[i];
             float distanceToLight;
@@ -268,6 +274,9 @@ void main() {
             float NdotL = max(dot(worldNormal, lightDir), 0.0);
             if (NdotL <= 0.0 || attenuation <= 0.0) continue;
 
+            float originBias = storedSdfShadowOriginBias(
+                hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir);
+            vec3 shadowOrigin = worldPos + worldNormal * originBias;
             float maxShadowDistance = shadowConfig.maxShadowDistance;
             if (light.kind == 1u) maxShadowDistance = min(maxShadowDistance, distanceToLight);
             bool occluded = light.kind == 1u

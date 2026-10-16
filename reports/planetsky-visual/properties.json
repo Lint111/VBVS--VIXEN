@@ -1,0 +1,236 @@
+{
+  "order": [
+    "C1",
+    "C1-epic",
+    "C2",
+    "C2-term",
+    "C4a",
+    "C4b",
+    "C4c",
+    "C5a-moon",
+    "C7",
+    "C7-60",
+    "C7-60-1p5au",
+    "C9"
+  ],
+  "results": {
+    "C1": {
+      "P1": {
+        "passed": true,
+        "unlitFraction": 0.0,
+        "note": "sun behind the camera: the disc is fully lit"
+      },
+      "P14": {
+        "passed": true,
+        "body": "planet",
+        "measuredRadiusPx": 414.26578245882,
+        "analyticRadiusPx": 414.2848745016685,
+        "offAxisDegrees": 8.537736462515939e-07
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C1-epic": {
+      "P1": {
+        "passed": true,
+        "angleDegrees": 0.016381171141695804,
+        "boundaryPixels": 1818,
+        "unlitFraction": 0.004102497495082941
+      },
+      "P5": {
+        "passed": true,
+        "measuredFraction": 0.995897502504917,
+        "expectedFraction": 0.9955730775485108,
+        "tolerance": 0.02
+      },
+      "P14": {
+        "passed": true,
+        "body": "planet",
+        "measuredRadiusPx": 414.185864147839,
+        "analyticRadiusPx": 414.28487450166546,
+        "offAxisDegrees": 0.0
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C2": {
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C2-term": {
+      "P1": {
+        "passed": true,
+        "angleDegrees": 0.002653524646957076,
+        "boundaryPixels": 1932,
+        "unlitFraction": 0.4904050925925926
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": 4.058952808380127
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C4a": {
+      "P14": {
+        "passed": true,
+        "measuredPx": 290.0354687516809,
+        "analyticPx": 289.70563668287156,
+        "rangeMetres": 299.9999904750557
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C4b": {
+      "P14": {
+        "passed": true,
+        "measuredPx": 290.0354687516809,
+        "analyticPx": 289.7056139088508,
+        "rangeMetres": 300.0000140583267
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C4c": {
+      "P14": {
+        "passed": true,
+        "measuredPx": 290.0354687516809,
+        "analyticPx": 289.7056210522315,
+        "rangeMetres": 300.00000666111333
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C5a-moon": {
+      "P1": {
+        "passed": true,
+        "angleDegrees": 0.14716610228408894,
+        "boundaryPixels": 260,
+        "unlitFraction": 0.5
+      },
+      "P5": {
+        "passed": true,
+        "measuredFraction": 0.5,
+        "expectedFraction": 0.5012847734034753,
+        "tolerance": 0.02
+      },
+      "P14": {
+        "passed": true,
+        "body": "moon",
+        "measuredRadiusPx": 65.41193690820135,
+        "analyticRadiusPx": 65.49291437334838,
+        "offAxisDegrees": 0.0
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C7": {
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C7-60": {
+      "P6.diameter": {
+        "passed": true,
+        "measuredDiameterPx": 9.640875829802336,
+        "analyticDiameterPx": 9.546276230265782,
+        "nominalAngularDiameterDegrees": 0.5329062144923111,
+        "offAxisDegrees": 19.959012975462965,
+        "meanEmission": 15000.0,
+        "pixels": 73
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      }
+    },
+    "C7-60-1p5au": {
+      "P6.diameter": {
+        "passed": true,
+        "measuredDiameterPx": 6.282549314314218,
+        "analyticDiameterPx": 6.364174595287411,
+        "nominalAngularDiameterDegrees": 0.35527009822938205,
+        "offAxisDegrees": 19.959012975462965,
+        "meanEmission": 15000.0,
+        "pixels": 31
+      },
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": -0.0
+      },
+      "P12": {
+        "passed": true
+      },
+      "P6.radianceInvariance": {
+        "passed": true,
+        "emissionRatio": 1.0,
+        "diameterRatio": 0.6516575283433587,
+        "expectedDiameterRatio": 0.6666666666666666
+      }
+    },
+    "C9": {
+      "P10": {
+        "passed": true,
+        "unexplainedEnergyPixels": 0,
+        "meterEV100": 0.029280373826622963
+      },
+      "P12": {
+        "passed": true
+      }
+    }
+  }
+}

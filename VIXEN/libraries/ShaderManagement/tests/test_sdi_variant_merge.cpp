@@ -390,3 +390,58 @@ TEST(SdiVariantMerge, ConflictingAccessFailsMerge) {
     EXPECT_FALSE(result.success);
     EXPECT_NE(result.errorMessage.find("SharedBuf"), std::string::npos);
 }
+
+// --- One descriptor set per program (R532) ---------------------------------
+
+TEST(SdiVariantMerge, OptionalFeatureAddsOneBindingToTheSameSet) {
+    auto off = MakeData({
+        MakeBinding(0, 0, "outputImage", VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        MakeBinding(0, 1, "esvoNodes", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+    });
+    auto on = MakeData({
+        MakeBinding(0, 0, "outputImage", VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        MakeBinding(0, 1, "esvoNodes", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        MakeBinding(0, 14, "instanceIterCount", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+    });
+
+    auto result = MergeSdiVariants(
+        "Hooks", {MakeVariant({}, off), MakeVariant({"VIXEN_GPU_TRACE_HOOKS"}, on)});
+    ASSERT_TRUE(result.success) << result.errorMessage;
+
+    ASSERT_EQ(result.merged.bindings.size(), 3u);
+    for (const auto& b : result.merged.bindings) EXPECT_EQ(b.binding.set, 0u);
+    EXPECT_EQ(FindMerged(result.merged, 0, 0)->binding.name, "outputImage");
+    EXPECT_EQ(FindMerged(result.merged, 0, 1)->binding.name, "esvoNodes");
+    EXPECT_EQ(FindMerged(result.merged, 0, 14)->requiredFeatures,
+              std::vector<std::string>{"VIXEN_GPU_TRACE_HOOKS"});
+}
+
+TEST(SdiVariantMerge, VariantsSpanningTwoSetsFail) {
+    auto off = MakeData({MakeBinding(0, 0, "outputImage", VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)});
+    auto on = off;
+    on.descriptorSets[1] = {MakeBinding(1, 0, "albedoMap", VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)};
+
+    auto result = MergeSdiVariants(
+        "TwoSets", {MakeVariant({}, off), MakeVariant({"WITH_ALBEDO"}, on)});
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.errorMessage.find("TwoSets"), std::string::npos);
+    EXPECT_NE(result.errorMessage.find("descriptor set"), std::string::npos);
+}
+
+TEST(SdiVariantMerge, SingleVariantSpanningTwoSetsFails) {
+    auto data = MakeData({MakeBinding(0, 0, "a", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)});
+    data.descriptorSets[1] = {MakeBinding(1, 0, "b", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)};
+
+    EXPECT_FALSE(MergeSdiVariants("TwoSetsOneVariant", {MakeVariant({}, data)}).success);
+}
+
+TEST(SdiVariantMerge, VariantRenumberingABindingFails) {
+    auto off = MakeData({MakeBinding(0, 14, "instanceIterCount", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)});
+    auto on = MakeData({MakeBinding(0, 15, "instanceIterCount", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)});
+
+    auto result = MergeSdiVariants(
+        "Renumbered", {MakeVariant({}, off), MakeVariant({"SOME_FLAG"}, on)});
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.errorMessage.find("instanceIterCount"), std::string::npos);
+    EXPECT_NE(result.errorMessage.find("stable"), std::string::npos);
+}

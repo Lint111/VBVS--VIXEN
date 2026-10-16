@@ -1,0 +1,19 @@
+{
+ "altitude_km": 411.0,
+ "camera": "NIKON Z 9 S/N: 3026744",
+ "camera_tilt": null,
+ "camera_tilt_deg": null,
+ "center": null,
+ "date": "2024.04.08",
+ "focal_length_mm": 28.0,
+ "frame_px": null,
+ "nadir": [
+  40.2,
+  -54.0
+ ],
+ "nadir_to_center": null,
+ "sensor_mm": null,
+ "sun_azimuth_deg": 256.0,
+ "sun_elevation_deg": 28.0,
+ "time_gmt": "19:36:34"
+}

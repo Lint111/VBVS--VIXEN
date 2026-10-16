@@ -1,0 +1,12 @@
+#version 450
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) buffer Out { uint sink[]; };
+layout(push_constant) uniform Push { uint iterations; } pc;
+void main() {
+    uint acc = gl_GlobalInvocationID.x;
+    for (uint i = 0u; i < pc.iterations; ++i) {
+        acc = acc * 1664525u + 1013904223u;
+        atomicAdd(sink[(acc >> 16) & 255u], acc & 1u);
+    }
+    sink[256u + (gl_GlobalInvocationID.x & 1023u)] = acc;
+}

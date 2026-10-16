@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "c3fb3847979e3f9eef04783510c42b70d7058ae7")
+set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -143,6 +143,24 @@ endif()
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
+set(_schema_gpu_source "${_cg}/gpu-schemas")
+set(_schema_gpu_systems "${_cg}/gpu-systems")
+set(_schema_gpu_generated "${_cg}/generated/gpu")
+set(_schema_gpu_staged "${CMAKE_CURRENT_BINARY_DIR}/gpu-schema-source")
+set(_schema_kernel_runtime "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime")
+set(_schema_kernel_schema "${_schema_kernel_runtime}/Schema")
+set(_undertow_core_src "")
+if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
+    set(_undertow_core_src "$ENV{UNDERTOW_ROOT}/core/src")
+elseif(_schema_catalog_source)
+    get_filename_component(_undertow_schema_dir "${_schema_catalog_source}" DIRECTORY)
+    get_filename_component(_undertow_core_src "${_undertow_schema_dir}/../.." ABSOLUTE)
+endif()
+set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
+set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
+set(_out_gpu_kind_cs "${_schema_gpu_generated}/FrameTargets.g.cs")
+set(_out_gpu_tonemap_glsl "${VIXEN_ROOT}/shaders/Generated/ExposureTonemapSystem.comp")
+set(_out_gpu_tonemap_header "${VIXEN_ROOT}/application/main/include/Generated/ExposureTonemapSystem.g.h")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     if(NOT _schema_catalog_source AND NOT VIXEN_RENDERER_PROVIDER_MODE)
         message(FATAL_ERROR
@@ -196,6 +214,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
+        _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
+        _codegen_to_wsl_path("${_schema_gpu_systems}" _schema_gpu_systems_run)
+        _codegen_to_wsl_path("${_schema_gpu_generated}" _schema_gpu_generated_run)
+        _codegen_to_wsl_path("${_schema_kernel_runtime}" _schema_kernel_runtime_run)
+        _codegen_to_wsl_path("${_schema_kernel_schema}" _schema_kernel_schema_run)
+        _codegen_to_wsl_path("${_schema_sim_framework}" _schema_sim_framework_run)
+        _codegen_to_wsl_path("${_out_gpu_schema_json}" _out_gpu_schema_json_run)
+        _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
+        _codegen_to_wsl_path("${_out_gpu_tonemap_glsl}" _out_gpu_tonemap_glsl_run)
+        _codegen_to_wsl_path("${_out_gpu_tonemap_header}" _out_gpu_tonemap_header_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
         # builds consume the committed AppFlow/ViewNounId headers when this tool is absent.
         _codegen_to_wsl_path("${_schema_catalog_source}" _schema_catalog_run)
@@ -231,8 +259,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # render-param block, via the new --struct-precision emitter.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
@@ -244,6 +277,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc" _out_recipe_eval_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc" _out_recipe_glsl_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl" _out_recipe_tape_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h" _out_recipe_glsl_literals_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -282,6 +316,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
+        set(_schema_gpu_staged_run "${_schema_gpu_staged}")
+        set(_schema_gpu_systems_run "${_schema_gpu_systems}")
+        set(_schema_gpu_generated_run "${_schema_gpu_generated}")
+        set(_schema_kernel_runtime_run "${_schema_kernel_runtime}")
+        set(_schema_kernel_schema_run "${_schema_kernel_schema}")
+        set(_schema_sim_framework_run "${_schema_sim_framework}")
+        set(_out_gpu_schema_json_run "${_out_gpu_schema_json}")
+        set(_out_gpu_kind_cs_run "${_out_gpu_kind_cs}")
+        set(_out_gpu_tonemap_glsl_run "${_out_gpu_tonemap_glsl}")
+        set(_out_gpu_tonemap_header_run "${_out_gpu_tonemap_header}")
         # See the WSL-bridge block's engine-standalone caveat above.
         set(_schema_catalog_run "${_schema_catalog_source}")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
@@ -314,8 +358,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_sparseemitterentry_glsl_run "${VIXEN_ROOT}/shaders/Generated/SparseEmitterEntry.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
+        set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
+        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
+        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
+        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
+        set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
         set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
@@ -327,6 +376,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipe_eval_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc")
         set(_out_recipe_glsl_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc")
         set(_out_recipe_tape_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl")
+        set(_out_recipe_glsl_literals_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -514,6 +564,25 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
+    # The text recipe carries one fixed-width contour bucket in each typed glyph
+    # instance. Keep its C++/GLSL std430 faces and width-sensitive layout hash
+    # generated from the same [GpuStruct] declaration as SdfCore_GlyphOutline.
+    set(_glyph_outline_args
+        "${_yk_dll_run}"
+        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
+        --out-cpp "${_out_glyph_outline_cpp_run}"
+        --out-glsl "${_out_glyph_outline_glsl_run}"
+        --out-layout-hash "${_out_glyph_outline_layout_run}")
+    vixen_add_codegen_check(glyph_outline_instance_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
+        COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"
+        VERBATIM)
+    add_custom_target(glyph_outline_instance_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args}
+        COMMENT "[codegen] regenerate GlyphOutlineInstance C++/GLSL faces and layout fingerprint"
+        JOB_POOL msbuild
+        VERBATIM)
+
     # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
     # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
     set(_recipe_simd_args
@@ -522,12 +591,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_recipe_simd_run}"
         --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
         --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}"
-        --out-tape-glsl "${_out_recipe_tape_glsl_run}")
+        --out-tape-glsl "${_out_recipe_tape_glsl_run}"
+        --out-glsl-literals "${_out_recipe_glsl_literals_run}")
     vixen_add_codegen_check(recipe_simd_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
         COMMENT "[codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations"
@@ -542,6 +613,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-cpp
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_core_cpp_run}"
@@ -562,6 +634,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_opcodes_run}")
@@ -599,6 +672,120 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate LightingConfig.g.h/.glsl (Yeroket tool)"
         JOB_POOL msbuild
         VERBATIM)
+
+    # ExposureTonemapSystem is the first VIXEN render pass owned by a GPU-domain
+    # [KernelSystem]. Its texture selectors derive the image descriptors and its
+    # body emits both the shader and the C++ binding/dispatch contract.
+    if(EXISTS "${_schema_sim_framework}/SystemDeclarations.cs"
+        AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
+        # SchemaJsonSourceEmitter resolves every declaration referenced by the
+        # local schema, including Undertow runtime schema declarations. Stage the
+        # authored source roots together in the build tree so the checked input
+        # remains isolated from both source checkouts.
+        set(_gpu_schema_stage_script "${_cg}/StageGpuSchemaSource.cmake")
+        # The VIXEN artifact does not consume Undertow's Faction AI message
+        # kinds. Their newer named visibility argument is outside this pinned
+        # source reader's supported Message syntax; keep that unrelated pack
+        # source out of this local schema overlay.
+        set(_gpu_schema_excluded_sources)
+        if(IS_DIRECTORY "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
+            list(APPEND _gpu_schema_excluded_sources
+                "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
+        endif()
+        set(_gpu_schema_source_files)
+        if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")
+            file(GLOB_RECURSE _undertow_gpu_schema_sources CONFIGURE_DEPENDS
+                "${_undertow_core_src}/*.cs")
+            foreach(_source IN LISTS _undertow_gpu_schema_sources)
+                if(NOT _source MATCHES "/(obj|bin)/")
+                    list(APPEND _gpu_schema_source_files "${_source}")
+                endif()
+            endforeach()
+        endif()
+        file(GLOB_RECURSE _vixen_gpu_schema_sources CONFIGURE_DEPENDS
+            "${_schema_gpu_source}/*.cs")
+        list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
+
+        add_custom_target(frame_targets_schema_source_stage
+            COMMAND "${CMAKE_COMMAND}"
+                "-DSOURCE_ROOT=${_undertow_core_src}"
+                "-DLOCAL_ROOT=${_schema_gpu_source}"
+                "-DEXCLUDED_SOURCES=${_gpu_schema_excluded_sources}"
+                "-DOUTPUT_ROOT=${_schema_gpu_staged}"
+                -P "${_gpu_schema_stage_script}"
+            DEPENDS ${_gpu_schema_source_files} "${_gpu_schema_stage_script}"
+            COMMENT "[codegen] stage Undertow and VIXEN GPU schema sources"
+            VERBATIM)
+
+        set(_frame_targets_schema_args
+            "${_yk_dll_run}" --schema-json-source
+            --schema-source "${_schema_gpu_staged_run}"
+            --schema-kernel-source "${_schema_kernel_schema_run}"
+            --out-json "${_out_gpu_schema_json_run}")
+        vixen_add_checked_target(frame_targets_schema_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args} --check
+            DEPENDS "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool
+                ${_gpu_schema_source_files}
+            COMMENT "[codegen] golden check: FrameTargets schema JSON matches its source declaration"
+            JOB_POOL vixen_codegen
+            VERBATIM)
+        add_dependencies(frame_targets_schema_check frame_targets_schema_source_stage)
+        add_custom_target(frame_targets_schema_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args}
+            COMMENT "[codegen] regenerate FrameTargets schema JSON"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_dependencies(frame_targets_schema_regen engine_codegen_tool frame_targets_schema_source_stage)
+
+        set(_frame_targets_ref_args
+            "${_yk_dll_run}" --gaia-kind-cs
+            --schema-json "${_out_gpu_schema_json_run}"
+            --out-cs "${_out_gpu_kind_cs_run}"
+            --namespace Vixen.Codegen.Gpu)
+        vixen_add_codegen_check(frame_targets_ref_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_ref_args} --check
+            COMMENT "[codegen] golden check: FrameTargetsRef matches the canonical schema"
+            VERBATIM)
+        add_dependencies(frame_targets_ref_check frame_targets_schema_check)
+        add_custom_target(frame_targets_ref_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_ref_args}
+            COMMENT "[codegen] regenerate FrameTargetsRef"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_dependencies(frame_targets_ref_regen frame_targets_schema_regen)
+
+        set(_exposure_tonemap_gpu_args
+            "${_yk_dll_run}"
+            --schema "${_schema_gpu_systems_run}"
+            --schema "${_schema_gpu_generated_run}"
+            --schema "${_schema_kernel_runtime_run}"
+            --schema "${_schema_sim_framework_run}"
+            --schema "${_schema_config_run}"
+            --schema-json "${_out_gpu_schema_json_run}"
+            --gaia-gpu-system ExposureTonemapSystem
+            --out-glsl "${_out_gpu_tonemap_glsl_run}"
+            --out-header "${_out_gpu_tonemap_header_run}")
+        vixen_add_codegen_check(exposure_tonemap_gpu_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_exposure_tonemap_gpu_args} --check
+            COMMENT "[codegen] golden check: exposure tone-map GLSL and C++ match the GPU system"
+            VERBATIM)
+        add_dependencies(exposure_tonemap_gpu_check frame_targets_schema_check frame_targets_ref_check)
+        add_custom_target(exposure_tonemap_gpu_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_exposure_tonemap_gpu_args}
+            COMMENT "[codegen] regenerate exposure tone-map GLSL and C++"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_dependencies(exposure_tonemap_gpu_regen frame_targets_ref_regen)
+        # One supported refresh: frame-target schema, typed refs, tone-map outputs and the UI SPIR-V header.
+        if(TARGET ui_shader_spirv_regen)
+            add_custom_target(frame_targets_refresh)
+            add_dependencies(frame_targets_refresh exposure_tonemap_gpu_regen ui_shader_spirv_regen)
+        endif()
+    else()
+        message(WARNING
+            "[codegen] ExposureTonemapSystem GPU-system drift guard DISABLED: "
+            "the pinned kernel schema or Undertow.Sim.Framework/SystemDeclarations.cs is unavailable")
+    endif()
 
     # --- ShadowConfig via the same Yeroket tool (Sampled Lighting Inc1 M4: shadow-pass
     # compute budget as drift-guarded data). Generated header lives beside RenderGraph,

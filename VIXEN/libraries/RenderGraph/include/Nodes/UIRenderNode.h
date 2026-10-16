@@ -21,6 +21,7 @@
 
 struct SwapChainPublicVariables;  // global (VulkanSwapChain.h); full include in the .cpp
 namespace Rml { class Context; class ElementDocument; }
+namespace Vixen::Text { class RmlFontEngine; }
 
 namespace Vixen::RenderGraph {
 
@@ -47,7 +48,7 @@ public:
 class UIRenderNode : public TypedNode<UIRenderNodeConfig>, public IUiCompositionHost {
 public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
-    ~UIRenderNode() override = default;
+    ~UIRenderNode() override;
 
     /// Renderer-agnostic view seam: the consumer hands in its view; the node hosts its data model
     /// (CreateDataModel(view->ModelName()) -> view->Register(c) -> LoadDocument(view->DocumentPath()))
@@ -115,6 +116,7 @@ private:
 
     Vixen::Ui::VixenRmlSystemInterface systemInterface_;
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;
+    std::unique_ptr<Vixen::Text::RmlFontEngine> fontEngine_;
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
 

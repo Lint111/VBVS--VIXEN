@@ -1,0 +1,459 @@
+{
+  "format": "undertow-lane-continuation/v1",
+  "task_base_sha": "213d54f2abfa4cebf9a550de5e28380161ba273b",
+  "repositories": {
+    "vixen": {
+      "commit": "8f3127167c0ceecd3163d49775156c90c9425e7f"
+    },
+    "undertow": {
+      "commit": "9c0136d5532c79f73d5bf85e15dd698a2e611209"
+    },
+    "kernel": {
+      "commit": "dc6c87b7262c6791c745f37e583ca12f2f8706fe"
+    }
+  },
+  "provider_pins": {
+    "vixen_yeroket_kernel_sha": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+    "vixen_yeroket_kernel_sha_override": ""
+  },
+  "latest_continuation": {
+    "wave_merge": "49dd9502b2e97e6f30f57d86eb142e3b78442503",
+    "prior_wave_merge": "213d54f2abfa4cebf9a550de5e28380161ba273b",
+    "implementation_commit": "f0306a822bbfb55385688ef6b2b7aa7c7cf68de7",
+    "kernel_pin_source": "tracked YEROKET_KERNEL_SHA; no per-build override",
+    "kernel_sha": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+    "tone_map_regeneration": {
+      "status": "passed",
+      "shader_and_header_content_changed": false,
+      "log": "/home/liory/.local/state/undertow/undertow-box-logs/1791935468-build-rjs2-pin-dc6-wsl-tonemap-regen.log"
+    },
+    "app_build_all_checks": {
+      "status": "passed",
+      "wsl_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791935549-build-rjs2-pin-dc6-wsl-all-checks.log",
+      "native_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791936620-build-rjs2-pin-dc6-native-all-checks-tbbpath.log",
+      "rerun_after_latest_merge": false,
+      "reason": "Controller said not to redo the already completed full Release builds. The later merge only added case-tolerant glslang include lookup and removed the runtime-written cache manifest."
+    },
+    "correctness_split": {
+      "status": "passed-with-recovered-timeout",
+      "selection": "Runner-default GPU inventory; native and nightly excluded; every correctness label represented.",
+      "split_method": "Six disjoint test-name shards submitted as separate queued GPU jobs.",
+      "merged_wave_inventory_baseline_sha": "f19b7ebb64f5abb4008eff9c9da14aaeada06dc3",
+      "selected_unique": {
+        "baseline": 140,
+        "current": 172
+      },
+      "final_unique_results": {
+        "passed": 155,
+        "skipped": 17,
+        "failed": 0
+      },
+      "baseline_failing_names": [],
+      "final_failing_names": [],
+      "transient_failure": {
+        "name": "vixen_hud_capture_producer",
+        "initial_result": "timeout at 180.36 seconds in shard 3 during concurrent shared GPU work",
+        "attribution": "Consistent with load-sensitive fixture timeout: it passed in shard 4 (148.84s), shard 5 (69.87s), and the isolated retry (32.37s). The two fixture-dependent tests also passed on retry.",
+        "retry_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791949140-gpu-rjs2:gpu-final-dc6-retry-shard3.log"
+      },
+      "per_label_gpu_counts_baseline_current": {
+        "AppFlow": {
+          "baseline": 0,
+          "current": 0
+        },
+        "Application": {
+          "baseline": 25,
+          "current": 57
+        },
+        "CashSystem": {
+          "baseline": 0,
+          "current": 0
+        },
+        "GaiaArchetypes": {
+          "baseline": 0,
+          "current": 0
+        },
+        "GaiaVoxelWorld": {
+          "baseline": 0,
+          "current": 0
+        },
+        "RenderGraph": {
+          "baseline": 98,
+          "current": 98
+        },
+        "ResourceManagement": {
+          "baseline": 1,
+          "current": 1
+        },
+        "SVO": {
+          "baseline": 15,
+          "current": 15
+        },
+        "ShaderManagement": {
+          "baseline": 0,
+          "current": 0
+        },
+        "VIXENCapture": {
+          "baseline": 1,
+          "current": 1
+        },
+        "VoxelComponents": {
+          "baseline": 0,
+          "current": 0
+        },
+        "VoxelData": {
+          "baseline": 0,
+          "current": 0
+        },
+        "VoxelDocument": {
+          "baseline": 0,
+          "current": 0
+        },
+        "VulkanResources": {
+          "baseline": 1,
+          "current": 1
+        },
+        "WSL": {
+          "baseline": 1,
+          "current": 1
+        },
+        "logger": {
+          "baseline": 0,
+          "current": 0
+        }
+      },
+      "per_label_row_sums_overlap_by": 2,
+      "queue_logs": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947742-gpu-rjs2:gpu-final-dc6-1.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947749-gpu-rjs2:gpu-final-dc6-2.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947787-gpu-rjs2:gpu-final-dc6-3.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948014-gpu-rjs2:gpu-final-dc6-4.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948756-gpu-rjs2:gpu-final-dc6-5.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948607-gpu-rjs2:gpu-final-dc6-6.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791949140-gpu-rjs2:gpu-final-dc6-retry-shard3.log"
+      ],
+      "junit_dir": "build/wsl/rjs2-gpu-dc6-final/"
+    },
+    "native_parity_recapture": {
+      "status": "passed",
+      "pin": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+      "pairs": 16,
+      "byte_identical_pairs": 16,
+      "resolution": "500x500",
+      "pixel_diff": 0,
+      "max_channel_delta": 0,
+      "device": "AMD Radeon(TM) 8060S Graphics",
+      "driver": "32.0.22018.5",
+      "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "queue_job_count": 32,
+      "per_pair_queue_logs_and_png_hashes": "VIXEN/reports/rjs2-parity.csv"
+    },
+    "midday_lookdev_ab": {
+      "status": "passed",
+      "pin": "dc6c87b7262c6791c745f37e583ca12f2f8706fe",
+      "pairs": 4,
+      "byte_identical_pairs": 4,
+      "resolution": "500x500",
+      "pixel_diff": 0,
+      "max_channel_delta": 0,
+      "reference_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791949667-gpu-rjs2:dc6-lookdev-midday-reference.log",
+      "system_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791949685-gpu-rjs2:dc6-lookdev-midday-system.log",
+      "images_opened": [
+        "reference/midday-angle-0.png",
+        "reference/midday-angle-1.png",
+        "reference/midday-angle-2.png",
+        "reference/midday-angle-3.png",
+        "system/midday-angle-0.png",
+        "system/midday-angle-1.png",
+        "system/midday-angle-2.png",
+        "system/midday-angle-3.png"
+      ],
+      "artifact_dir": "/mnt/c/vixen-native/rjs2/build/native/runtime-captures/lookdev-ab-dc6-midday/"
+    },
+    "editor_capture_producer": {
+      "status": "passed",
+      "test": "vixen_editor_capture_producer",
+      "queue_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791949623-gpu-rjs2:dc6-editor-capture-producer.log"
+    },
+    "native_gpu_timing": {
+      "status": "deferred-to-controller",
+      "runs_requested": 5,
+      "threshold_ms": 0.5,
+      "median_ms": null,
+      "spread_ms": null,
+      "reason": "Controller explicitly reserved the quiet exclusive --gpu-benchmark window; this lane did not run timing."
+    },
+    "updated_utc": "2026-10-14T03:53:36.577437+00:00",
+    "queue_reservation_warning": {
+      "observed": true,
+      "detail": "Two parallel parity jobs logged a missing /tmp/undertow-box-memory-reservation.<pid> at queue admission; both jobs passed without manual retry.",
+      "proposal": "Make shared GPU reservation cleanup race-safe"
+    },
+    "consolidation_proposals": [
+      "Derive SSBO block provider aliases from generated binding names",
+      "Partition GPU split tests into parallel queued shards",
+      "Resolve the Windows command path for queued WSL jobs",
+      "Budget GPU fixture timeouts for concurrent shared jobs",
+      "Make shared GPU reservation cleanup race-safe"
+    ]
+  },
+  "checks": [
+    {
+      "id": "tone-map-codegen",
+      "status": "passed",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791908702-light-regen-tonemap-kernel-928c40c9.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918587-build-codegentool-restore-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918598-build-codegentool-build-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918628-light-codegentool-check-928.log"
+      ],
+      "source_paths": {
+        "vixen": [
+          "VIXEN/codegen/CMakeLists.txt",
+          "VIXEN/codegen/gpu-schemas",
+          "VIXEN/codegen/gpu-systems/ExposureTonemapSystem.cs",
+          "VIXEN/codegen/generated/gpu",
+          "VIXEN/shaders/Generated/ExposureTonemapSystem.comp",
+          "VIXEN/application/main/include/Generated/ExposureTonemapSystem.g.h"
+        ],
+        "undertow": [
+          "core/src"
+        ],
+        "kernel": [
+          "Packages/com.yeroket.utility.kernel-framework/Runtime",
+          "Packages/com.yeroket.utility.kernel-framework/CodegenTool~"
+        ]
+      }
+    },
+    {
+      "id": "sdi-merge-and-shader-compile",
+      "status": "passed",
+      "diagnostic": "WSL and native SDI merges passed; native Vulkan sdi_tool compiled the emitted shader. WSL glslangValidator is absent.",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791910257-light-sdi-merge-wsl-928-final.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791911328-light-sdi-merge-native-928.log"
+      ]
+    },
+    {
+      "id": "app-build-all-checks",
+      "status": "passed",
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791910344-build-build-wsl-all-checks-app-928-merged.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791913331-build-build-native-all-checks-app-928-post-regeneration.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791916337-build-build-same-base-wsl-928-all-struct-regens.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791921932-build-rjs2-post-alias-wsl-all-checks.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791923903-build-rjs2-post-alias-native-all-checks-retry1.log"
+      ],
+      "same_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
+      "same_base_note": "No published wizard baseline matched the 2685b1e9 base and 928c40c9 kernel pair. Fresh same-base generation and all-target WSL build passed with the same override after three shared-struct schema regenerations."
+    },
+    {
+      "id": "render-graph-current-history-provider",
+      "status": "partial",
+      "vixen_commit": "e69ab76bce4b33bdda157b85f0360a9137b69bf3",
+      "diagnostic": "The generated system required sceneRadianceHistoryOutput_current while graph wiring provided only sceneRadianceHistoryOutput. Added the exact-name provider alias to the current history view and filed a consolidation proposal.",
+      "wsl_build": "passed",
+      "native_build": "passed; retry succeeded after the first request yielded before payload launch",
+      "focused_gpu_tests": "editor capture producer retry waited about six minutes and was terminated before payload launch at the 2026-10-13 20:47 UTC checkpoint (wrapper exit 143); earlier editor and HUD attempts were stopped before payload launch after 29 minutes without GPU admission"
+    },
+    {
+      "id": "native-parity",
+      "status": "passed",
+      "comparison": "Hand-written ExposureTonemapReference.comp versus generated ExposureTonemapSystem.comp",
+      "completed_states": [
+        "midday",
+        "late-afternoon",
+        "overcast",
+        "night-service"
+      ],
+      "pending_states": [],
+      "completed_pairs": 16,
+      "pairs_byte_identical": 16,
+      "resolution": "500x500",
+      "pixel_diff": 0,
+      "max_channel_delta": 0,
+      "device": "AMD Radeon(TM) 8060S Graphics",
+      "driver": "32.0.22018.5",
+      "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "images_opened": [
+        "midday-angle-0",
+        "late-afternoon-angle-0",
+        "overcast-angle-0",
+        "night-service-angle-0"
+      ],
+      "artifacts": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791917647-gpu-parity-midday-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791917941-gpu-parity-late-afternoon-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918050-gpu-parity-overcast-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791922095-gpu-parity-night-service-928.log"
+      ]
+    },
+    {
+      "id": "lookdev-ab",
+      "status": "partial",
+      "completed_states": [
+        "overcast",
+        "late-afternoon",
+        "night-service"
+      ],
+      "pending_states": [
+        "midday"
+      ],
+      "completed_pairs": 12,
+      "completed_pairs_byte_identical": 12,
+      "artifact_logs": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791918083-gpu-lookdev-ab-overcast-928.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791919351-gpu-lookdev-ab-night-service-928-retry1.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791919465-gpu-lookdev-ab-late-afternoon-928-retry1.log"
+      ],
+      "first_night_service_attempt": "Reference CTest passed; wrapper signaled during system CTest (exit 76, payload exit 143, no diagnostic); separate retry passed both captures.",
+      "first_late_afternoon_attempt": "Exited by signal before a completion record; separate retry passed both captures."
+    },
+    {
+      "id": "correctness-suite",
+      "status": "partial",
+      "selection": "All 16 suite labels containing CPU/GPU correctness tests, including RenderGraph, SVO, Application, and runner defaults.",
+      "same_base_sha": "2685b1e980a052f85b938d7ac31b47f5930e015f",
+      "selected_totals": {
+        "base": {
+          "cpu": 2398,
+          "gpu": 607
+        },
+        "current": {
+          "cpu": 2398,
+          "gpu": 639
+        }
+      },
+      "per_label_counts_cpu_gpu": {
+        "AppFlow": {
+          "base": "57/0",
+          "current": "57/0"
+        },
+        "Application": {
+          "base": "0/24",
+          "current": "0/56"
+        },
+        "CashSystem": {
+          "base": "0/117",
+          "current": "0/117"
+        },
+        "GaiaArchetypes": {
+          "base": "128/0",
+          "current": "128/0"
+        },
+        "GaiaVoxelWorld": {
+          "base": "100/0",
+          "current": "100/0"
+        },
+        "RenderGraph": {
+          "base": "1198/200",
+          "current": "1198/200"
+        },
+        "ResourceManagement": {
+          "base": "0/238",
+          "current": "0/238"
+        },
+        "SVO": {
+          "base": "783/15",
+          "current": "783/15"
+        },
+        "ShaderManagement": {
+          "base": "62/0",
+          "current": "62/0"
+        },
+        "VIXENCapture": {
+          "base": "0/1",
+          "current": "0/1"
+        },
+        "VoxelComponents": {
+          "base": "9/0",
+          "current": "9/0"
+        },
+        "VoxelData": {
+          "base": "24/0",
+          "current": "24/0"
+        },
+        "VoxelDocument": {
+          "base": "8/0",
+          "current": "8/0"
+        },
+        "VulkanResources": {
+          "base": "0/13",
+          "current": "0/13"
+        },
+        "WSL": {
+          "base": "0/1",
+          "current": "0/1"
+        },
+        "logger": {
+          "base": "28/0",
+          "current": "28/0"
+        }
+      },
+      "cpu_failures": {
+        "base": [
+          "AppFlowBlob.InteriorEditPreservesShapeHash",
+          "SdiLifecycleTest.RegisterShaderInSDIRegistry"
+        ],
+        "current": [
+          "AppFlowBlob.InteriorEditPreservesShapeHash"
+        ]
+      },
+      "gpu_status": "Same-base GPU run was explicitly interrupted at 596/607 because its 12-state PlanetCapture could not finish before the lane checkpoint (wrapper exit 143). Before interruption, base-only failures were HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams and HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground. Current full GPU run completed before the graph alias fix with 13 failures and 10 dependents not run due missing sceneRadianceHistoryOutput_current; a full post-fix split and failing-name comparison remain incomplete. The focused post-fix editor producer retry was terminated before payload launch and yielded no test result.",
+      "cpu_logs": [
+        "build/wsl-baseline/rjs2-split-928-base/cpu.log",
+        "build/wsl/rjs2-split-928-current/cpu.log"
+      ]
+    },
+    {
+      "id": "native-gpu-timing",
+      "status": "not-run",
+      "runs_requested": 5,
+      "threshold_ms": 0.5,
+      "queue_load": "No quiet window: observed host CPU ranged from 26-87%; at the 2026-10-13 20:47 UTC checkpoint, both shared GPU slots were held by another lane's long-running correctness work, with additional GPU jobs waiting.",
+      "median_ms": null,
+      "spread_ms": null,
+      "reason": "The requested quiet native --gpu-benchmark window was unavailable, so no timing number is claimed."
+    },
+    {
+      "id": "gpu-split-dc6-final",
+      "status": "passed-with-recovered-timeout",
+      "selected_unique": 172,
+      "passed": 155,
+      "expected_skips": 17,
+      "final_failures": [],
+      "baseline": "capperf1 inventory at f19b7ebb64f5abb4008eff9c9da14aaeada06dc3; 140 selected, no failing names",
+      "queue_logs": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947742-gpu-rjs2:gpu-final-dc6-1.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947749-gpu-rjs2:gpu-final-dc6-2.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791947787-gpu-rjs2:gpu-final-dc6-3.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948014-gpu-rjs2:gpu-final-dc6-4.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948756-gpu-rjs2:gpu-final-dc6-5.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791948607-gpu-rjs2:gpu-final-dc6-6.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791949140-gpu-rjs2:gpu-final-dc6-retry-shard3.log"
+      ]
+    },
+    {
+      "id": "native-parity-dc6-recapture",
+      "status": "passed",
+      "pairs_byte_identical": 16,
+      "pixel_diff": 0,
+      "sheet": "VIXEN/reports/rjs2-parity.csv"
+    },
+    {
+      "id": "midday-lookdev-ab-dc6",
+      "status": "passed",
+      "pairs_byte_identical": 4,
+      "images_opened": true,
+      "queue_logs": [
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791949667-gpu-rjs2:dc6-lookdev-midday-reference.log",
+        "/home/liory/.local/state/undertow/undertow-box-logs/1791949685-gpu-rjs2:dc6-lookdev-midday-system.log"
+      ]
+    },
+    {
+      "id": "editor-capture-producer-dc6",
+      "status": "passed",
+      "queue_log": "/home/liory/.local/state/undertow/undertow-box-logs/1791949623-gpu-rjs2:dc6-editor-capture-producer.log"
+    }
+  ]
+}

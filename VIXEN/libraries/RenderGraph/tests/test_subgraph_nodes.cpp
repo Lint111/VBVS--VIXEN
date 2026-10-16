@@ -3,6 +3,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Data/Core/ResourceConfig.h"
+#include "CapabilityGraph.h"
 
 #include <algorithm>
 #include <memory>
@@ -45,6 +46,17 @@ CONSTEXPR_NODE_CONFIG(PassThroughPorts, 1, 1, SlotArrayMode::Single) {
                 SlotMutability::WriteOnly);
 };
 
+CONSTEXPR_NODE_CONFIG(ProviderPorts, 0, 1, SlotArrayMode::Single) {
+    OUTPUT_SLOT(IndirectLighting, const VkBuffer, 0,
+                SlotNullability::Required, SlotMutability::WriteOnly);
+
+    ProviderPorts() {
+        HandleDescriptor desc{"VkBuffer"};
+        INIT_OUTPUT_DESC(IndirectLighting, "indirect_lighting",
+                         ResourceLifetime::Transient, desc);
+    }
+};
+
 class TestNode final : public NodeInstance {
 public:
     TestNode(const std::string& name, NodeType* type)
@@ -53,19 +65,25 @@ public:
 
 class TestNodeType final : public NodeType {
 public:
-    TestNodeType(std::string name, size_t inputCount, size_t outputCount)
+    TestNodeType(std::string name, size_t inputCount, size_t outputCount,
+                 bool optionalInputs = false)
         : NodeType(std::move(name)) {
         inputSchema.resize(inputCount);
         outputSchema.resize(outputCount);
         for (size_t index = 0; index < inputCount; ++index) {
             inputSchema[index].name = "input" + std::to_string(index);
             inputSchema[index].type = ResourceType::Buffer;
-            inputSchema[index].nullable = false;
+            inputSchema[index].nullable = optionalInputs;
+            inputSchema[index].declaredType = std::type_index(typeid(const VkBuffer));
+            inputSchema[index].role = optionalInputs ? SlotRole::Execute
+                                                     : SlotRole::Dependency;
         }
         for (size_t index = 0; index < outputCount; ++index) {
             outputSchema[index].name = "output" + std::to_string(index);
             outputSchema[index].type = ResourceType::Buffer;
             outputSchema[index].nullable = false;
+            outputSchema[index].declaredType = std::type_index(typeid(const VkBuffer));
+            outputSchema[index].role = SlotRole::Output;
         }
     }
 
@@ -81,7 +99,8 @@ struct PassThroughParams {};
 class RegisteredPassThroughSubGraph final
     : public SubGraphType<RegisteredPassThroughSubGraph> {
 public:
-    RegisteredPassThroughSubGraph() : SubGraphType("Test.RegisteredPassThrough") {}
+    static constexpr std::string_view TYPE_NAME = "Test.RegisteredPassThrough";
+    static constexpr std::string_view CAPABILITY_NAME = "";
     using PortConfig = PassThroughPorts;
     using Params = PassThroughParams;
 
@@ -92,7 +111,6 @@ public:
 
 class ChainSubGraph final : public SubGraphType<ChainSubGraph> {
 public:
-    ChainSubGraph() : SubGraphType("Test.Chain") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -105,7 +123,6 @@ public:
 
 class UnboundSubGraph final : public SubGraphType<UnboundSubGraph> {
 public:
-    UnboundSubGraph() : SubGraphType("Test.Unbound") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -117,7 +134,6 @@ public:
 
 class DoubleOutputSubGraph final : public SubGraphType<DoubleOutputSubGraph> {
 public:
-    DoubleOutputSubGraph() : SubGraphType("Test.DoubleOutput") {}
     using PortConfig = ChainPorts;
     using Params = ChainParams;
 
@@ -131,7 +147,6 @@ public:
 
 class RecursiveSubGraph final : public SubGraphType<RecursiveSubGraph> {
 public:
-    RecursiveSubGraph() : SubGraphType("Test.Recursive") {}
     using PortConfig = EmptyPorts;
     using Params = ChainParams;
 
@@ -143,7 +158,6 @@ public:
 template<int Depth>
 class DepthSubGraph final : public SubGraphType<DepthSubGraph<Depth>> {
 public:
-    DepthSubGraph() : SubGraphType<DepthSubGraph<Depth>>("Test.Depth") {}
     using PortConfig = EmptyPorts;
     using Params = ChainParams;
 
@@ -154,6 +168,19 @@ public:
     }
 };
 
+class RegisteredProviderSubGraph final : public SubGraphType<RegisteredProviderSubGraph> {
+public:
+    static constexpr std::string_view TYPE_NAME = "TestIndirectLightingProvider";
+    static constexpr std::string_view CAPABILITY_NAME = "Test:IndirectLighting";
+    using PortConfig = ProviderPorts;
+    using Params = ChainParams;
+
+    void Build(GraphScope& scope, const Params&) {
+        const NodeHandle source = scope.AddNode("Source", "source");
+        scope.BindOutput(ProviderPorts::IndirectLighting, source, SourceSlots::SourceOutput);
+    }
+};
+
 class GraphFixture {
 public:
     GraphFixture()
@@ -161,11 +188,13 @@ public:
         registry.RegisterNodeType(std::make_unique<TestNodeType>("Source", 0, 1));
         registry.RegisterNodeType(std::make_unique<TestNodeType>("Transform", 1, 1));
         registry.RegisterNodeType(std::make_unique<TestNodeType>("Sink", 1, 0));
+        registry.RegisterNodeType(std::make_unique<TestNodeType>("OptionalSink", 1, 0, true));
     }
 
     NodeHandle AddSource(const std::string& name) { return graph.AddNode("Source", name); }
     NodeHandle AddTransform(const std::string& name) { return graph.AddNode("Transform", name); }
     NodeHandle AddSink(const std::string& name) { return graph.AddNode("Sink", name); }
+    NodeHandle AddOptionalSink(const std::string& name) { return graph.AddNode("OptionalSink", name); }
 
     NodeTypeRegistry registry;
     RenderGraph graph;
@@ -302,6 +331,60 @@ TEST(SubGraphNodesTest, ExpansionRejectsTypeCyclesAndDepthBeyondEight) {
     EXPECT_EQ(fixture.graph.GetNodeCount(), 0u);
     EXPECT_THROW(fixture.graph.Instantiate<DepthSubGraph<9>>("deep"), std::runtime_error);
     EXPECT_EQ(fixture.graph.GetNodeCount(), 0u);
+}
+
+TEST(SubGraphNodesTest, RegisteredGroupUsesRegistrySchemaAndCapabilitySelectedWiring) {
+    GraphFixture fixture;
+    ASSERT_TRUE(fixture.registry.Register<RegisteredProviderSubGraph>());
+    EXPECT_TRUE(fixture.registry.Has<RegisteredProviderSubGraph>());
+
+    NodeType* registered = fixture.registry.GetNodeType("TestIndirectLightingProvider");
+    ASSERT_NE(registered, nullptr);
+    EXPECT_EQ(fixture.registry.Get<RegisteredProviderSubGraph>(), registered);
+    ASSERT_EQ(registered->GetInputCount(), 0u);
+    ASSERT_EQ(registered->GetOutputCount(), 1u);
+    EXPECT_EQ(registered->GetOutputDescriptor(0)->name, "indirect_lighting");
+    EXPECT_EQ(registered->GetOutputDescriptor(0)->declaredType,
+              std::type_index(typeid(const VkBuffer)));
+    EXPECT_EQ(registered->GetOutputDescriptor(0)->role, SlotRole::Output);
+
+    Vixen::CapabilityGraph capabilities;
+    capabilities.RegisterCapability(
+        std::make_shared<Vixen::CompositeCapability>("Test:IndirectLighting"));
+    const NodeHandle sink = fixture.AddOptionalSink("shade");
+    const SubGraphProviderSelection provider = fixture.graph.InstantiateProviderForInput(
+        capabilities, sink, 0, "selected_indirect_lighting");
+    ASSERT_TRUE(provider.group.IsValid());
+    ASSERT_EQ(provider.group.GetMembers().size(), 1u);
+    fixture.graph.Connect(provider.group, provider.outputPort, sink, 0);
+    EXPECT_NE(fixture.graph.GetInstance(sink)->GetInput(0, 0), nullptr);
+    EXPECT_EQ(fixture.graph.GetNodeCount(), 2u);
+}
+
+TEST(SubGraphNodesTest, RegisteredGroupCanBeExpandedByRegistryName) {
+    GraphFixture fixture;
+    ASSERT_TRUE(fixture.registry.Register<RegisteredProviderSubGraph>());
+
+    const SubGraphHandle group = fixture.graph.Instantiate(
+        "TestIndirectLightingProvider", "provider_by_name");
+    ASSERT_TRUE(group.IsValid());
+    ASSERT_EQ(group.GetMembers().size(), 1u);
+    EXPECT_EQ(fixture.graph.GetInstance(group.GetMembers()[0])->GetInstanceName(),
+              "provider_by_name/source");
+}
+
+TEST(SubGraphNodesTest, OptionalInputStaysUnconnectedWhenProviderCapabilityIsAbsent) {
+    GraphFixture fixture;
+    ASSERT_TRUE(fixture.registry.Register<RegisteredProviderSubGraph>());
+    Vixen::CapabilityGraph capabilities;
+    const NodeHandle sink = fixture.AddOptionalSink("shade");
+
+    const SubGraphProviderSelection provider = fixture.graph.InstantiateProviderForInput(
+        capabilities, sink, 0, "unselected_indirect_lighting");
+    EXPECT_FALSE(provider.group.IsValid());
+    EXPECT_EQ(fixture.graph.GetNodeCount(), 1u);
+    EXPECT_EQ(fixture.graph.GetInstance(sink)->GetInput(0, 0), nullptr);
+    EXPECT_NO_THROW(fixture.graph.Compile());
 }
 
 } // namespace

@@ -1,0 +1,49 @@
+{
+ "derived": {
+  "camera_radius_m": 6782000.0,
+  "hfov_deg": 8.578306657638036,
+  "horizon_dip_below_horizontal_deg": 20.049228987244188,
+  "image_up_source": "north projected on the image plane (near-nadir)",
+  "look_dir_source": "assumed nadir (record has no center point or tilt)",
+  "notes": [
+   "sun azimuth taken as degrees clockwise from north at the nadir point (Gateway convention assumed)",
+   "planet is a sphere of 6371 km; altitude added to it",
+   "sun placed at 1 AU",
+   "look direction is NOT in the Gateway record; no scene is emitted until an owner-supplied look direction exists"
+  ],
+  "sun_elevation_at_nadir_deg": -22.0,
+  "vfov_deg": 5.700996497927102
+ },
+ "gateway": {
+  "altitude_km": 411.0,
+  "camera": "Nikon D4 Electronic Still Camera",
+  "camera_tilt": "High Oblique",
+  "camera_tilt_deg": null,
+  "center": null,
+  "date": "2016.10.27",
+  "focal_length_mm": 240.0,
+  "frame_px": [
+   4928,
+   3280
+  ],
+  "nadir": [
+   -49.1,
+   -13.1
+  ],
+  "nadir_to_center": null,
+  "sensor_mm": [
+   36.0,
+   23.9
+  ],
+  "sun_azimuth_deg": 213.0,
+  "sun_elevation_deg": -22.0,
+  "time_gmt": "22:29:54"
+ },
+ "id": "c6_iss049_e_49442",
+ "kind": "iss",
+ "photo": "ISS049-E-49442",
+ "schema": "planetref-match/v1",
+ "source": "https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?mission=ISS049&roll=E&frame=49442",
+ "state": "C6",
+ "time_gmt": "2016.10.27 22:29:54"
+}

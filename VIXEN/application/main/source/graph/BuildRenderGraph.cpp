@@ -41,8 +41,10 @@
 #include "merged/InstanceOcclusionCull-SDI.g.h"  // Semantic-wiring S1: B1 cull named binding/push constants
 #include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
+#include "Generated/ExposureTonemapSystem.g.h"
+#include "merged/ExposureTonemapReference-SDI.g.h"
+#include "merged/ExposureTonemapSystem-SDI.g.h"
 #include "merged/SpatialReuseShade-SDI.g.h"
-#include "merged/ExposureTonemap-SDI.g.h"
 #include "merged/ExposureMeter-SDI.g.h"
 #include "merged/ExposureReduce-SDI.g.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
@@ -73,6 +75,17 @@ namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spat
 namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
 namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wide epoch clear
+namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
+namespace ExposureSystemSdi = ShaderInterface::ExposureTonemapSystem;
+
+static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeX == 8u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeY == 8u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_sceneRadianceHistoryOutput_current == 0u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_outputImage_current == 1u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_meter == 2u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_LightingConfigSSBO == 3u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[0].set == 0u);
+static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[1].set == 0u);
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -243,6 +256,15 @@ bool IsSelectedDeviceCapabilityAvailable(VkInstance instance, const char* capabi
     capabilities.ObservePhysicalDevice(physicalDevices[selectedIndex]);
     return capabilities.ResolveOptionalPath(capabilityName, true) ==
            Vixen::CapabilityPath::CapabilityEnabled;
+}
+
+bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
+    const char* raw = std::getenv(name);
+    if (raw == nullptr) return defaultValue;
+
+    bool explicitValue = false;
+    if (envFlagIsSet(name, explicitValue)) return explicitValue;
+    return envFlagEnabled(name);
 }
 
 enum class RtLightingMode { Auto, Off, Force };
@@ -449,13 +471,23 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 
 void VulkanGraphApplication::BuildRenderGraph() {
     upscalerPerfPasses_.clear();
+    proceduralShaderLibNodes_.clear();
     // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
     // swapchain. Keep ordinary app launches on the window presentation path.
     if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
-    const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
+    const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
+#if defined(VIXEN_CAPTURE_TEST_HOOKS)
+    const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
+#else
+    constexpr bool exposureReference = false;
+#endif
+    // The capture executable is the only binary that registers this test module.
+    // Keep its explicit opt-in out of every ordinary/default graph build.
+    const bool testIndirectLightingEnabled =
+        envFlagEnabled("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING");
     const bool hdrExposureFixed = hdrExposureEnabled &&
                                  envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
@@ -550,7 +582,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
-    computeShaderLibNode_ = computeShaderLib;  // stored so RecompileProceduralShader can MarkNodeNeedsRecompile (Inc0 M5)
+    computeShaderLibNode_ = computeShaderLib;
+    proceduralShaderLibNodes_.push_back(computeShaderLib);
     NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
@@ -649,6 +682,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    SubGraphProviderSelection testIndirectLightingProvider;
+    if (testIndirectLightingEnabled) {
+        Vixen::CapabilityGraph testModuleCapabilities;
+        testModuleCapabilities.RegisterCapability(
+            std::make_shared<Vixen::CompositeCapability>("Test:IndirectLighting"));
+        testIndirectLightingProvider = renderGraph->InstantiateProviderForInput(
+            testModuleCapabilities, spatialReuseNode,
+            ComputeStageNodeConfig::INDIRECT_LIGHTING.index,
+            "capture_test_indirect_lighting");
+        if (!testIndirectLightingProvider.group.IsValid()) {
+            throw std::runtime_error(
+                "Test indirect-lighting capability did not select a registered provider group");
+        }
+    }
     // SpatialReuseShade reads the visibility bits that ShadowVisibilityWave writes into
     // HitRecordBuffer. Its shader descriptor is supplied through sceneProviders below; this
     // separate gatherer declares the GPU read hazard to ResourceAccessTracker.
@@ -692,8 +739,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
     // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
     // SwapchainBarriers::BlitRenderTargetToSwapchain free function, now shared). Runs after
-    // DirectLightingNode, before the sky-projection/UI composite chain (which still reads the
-    // swapchain image, unchanged).
+    // DirectLightingNode, before the optional sky-projection fixture and the UI composite, which
+    // read the swapchain image.
     NodeHandle blitNode = renderGraph->AddNode<BlitNodeType>("render_target_blit");
 
     // The optional upscaler is instantiated later into the typed UpscalerModulePorts slot,
@@ -1417,24 +1464,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
-    // --- Sky-projection composite pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
-    // A color-only graphics pass layered over the compute output, sitting BETWEEN the voxel
-    // compute and the UI/HUD composite (compute -> sky-projection -> UI, so the HUD still draws
-    // over everything including sky points; UI stays the LAST pass, unchanged): RenderPassNode
-    // (LOAD, initial=General, final=General — hands off to the UI composite pass's own
-    // initial=General, since UI is still the one that transitions to PresentSrc) + FramebufferNode
-    // (swapchain image views) + SkyProjectionNode. Mirrors the ui_composite_* triple exactly, one
-    // stage earlier in the chain.
-    NodeHandle skyProjectionRenderPassNode  = renderGraph->AddNode<RenderPassNodeType>("sky_projection_render_pass");
-    NodeHandle skyProjectionFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("sky_projection_framebuffer");
-    NodeHandle skyProjectionNode = renderGraph->AddNode<SkyProjectionNodeType>("sky_projection");
-    skyProjectionNode_ = skyProjectionNode;           // stored for potential live lookup
-    // Node loggers default DISABLED (NodeInstance ctor); the fixture's computed direction/
-    // magnitude values are the live-gate's ground truth (M3 Progress Log records the hand-
-    // computed expectation to compare against), so enable this node's logger to the terminal —
-    // mirrors raySizeCoefNode/voxelSelectionProviderNode's own "live-gate signal" opt-in below.
-    if (auto* skyInst = renderGraph->GetInstance(skyProjectionNode)) {
-        if (auto* sl = skyInst->GetLogger()) { sl->SetEnabled(true); sl->SetTerminalOutput(true); }
+    // --- Sky-projection fixture pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
+    // This synthetic fixture is available to focused tests with VIXEN_SKY_PROJECTION_FIXTURE=1.
+    // Keep its render-pass/framebuffer/node triple out of ordinary frames and captures by default.
+    const bool skyProjectionFixtureEnabled =
+        envFlagEnabledOrDefault("VIXEN_SKY_PROJECTION_FIXTURE", false);
+    NodeHandle skyProjectionRenderPassNode{};
+    NodeHandle skyProjectionFramebufferNode{};
+    NodeHandle skyProjectionNode{};
+    skyProjectionNode_ = {};
+    if (skyProjectionFixtureEnabled) {
+        // A color-only graphics pass layered between the compute output and UI/HUD composite.
+        // The UI remains the last pass and transitions the swapchain image to PresentSrc.
+        skyProjectionRenderPassNode = renderGraph->AddNode<RenderPassNodeType>("sky_projection_render_pass");
+        skyProjectionFramebufferNode = renderGraph->AddNode<FramebufferNodeType>("sky_projection_framebuffer");
+        skyProjectionNode = renderGraph->AddNode<SkyProjectionNodeType>("sky_projection");
+        skyProjectionNode_ = skyProjectionNode;       // stored for potential live lookup
+        // Node loggers default disabled; expose the fixture's computed direction/magnitude values
+        // when a focused test explicitly opts in.
+        if (auto* skyInst = renderGraph->GetInstance(skyProjectionNode)) {
+            if (auto* sl = skyInst->GetLogger()) { sl->SetEnabled(true); sl->SetTerminalOutput(true); }
+        }
     }
 
     // --- UI composite pass (HUD over the voxel render) ---
@@ -1990,6 +2040,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             }
 
+            // Capture-only isolation switch: route every SDF trilinear cell
+            // through eight independently resolved voxel taps. The ordinary
+            // path keeps its contiguous same-brick fast path; both paths use
+            // the same brick map, distances and unallocated-brick sentinel.
+            if (envFlagEnabled("VIXEN_SDF_FORCE_SLOW_TRILINEAR")) {
+                const size_t firstNewlineSlowSdf = splicedSource.find('\n');
+                const std::string slowSdfDefine = "#define VIXEN_SDF_FORCE_SLOW_TRILINEAR 1\n";
+                if (firstNewlineSlowSdf == std::string::npos) {
+                    splicedSource += "\n" + slowSdfDefine;
+                } else {
+                    splicedSource.insert(firstNewlineSlowSdf + 1, slowSdfDefine);
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_SDF_FORCE_SLOW_TRILINEAR: all taps resolve through brick lookup");
+                }
+            }
+
             // Batch-29 (deep-field mip-accessor policy, regime-2 level ladder):
             // VIXEN_MIP_POLICY=1 env -> shader define, same textual-#define-
             // after-#version splice as VIXEN_DISPATCH_IS_PRIMARY_MARCH just
@@ -2122,21 +2189,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchShaderFeatures.push_back(kFeatureShellNormals.define);
     }
-    if (envFlagEnabled("VIXEN_BRICKMAP_TRAVERSAL")) {  // W-BRICKMAP Slice 2 A/B gate
-        marchShaderFeatures.push_back(kFeatureBrickmapTraversal.define);
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] VIXEN_BRICKMAP_TRAVERSAL: coarse-grid DDA backend ENGAGED (FORMAT_STORED_SDF instances route through traverseCoarseGridInstancedSdf)");
-        }
-    }
     if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
         marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
     }
     // W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
     // backend alongside ESVO/DDA -- see kFeatureRtQueryTraversal's header comment).
-    // Own env var, independent of VIXEN_BRICKMAP_TRAVERSAL; TraceWorld.glsl gives RTQUERY
-    // precedence when both are set. Kept as its own if-block (not folded into the
-    // VIXEN_BRICKMAP_TRAVERSAL block above) so this hunk stays a minimal, independently
-    // reviewable addition.
+    // Developer A/B override for the ray-query tier. Normal composed traversal
+    // selects this feature only through the CapabilityGraph below.
     if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL")) {
         marchShaderFeatures.push_back(kFeatureRtQueryTraversal.define);
         if (mainLogger && mainLogger->IsEnabled()) {
@@ -2146,39 +2205,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // W-COMPOSED: the role ruling made code -- RT-traversal / DDA-leaf / ESVO-data
     // are complementary tiers of ONE traversal (docs/plans/2026-08-04-wavefront-
     // recipe-shading.md, "USER RULING: composed traversal"), not rival backends.
-    // VIXEN_COMPOSED_TRAVERSAL picks the near-field search phase by CAPABILITY --
-    // RT when the device has RTXCapabilities.rayQuery, DDA (the software
-    // traversal substitute) otherwise -- pushing EITHER kFeatureRtQueryTraversal
-    // OR kFeatureBrickmapTraversal, never both, so TraceWorld.glsl's existing
+    // R505: composed traversal is the default. The near-field search phase is
+    // selected by CAPABILITY -- RT when the device has RTXCapabilities.rayQuery,
+    // DDA (the software traversal substitute) otherwise -- pushing EITHER
+    // kFeatureRtQueryTraversal OR kFeatureComposedDdaFallback, never both, so
+    // TraceWorld.glsl's existing
     // #ifdef/#elif chain (no new GLSL branching) picks the same backend the SDI
     // wiring below wires bindings for. The capability is only known once the
     // device exists (DeviceNode::CompileImpl, which runs before this shader
     // library's own CompileImpl per graph dependency order) -- deferred into the
     // RegisterShaderBuilder lambda below instead of decided here, where the
-    // VulkanDevice doesn't exist yet. The three single-backend env vars above are
-    // untouched by this block; composed is a fourth, additive axis.
-    // The orbital-structure admission is the current far-field scene-demand seam. Keep this
-    // predicate at graph construction, upstream of BodyOctreeSceneNode's TLAS owner, so the
-    // composed identity is selected for the same scene that can produce far-field mip samples.
+    // VulkanDevice doesn't exist yet. VIXEN_COMPOSED_TRAVERSAL is retained as an
+    // explicit A/B override; the unset default is ON.
+    // Scene demand still controls whether the graph contains far-field structures;
+    // it no longer gates the composed traversal backend.
     const bool sceneRequestsFarFieldTraversal =
         envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
     bool composedTraversalOverride = false;
     const bool hasComposedTraversalOverride =
         envFlagIsSet("VIXEN_COMPOSED_TRAVERSAL", composedTraversalOverride);
     const bool composedTraversalRequested = hasComposedTraversalOverride
-        ? composedTraversalOverride : sceneRequestsFarFieldTraversal;
+        ? composedTraversalOverride : true;
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info(std::string("[BuildRenderGraph] composed traversal predicate: ") +
-                         (sceneRequestsFarFieldTraversal ? "ON (far-field/orbital scene demand)"
-                                                         : "OFF (no far-field/orbital scene demand)") +
+        mainLogger->Info(std::string("[BuildRenderGraph] composed traversal request: ") +
+                         (composedTraversalRequested ? "ON" : "OFF") +
                          (hasComposedTraversalOverride
-                              ? (composedTraversalOverride ? "; VIXEN_COMPOSED_TRAVERSAL=1 override"
-                                                           : "; VIXEN_COMPOSED_TRAVERSAL=0 override")
-                              : "; no override"));
+                              ? (composedTraversalOverride
+                                     ? "; VIXEN_COMPOSED_TRAVERSAL=1 A/B override"
+                                     : "; VIXEN_COMPOSED_TRAVERSAL=0 A/B override")
+                              : "; default-on") +
+                         (sceneRequestsFarFieldTraversal
+                              ? "; far-field/orbital scene demand"
+                              : "; no far-field/orbital scene demand"));
     }
     if (hasComposedTraversalOverride && mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL override resolved -- near-field backend "
-                          "(RT vs DDA) resolved by device capability at shader-compile time");
+        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL A/B override resolved; "
+                         "when enabled, the near-field backend is selected by device capability");
     }
 
     computeShaderLibNode->RegisterShaderBuilder(
@@ -2217,7 +2279,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: "
                                      "grid-DDA (software traversal substitute -- rayQuery unavailable)");
                 }
-                resolvedFeatures.push_back(kFeatureBrickmapTraversal.define);
+                resolvedFeatures.push_back(kFeatureComposedDdaFallback.define);
             };
             if (vulkanDevice) {
                 Vixen::WithConfiguredOptionalPath<Vixen::BuildCapabilityId::RayQueryLighting>(
@@ -2237,7 +2299,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // disabled by default for this node) -- matches the [FarFieldCount]
             // precedent (VoxelGridNode.cpp) so a boot log always answers "which
             // #ifdef branch is live" without re-deriving it from device caps.
-            std::cout << "[ComposedBackend] " << (composedUsesRtQuery ? "RTQUERY" : "BRICKMAP") << std::endl;
+            std::cout << "[ComposedBackend] " << (composedUsesRtQuery ? "RTQUERY" : "DDA") << std::endl;
         }
         auto builder = marchFamily->MakeBuilder(resolvedFeatures);
         // W-RTQUERY Slice A: GL_EXT_ray_query needs SPIR-V 1.4+ (rayQueryEXT opaque type +
@@ -2300,12 +2362,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lands directly after #version, before the provider's M10 inserts, where the old
     // LIFO hand order put TRACE last — same defines, different byte order, so that one
     // debug-debug combo mints a distinct cache entry (functionally identical GLSL).
-    const auto makeLightingFamily = [](const std::string& shaderName, const std::string& programName) {
+    const auto makeLightingFamily = [this](const std::string& shaderName,
+                                            const std::string& programName) {
         ShaderManagement::ShaderFamily::Config cfg;
         cfg.name = programName;
         cfg.stage = ShaderManagement::ShaderStage::Compute;
         return std::make_shared<ShaderManagement::ShaderFamily>(cfg,
-            [shaderName]() {
+            [this, shaderName]() {
                 std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                     std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
@@ -2353,6 +2416,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     if (fnl2 == std::string::npos) source += "\n" + noMipDef;
                     else source.insert(fnl2 + 1, noMipDef);
                 }
+                if (source.find("// VIXEN_UBER_RECIPE_SPLICE_MARKER") != std::string::npos) {
+                    // Every traversal consumer compiles the registry's same emitted
+                    // fields and grid offsets. The march owns the shared grid upload.
+                    source = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
+                        source, proceduralRecipes_, nullptr);
+                }
                 return source;
             });
     };
@@ -2376,6 +2445,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         NodeHandle libHandle,
         std::shared_ptr<ShaderManagement::ShaderFamily> family,
         std::vector<std::string> shaderFeatures) {
+        proceduralShaderLibNodes_.push_back(libHandle);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, shaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = family->MakeBuilder(shaderFeatures);
@@ -2385,6 +2455,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;
@@ -2431,6 +2506,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const auto registerWaveLightingFamily = [this, waveShaderFeatures, resolveWaveFeatures](
                                                 NodeHandle libHandle,
                                                 std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        proceduralShaderLibNodes_.push_back(libHandle);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, waveShaderFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveShaderFeatures);
@@ -2441,6 +2517,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;
@@ -2461,7 +2542,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseShaderLib, makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"),
         std::move(srsShaderFeatures));
 
-    auto exposureFamily = makeLightingFamily("ExposureTonemap.comp", "ExposureTonemap");
+    auto exposureFamily = exposureReference
+        ? makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference")
+        : makeLightingFamily("Generated/ExposureTonemapSystem.comp", "ExposureTonemapSystem");
     if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
         ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
             auto builder = exposureFamily->MakeBuilder({});
@@ -2567,34 +2650,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (plain lighting-family registration; the shared feature set is inert for
     // it — the ProbeApply precedent).
     if (hitAccumResolveEnabled) {
-        ShaderManagement::ShaderFamily::Config cellCfg;
-        cellCfg.name = "HitAccumCellShade";
-        cellCfg.stage = ShaderManagement::ShaderStage::Compute;
-        auto cellShadeFamily = std::make_shared<ShaderManagement::ShaderFamily>(cellCfg,
-            [this]() {
-                std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                    std::filesystem::path(std::string(VIXEN_SHADER_SOURCE_DIR) + "/HitAccumCellShade.comp"),
-#endif
-                    std::filesystem::path("shaders/HitAccumCellShade.comp"),
-                    std::filesystem::path("../shaders/HitAccumCellShade.comp"),
-                };
-                std::filesystem::path compPath;
-                for (const auto& p : possiblePaths) {
-                    if (std::filesystem::exists(p)) { compPath = p; break; }
-                }
-                if (compPath.empty()) {
-                    throw std::runtime_error("HitAccumCellShade.comp not found - check shader search paths");
-                }
-                std::ifstream in(compPath);
-                std::stringstream buf;
-                buf << in.rdbuf();
-                // The march's splice, second consumer — nullptr blob: the
-                // march's own provider owns SetOccupancyGrid (a second move
-                // of identical content would be redundant, not wrong).
-                return Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                    buf.str(), proceduralRecipes_, nullptr);
-            });
+        auto cellShadeFamily = makeLightingFamily("HitAccumCellShade.comp", "HitAccumCellShade");
+        proceduralShaderLibNodes_.push_back(hitAccumCellShadeShaderLib);
         auto* cellLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(hitAccumCellShadeShaderLib));
         cellLibNode->RegisterShaderBuilder([this, cellShadeFamily, lightingShaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = cellShadeFamily->MakeBuilder(lightingShaderFeatures);
@@ -2629,6 +2686,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (waveSlotSwizzleEnabled) {
             waveReservoirFeatures.push_back(kFeatureWaveSlotSwizzle.define);
         }
+        proceduralShaderLibNodes_.push_back(waveReservoirShaderLib);
         auto* waveResLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(waveReservoirShaderLib));
         waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveReservoirFeatures);
@@ -2639,6 +2697,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;
@@ -3175,8 +3238,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // VIXEN_PROBE_GRID_CONFIG_ENABLED runs later in this SAME function).
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
-    // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
-    // owns the final GENERAL->PRESENT_SRC transition, unchanged by this milestone's pass-split.
+    // below beside uiComposite's own parameters) — the UI composite still owns the final
+    // GENERAL->PRESENT_SRC transition, whether the optional fixture is present or not.
     auto* blit = static_cast<BlitNode*>(renderGraph->GetInstance(blitNode));
     blit->SetParameter(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, true);
 
@@ -7291,10 +7354,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // this branch just points instances at them (providerKind=0/PROVIDER_STORED,
             // formatId==FORMAT_STORED_SDF), reusing VIXEN_STORED_SDF_DEMO's placeStored geometry
             // convention verbatim (kSdfN=64 grid, renderScale=0.75, same transform math).
-            // Gated on its OWN env var (VIXEN_BRICKMAP_SCENE), separate from
-            // VIXEN_BRICKMAP_TRAVERSAL (the shader-backend toggle) -- an A/B run needs
-            // the SAME scene on both OFF and ON boots, varying only the traversal
-            // backend; run_brickmap_ab.bat sets both for every boot.
+            // Gated on its own scene env var (VIXEN_BRICKMAP_SCENE), separate from
+            // the VIXEN_COMPOSED_TRAVERSAL A/B override -- an A/B run needs the SAME
+            // scene on both composed and ESVO-forced runs, varying only traversal.
             // BATCH-18/POST-CLOSURE CORRECTION: kHalf below used to be 32*renderScale (a
             // "grid-[0,64] scales directly by renderScale" mental model) -- that is NOT what
             // the actual transform composes (BodyOctreeSceneNode::EnsureRtQueryTlasBuilt /
@@ -7635,27 +7697,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     
 
-    // --- Sky-projection composite pass parameters (Tiered ESVO Inc1 M3) ---
-    // Sits between the compute (GENERAL) and the UI composite pass (which also expects
-    // initial=General — see its own PARAM_INITIAL_LAYOUT below, unchanged): LOADs the voxel
-    // output, draws the sky points, and leaves the image in GENERAL for the UI composite pass
-    // to LOAD in turn (this pass does NOT transition to PresentSrc — UI still owns that, as the
-    // last pass in the chain).
-    auto* skyProjectionRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(skyProjectionRenderPassNode));
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);   // compute leaves GENERAL
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::General);     // UI composite pass LOADs GENERAL next
-    skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+    // --- Optional sky-projection fixture parameters ---
+    // When enabled, LOAD the compute output and leave it in GENERAL for the UI composite pass.
+    // The fixture does not transition to PresentSrc; the UI owns that as the final pass.
+    if (skyProjectionFixtureEnabled) {
+        auto* skyProjectionRenderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(skyProjectionRenderPassNode));
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::General);
+        skyProjectionRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
-    auto* skyProjectionFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(skyProjectionFramebufferNode));
-    skyProjectionFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+        auto* skyProjectionFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(skyProjectionFramebufferNode));
+        skyProjectionFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+    }
 
     // --- UI composite pass parameters ---
-    // The chain is now march -> DirectLighting -> BlitNode -> sky-projection -> UI. BlitNode leaves
-    // the swapchain image in GENERAL (PARAM_LEAVE_IMAGE_IN_GENERAL=true, set above beside its own
-    // parameters); the sky-projection pass LOADs+draws+leaves it in GENERAL (below); the UI render
-    // pass LOADs that image, draws the HUD over it, and owns the →PRESENT_SRC transition.
+    // The chain is march -> DirectLighting -> BlitNode -> [optional sky fixture] -> UI. BlitNode
+    // leaves the swapchain image in GENERAL; when present, the fixture LOADs and leaves it in
+    // GENERAL too. The UI render pass LOADs the image, draws the HUD, and owns the final transition.
     // Sampled Lighting Inc3 M1 (KI-018): the march itself no longer writes any presentable image —
     // PARAM_WRITES_NO_IMAGE=true skips its (now-obsolete) SWAPCHAIN_INFO layout transitions
     // entirely (see that param's doc comment); PARAM_LEAVE_IMAGE_IN_GENERAL stays true because the
@@ -8867,15 +8927,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
     sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("sceneRadianceHistoryOutput_current", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("_ExtentX", renderTargetNode,
+                           RenderTargetNodeConfig::WIDTH_OUT, SlotRole::Execute);
+    sceneProviders.Provide("_ExtentY", renderTargetNode,
+                           RenderTargetNodeConfig::HEIGHT_OUT, SlotRole::Execute);
     if (hdrExposureEnabled) {
         sceneProviders.Provide("result", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
         sceneProviders.Provide("meter", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        sceneProviders.Provide("meterBlock", exposureMeterBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
     }
     // Legacy march interface remains registered for the flag-off/identity path;
     // the HDR seam has a distinct name in SpatialReuseShade.
     sceneProviders.Provide("outputImage", renderTargetNode,
+                           RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("outputImage_current", renderTargetNode,
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
                            StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, kSceneRoles);
@@ -8894,6 +8964,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     sceneProviders.Provide("PolicyStencilTileBuffer", policyStencilTileBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
+                           LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("LightingConfigSSBOBlock", lightingConfigNode,
                            LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
     sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
@@ -9014,39 +9086,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
     // ===================================================================
-    // Sky-projection composite pass (Tiered ESVO Inc1 M3): address-derived sky points over the
-    // compute output, BEFORE the UI composite pass (compute -> sky-projection -> UI).
-    // Mirrors the UI composite triple's own RenderPassNode -> FramebufferNode -> consumer shape,
-    // one stage earlier in the chain.
+    // Optional sky-projection fixture wiring. When enabled it draws between compute and UI;
+    // otherwise the UI composite follows the blit directly.
     // ===================================================================
 
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
-    connectPresentationTargetInfo(skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+    if (skyProjectionFixtureEnabled) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
+        connectPresentationTargetInfo(skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
 
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
-    connectPresentationTargetInfo(skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
+        connectPresentationTargetInfo(skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
 
-    // SkyProjectionNode DATA-role inputs (device/cmdpool — mirrors BodyOctreeSceneNode's exact
-    // connection block) + DRAW-role inputs (swapchain-info/camera-data/render-pass/framebuffers/
-    // image-index/frame-index/fence/timeline — mirrors UIRenderNode's composite-mode wiring).
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionNode, SkyProjectionNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL);
-    connectPresentationTargetInfo(skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO);
-    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
-         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionNode, SkyProjectionNodeConfig::RENDER_PASS)
-         .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS);
-    connectPresentationImageIndex(skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX);
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, skyProjectionNode, SkyProjectionNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_SEMAPHORE_IN)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_FRAME_BASE_IN);
-    // IMAGE_AVAILABLE_SEMAPHORES_ARRAY deliberately left UNCONNECTED: this pass is never the
-    // first submit in the live composite pipeline (the upstream compute already waits the WSI
-    // acquire), so ordering vs. compute is carried solely by the timeline waitEdge above — see
-    // SkyProjectionNodeConfig.h's doc comment and SkyProjectionNode::ExecuteImpl's empty-vector
-    // guard (mirrors UIRenderNode's composite_ convention exactly).
+        // DATA-role inputs (device/cmdpool) and DRAW-role inputs (swapchain/camera/render-pass/
+        // framebuffer/frame-index/fence/timeline) mirror the existing composite-node wiring.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionNode, SkyProjectionNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL);
+        connectPresentationTargetInfo(skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
+             .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionNode, SkyProjectionNodeConfig::RENDER_PASS)
+             .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS);
+        connectPresentationImageIndex(skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX);
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, skyProjectionNode, SkyProjectionNodeConfig::IN_FLIGHT_FENCE)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_SEMAPHORE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_FRAME_BASE_IN);
+        // This pass is not first in the composite pipeline, so it does not wait on WSI acquire.
+        // The timeline edge orders it after compute, matching UIRenderNode's composite convention.
+    }
 
     // ===================================================================
     // UI composite pass: HUD render pass over the compute output, before present.
@@ -9087,7 +9155,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode + BlitNode wiring. The chain is now
     // march (HitRecord+pick-ID only) -> DirectLighting (shades, writes the render target) ->
-    // BlitNode (blits render target -> swapchain) -> sky-projection -> UI -> present.
+    // BlitNode (blits render target -> swapchain) -> [optional sky fixture] -> UI -> present.
     // ===================================================================
 
     // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
@@ -9272,6 +9340,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the providers-before-synthesis rule, third application.
     SdiFeatureSet srsSdiFeatures;
     srsSdiFeatures.Enable(kFeatureMiningBeam);
+    if (testIndirectLightingProvider.group.IsValid()) {
+        batch.Connect(testIndirectLightingProvider.group,
+                      testIndirectLightingProvider.outputPort,
+                      spatialReuseNode, ComputeStageNodeConfig::INDIRECT_LIGHTING.index);
+        sceneProviders.ProvideSubGraphOutput(
+            "moduleIndirectIrradiance", testIndirectLightingProvider.group,
+            testIndirectLightingProvider.outputPort,
+            SlotRole::Dependency | SlotRole::Execute);
+    }
     if (hitAccumEnabled) {
         sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
@@ -9305,6 +9382,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseNode, lightingCommon, sceneProviders, srsSdiFeatures,
         SdiWireSet::DescriptorsOnly);
     spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
+    if (testIndirectLightingProvider.group.IsValid()) {
+        sceneProviders.Apply("moduleIndirectIrradiance", batch,
+                             spatialReusePushConstantGatherer,
+                             ReuseSdi::Push::moduleIndirectIrradiance::INDEX);
+    }
     CensusStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
@@ -9334,15 +9416,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
     reduceStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-    const auto exposureSynth = SynthesizeComputeStage<ShaderInterface::ExposureTonemap::Metadata,
-                                                       ShaderInterface::ExposureTonemap::MEMBERS>(
-        renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
-        lightingCommon, sceneProviders, {});
-    (void)exposureSynth;
+    if (exposureReference) {
+        const auto exposureSynth = SynthesizeComputeStage<ExposureReferenceSdi::Metadata,
+                                                           ExposureReferenceSdi::MEMBERS>(
+            renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
+            lightingCommon, sceneProviders, {});
+        (void)exposureSynth;
+    } else {
+        const auto exposureSynth = SynthesizeComputeStage<ExposureSystemSdi::Metadata,
+                                                           ExposureSystemSdi::MEMBERS>(
+            renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
+            lightingCommon, sceneProviders, {});
+        (void)exposureSynth;
+    }
     auto* exposureStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureNode));
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    const auto exposureWorkgroups = Vixen::Gpu::ExposureTonemapSystemWorkgroups(
+        renderExtent.width, renderExtent.height);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, exposureWorkgroups[0]);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, exposureWorkgroups[1]);
     exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
@@ -10167,7 +10259,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through
-    // DirectLighting + BlitNode first): the march->DirectLighting->Blit->sky-projection->UI
+    // DirectLighting + BlitNode first): the march->DirectLighting->Blit->[optional sky fixture]->UI
     // ordering is carried by the baked timeline edges for GPU SYNC (memory visibility), but the
     // graph still needs the TOPOLOGY edges so the execution order (and hence the timeline edges
     // the scheduler bakes from them) follows that same sequence. The FrameSyncScheduler derives
@@ -10185,14 +10277,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // output here is also VK_NULL_HANDLE in composite mode. SkyProjectionNode never WAITS its
     // COMPOSITE_WAIT_SEMAPHORE input, and UIRenderNode no longer waits compositeWait either (the M3
     // binary handoff was dropped from its submit). With the edges in the right direction the scheduler bakes
-    // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->sky-projection(GENERAL)->UI(GENERAL)
-    // timeline edges, tags the UI group as present (its render pass owns GENERAL->PRESENT_SRC,
-    // unchanged), and the timeline alone — not a binary handoff — orders every pass. WSI acquire
-    // (march waits imageAvailable) and present (UI signals its uiComplete) stay binary, unchanged.
-    batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
-    batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->[optional sky fixture]->UI(GENERAL)
+    // timeline edges tag the UI group as present (its render pass owns GENERAL->PRESENT_SRC)
+    // and order every pass. WSI acquire (march waits imageAvailable) and present (UI signals
+    // uiComplete) remain binary.
+    if (skyProjectionFixtureEnabled) {
+        batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+        batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    } else {
+        // Preserve the direct blit-to-UI ordering edge when the fixture triple is absent.
+        batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+    }
 
     // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch guard,
     // wired HERE (the end of this function) rather than beside each node's OTHER

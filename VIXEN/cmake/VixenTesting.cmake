@@ -4,6 +4,8 @@
 # gtest_discover_tests() creates one CTest entry per case, so labels, fixtures and environment
 # belong in its PROPERTIES rather than on the executable target.
 
+include("${CMAKE_CURRENT_LIST_DIR}/VixenTestClass.cmake")
+
 function(vixen_configure_ctest_gpu_environment output_variable)
     set(_environment)
     set(_library_dirs)
@@ -64,7 +66,7 @@ function(vixen_gtest_discover_tests suite target)
             list(APPEND _gtest_arguments "${_option}")
         endif()
     endforeach()
-    foreach(_argument DISCOVERY_MODE DISCOVERY_TIMEOUT WORKING_DIRECTORY TEST_LIST TEST_PREFIX TEST_SUFFIX XML_OUTPUT_DIR)
+    foreach(_argument DISCOVERY_MODE DISCOVERY_TIMEOUT WORKING_DIRECTORY TEST_PREFIX TEST_SUFFIX XML_OUTPUT_DIR)
         if(DEFINED VGT_${_argument})
             list(APPEND _gtest_arguments "${_argument}" "${VGT_${_argument}}")
         endif()
@@ -72,6 +74,23 @@ function(vixen_gtest_discover_tests suite target)
     if(VGT_EXTRA_ARGS)
         list(APPEND _gtest_arguments EXTRA_ARGS ${VGT_EXTRA_ARGS})
     endif()
+
+    # GoogleTest leaves every discovered case name in a TEST_LIST variable (default <target>_TESTS);
+    # the class stub reads it at CTest load time to label each case gpu or cpu.
+    set(_test_list_variable "${target}_TESTS")
+    if(VGT_TEST_LIST)
+        set(_test_list_variable "${VGT_TEST_LIST}")
+        list(APPEND _gtest_arguments TEST_LIST "${VGT_TEST_LIST}")
+    elseif(VGT_GPU_TESTS)
+        set(_test_list_variable "_vixen_gpu_tests_${target}")
+        list(APPEND _gtest_arguments TEST_LIST "${_test_list_variable}")
+    endif()
+    if(VGT_GPU)
+        vixen_test_class_declare(${target} GPU FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
+    else()
+        vixen_test_class_declare(${target} FIXTURES_REQUIRED ${VGT_FIXTURES_REQUIRED})
+    endif()
+    vixen_test_class_environment_modification(_class_modification)
 
     set(_properties LABELS "${suite}")
     set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
@@ -82,8 +101,9 @@ function(vixen_gtest_discover_tests suite target)
         string(REPLACE ";" "\\\\;" _environment_value "${_environment_value}")
         list(APPEND _properties ENVIRONMENT "${_environment_value}")
     endif()
-    if(VGT_TEST_ENVIRONMENT_MODIFICATION)
-        string(JOIN ";" _environment_modification ${VGT_TEST_ENVIRONMENT_MODIFICATION})
+    set(_modification_entries ${_class_modification} ${VGT_TEST_ENVIRONMENT_MODIFICATION})
+    if(_modification_entries)
+        string(JOIN ";" _environment_modification ${_modification_entries})
         string(REPLACE ";" "\\\\;" _environment_modification "${_environment_modification}")
         list(APPEND _properties ENVIRONMENT_MODIFICATION "${_environment_modification}")
     endif()
@@ -99,13 +119,10 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     if(VGT_GPU_TESTS)
-        set(_gpu_test_list "_vixen_gpu_tests_${target}")
-        list(APPEND _gtest_arguments TEST_LIST "${_gpu_test_list}")
-
         # PRE_TEST discovery creates cases at CTest run time. Its TEST_LIST variable
         # is available to TEST_INCLUDE_FILES, which can apply locks per discovered case.
         set(_gpu_test_lock_script "${CMAKE_CURRENT_BINARY_DIR}/vixen_gpu_test_locks_${target}.cmake")
-        set(_gpu_test_lock_content "foreach(_vixen_gpu_test IN LISTS ${_gpu_test_list})\n")
+        set(_gpu_test_lock_content "foreach(_vixen_gpu_test IN LISTS ${_test_list_variable})\n")
         foreach(_pattern IN LISTS VGT_GPU_TESTS)
             string(APPEND _gpu_test_lock_content
                 "  if(_vixen_gpu_test MATCHES [==[${_pattern}]==])\n"
@@ -117,7 +134,11 @@ function(vixen_gtest_discover_tests suite target)
 
     endif()
 
+    # Stage imported runtime DLLs before POST_BUILD test discovery launches the
+    # executable, so discovery itself also works without a PATH workaround.
+    vixen_stage_runtime_dlls_for_target(${target})
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
+    vixen_test_class_register(${target} "${_test_list_variable}")
 
     if(VGT_GPU_TESTS)
         # GoogleTest appends its discovery include while registering the target.
@@ -127,6 +148,18 @@ function(vixen_gtest_discover_tests suite target)
             set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${_gpu_test_lock_script}")
         endif()
     endif()
+endfunction()
+
+# Plain-main() tests check with assert(); Release defines NDEBUG and compiles those checks out, so the
+# test would exit 0 having verified nothing. Target options follow CMAKE_CXX_FLAGS_<CONFIG>, so this wins.
+function(vixen_enable_asserts)
+    foreach(_target IN LISTS ARGN)
+        if(MSVC)
+            target_compile_options(${_target} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${_target} PRIVATE -UNDEBUG)
+        endif()
+    endforeach()
 endfunction()
 
 function(vixen_set_suite_properties suite)

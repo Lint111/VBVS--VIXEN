@@ -1738,6 +1738,18 @@ void VulkanGraphApplication::PostTick() {
     if (auto* probeApply = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_apply"))) {
         passes.push_back({"probe_apply", probeApply->GetGPUPerformanceLogger()});
     }
+    // HDR exposure is optional on the current default path, so include these columns only
+    // when the corresponding graph stages exist. This makes their per-dispatch GPU cost
+    // visible in the same native CSV used to profile the rest of the render graph.
+    if (auto* exposureMeter = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_meter"))) {
+        passes.push_back({"exposure_meter", exposureMeter->GetGPUPerformanceLogger()});
+    }
+    if (auto* exposureReduce = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_reduce"))) {
+        passes.push_back({"exposure_reduce", exposureReduce->GetGPUPerformanceLogger()});
+    }
+    if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
+        passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});
     }
@@ -4433,9 +4445,11 @@ void VulkanGraphApplication::RecompileProceduralShader() {
                 }
             }
         }
-        renderGraph->MarkNodeNeedsRecompile(computeShaderLibNode_);
+        for (const auto handle : proceduralShaderLibNodes_)
+            renderGraph->MarkNodeNeedsRecompile(handle);
         if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked compute_shader_lib dirty");
+            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked " +
+                std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");
         }
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");

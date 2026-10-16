@@ -1,4 +1,5 @@
 #include "Core/SubmitChannel.h"
+#include "Core/PhaseTiming.h"
 
 #include <string>
 #include <chrono>
@@ -42,6 +43,7 @@ VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
     for (std::size_t i = 0; i < count; ++i) {
         if (outstanding >= kOutstandingBatchCap) {
             const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
+            PhaseTiming::ScopedWait retireTimer("submit-retire-queue-wait-idle");
             const VkResult retired = retireFn(queue);
             if (trace) {
                 std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",

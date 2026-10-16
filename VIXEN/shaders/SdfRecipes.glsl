@@ -124,6 +124,9 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // larger than any real bound-sphere diameter this engine ever uses, so min(1e30, x) always
 // picks the real per-step distance x, functionally identical to +infinity for this formula.
 const float kNoGridSentinel = 1.0e30;
+// Shadow any-hit rays set this so the relaxed-step boost applies only to a real per-cell bound,
+// never to the no-grid sentinel; an unproven boost overshoots distant occluders.
+bool g_recipeProvenStepOnly = false;
 
 float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, float gridCellSize,
                             vec3 p) {
@@ -334,8 +337,10 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         // downstream of it dominated. Gate the boost on gridDim != 0u so an ungridded recipe
         // gets the plain relaxed step (no boost, no regression for gridded recipes' proof above).
         float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
-        float step = (gridDim != 0u) ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
-                                      : d * relaxation;
+        const bool gridBoundIsReal = !g_recipeProvenStepOnly || gridBound < kNoGridSentinel;
+        float step = (gridDim != 0u && gridBoundIsReal)
+            ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
+            : d * relaxation;
         // Preserve the identity-scale stepping sequence used by legacy instances.
         float stepScale = clamp(conservativeStepScale, 0.0, 1.0);
         if (stepScale < 1.0) step *= stepScale;

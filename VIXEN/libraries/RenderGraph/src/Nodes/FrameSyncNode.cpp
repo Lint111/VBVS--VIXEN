@@ -2,6 +2,7 @@
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
+#include "Core/PhaseTiming.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Message.h"
@@ -150,8 +151,10 @@ void FrameSyncNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
 void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (frameCompletionSubmitFailure_ != VK_SUCCESS) {
-        throw std::runtime_error("FrameSyncNode: frame completion timeline submit previously failed: " +
-                                 std::to_string(frameCompletionSubmitFailure_));
+        NODE_LOG_ERROR("FrameSyncNode: frame completion timeline previously failed: " +
+                       std::to_string(frameCompletionSubmitFailure_));
+        GetOwningGraph()->ReportGpuFault("FrameSyncNode::frameCompletion (latched)", frameCompletionSubmitFailure_, true);
+        return;
     }
 
     // Advance frame index (ring buffer for CPU-GPU sync)
@@ -168,40 +171,40 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // sufficient guard for the whole graph frame.
     const uint64_t completionValue = frameCompletionValues_[currentFrameIndex];
     if (completionValue != 0) {
-        VkSemaphoreWaitInfo timelineWait{};
-        timelineWait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-        timelineWait.semaphoreCount = 1;
-        timelineWait.pSemaphores = &timelineSemaphore_;
-        timelineWait.pValues = &completionValue;
-        const VkResult timelineWaitResult = vkWaitSemaphores(
-            device->device, &timelineWait, UINT64_MAX);
-        if (timelineWaitResult == VK_ERROR_DEVICE_LOST) {
-            NODE_LOG_ERROR("Device lost while waiting on frame completion timeline (flight " +
+        const GpuWaitResult timelineWait = [&] {
+            PhaseTiming::ScopedWait timelineTimer("frame-sync-timeline");
+            return BoundedWaitSemaphore(device->device, timelineSemaphore_, completionValue);
+        }();
+        if (!timelineWait.Ok()) {
+            NODE_LOG_ERROR(std::string(GpuFaultKindName(timelineWait.fault)) +
+                           " while waiting on frame completion timeline (flight " +
                            std::to_string(currentFrameIndex) + ")");
-            GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::vkWaitSemaphores");
+            GetOwningGraph()->ReportGpuFault("FrameSyncNode::vkWaitSemaphores",
+                                             timelineWait.result, true);
             return;
-        }
-        if (timelineWaitResult != VK_SUCCESS) {
-            throw std::runtime_error("FrameSyncNode: failed to wait for frame completion timeline: " +
-                                     std::to_string(timelineWaitResult));
         }
     }
 
     // Keep the binary fence wait for existing consumers that use it as a mid-frame
     // synchronization point (for example, optional debug readback).
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
-    VkResult waitResult = VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
-                              vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX));
+    const VkResult waitResult = [&] {
+        PhaseTiming::ScopedWait fenceTimer("frame-sync-fence");
+        return VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
+                                  vkWaitForFences(device->device, 1, &currentFence, VK_TRUE,
+                                                  GpuWaitBoundNs()));
+    }();
 
     // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
     // backstop for device loss — when the GPU device is lost, the submitted work never completes and
     // the wait returns VK_ERROR_DEVICE_LOST immediately. Latch it on the graph so RenderFrame() reports
     // a distinct status (and, in Increment 2, triggers a rebuild on a fresh device). Bail out before
     // publishing this frame's now-invalid fence/semaphore handles downstream.
-    if (waitResult == VK_ERROR_DEVICE_LOST) {
-        NODE_LOG_ERROR("Device lost while waiting on in-flight fence (flight "
+    if (ClassifyGpuResult(waitResult, true) != GpuFaultKind::None) {
+        NODE_LOG_ERROR("GPU fault (VkResult " + std::to_string(waitResult) +
+                       ") while waiting on in-flight fence (flight "
                        + std::to_string(currentFrameIndex) + ")");
-        GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::vkWaitForFences");
+        GetOwningGraph()->ReportGpuFault("FrameSyncNode::vkWaitForFences", waitResult, true);
         return;
     }
 
@@ -251,9 +254,7 @@ void FrameSyncNode::HandleFrameEnd() {
         frameCompletionSubmitFailure_ = result;
         NODE_LOG_ERROR("FrameSyncNode: failed to submit frame completion timeline marker: " +
                        std::to_string(result));
-        if (result == VK_ERROR_DEVICE_LOST) {
-            GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::FrameEnd vkQueueSubmit2");
-        }
+        GetOwningGraph()->ReportGpuFault("FrameSyncNode::FrameEnd vkQueueSubmit2", result);
         return;
     }
 
@@ -264,13 +265,9 @@ void FrameSyncNode::HandleFrameEnd() {
     // Retire this frame before the host's next PreTick can write parameters.
     // Keep the allocation ring, but bound outstanding graph work to one frame.
     // The existing marker covers all submits, including nodes after the binary fence owner.
-    VkSemaphoreWaitInfo wait{};
-    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-    wait.semaphoreCount = 1;
-    wait.pSemaphores = &timelineSemaphore_;
-    wait.pValues = &completionValue;
     const auto waitStarted = std::chrono::steady_clock::now();
-    const VkResult waitResult = vkWaitSemaphores(vulkanDevice->device, &wait, UINT64_MAX);
+    const GpuWaitResult retire = BoundedWaitSemaphore(
+        vulkanDevice->device, timelineSemaphore_, completionValue);
     if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
         const auto completed = std::chrono::steady_clock::now();
         std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-retire elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
@@ -278,12 +275,11 @@ void FrameSyncNode::HandleFrameEnd() {
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(waitStarted.time_since_epoch()).count()),
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
     }
-    if (waitResult != VK_SUCCESS) {
-        frameCompletionSubmitFailure_ = waitResult;
+    if (!retire.Ok()) {
+        frameCompletionSubmitFailure_ = retire.result;
         NODE_LOG_ERROR("FrameSyncNode: failed to retire frame completion timeline: " +
-                       std::to_string(waitResult));
-        if (waitResult == VK_ERROR_DEVICE_LOST)
-            GetOwningGraph()->NotifyDeviceLost("FrameSyncNode::FrameEnd vkWaitSemaphores");
+                       std::to_string(retire.result));
+        GetOwningGraph()->ReportGpuFault("FrameSyncNode::FrameEnd vkWaitSemaphores", retire.result, true);
     }
 }
 

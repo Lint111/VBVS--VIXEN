@@ -12,6 +12,7 @@
 #undef max
 #undef abs
 
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
 #include "Recipe/RecipeRegistry.h"  // Recipe-Nested-Invocation M1: InvokeRecipe's callee lookup
 #include <glm/glm.hpp>
@@ -40,7 +41,8 @@ namespace Vixen::SVO::Recipe {
 // site (no InvokeRecipe in its program) compiles and runs unchanged with the nullptr default.
 inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr,
-                         const RecipeRegistry* registry = nullptr) {
+                         const RecipeRegistry* registry = nullptr,
+                         std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)

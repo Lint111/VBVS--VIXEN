@@ -1,0 +1,6 @@
+{
+  "configs": [
+    { "id": "default", "env": { "VIXEN_HDR_EXPOSURE": "1" } },
+    { "id": "esvo", "env": { "VIXEN_HDR_EXPOSURE": "1", "VIXEN_COMPOSED_TRAVERSAL": "0" } }
+  ]
+}

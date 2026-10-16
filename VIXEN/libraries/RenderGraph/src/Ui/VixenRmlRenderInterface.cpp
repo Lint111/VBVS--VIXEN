@@ -1,5 +1,6 @@
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/UiShaderSpirv.g.h"
+#include "Text/AtlasFormat.h"
 
 #include <RmlUi/Core/Vertex.h>
 
@@ -94,9 +95,9 @@ void VixenRmlRenderInterface::CreatePipeline() {
 
     // Pipeline layout: the descriptor set + a 16-byte vertex push constant (translation + viewport).
     VkPushConstantRange pcRange{};
-    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pcRange.offset = 0;
-    pcRange.size = sizeof(float) * 4;
+    pcRange.size = sizeof(float) * 4 + sizeof(uint32_t);
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     plci.setLayoutCount = 1;
     plci.pSetLayouts = &descriptorLayout_;
@@ -185,7 +186,8 @@ void VixenRmlRenderInterface::CreatePipeline() {
     vkDestroyShaderModule(device_, frag, nullptr);
 }
 
-VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height) {
+VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height,
+                                                                              bool isMsdf) {
     const VkDeviceSize bytes = VkDeviceSize(width) * height * 4;
 
     VkBuffer staging = VK_NULL_HANDLE; VkDeviceMemory stagingMem = VK_NULL_HANDLE;
@@ -197,6 +199,7 @@ VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(con
     vkUnmapMemory(device_, stagingMem);
 
     auto* tex = new Texture();
+    tex->isMsdf = isMsdf;
     VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ici.imageType = VK_IMAGE_TYPE_2D;
     ici.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -390,11 +393,18 @@ void VixenRmlRenderInterface::RenderGeometry(Rml::CompiledGeometryHandle geometr
     VkRect2D scissor = scissorEnabled_ ? scissor_ : VkRect2D{{0, 0}, extent_};
     vkCmdSetScissor(cmd_, 0, 1, &scissor);
 
-    const float push[4] = {translation.x, translation.y,
-                           static_cast<float>(extent_.width), static_cast<float>(extent_.height)};
-    vkCmdPushConstants(cmd_, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), push);
-
     Texture* tex = texture ? reinterpret_cast<Texture*>(texture) : defaultTexture_;
+    struct UiPushConstants {
+        float translation[2];
+        float viewport[2];
+        uint32_t isMsdf;
+    };
+    const UiPushConstants push{{translation.x, translation.y},
+                               {static_cast<float>(extent_.width), static_cast<float>(extent_.height)},
+                               tex->isMsdf ? 1u : 0u};
+    vkCmdPushConstants(cmd_, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0, sizeof(push), &push);
+
     vkCmdBindDescriptorSets(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &tex->set, 0, nullptr);
 
     VkDeviceSize offset = 0;
@@ -421,8 +431,11 @@ Rml::TextureHandle VixenRmlRenderInterface::LoadTexture(Rml::Vector2i& /*dims*/,
 }
 
 Rml::TextureHandle VixenRmlRenderInterface::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i dims) {
+    const auto* bytes = reinterpret_cast<const uint8_t*>(source.data());
+    const bool isMsdf = dims.x > 0 && dims.y > 0 && source.size() >= sizeof(Vixen::Text::kAtlasFormatMarker) &&
+                        std::memcmp(bytes, Vixen::Text::kAtlasFormatMarker, sizeof(Vixen::Text::kAtlasFormatMarker)) == 0;
     Texture* tex = CreateTextureRGBA(reinterpret_cast<const uint8_t*>(source.data()),
-                                     static_cast<uint32_t>(dims.x), static_cast<uint32_t>(dims.y));
+                                     static_cast<uint32_t>(dims.x), static_cast<uint32_t>(dims.y), isMsdf);
     return reinterpret_cast<Rml::TextureHandle>(tex);
 }
 

@@ -1,0 +1,49 @@
+{
+ "band_deg": 5.0,
+ "exr_file": "c2_iss061_e_92131.exr",
+ "exr_sha256": "c73c4702b58e65e995e4501ffd8ca495e54ae9e99e55feaefe61e66983a90323",
+ "id": "c2_iss061_e_92131",
+ "image": {
+  "height": 640,
+  "vfov_deg": 2.738216974478056,
+  "width": 960
+ },
+ "radiance_unit_w_m2": 1361.0,
+ "regions": {
+  "earth.disc": {
+   "analytic_sun_only_mean_luminance": 0.0,
+   "max_luminance": 0.0,
+   "mean_luminance": 0.0,
+   "mean_rgb": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "pixels": 608016,
+   "std_luminance": 0.0
+  },
+  "earth.terminator_band": {
+   "analytic_sun_only_mean_luminance": 0.0,
+   "max_luminance": 0.0,
+   "mean_luminance": 0.0,
+   "mean_rgb": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "pixels": 608016,
+   "std_luminance": 0.0
+  }
+ },
+ "renderer": {
+  "max_depth": 6,
+  "name": "mitsuba",
+  "seed": 1,
+  "spp": 32,
+  "variant": "scalar_rgb",
+  "version": "3.9.1"
+ },
+ "scene_sha256": "cbc9241eafe57fe60644a0e66b955aace8ccc35a7c4bbff6ac26e748664e10f3",
+ "schema": "planetref-regions/v1",
+ "state": "C2"
+}

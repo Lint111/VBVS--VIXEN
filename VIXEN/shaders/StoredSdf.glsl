@@ -208,7 +208,13 @@ void _loadTrilinearCellComp(uint base, vec3 gridPos, int comp, int octreeIdx,
     ivec3 brickCoord = inGrid ? (i / 8) : ivec3(-1);
     ivec3 local       = i - brickCoord * 8;
     // Entirely intra-brick iff local+1 stays in [0,7] on every axis, i.e. local<=6.
+#ifdef VIXEN_SDF_FORCE_SLOW_TRILINEAR
+    // Diagnostic comparison for the capture witness: preserve the same eight
+    // tap semantics, but make every corner resolve through brickLookup.
+    bool oneBrick = false;
+#else
     bool oneBrick = inGrid && all(lessThanEqual(local, ivec3(6)));
+#endif
     localOut    = local;
     oneBrickOut = oneBrick;
 

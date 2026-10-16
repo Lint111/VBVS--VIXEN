@@ -107,6 +107,7 @@ vixen_gtest_discover_tests(RenderGraph test_rendergraph_shadermirrors)
 # HDR3 CPU mirror of ExposureMeter.comp's deterministic sun/cosmic percentile clamp.
 add_executable(test_exposure_meter_mirror Nodes/test_exposure_meter_mirror.cpp)
 target_compile_features(test_exposure_meter_mirror PRIVATE cxx_std_17)
+vixen_enable_asserts(test_exposure_meter_mirror)
 set_target_properties(test_exposure_meter_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
 add_test(NAME test_exposure_meter_mirror COMMAND test_exposure_meter_mirror)
 vixen_set_suite_properties(RenderGraph TESTS test_exposure_meter_mirror)
@@ -114,6 +115,7 @@ vixen_set_suite_properties(RenderGraph TESTS test_exposure_meter_mirror)
 # Reprojects from immutable previous-frame history while writing a separate current image.
 add_executable(test_spatial_reuse_history_mirror Nodes/test_spatial_reuse_history_mirror.cpp)
 target_compile_features(test_spatial_reuse_history_mirror PRIVATE cxx_std_17)
+vixen_enable_asserts(test_spatial_reuse_history_mirror)
 set_target_properties(test_spatial_reuse_history_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
 add_test(NAME test_spatial_reuse_history_mirror COMMAND test_spatial_reuse_history_mirror)
 vixen_set_suite_properties(RenderGraph TESTS test_spatial_reuse_history_mirror)
@@ -576,16 +578,6 @@ if(TARGET GTest::gtest_main)
         COMMENT "Staging UI assets for test_ui_hud_smoke"
     )
 
-    # Copy TBB DLL (transitive dep via SVO → RenderGraph → TBB)
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_ui_hud_smoke POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb>
-                $<TARGET_FILE_DIR:test_ui_hud_smoke>
-            COMMENT "Copying TBB DLL for test_ui_hud_smoke"
-        )
-    endif()
-
     set_target_properties(test_ui_hud_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     vixen_gtest_discover_tests(RenderGraph test_ui_hud_smoke)
@@ -620,14 +612,7 @@ if(TARGET GTest::gtest_main)
             "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
         COMMENT "Staging UI assets for test_ui_composition_host"
     )
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_ui_composition_host POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb>
-                $<TARGET_FILE_DIR:test_ui_composition_host>
-            COMMENT "Copying TBB DLL for test_ui_composition_host"
-        )
-    endif()
+
     set_target_properties(test_ui_composition_host PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_ui_composition_host)
     message(STATUS "✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)")
@@ -976,6 +961,7 @@ if(TARGET GTest::gtest_main)
         test_frame_sync_node_timeline.cpp
         test_pass_group_schedule.cpp
         test_graph_topology.cpp
+        test_gpu_fault.cpp
     )
 
     # test_graph_topology's own need: allow #include "RenderGraph/..." with a clean path.

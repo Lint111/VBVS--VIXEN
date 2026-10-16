@@ -1,0 +1,78 @@
+{
+ "bodies": [
+  {
+   "center_m": [
+    -148011870700.0,
+    0.0,
+    0.0
+   ],
+   "emission": {
+    "color_temperature_k": 5772.0,
+    "limb": {
+     "law": "none"
+    },
+    "radiance": 14718.276069141893
+   },
+   "name": "sun",
+   "radius_m": 695700000.0,
+   "role": "star",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.3,
+   "center_m": [
+    1586000000.0,
+    0.0,
+    0.0
+   ],
+   "name": "planet",
+   "radius_m": 6371000.0,
+   "role": "planet",
+   "shape": "sphere"
+  },
+  {
+   "albedo": 0.12,
+   "center_m": [
+    1201834166.0938597,
+    13415366.532441372,
+    0.0
+   ],
+   "name": "moon",
+   "radius_m": 1737000.0,
+   "role": "moon",
+   "shape": "sphere"
+  }
+ ],
+ "camera": {
+  "height": 1080,
+  "look_dir": [
+   1.0,
+   0.0,
+   0.0
+  ],
+  "position_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "up": [
+   0.0,
+   0.0,
+   1.0
+  ],
+  "vfov_deg": 0.6,
+  "width": 1080
+ },
+ "id": "c1_fixture",
+ "integrator": {
+  "max_depth": 6,
+  "seed": 1,
+  "spp": 32
+ },
+ "length_unit": "m",
+ "match": {},
+ "note": "C1 full-day L1 view: camera on the sun-planet line 1.586e6 km sunward of the planet, moon 2 deg off that line as seen from the planet",
+ "radiance_unit_w_m2": 1361.0,
+ "schema": "planetref-scene/v1",
+ "state": "C1"
+}

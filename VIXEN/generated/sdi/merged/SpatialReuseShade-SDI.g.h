@@ -53,17 +53,17 @@ struct OctreeConfigsSSBO {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
+ * Layout VixenHash: 0x6f03924fb7e8818e (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x6f03924fb7e8818eULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 208;
+        static constexpr uint32_t SIZE = 240;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -823,7 +823,7 @@ using worldPosHistoryOutput = Set0::Binding49;
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 96;
+    static constexpr uint32_t SIZE = 112;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
@@ -937,6 +937,14 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    struct moduleIndirectIrradiance {
+        static constexpr const char* NAME = "moduleIndirectIrradiance";
+        static constexpr uint32_t INDEX = 14;
+        static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t SIZE = 12;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
 } // namespace Push
 
 struct PushBlock {
@@ -955,6 +963,8 @@ struct PushBlock {
     glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
     float cosmicK;
+    glm::vec3 moduleIndirectIrradiance;
+    uint8_t _tail[4];
 };
 
 static_assert(offsetof(PushBlock, cameraPos) == Push::cameraPos::OFFSET, "PushBlock.cameraPos is not at its SDI OFFSET");
@@ -971,6 +981,7 @@ static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET,
 static_assert(offsetof(PushBlock, debugTargetPixel) == Push::debugTargetPixel::OFFSET, "PushBlock.debugTargetPixel is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, accumFrameCount) == Push::accumFrameCount::OFFSET, "PushBlock.accumFrameCount is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, cosmicK) == Push::cosmicK::OFFSET, "PushBlock.cosmicK is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, moduleIndirectIrradiance) == Push::moduleIndirectIrradiance::OFFSET, "PushBlock.moduleIndirectIrradiance is not at its SDI OFFSET");
 static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
 
 // ============================================================================
@@ -1038,6 +1049,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
     {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"moduleIndirectIrradiance", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
 };
 
 /**
@@ -1059,7 +1071,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 40;
+    static constexpr uint32_t NUM_MEMBERS = 41;
     static constexpr uint32_t NUM_FEATURES = 3;
 };
 

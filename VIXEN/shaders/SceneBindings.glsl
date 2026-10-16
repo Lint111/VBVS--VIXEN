@@ -1173,6 +1173,47 @@ float instanceMinimumAxisScale(uint instanceIndex) {
                min(length(vec3(r0.y, r1.y, r2.y)), length(vec3(r0.z, r1.z, r2.z))));
 }
 
+// A stored-SDF hit can sit slightly inside the trilinear surface reconstructed
+// from voxel-centre samples. Keep the normal offset in transformed voxel-pitch
+// units, then add a bounded slope term for grazing light directions. The
+// extra offset is capped at two pitches so contact and concave shadows remain
+// attached while the base three-pitch offset continues to suppress the 128^3
+// lattice acne.
+float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
+                                vec3 surfaceNormal, vec3 lightDirection) {
+    if (sourceInstanceIndex >= uint(bodyInstances.length())) return configuredBias;
+    BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
+    uint octreeIndex = sourceInstance.octreeIndex;
+    if (octreeIndex >= uint(configs.length())) return configuredBias;
+
+    OctreeConfig sourceConfig = configs[octreeIndex];
+    if (sourceConfig.formatId != FORMAT_STORED_SDF || sourceConfig.bricksPerAxisSdf == 0u)
+        return configuredBias;
+
+    // localToWorld maps the normalized ESVO grid into the body-local [0,10]^3
+    // frame; the instance transform then maps that body frame to world space.
+    // Compose their three grid axes so non-uniform instance transforms use the
+    // largest actual world-space voxel edge.
+    vec3 gridAxisX = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[0].xyz);
+    vec3 gridAxisY = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[1].xyz);
+    vec3 gridAxisZ = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[2].xyz);
+    float voxelCount = float(sourceConfig.bricksPerAxisSdf) * 8.0;
+    float voxelWorldPitch = max(length(gridAxisX), max(length(gridAxisY), length(gridAxisZ))) /
+                            voxelCount;
+    float normalOffsetBias = max(configuredBias, 3.0 * voxelWorldPitch);
+    float normalLightCos = clamp(dot(surfaceNormal, lightDirection), 0.0, 1.0);
+    float slope = sqrt(max(1.0 - normalLightCos * normalLightCos, 0.0)) /
+                  max(normalLightCos, 0.2);
+    float slopeOffsetBias = min(slope, 2.0) * voxelWorldPitch;
+    return normalOffsetBias + slopeOffsetBias;
+}
+
 // rtperf S1: ray-query primitive indices address the compact shell pool, not
 // the sparse bpa^3 source grid. The CPU flattens these records in octree order
 // and the TLAS instance custom index supplies each octree's proxy base.
@@ -1306,8 +1347,9 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 // W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
 // backend alongside ESVO/DDA). Self-#ifdef-guarded on VIXEN_RTQUERY_TRAVERSAL --
 // entirely compiled out (including its TLAS binding) on a flag-off build, exactly
-// like the coarse-grid DDA backend below stays compiled out without
-// VIXEN_BRICKMAP_TRAVERSAL. Included here (after configs[]/brickLookup/StoredSdf's
+// like the coarse-grid DDA backend below stays compiled out unless the composed
+// capability resolver selects VIXEN_COMPOSED_DDA_FALLBACK. Included here after
+// configs[]/brickLookup/StoredSdf's
 // marchBrickSdfCell, all declared above) so it can call marchBrickSdfCell/
 // brickLocalToGrid directly, same dependency order the DDA backend relies on.
 #include "RayQueryTraversal.glsl"
@@ -2873,15 +2915,10 @@ bool traverseOctreeInstancedAnyHit(vec3 rayOrigin, vec3 rayDir,
 // own cell loop already provides that continuation, exactly as it already does
 // for a marchBrickInstanced miss below).
 // ============================================================================
-// ROUND-5 NOTE (validator-mandated): this whole function is COMPILED OUT on any
-// composed boot where the device has VK_KHR_ray_query (TraceWorld.glsl:549
-// gives VIXEN_RTQUERY_TRAVERSAL precedence in the #ifdef/#elif chain) -- on
-// this machine's 3060, VIXEN_COMPOSED_TRAVERSAL always resolves to RTQUERY
-// (BuildRenderGraph.cpp:1610-1631), so edits here are dead code for every
-// composed boot; only a STANDALONE VIXEN_BRICKMAP_TRAVERSAL boot (no RTQUERY,
-// no COMPOSED) actually executes this body. The instRenderScale fix below is
-// correct arithmetic and stays live on non-rayQuery machines / forced-DDA
-// boots -- KEEP it.
+// R505 capability fallback: this function is selected only when composed
+// traversal is enabled and RayQueryLighting is unavailable. On devices with
+// ray query, TraceWorld.glsl's RT-query branch takes precedence. The DDA stays
+// live as the software tier on devices without ray query.
 bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                      vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                                      float instRenderScale,
@@ -3165,17 +3202,9 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
         uint flatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);
         uint localBrickIdx = brickLookup[lookupBase + flatIdx];
         if (localBrickIdx != 0xFFFFFFFFu) {
-// ROUND-5 FIX: widened from bare VIXEN_COMPOSED_TRAVERSAL -- the far-field
-// gate's math is backend-agnostic (world-frame distance vs world-frame cell
-// size, no composed-identity dependency), but it only compiled under the
-// composed identity define, which a STANDALONE VIXEN_BRICKMAP_TRAVERSAL boot
-// (no VIXEN_COMPOSED_TRAVERSAL) never pushes (BuildRenderGraph.cpp:1623-1631)
-// -- so this whole tier was dead code on every non-composed DDA boot (round-5
-// symptom 2, [FarFieldCount]=0 on a VIXEN_BRICKMAP_TRAVERSAL=1-only boot even
-// though the block IS compiled in for composed). Also compiling under the
-// single-backend flag directly makes the tier reachable whenever THIS
-// backend is actually selected, composed or not.
-#if defined(VIXEN_COMPOSED_TRAVERSAL) || defined(VIXEN_BRICKMAP_TRAVERSAL)
+// The far-field tier is part of composed traversal and is compiled for both
+// capability-selected near-field tiers.
+#ifdef VIXEN_COMPOSED_TRAVERSAL
             // W-COMPOSED far-field tier: mirror the ESVO screen-space LOD cutoff
             // (SceneBindings.glsl's non-leaf LOD_ENABLED check, ~line 1195: "tv_max *
             // raySizeCoef + raySizeBias >= scale_exp2"), expressed in WORLD units --

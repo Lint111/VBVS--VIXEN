@@ -38,6 +38,8 @@ enum class AccessKind : uint8_t {
     TransferRead,
     TransferWrite,
     PresentSrc,
+    // A sampled reader sharing a wave with a storage reader must keep that image in GENERAL.
+    ComputeSampledReadGeneral,
 };
 
 /// Single source of truth: AccessKind -> {stage, access, layout}.
@@ -52,6 +54,9 @@ enum class AccessKind : uint8_t {
     case AccessKind::ComputeStorageReadWrite:
         return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_IMAGE_LAYOUT_GENERAL};
+    case AccessKind::ComputeSampledReadGeneral:
+        return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                 VK_IMAGE_LAYOUT_GENERAL};
     case AccessKind::ComputeSampledRead:
         return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
@@ -118,6 +123,7 @@ enum class AccessKind : uint8_t {
     case AccessKind::ComputeStorageRead:
     case AccessKind::ComputeStorageReadWrite:
     case AccessKind::ComputeSampledRead:
+    case AccessKind::ComputeSampledReadGeneral:
     case AccessKind::FragmentSampledRead:
     case AccessKind::FragmentStorageRead:
     case AccessKind::VertexStorageRead:

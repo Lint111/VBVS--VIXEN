@@ -55,16 +55,6 @@ if(MSVC)
     target_compile_options(vixen_editor PRIVATE /FS)
 endif()
 
-# Copy TBB DLL to output directory (required by SVO library) — mirrors application/main.
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET vixen_editor POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:vixen_editor>
-        COMMENT "Copying TBB DLL for vixen_editor"
-    )
-endif()
-
 # Stage the shared RmlUi UI assets (fonts + editor.rml/editor.rcss live beside hud.rml/demo.rml
 # in libraries/RenderGraph/assets/ui) next to the executable, same helper + same source dir as
 # application/main so VIXEN_UI_ASSET_SOURCE_DIR's compiled-in fallback and the staged copy agree.
@@ -75,8 +65,7 @@ vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST 
 # DISPLAY. The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     set(VIXEN_EDITOR_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/editor")
-    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
-    file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}" "${VIXEN_HUD_CAPTURE_DIR}")
+    file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
     # SaveDocument writes beside its input. Give the capture producer a build-tree copy so its
     # save/reopen script never mutates the tracked BuiltAssets sample.
     set(VIXEN_EDITOR_TEST_DOCUMENT "${VIXEN_EDITOR_CAPTURE_DIR}/sample_tri_layer.vxd")
@@ -101,6 +90,29 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
             "VIXEN_EXIT_AFTER_FRAMES=140")
 
+    if(VIXEN_FAIL_SCENARIOS)
+        set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
+        add_test(NAME vixen_device_loss_recovery
+            COMMAND bash -c
+                "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        set_tests_properties(vixen_device_loss_recovery PROPERTIES
+            WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
+            TIMEOUT 180)
+        vixen_set_suite_properties(RenderGraph GPU TESTS vixen_device_loss_recovery
+            TEST_ENVIRONMENT
+                "VIXEN_SIMULATE_DEVICE_LOSS=40"
+                "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
+                "VIXEN_EXIT_AFTER_FRAMES=85")
+    endif()
+endif()
+
+# Keep the HUD fixture available to the native Windows capture lane as well as Dozen. Look-dev
+# scene captures intentionally suppress the HUD, so text parity has its own independently queued
+# producer and label on every platform.
+if(BUILD_TESTS AND TARGET VIXEN)
+    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
+    file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
     add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
     set_tests_properties(vixen_hud_capture_producer PROPERTIES
         FIXTURES_SETUP VixenHudCapture
@@ -114,6 +126,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=85")
+    set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
 endif()
 
 # The native windowed witness is WSLg-specific. Keep its display contract in
@@ -158,6 +171,9 @@ endif()
 
 # Multi-process cache correctness gate. The test owns its process fan-out so CTest admits it as
 # one GPU job; each child gets unique capture/document paths while all children share VIXEN_CACHE_DIR.
+# It is registered under the `nightly` label only (R565 C5): it tests cache collisions, not a lane's
+# change, and its cold pipeline compiles held 45-60% of every lane's GPU-queue time. The split runner
+# excludes `nightly` by default; `ctest -L nightly` or `run-tests-split.sh --nightly` runs it.
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME vixen_multiinstance_cache_gate
@@ -168,5 +184,6 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             --document "${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
             --work-dir "${CMAKE_BINARY_DIR}/runtime-captures/multiinstance")
     set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
-    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_multiinstance_cache_gate)
+    vixen_set_suite_properties(nightly GPU TESTS vixen_multiinstance_cache_gate)
 endif()
+vixen_schedule_runtime_dlls_for_current_directory()

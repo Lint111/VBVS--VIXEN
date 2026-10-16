@@ -11,6 +11,14 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <sstream>
+#include <bit>
+#include <array>
+#include <unordered_set>
+#include <unordered_map>
+#include <filesystem>
+#include <cstdlib>
+#include <spirv/unified1/spirv.hpp>
+#include "ShaderCompiler.h"
 #include "Recipe/UberShaderSplice.h"
 #include "ShaderBundleBuilder.h"
 
@@ -95,6 +103,24 @@ TEST(UberShaderSplice, MarkerIsPresentInRealShaderSource) {
     const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
     ASSERT_FALSE(raw.empty());
     EXPECT_NE(raw.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), std::string::npos);
+}
+
+TEST(UberShaderSplice, SharedTraversalConsumersCompileTheSameRegisteredFields) {
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry recipe{};
+    recipe.bytecode = {sphere({0, 0, 0}, 1.0f)};
+    ASSERT_EQ(registry.Register(100u, recipe), RecipeRegistry::RegisterResult::Ok);
+    for (const char* shader : {"ShadowVisibilityWave.comp", "ShadowRayTrace.comp",
+                              "DirectLighting.comp", "ProbeGather.comp", "HitAccumCellShade.comp"}) {
+        SCOPED_TRACE(shader);
+        const std::string raw = ReadFile(std::string(VIXEN_SHADERS_DIR)+"/"+shader);
+        ASSERT_FALSE(raw.empty());
+        const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry, nullptr);
+        EXPECT_NE(spliced.find("sdfRecipe_100"), std::string::npos);
+        EXPECT_NE(spliced.find("evalRecipeField"), std::string::npos);
+        const auto result = CompileSource(spliced);
+        EXPECT_TRUE(result.success) << result.errorMessage;
+    }
 }
 
 // --- N=1 registered recipe: splice compiles, macro + generated functions present ---------
@@ -220,4 +246,96 @@ TEST(UberShaderSplice, MissingMarkerThrows) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(UberShaderSplice, BoundsAndOccupancyMetadataKeepAuthoredBits) {
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphere(glm::vec3(0.0f), 0.5f)};
+    entry.boundCenter = {1.23456789e-12f, std::bit_cast<float>(0x00000001u), -0.0f};
+    entry.boundRadius = 0.123456789f;
+    entry.stepRelaxation = 1.0f / 3.0f;
+    entry.occupancyGridDim = 1;
+    entry.occupancyGridValues = {0.0f};
+    entry.occupancyGridAabbMin = entry.boundCenter;
+    entry.occupancyGridCellSize = 1.23456789e-12f;
+    ASSERT_EQ(registry.Register(2, entry), RecipeRegistry::RegisterResult::Ok);
+    const auto spliced = SpliceProceduralRecipesIntoSource("// VIXEN_UBER_RECIPE_SPLICE_MARKER\n", registry);
+    for (const auto value : {entry.boundCenter.x, entry.boundCenter.y, entry.boundCenter.z,
+            entry.boundRadius, entry.stepRelaxation, entry.occupancyGridCellSize}) {
+        const std::string expected = "uintBitsToFloat(" + std::to_string(std::bit_cast<std::uint32_t>(value)) + "u)";
+        EXPECT_NE(spliced.find(expected), std::string::npos) << expected << "\n" << spliced;
+    }
+}
+
+// R485: validate the compiled representation, rather than parsing text with a CPU parser.
+TEST(UberShaderSplice, AuthoredBinary32WordsSurviveGlslCompilation) {
+    constexpr std::array<std::uint32_t, 14> words{
+        0x00000000u, 0x80000000u, 0x00000001u, 0x007fffffu, 0x00800000u,
+        0x80000001u, 0x3dcccccdu, 0x3eaaaaabu, 0x3dfcd6eau, 0x2badbcfcu,
+        0x3f800001u, 0xbf800001u, 0x7f7fffffu, 0xff7fffffu};
+    std::string source = "#version 450\nlayout(local_size_x=1) in;\n"
+        "layout(set=0,binding=0,std430) buffer Output { float values[]; };\n";
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::PushParam);
+        instruction.data[0] = std::bit_cast<float>(words[i]);
+        source += EmitProceduralFieldFunctionGlsl(&instruction, 1, static_cast<std::uint32_t>(i));
+    }
+    source += "void main() { float params[6];\n";
+    for (std::size_t i = 0; i < words.size(); ++i)
+        source += "values[" + std::to_string(i) + "] = sdfRecipe_" + std::to_string(i)
+            + "(vec3(0.0), params);\n";
+    source += "}\n";
+    ShaderManagement::ShaderCompiler compiler;
+    for (bool optimize : {false, true}) {
+        ShaderManagement::CompilationOptions options;
+        options.optimizePerformance = optimize;
+        const auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, source, "main", options);
+        ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
+        std::unordered_set<std::uint32_t> floatTypes, constants;
+        std::unordered_map<std::uint32_t, std::uint32_t> integerConstants;
+        std::unordered_set<std::uint32_t> uintTypes;
+        for (std::size_t i = 5; i < compiled.spirv.size();) {
+            const std::uint32_t instruction = compiled.spirv[i];
+            const auto opcode = static_cast<spv::Op>(instruction & 0xffffu);
+            const std::size_t length = instruction >> 16;
+            ASSERT_GT(length, 0u);
+            ASSERT_LE(i + length, compiled.spirv.size());
+            if (opcode == spv::OpTypeFloat && compiled.spirv[i + 2] == 32u)
+                floatTypes.insert(compiled.spirv[i + 1]);
+            if (opcode == spv::OpTypeInt && compiled.spirv[i + 2] == 32u && compiled.spirv[i + 3] == 0u)
+                uintTypes.insert(compiled.spirv[i + 1]);
+            if (opcode == spv::OpConstant && length == 4) {
+                if (floatTypes.contains(compiled.spirv[i + 1])) constants.insert(compiled.spirv[i + 3]);
+                if (uintTypes.contains(compiled.spirv[i + 1]))
+                    integerConstants[compiled.spirv[i + 2]] = compiled.spirv[i + 3];
+            }
+            if (opcode == spv::OpBitcast && length == 4 && floatTypes.contains(compiled.spirv[i + 1])) {
+                const auto value = integerConstants.find(compiled.spirv[i + 3]);
+                if (value != integerConstants.end()) constants.insert(value->second);
+            }
+            i += length;
+        }
+        for (const auto word : words)
+            EXPECT_TRUE(constants.contains(word)) << "missing authored word " << std::hex << word
+                << " optimize=" << optimize;
+    }
+}
+
+TEST(UberShaderSplice, DISABLED_CompileDiagnosticShaderDirectory) {
+    const char* directory = std::getenv("BOUNDSCORE_DIAGNOSTIC_SHADER_DIR");
+    ASSERT_NE(directory, nullptr);
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+        if (entry.path().extension() != ".comp") continue;
+        const auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            ReadFile(entry.path().string()), "main", options);
+        ASSERT_TRUE(compiled.success) << entry.path() << "\n" << compiled.GetFullLog();
+        auto output = entry.path(); output.replace_extension(".spv");
+        std::ofstream stream(output, std::ios::binary);
+        stream.write(reinterpret_cast<const char*>(compiled.spirv.data()), compiled.spirv.size() * 4);
+        ASSERT_TRUE(stream.good()) << output;
+    }
 }

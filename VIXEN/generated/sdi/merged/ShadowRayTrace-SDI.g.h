@@ -749,6 +749,26 @@ struct BodyInstanceTransformBuffer {
 
 };
 
+/**
+ * @brief OccupancyGridBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x445335f7f28b15af (for runtime discovery)
+ */
+struct OccupancyGridBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x445335f7f28b15afULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
 namespace Set0 {
 
     /**
@@ -978,6 +998,21 @@ namespace Set0 {
         using DataType = BodyInstanceTransformBuffer;
     };
 
+    /**
+     * @brief OccupancyGridBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding48 {
+        static constexpr const char* NAME = "OccupancyGridBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 48;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = OccupancyGridBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -997,6 +1032,7 @@ using InstanceSkipMaskBuffer = Set0::Binding35;
 using ShadowRayRequestBuffer = Set0::Binding37;
 using ShadowRayResultBuffer = Set0::Binding38;
 using BodyInstanceTransformBuffer = Set0::Binding47;
+using OccupancyGridBuffer = Set0::Binding48;
 } // namespace Bind
 
 namespace Push {
@@ -1184,6 +1220,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ShadowRayRequestBuffer", false, 0, 37, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowRayResultBuffer", false, 0, 38, 0, Access::WriteOnly, 0, nullptr},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
+    {"OccupancyGridBuffer", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1219,7 +1256,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowRayTrace";
-    static constexpr uint32_t NUM_MEMBERS = 29;
+    static constexpr uint32_t NUM_MEMBERS = 30;
     static constexpr uint32_t NUM_FEATURES = 1;
 };
 

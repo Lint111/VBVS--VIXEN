@@ -10,6 +10,7 @@
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
+#include <functional>
 
 namespace Vixen::RenderGraph {
 
@@ -74,6 +75,13 @@ public:
     /// Get GPU performance logger for external metrics extraction (e.g. PerfCsvWriter).
     /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
     [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
+    // Capture diagnostics may snapshot a pass's output before a later pipelined
+    // writer replaces it. Install before the first command-buffer recording.
+    void SetPostDispatchRecorderForTest(std::function<void(VkCommandBuffer)> recorder) {
+        postDispatchRecorderForTest_ = std::move(recorder);
+    }
+private:
+    std::function<void(VkCommandBuffer)> postDispatchRecorderForTest_;
 };
 
 } // namespace Vixen::RenderGraph

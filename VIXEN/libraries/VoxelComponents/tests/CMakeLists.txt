@@ -23,4 +23,4 @@ target_link_libraries(test_component_system
 # Visual Studio solution folder organization
 set_target_properties(test_component_system PROPERTIES FOLDER "Tests/VoxelComponents Tests")
 
-gtest_discover_tests(test_component_system)
+vixen_gtest_discover_tests(VoxelComponents test_component_system)

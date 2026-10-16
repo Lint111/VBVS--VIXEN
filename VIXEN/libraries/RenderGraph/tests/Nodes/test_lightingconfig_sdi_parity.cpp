@@ -90,12 +90,12 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Struct SIZE == C++ struct size (the cel schema's std430 layout is 208 B).
+    // (a) Struct SIZE == C++ struct size (the cel schema's std430 layout is 240 B).
     EXPECT_EQ(static_cast<std::size_t>(lightingConfig->type.sizeInBytes), sizeof(LightingConfig))
         << "LightingConfig size (" << lightingConfig->type.sizeInBytes
         << ") != sizeof(LightingConfig) (" << sizeof(LightingConfig) << ") — std430 drift";
-    EXPECT_EQ(lightingConfig->type.sizeInBytes, 208u)
-        << "LightingConfig size must be 208 for the cel shading settings";
+    EXPECT_EQ(lightingConfig->type.sizeInBytes, 240u)
+        << "LightingConfig size must be 240 for the cel shading settings";
 
     // (b) Top-level field offsets.
     ASSERT_FALSE(lightingConfig->members.empty())
@@ -150,6 +150,10 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         {"celBandFalloffEnd", offsetof(LightingConfig, celBandFalloffEnd)},
         {"celLightSpillScale", offsetof(LightingConfig, celLightSpillScale)},
         {"exposureCompensationEV", offsetof(LightingConfig, exposureCompensationEV)},
+        {"dimBandFloor", offsetof(LightingConfig, dimBandFloor)},
+        {"skyColor", offsetof(LightingConfig, skyColorX)},
+        {"skyMode", offsetof(LightingConfig, skyMode)},
+        {"skyGradientSlope", offsetof(LightingConfig, skyGradientSlope)},
     };
     for (const auto& f : celFields) {
         const SpirvStructMember* sm = FindSubMember(*lightingConfig, f.name);

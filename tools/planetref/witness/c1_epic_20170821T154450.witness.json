@@ -1,0 +1,36 @@
+{
+ "errors": {
+  "earth_disc_angular_diameter_relative": 0.0006226074215660571,
+  "phase_angle_from_k_deg": 0.04699672109654873,
+  "phase_fraction_k": -5.465679563176895e-05,
+  "sun_axis_position_angle_deg": -0.026190423763068793,
+  "sun_earth_vehicle_deg": 0.04699672109655051
+ },
+ "expected_from_api": {
+  "earth_disc_angular_diameter_deg": 0.4603048308893935,
+  "phase_fraction_k": 0.9955672358459378,
+  "sun_axis_position_angle_deg": 64.2635663975078,
+  "sun_earth_vehicle_deg": 7.635040016756601
+ },
+ "exr_file": "c1_epic_20170821T154450.exr",
+ "fit": {
+  "alpha_deg": 7.682037,
+  "amp": 0.093834,
+  "cx": 383.853934,
+  "cy": 384.078299,
+  "psi_deg": 64.237376,
+  "radius_px": 285.268277,
+  "rms_residual_rel": 0.00112
+ },
+ "id": "c1_epic_20170821T154450",
+ "measured_from_render": {
+  "earth_disc_angular_diameter_deg": 0.46059142009328796,
+  "phase_fraction_k": 0.995512579050306,
+  "sun_axis_position_angle_deg": 64.23737597374475,
+  "sun_earth_vehicle_deg": 7.682036737853151
+ },
+ "model": "Lambert sphere fit: cx, cy, radius, amplitude, phase angle, sun-axis position angle",
+ "pass": true,
+ "schema": "planetref-witness/v1",
+ "tolerance_deg": 1.0
+}

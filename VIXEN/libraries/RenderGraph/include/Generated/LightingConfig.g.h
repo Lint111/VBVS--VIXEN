@@ -35,9 +35,17 @@ struct LightingConfig {
     float celBandFalloffEnd;
     float celLightSpillScale;
     float exposureCompensationEV;
-    float _celTailPadding1;
+    float dimBandFloor;
+    float skyColorX;
+    float skyColorY;
+    float skyColorZ;
+    uint32_t skyMode;
+    float skyGradientSlope;
+    float _envTailPadding0;
+    float _envTailPadding1;
+    float _envTailPadding2;
 };
-static_assert(sizeof(LightingConfig) == 208, "LightingConfig std430 size");
+static_assert(sizeof(LightingConfig) == 240, "LightingConfig std430 size");
 static_assert(offsetof(LightingConfig, lightCount) == 0, "lightCount@0");
 static_assert(offsetof(LightingConfig, ambientIntensity) == 4, "ambientIntensity@4");
 static_assert(offsetof(LightingConfig, lights) == 16, "lights@16");
@@ -53,5 +61,11 @@ static_assert(offsetof(LightingConfig, celBandFalloffStart) == 188, "celBandFall
 static_assert(offsetof(LightingConfig, celBandFalloffEnd) == 192, "celBandFalloffEnd@192");
 static_assert(offsetof(LightingConfig, celLightSpillScale) == 196, "celLightSpillScale@196");
 static_assert(offsetof(LightingConfig, exposureCompensationEV) == 200, "exposureCompensationEV@200");
-static_assert(offsetof(LightingConfig, _celTailPadding1) == 204, "_celTailPadding1@204");
+static_assert(offsetof(LightingConfig, dimBandFloor) == 204, "dimBandFloor@204");
+static_assert(offsetof(LightingConfig, skyColorX) == 208, "skyColorX@208");
+static_assert(offsetof(LightingConfig, skyMode) == 220, "skyMode@220");
+static_assert(offsetof(LightingConfig, skyGradientSlope) == 224, "skyGradientSlope@224");
+static_assert(offsetof(LightingConfig, _envTailPadding0) == 228, "_envTailPadding0@228");
+static_assert(offsetof(LightingConfig, _envTailPadding1) == 232, "_envTailPadding1@232");
+static_assert(offsetof(LightingConfig, _envTailPadding2) == 236, "_envTailPadding2@236");
 } // namespace Vixen::Gpu

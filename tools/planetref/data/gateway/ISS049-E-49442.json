@@ -1,0 +1,25 @@
+{
+ "altitude_km": 411.0,
+ "camera": "Nikon D4 Electronic Still Camera",
+ "camera_tilt": "High Oblique",
+ "camera_tilt_deg": null,
+ "center": null,
+ "date": "2016.10.27",
+ "focal_length_mm": 240.0,
+ "frame_px": [
+  4928,
+  3280
+ ],
+ "nadir": [
+  -49.1,
+  -13.1
+ ],
+ "nadir_to_center": null,
+ "sensor_mm": [
+  36.0,
+  23.9
+ ],
+ "sun_azimuth_deg": 213.0,
+ "sun_elevation_deg": -22.0,
+ "time_gmt": "22:29:54"
+}

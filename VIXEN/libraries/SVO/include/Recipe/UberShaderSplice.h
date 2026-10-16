@@ -64,15 +64,8 @@ inline std::string SpliceProceduralRecipesIntoSource(
         return rawSource;
     }
 
-    // ponytail: matches EmitProceduralFieldFunctionGlsl's own float-literal guard — every
-    // literal this splice writes must carry a decimal point so GLSL sees it as a float, not
-    // an int (the same "1/6 integer-divides to 0" failure class that guard exists for).
-    auto f = [](float v) {
-        std::string s = std::to_string(v);
-        if (s.find('.') == std::string::npos && s.find('e') == std::string::npos)
-            s += ".0";
-        return s;
-    };
+    // Bounds and grid metadata obey the same binary32 transport contract as operands.
+    const auto f = RecipeGlslFloatLiteral;
 
     std::ostringstream out;
     out << "\n#define VIXEN_UBER_RECIPE_SPLICED 1\n";
@@ -105,7 +98,9 @@ inline std::string SpliceProceduralRecipesIntoSource(
         out << EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
                                                static_cast<uint32_t>(entry->bytecode.size()),
                                                id,
-                                               usesDeclarePosition(entry))
+                                               usesDeclarePosition(entry),
+                                               &registry,
+                                               entry->glyphInstances)
             << "\n";
     }
 

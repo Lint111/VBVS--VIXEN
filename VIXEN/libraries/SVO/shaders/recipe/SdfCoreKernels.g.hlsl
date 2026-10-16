@@ -3,6 +3,76 @@
 #ifndef SDF_CORE_KERNELS_G_HLSL
 #define SDF_CORE_KERNELS_G_HLSL
 
+float SdfCore_GlyphOutline(float3 p, GlyphOutlineInstance glyph) {
+    float minimumDistance = 1.0e20;
+    uint crossings = 0u;
+    int winding = 0;
+    int segmentCount = (int)min(glyph.SegmentCount, (uint)GlyphOutlineInstance.SegmentCapacity);
+    bool checkWinding = p.x >= glyph.BoundsMin.X && p.x <= glyph.BoundsMax.X && p.y >= glyph.BoundsMin.Y && p.y <= glyph.BoundsMax.Y;
+    [loop] for (int segmentIndex = 0; segmentIndex < GlyphOutlineInstance.SegmentCapacity; ++segmentIndex)
+    {
+        if (segmentIndex < segmentCount)
+        {
+            GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
+            float2 p0 = float2(segment.P0.X, segment.P0.Y);
+            float2 p1 = float2(segment.P1.X, segment.P1.Y);
+            float2 p2 = float2(segment.P2.X, segment.P2.Y);
+            float2 p3 = float2(segment.P3.X, segment.P3.Y);
+            float2 previous = p0;
+            [loop] for (int sampleIndex = 1; sampleIndex <= 16; ++sampleIndex)
+            {
+                float t = (float)sampleIndex / 16.0;
+                float u = 1.0 - t;
+                float2 current = float2(0.0, 0.0);
+                if (segment.Kind == 0u)
+                {
+                    current = p0 * u + p1 * t;
+                }
+                else
+                {
+                    if (segment.Kind == 1u)
+                    {
+                        current = p0 * (u * u) + p1 * (2.0 * u * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        current = p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t);
+                    }
+                }
+                float2 edge = current - previous;
+                float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
+                float projection = (edgeLengthSquared > 0.0 ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared : 0.0);
+                if (projection < 0.0)
+                {
+                    projection = 0.0;
+                }
+                if (projection > 1.0)
+                {
+                    projection = 1.0;
+                }
+                float2 closest = previous + edge * projection;
+                float distance = length(float2(p.x - closest.x, p.y - closest.y));
+                if (distance < minimumDistance)
+                {
+                    minimumDistance = distance;
+                }
+                if (checkWinding && ((previous.y <= p.y && current.y > p.y) || (previous.y > p.y && current.y <= p.y)))
+                {
+                    float crossingX = previous.x + (p.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+                    if (crossingX > p.x)
+                    {
+                        crossings += 1u;
+                        winding += (current.y > previous.y ? 1 : -1);
+                    }
+                }
+                previous = current;
+            }
+        }
+    }
+    bool inside = checkWinding && ((glyph.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0));
+    return (inside ? -minimumDistance : minimumDistance);
+}
+
 float SdfCore_Sphere(float3 p, float3 center, float radius) {
     return length(p - center) - radius;
 }

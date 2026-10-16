@@ -138,6 +138,18 @@ void InstanceNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // window+surface. The surface is created FROM this instance, so destroying it here while WindowNode
     // keeps the surface would dangle the surface and trip VUID-vkDestroyInstance-instance-00629. Release
     // only on final teardown.
+    //
+    // EXCEPTION — DeviceLost: Mesa Dozen (Vulkan over D3D12) keeps the removed ID3D12Device on the
+    // instance's VkPhysicalDevice, so vkCreateDevice on it after a real device removal SIGSEGVs inside
+    // dzn, while a FRESH VkInstance creates a working device (reproduced by tools/gpuharden/
+    // device_loss_probe: --recover same crashes, --recover fresh succeeds). Recovery therefore
+    // recreates the instance. The instance-scoped children (WindowNode's and SwapChainNode's
+    // surfaces) are destroyed first in the reverse-order teardown and recreated on rebuild.
+    if (ctx.reason == CleanupReason::DeviceLost) {
+        NODE_LOG_INFO("[InstanceNode] Cleanup (device-loss): destroying the VkInstance so recovery re-enumerates the adapter");
+        DestroyVulkanInstance();
+        return;
+    }
     if (ctx.reason != CleanupReason::FinalTeardown) {
         NODE_LOG_INFO("[InstanceNode] Cleanup (recompile/device-loss): keeping the persistent VkInstance");
         return;

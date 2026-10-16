@@ -673,17 +673,17 @@ struct TierRefTableBuffer {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
+ * Layout VixenHash: 0x6f03924fb7e8818e (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x6f03924fb7e8818eULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 208;
+        static constexpr uint32_t SIZE = 240;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -884,6 +884,26 @@ struct BodyInstanceTransformBuffer {
         static constexpr const char* TYPE = "BodyInstanceTransform";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 96;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief OccupancyGridBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x445335f7f28b15af (for runtime discovery)
+ */
+struct OccupancyGridBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x445335f7f28b15afULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1251,6 +1271,21 @@ namespace Set0 {
         using DataType = BodyInstanceTransformBuffer;
     };
 
+    /**
+     * @brief OccupancyGridBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding48 {
+        static constexpr const char* NAME = "OccupancyGridBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 48;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = OccupancyGridBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -1279,6 +1314,7 @@ using ReservoirBufferA = Set0::Binding25;
 using ReservoirBufferB = Set0::Binding26;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 using BodyInstanceTransformBuffer = Set0::Binding47;
+using OccupancyGridBuffer = Set0::Binding48;
 } // namespace Bind
 
 namespace Push {
@@ -1475,6 +1511,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ReservoirBufferB", false, 0, 26, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
+    {"OccupancyGridBuffer", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1510,7 +1547,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "DirectLighting";
-    static constexpr uint32_t NUM_MEMBERS = 38;
+    static constexpr uint32_t NUM_MEMBERS = 39;
     static constexpr uint32_t NUM_FEATURES = 1;
 };
 

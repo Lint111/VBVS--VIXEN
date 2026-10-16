@@ -578,6 +578,8 @@ ResourceDescriptor MakeDescriptor(
         SlotType::mutability     // Compile-time constant (auto-sync P1)
     };
     d.accessKind = SlotType::accessKind;  // Compile-time constant (auto-sync P3)
+    d.declaredType = std::type_index(typeid(typename SlotType::Type));
+    d.role = SlotType::role;
     return d;
 }
 

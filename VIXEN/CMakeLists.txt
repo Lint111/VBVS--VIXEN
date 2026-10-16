@@ -361,15 +361,20 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 
 	# GLSL - use vulkan SDK's glslang library for compiling GLSL to SPIR-V
 	# This does not require offline conversion of GLSL shader to SPIR-V(.spv) form.
-	# Modern Vulkan SDK has glslang in Include directory
+	# Modern Vulkan SDK has glslang in Include directory. The Linux SDK uses a
+	# lowercase include/ directory, so accept either casing (Include first, which
+	# keeps the Windows lookup unchanged).
 	set(GLSLANGDIR "${VULKAN_PATH}/Include/glslang")
+	if(NOT EXISTS "${VULKAN_PATH}/Include/glslang" AND EXISTS "${VULKAN_PATH}/include/glslang")
+		set(GLSLANGDIR "${VULKAN_PATH}/include/glslang")
+	endif()
 
 	get_filename_component(GLSLANG_PREFIX "${GLSLANGDIR}" ABSOLUTE)
 
 	# Check if glslang directory exists
 	if(NOT EXISTS "${GLSLANG_PREFIX}")
 		message ("Fatal Error: glslang directory not found in Vulkan SDK path: ${GLSLANG_PREFIX}.")
-		message ("Note: glslang headers are expected in ${VULKAN_PATH}/Include/glslang")
+		message ("Note: glslang headers are expected in ${VULKAN_PATH}/Include/glslang or ${VULKAN_PATH}/include/glslang")
 	endif()
 
 	# Include the glslang directory (the parent Include directory is already included below)
@@ -606,6 +611,8 @@ include("${VIXEN_ROOT}/cmake/VixenCompilerPaths.cmake")
 vixen_configure_compiler_paths()
 
 # All FetchContent and external library setup moved to dependencies/
+include("${VIXEN_ROOT}/cmake/VixenRuntimeDlls.cmake")
+
 add_subdirectory(dependencies)
 
 # Set CTest's Vulkan loader environment from the same paths configure selected for builds. The
@@ -618,6 +625,10 @@ vixen_configure_ctest_gpu_environment(VIXEN_CTEST_GPU_ENVIRONMENT)
 # TESTING INFRASTRUCTURE section near the bottom of this file.
 if(BUILD_TESTS)
     enable_testing()
+    if(UNIX AND NOT APPLE)
+        add_subdirectory(tools/gpu-witness-layer)
+    endif()
+    vixen_schedule_test_class_finalize()
 endif()
 
 # Suppress warnings from external dependencies
@@ -757,6 +768,9 @@ if(BUILD_TESTS)
         endif()
         if(TARGET vixen_editor)
             list(APPEND _rendergraph_svo_build_targets vixen_editor)
+        endif()
+        if(TARGET vixen_gpu_witness_layer)
+            list(APPEND _rendergraph_svo_build_targets vixen_gpu_witness_layer)
         endif()
         list(REMOVE_DUPLICATES _rendergraph_svo_build_targets)
         add_custom_target(rendergraph_svo_tests)

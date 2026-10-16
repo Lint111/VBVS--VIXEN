@@ -8,6 +8,7 @@
 #include <RmlUi/Core/RenderInterface.h>
 #include "graph/HudView.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 namespace {
 class NullRI final : public Rml::RenderInterface {
@@ -25,8 +26,10 @@ class NullRI final : public Rml::RenderInterface {
 TEST(HudViewTest, RegistersAndProjectsFactionData) {
     Vixen::Ui::VixenRmlSystemInterface sys;
     NullRI ri;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sys);
     Rml::SetRenderInterface(&ri);
+    Rml::SetFontEngineInterface(&fontEngine);
     ASSERT_TRUE(Rml::Initialise());
     Rml::Context* ctx = Rml::CreateContext("hv", Rml::Vector2i(64, 64));
     ASSERT_NE(ctx, nullptr);

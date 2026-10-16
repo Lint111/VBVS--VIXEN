@@ -23,7 +23,8 @@ namespace {
 
 class LinearUpscalerModuleType final : public SubGraphType<LinearUpscalerModuleType> {
 public:
-    LinearUpscalerModuleType() : SubGraphType(kLinearUpscalerModuleTypeName) {}
+    static constexpr std::string_view TYPE_NAME = kLinearUpscalerModuleTypeName;
+    static constexpr std::string_view CAPABILITY_NAME = "";
     using PortConfig = UpscalerModulePorts;
     using Params = LinearUpscalerParams;
 
@@ -37,7 +38,8 @@ public:
 
 class Fsr1UpscalerModuleType final : public SubGraphType<Fsr1UpscalerModuleType> {
 public:
-    Fsr1UpscalerModuleType() : SubGraphType(kFsr1UpscalerModuleTypeName) {}
+    static constexpr std::string_view TYPE_NAME = kFsr1UpscalerModuleTypeName;
+    static constexpr std::string_view CAPABILITY_NAME = "Upscaler:Fsr1";
     using PortConfig = UpscalerModulePorts;
     using Params = Fsr1UpscalerParams;
 

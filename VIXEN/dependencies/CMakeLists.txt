@@ -276,11 +276,113 @@ if(TARGET freetype)
         $<$<CXX_COMPILER_ID:GNU>:-w>
         $<$<CXX_COMPILER_ID:Clang>:-w>)
 endif()
+
+# Multi-channel signed-distance glyph generation. The renderer only needs the
+# dependency-free core; font loading remains owned by the existing FreeType
+# target above, and the atlas packing/upload lives in VIXEN's Text module.
+FetchContent_Declare(msdfgen
+    GIT_REPOSITORY https://github.com/Chlumsky/msdfgen.git
+    GIT_TAG        v1.13
+    GIT_SHALLOW    TRUE)
+set(MSDFGEN_CORE_ONLY        ON  CACHE BOOL "Build only msdfgen core" FORCE)
+set(MSDFGEN_BUILD_STANDALONE OFF CACHE BOOL "Do not build the msdfgen CLI" FORCE)
+set(MSDFGEN_USE_VCPKG        OFF CACHE BOOL "Use VIXEN FetchContent dependencies" FORCE)
+set(MSDFGEN_INSTALL          OFF CACHE BOOL "Do not install msdfgen" FORCE)
+set(MSDFGEN_USE_SKIA         OFF CACHE BOOL "Do not build the Skia extension" FORCE)
+set(MSDFGEN_USE_OPENMP       OFF CACHE BOOL "Keep glyph generation single-threaded" FORCE)
+if(MSVC)
+    # VIXEN's Windows targets use the dynamic CRT (/MD). msdfgen defaults to
+    # the static CRT (/MT), which makes any final executable linking Text fail
+    # with LNK2038 even though msdfgen-core itself compiles successfully.
+    set(MSDFGEN_DYNAMIC_RUNTIME ON CACHE BOOL
+        "Use the same dynamic MSVC runtime as VIXEN" FORCE)
+endif()
+FetchContent_MakeAvailable(msdfgen)
+if(TARGET msdfgen-core)
+    set_target_properties(msdfgen-core PROPERTIES FOLDER "Dependencies")
+    target_compile_options(msdfgen-core PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>)
+endif()
 # RmlUi locates FreeType by the find_package target name Freetype::Freetype; FetchContent only
 # provides the lowercase `freetype` target, so alias it before RmlUi is configured below.
 if(TARGET freetype AND NOT TARGET Freetype::Freetype)
     add_library(Freetype::Freetype ALIAS freetype)
 endif()
+
+# Text shaping is a VIXEN responsibility. FreeType deliberately has its own
+# HarfBuzz integration disabled above so this stays the only shaping path.
+set(HB_HAVE_FREETYPE ON CACHE BOOL "Enable HarfBuzz's FreeType font adapter" FORCE)
+set(HB_HAVE_ICU OFF CACHE BOOL "Keep ICU out of the VIXEN text runtime" FORCE)
+set(HB_BUILD_UTILS OFF CACHE BOOL "Do not build HarfBuzz command-line tools" FORCE)
+set(HB_BUILD_SUBSET OFF CACHE BOOL "Do not build HarfBuzz subset tooling" FORCE)
+set(HB_BUILD_RASTER OFF CACHE BOOL "Use VIXEN's own glyph atlas" FORCE)
+set(HB_BUILD_VECTOR OFF CACHE BOOL "Do not build HarfBuzz vector output" FORCE)
+set(HB_BUILD_GPU OFF CACHE BOOL "Do not build HarfBuzz GPU helpers" FORCE)
+FetchContent_Declare(harfbuzz
+    GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
+    GIT_TAG        14.5.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(harfbuzz)
+if(TARGET harfbuzz)
+    set_target_properties(harfbuzz PROPERTIES FOLDER "Dependencies")
+    target_compile_options(harfbuzz PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<C_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<C_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+        $<$<C_COMPILER_ID:Clang>:-w>)
+endif()
+message(STATUS "HarfBuzz + FreeType configured for text shaping (MIT-style license)")
+
+# SheenBidi implements UAX #9 and returns visual runs that VIXEN shapes with
+# HarfBuzz. Its standalone tests and generator are not part of the product build.
+set(SB_CONFIG_EXPERIMENTAL_TEXT_API OFF CACHE BOOL "Use the stable SheenBidi API" FORCE)
+set(SB_CONFIG_UNITY ON CACHE BOOL "Build SheenBidi as its upstream unity source" FORCE)
+set(BUILD_GENERATOR OFF CACHE BOOL "Do not build SheenBidi's Unicode generator" FORCE)
+FetchContent_Declare(sheenbidi
+    GIT_REPOSITORY https://github.com/Tehreer/SheenBidi.git
+    GIT_TAG        v3.0.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(sheenbidi)
+if(TARGET SheenBidi)
+    set_target_properties(SheenBidi PROPERTIES FOLDER "Dependencies")
+    target_compile_options(SheenBidi PRIVATE
+        $<$<C_COMPILER_ID:MSVC>:/W0>
+        $<$<C_COMPILER_ID:GNU>:-w>
+        $<$<C_COMPILER_ID:Clang>:-w>)
+endif()
+message(STATUS "SheenBidi configured for Unicode bidirectional runs (Apache-2.0 license)")
+
+# libunibreak has no CMake project. Fetch its tagged source with FetchContent's
+# explicit-population form and build the same source list as upstream's
+# Makefile.gcc; the boundary owns the language class and this provides UAX #14/#29.
+FetchContent_Populate(libunibreak
+    GIT_REPOSITORY https://github.com/adah1972/libunibreak.git
+    GIT_TAG        libunibreak_5_1
+    GIT_SHALLOW    TRUE)
+# Read CFILES from the pinned upstream manifest so a tag bump cannot silently drop or add a file.
+file(READ ${libunibreak_SOURCE_DIR}/src/Makefile.gcc _unibreak_makefile)
+string(REPLACE "\\\n" " " _unibreak_makefile "${_unibreak_makefile}")
+string(REGEX MATCH "CFILES[ \t]*:=[ \t]*([^\n]*)" _unibreak_cfiles_match "${_unibreak_makefile}")
+if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "libunibreak: CFILES not found in ${libunibreak_SOURCE_DIR}/src/Makefile.gcc")
+endif()
+separate_arguments(_unibreak_cfiles UNIX_COMMAND "${CMAKE_MATCH_1}")
+list(TRANSFORM _unibreak_cfiles PREPEND "${libunibreak_SOURCE_DIR}/src/")
+add_library(VixenLibunibreak STATIC ${_unibreak_cfiles})
+unset(_unibreak_makefile)
+unset(_unibreak_cfiles_match)
+unset(_unibreak_cfiles)
+target_include_directories(VixenLibunibreak PUBLIC ${libunibreak_SOURCE_DIR}/src)
+set_target_properties(VixenLibunibreak PROPERTIES FOLDER "Dependencies")
+target_compile_options(VixenLibunibreak PRIVATE
+    $<$<C_COMPILER_ID:MSVC>:/W0>
+    $<$<C_COMPILER_ID:GNU>:-w>
+    $<$<C_COMPILER_ID:Clang>:-w>)
+message(STATUS "libunibreak configured for Unicode line breaking (zlib license)")
 
 FetchContent_Declare(rmlui
     GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
@@ -297,7 +399,7 @@ set(RMLUI_LUA_BINDINGS   OFF CACHE BOOL "" FORCE)
 set(_vixen_build_testing_saved ${BUILD_TESTING})
 set(BUILD_TESTING        OFF CACHE BOOL "" FORCE)
 # Hand RmlUi the FetchContent FreeType target rather than a system find_package.
-set(RMLUI_FONT_ENGINE    freetype CACHE STRING "" FORCE)
+set(RMLUI_FONT_ENGINE    none CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(rmlui)
 set(BUILD_TESTING ${_vixen_build_testing_saved} CACHE BOOL "" FORCE)
 unset(_vixen_build_testing_saved)

@@ -454,6 +454,20 @@ set(RENDERGRAPH_UI_SOURCES
     # own RenderGraphNode_UIRenderNode OBJECT lib for scoped linkage to work correctly.
 )
 
+# Regenerates the embedded RmlUi SPIR-V header from src/Ui/shaders (glslc required).
+# Declared as a target so refreshes go through the build rather than a hand-run script.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    set(_ui_shader_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/Ui/shaders")
+    add_custom_target(ui_shader_spirv_regen
+        COMMAND "${Python3_EXECUTABLE}" "${_ui_shader_dir}/regenerate-ui-shader-header.py"
+        DEPENDS "${_ui_shader_dir}/regenerate-ui-shader-header.py"
+            "${_ui_shader_dir}/ui.vert" "${_ui_shader_dir}/ui.frag"
+        BYPRODUCTS "${CMAKE_CURRENT_SOURCE_DIR}/include/Ui/UiShaderSpirv.g.h"
+        COMMENT "[codegen] regenerate UiShaderSpirv.g.h from ui.vert/ui.frag"
+        VERBATIM)
+endif()
+
 # ============================================================================
 # Selection (SEL-P1) — engine-native selection core types
 # ============================================================================
@@ -520,8 +534,7 @@ target_link_libraries(RenderGraphUiSupport
     PUBLIC
         RenderGraphCore
         glfw
-        rmlui_core
-        freetype
+        Text
     PRIVATE
         stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
 )
@@ -560,7 +573,6 @@ foreach(node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
             RenderGraphCore
             glfw
             rmlui_core
-            freetype
     )
     target_compile_definitions(${node_target} PUBLIC RMLUI_STATIC_LIB)
     target_compile_features(${node_target} PUBLIC cxx_std_23)

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "Headers.h"
 #include <cstdlib>  // std::getenv for VIXEN_PIPELINE_STATS
 #include "ConfiguredOptionalPath.h"
@@ -5,6 +6,7 @@
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Core/GPUQueryManager.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Message.h"
 #include "MessageBus.h"
 #include "Core/NodeLogging.h"
@@ -221,6 +223,20 @@ void DeviceNode::SelectPhysicalDevice() {
     vkGetPhysicalDeviceProperties(selectedGPU, &props);
     NODE_LOG_INFO("[DeviceNode] Selected GPU " + std::to_string(selectedGPUIndex) + ": " + props.deviceName
               + " (" + selectionReason + ")");
+    {
+        VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        props2.pNext = &driver;
+        vkGetPhysicalDeviceProperties2(selectedGPU, &props2);
+        NODE_LOG_INFO(std::string("[ADAPTER] name=") + props.deviceName + " type=" +
+                      GpuDeviceClassName(props.deviceType, static_cast<uint32_t>(driver.driverID)) +
+                      " driver_id=" + std::to_string(static_cast<uint32_t>(driver.driverID)) +
+                      " driver_name=" + driver.driverName + " driver_info=" + driver.driverInfo +
+                      " driver_version=" + std::to_string(props.driverVersion) +
+                      " api=" + std::to_string(VK_VERSION_MAJOR(props.apiVersion)) + "." +
+                      std::to_string(VK_VERSION_MINOR(props.apiVersion)) + "." +
+                      std::to_string(VK_VERSION_PATCH(props.apiVersion)));
+    }
     NODE_LOG_INFO("[DeviceNode]   Vendor ID: 0x" + std::to_string(props.vendorID));
     NODE_LOG_INFO("[DeviceNode]   Device ID: 0x" + std::to_string(props.deviceID));
     NODE_LOG_INFO("[DeviceNode]   Driver Version: " + std::to_string(props.driverVersion));
@@ -451,6 +467,20 @@ void DeviceNode::CreateLogicalDevice() {
         }
     }
 
+    // R516: live memory budget. Best-effort — without it the budget manager keeps the static heap size.
+    memoryBudgetExtensionEnabled_ = false;
+    if (hasExt(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+        bool alreadyAdded = false;
+        for (const char* existing : allExtensions) {
+            if (strcmp(existing, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) { alreadyAdded = true; break; }
+        }
+        if (!alreadyAdded) allExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        memoryBudgetExtensionEnabled_ = true;
+        NODE_LOG_INFO("[DeviceNode] VK_EXT_memory_budget enabled — live VRAM budget active");
+    } else {
+        NODE_LOG_INFO("[DeviceNode] VK_EXT_memory_budget unavailable — static VRAM budget only");
+    }
+
     // Create logical device with all extensions
     auto createResult = vulkanDevice->CreateDevice(deviceLayers, allExtensions);
     if (!createResult) {
@@ -624,6 +654,12 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
         deviceLocalMemory / 16  // Or 6.25% of VRAM if smaller
     );
     budgetConfig.strictBudget = false;  // Allow over-budget (warn only)
+    budgetConfig.memoryBudgetExtensionEnabled = memoryBudgetExtensionEnabled_;
+    budgetConfig.pressureCallback = [](ResourceManagement::MemoryPressure pressure) {
+        // No captures: the manager can outlive this node across a device-loss rebuild.
+        std::fprintf(stderr, "[MEMBUDGET] live VRAM pressure %s: staging quota reduced, optional staging refused at critical\n",
+                     ResourceManagement::MemoryPressureName(pressure));
+    };
 
     NODE_LOG_INFO("[DeviceNode] Device VRAM: " + std::to_string(deviceLocalMemory / (1024 * 1024)) + " MB");
     NODE_LOG_INFO("[DeviceNode] Budget: " + std::to_string(budgetConfig.deviceMemoryBudget / (1024 * 1024)) + " MB (90%)");
