@@ -52,7 +52,7 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
     heartbeat() {
       while :; do
         sleep 60
-        printf "[heartbeat] nativerunner native Windows build active %s\\n" "$(date +%T)"
+        printf "[heartbeat] vixendll native Windows build active %s\\n" "$(date +%T)"
       done
     }
     heartbeat &

@@ -14,6 +14,7 @@
         "VIXEN_AUTO_PROVISION_WSL_VULKAN": "OFF",
         "VIXEN_CAPABILITY_BUILD_MODE": "FULL",
         "YEROKET_ROOT": "//wsl.localhost/Ubuntu/home/liory/projects/Yeroket-Fantasy",
+        "WSL_EXE": "C:/Users/liory/AppData/Local/Microsoft/WindowsApps/wsl.exe",
         "VIXEN_KERNEL_CACHE_DIR": "$env{VIXEN_NATIVE_KERNEL_CACHE_DIR}"
       }
     }

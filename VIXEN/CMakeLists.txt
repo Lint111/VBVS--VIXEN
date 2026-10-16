@@ -611,6 +611,8 @@ include("${VIXEN_ROOT}/cmake/VixenCompilerPaths.cmake")
 vixen_configure_compiler_paths()
 
 # All FetchContent and external library setup moved to dependencies/
+include("${VIXEN_ROOT}/cmake/VixenRuntimeDlls.cmake")
+
 add_subdirectory(dependencies)
 
 # Set CTest's Vulkan loader environment from the same paths configure selected for builds. The

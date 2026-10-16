@@ -17,3 +17,4 @@ set_target_properties(test_gaia_archetypes PROPERTIES FOLDER "Tests")
 
 include(GoogleTest)
 vixen_gtest_discover_tests(GaiaArchetypes test_gaia_archetypes)
+vixen_schedule_runtime_dlls_for_current_directory()

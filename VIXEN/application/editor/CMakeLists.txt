@@ -55,16 +55,6 @@ if(MSVC)
     target_compile_options(vixen_editor PRIVATE /FS)
 endif()
 
-# Copy TBB DLL to output directory (required by SVO library) — mirrors application/main.
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET vixen_editor POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:vixen_editor>
-        COMMENT "Copying TBB DLL for vixen_editor"
-    )
-endif()
-
 # Stage the shared RmlUi UI assets (fonts + editor.rml/editor.rcss live beside hud.rml/demo.rml
 # in libraries/RenderGraph/assets/ui) next to the executable, same helper + same source dir as
 # application/main so VIXEN_UI_ASSET_SOURCE_DIR's compiled-in fallback and the staged copy agree.
@@ -218,3 +208,4 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
     set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
     vixen_set_suite_properties(nightly GPU TESTS vixen_multiinstance_cache_gate)
 endif()
+vixen_schedule_runtime_dlls_for_current_directory()

@@ -61,6 +61,11 @@ param(
     [switch]$StreamProgress
 )
 
+# Native test executables may run during CMake's POST_BUILD GoogleTest discovery.
+# Inherit Windows' non-interactive error mode into the build process tree so a
+# missing runtime DLL fails the build instead of opening a modal system dialog.
+. "$PSScriptRoot\SetWindowsChildErrorMode.ps1"
+
 # Auto-generate if the caller didn't supply one. Sanitize a caller-supplied ID to safe
 # filename/log characters so it can't break the log path or the status-file format.
 if (-not $BuildId) {
