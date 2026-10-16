@@ -163,11 +163,13 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     # 128^3 non-text sphere baseline. The slow-trilinear variant preserves the
     # eight sampled values but bypasses the contiguous same-brick load path.
     set(_stored_sdf_isolation_tests)
-    foreach(_diagnostic IN ITEMS ShadowOff StoredNormals SlowTrilinear ExtraApron)
+    foreach(_diagnostic IN ITEMS ShadowOff ShadowBiasOneVoxel StoredNormals SlowTrilinear ExtraApron)
         set(_diagnostic_test "Application.LookdevCapture.StoredSdf.Isolation.${_diagnostic}")
         set(_diagnostic_dir "${_glyphsdf_capture_dir}/isolation-${_diagnostic}")
         if(_diagnostic STREQUAL "ShadowOff")
             set(_diagnostic_override "VIXEN_SHADOW_CONFIG_ENABLED=set:0")
+        elseif(_diagnostic STREQUAL "ShadowBiasOneVoxel")
+            set(_diagnostic_override "VIXEN_SHADOW_CONFIG_BIAS_EPSILON=set:0.15")
         elseif(_diagnostic STREQUAL "StoredNormals")
             set(_diagnostic_override "VIXEN_SHELL_NORMALS=set:1")
         elseif(_diagnostic STREQUAL "SlowTrilinear")
@@ -184,7 +186,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_SDF_FILTER_NON_TEXT=1;VIXEN_SDF_FILTER_NON_TEXT_RESOLUTION=128;VIXEN_GLYPHSDF_CAPTURE_YAW_DEGREES=0;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_diagnostic_dir};VIXEN_PERF_CSV=${_diagnostic_dir}/native-perf.csv"
             ENVIRONMENT_MODIFICATION
-                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_SCENE=unset:;VIXEN_GLYPHSDF_COMPARE=unset:;VIXEN_BRICKMAP_SCENE=unset:;VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON=unset:;VIXEN_SDF_FORCE_SLOW_TRILINEAR=unset:;VIXEN_SHELL_NORMALS=unset:;VIXEN_SHADOW_CONFIG_ENABLED=unset:;${_diagnostic_override}")
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_SCENE=unset:;VIXEN_GLYPHSDF_COMPARE=unset:;VIXEN_BRICKMAP_SCENE=unset:;VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON=unset:;VIXEN_SDF_FORCE_SLOW_TRILINEAR=unset:;VIXEN_SHELL_NORMALS=unset:;VIXEN_SHADOW_CONFIG_ENABLED=unset:;VIXEN_SHADOW_CONFIG_BIAS_EPSILON=unset:;${_diagnostic_override}")
         list(APPEND _stored_sdf_isolation_tests "${_diagnostic_test}")
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
