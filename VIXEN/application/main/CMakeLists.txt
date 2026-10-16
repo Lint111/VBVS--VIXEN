@@ -222,6 +222,3 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_starfield_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_lookdev_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_planet_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

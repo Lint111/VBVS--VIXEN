@@ -67,6 +67,3 @@ set_target_properties(test_attribute_registry PROPERTIES
 )
 
 vixen_gtest_discover_tests(VoxelData test_attribute_registry)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

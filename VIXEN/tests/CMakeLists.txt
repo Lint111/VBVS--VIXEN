@@ -73,6 +73,3 @@ set_target_properties(coordinate_system_test PROPERTIES
 )
 
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

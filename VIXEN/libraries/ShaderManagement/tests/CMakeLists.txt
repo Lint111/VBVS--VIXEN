@@ -175,6 +175,3 @@ vixen_gtest_discover_tests(ShaderManagement ShaderManagementTests
 )
 
 message(STATUS "ShaderManagement tests configured")
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

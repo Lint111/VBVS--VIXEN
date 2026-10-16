@@ -31,6 +31,3 @@ if(TARGET GTest::gtest_main)
     set_target_properties(test_text_shaping PROPERTIES FOLDER "Tests/Text")
     vixen_gtest_discover_tests(Text test_text_shaping)
 endif()
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

@@ -18,6 +18,3 @@ endif()
 set_target_properties(test_logger_basic PROPERTIES FOLDER "Tests/Logger Tests")
 
 vixen_gtest_discover_tests(logger test_logger_basic)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

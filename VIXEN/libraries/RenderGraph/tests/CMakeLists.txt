@@ -1104,6 +1104,3 @@ endif()
 add_subdirectory(CompileTimeResourceSystem)
 
 vixen_register_verification_targets("${CMAKE_CURRENT_BINARY_DIR}")
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

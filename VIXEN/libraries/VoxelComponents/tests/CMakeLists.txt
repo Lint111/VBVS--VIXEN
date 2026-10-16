@@ -24,6 +24,3 @@ target_link_libraries(test_component_system
 set_target_properties(test_component_system PROPERTIES FOLDER "Tests/VoxelComponents Tests")
 
 vixen_gtest_discover_tests(VoxelComponents test_component_system)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

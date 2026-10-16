@@ -2,6 +2,8 @@
 #
 # CMake only provides TARGET_RUNTIME_DLLS with CMake 3.21+, so fail clearly for
 # older Windows toolchains instead of producing executables that fail at launch.
+include_guard(GLOBAL)
+
 if(WIN32 AND CMAKE_VERSION VERSION_LESS 3.21)
     message(FATAL_ERROR "Windows runtime DLL staging requires CMake 3.21 or newer")
 endif()
@@ -35,18 +37,40 @@ function(vixen_stage_runtime_dlls_for_target target)
     )
 endfunction()
 
-# Call once at the end of each target-owning CMakeLists.txt. This also sees
-# executables created by included .cmake fragments in the same directory.
-function(vixen_stage_runtime_dlls_in_current_directory)
+# Walk the full CMake directory tree after configuration so targets from every
+# subdirectory, including included .cmake fragments, receive the same staging.
+function(vixen_stage_runtime_dlls_in_directory directory)
     if(NOT WIN32)
         return()
     endif()
 
-    get_property(_directory_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(_directory_targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
     foreach(_target IN LISTS _directory_targets)
         get_target_property(_target_type "${_target}" TYPE)
         if(_target_type STREQUAL "EXECUTABLE")
             vixen_stage_runtime_dlls_for_target("${_target}")
         endif()
     endforeach()
+
+    get_property(_subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(_subdirectory IN LISTS _subdirectories)
+        vixen_stage_runtime_dlls_in_directory("${_subdirectory}")
+    endforeach()
 endfunction()
+
+function(vixen_stage_runtime_dlls_in_project)
+    if(NOT WIN32)
+        return()
+    endif()
+
+    # The root directory defers this pass until every add_subdirectory() has
+    # declared its targets. New executable targets then inherit staging without
+    # requiring a per-directory hook.
+    vixen_stage_runtime_dlls_in_directory("${CMAKE_SOURCE_DIR}")
+endfunction()
+
+if(WIN32)
+    # The runtime DLL expression is available starting in CMake 3.21, so the
+    # deferred whole-project pass uses only that supported toolchain range.
+    cmake_language(DEFER CALL vixen_stage_runtime_dlls_in_project)
+endif()

@@ -1415,6 +1415,3 @@ endif()
 set_target_properties(test_emitter_sampling PROPERTIES FOLDER "Tests/SVO Tests")
 
 vixen_gtest_discover_tests(SVO test_emitter_sampling)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

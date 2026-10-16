@@ -17,6 +17,3 @@ set_target_properties(test_gaia_archetypes PROPERTIES FOLDER "Tests")
 
 include(GoogleTest)
 vixen_gtest_discover_tests(GaiaArchetypes test_gaia_archetypes)
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

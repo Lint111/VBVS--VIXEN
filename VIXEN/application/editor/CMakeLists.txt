@@ -186,6 +186,3 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
     set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
     vixen_set_suite_properties(nightly GPU TESTS vixen_multiinstance_cache_gate)
 endif()
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()

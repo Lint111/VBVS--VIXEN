@@ -27,6 +27,3 @@ if(COMMAND gtest_discover_tests)
         vixen_gtest_discover_tests(AppFlow ${t})
     endforeach()
 endif()
-
-# Stage runtime DLLs for every executable declared in this directory.
-vixen_stage_runtime_dlls_in_current_directory()
