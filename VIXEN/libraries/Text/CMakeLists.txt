@@ -18,16 +18,13 @@ endif()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(_text_shader_regenerator
     "${VIXEN_ROOT}/libraries/RenderGraph/src/Ui/shaders/regenerate-ui-shader-header.py")
-set(_ui_shader_header "${VIXEN_ROOT}/libraries/RenderGraph/include/Ui/UiShaderSpirv.g.h")
 set(_text_shader_header "${CMAKE_CURRENT_SOURCE_DIR}/include/Text/TextShaderSpirv.g.h")
 add_custom_command(
-    OUTPUT "${_ui_shader_header}" "${_text_shader_header}"
+    OUTPUT "${_text_shader_header}"
     COMMAND "${Python3_EXECUTABLE}" "${_text_shader_regenerator}"
-        --text-interface-dir "${TEXT_SHADER_INTERFACE_DIR}"
+        --text-only --text-interface-dir "${TEXT_SHADER_INTERFACE_DIR}"
     DEPENDS
         "${_text_shader_regenerator}"
-        "${VIXEN_ROOT}/libraries/RenderGraph/src/Ui/shaders/ui.vert"
-        "${VIXEN_ROOT}/libraries/RenderGraph/src/Ui/shaders/ui.frag"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/text.vert"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/text.frag"
         "${TEXT_SHADER_CPP_INTERFACE}"
@@ -36,7 +33,7 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(vixen_text_shader_headers
-    DEPENDS "${_ui_shader_header}" "${_text_shader_header}")
+    DEPENDS "${_text_shader_header}")
 
 set(TEXT_HEADERS
     include/Text/Abi.h
