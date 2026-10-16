@@ -2007,6 +2007,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             }
 
+            // Capture-only isolation switch: route every SDF trilinear cell
+            // through eight independently resolved voxel taps. The ordinary
+            // path keeps its contiguous same-brick fast path; both paths use
+            // the same brick map, distances and unallocated-brick sentinel.
+            if (envFlagEnabled("VIXEN_SDF_FORCE_SLOW_TRILINEAR")) {
+                const size_t firstNewlineSlowSdf = splicedSource.find('\n');
+                const std::string slowSdfDefine = "#define VIXEN_SDF_FORCE_SLOW_TRILINEAR 1\n";
+                if (firstNewlineSlowSdf == std::string::npos) {
+                    splicedSource += "\n" + slowSdfDefine;
+                } else {
+                    splicedSource.insert(firstNewlineSlowSdf + 1, slowSdfDefine);
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_SDF_FORCE_SLOW_TRILINEAR: all taps resolve through brick lookup");
+                }
+            }
+
             // Batch-29 (deep-field mip-accessor policy, regime-2 level ladder):
             // VIXEN_MIP_POLICY=1 env -> shader define, same textual-#define-
             // after-#version splice as VIXEN_DISPATCH_IS_PRIMARY_MARCH just

@@ -177,6 +177,16 @@ uint32_t CaptureFramesPerScenario(std::string& error) {
     return static_cast<uint32_t>(value);
 }
 
+int CenteredBakeRegionSide(int gridResolution, float boundRadius,
+                           float bandRecipeUnits, float recipeUnitsPerVoxel) {
+    const float halfExtent = boundRadius + bandRecipeUnits +
+        8.0f * recipeUnitsPerVoxel;
+    const int requiredSide = static_cast<int>(std::ceil(
+        2.0f * halfExtent / recipeUnitsPerVoxel));
+    const int brickAlignedSide = ((requiredSide + 15) / 16) * 16;
+    return std::clamp(brickAlignedSide, 16, gridResolution);
+}
+
 double ProcessBudgetMs() {
     const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_BUDGET_MS");
     if (!requested || *requested == '\0') return kDefaultProcessBudgetMs;
@@ -635,13 +645,16 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         }
         bakeResolution = static_cast<int>(parsedResolution);
     }
-    // Keep the same 64-unit world-space bake volume at both resolutions. A
-    // 256^3 bake therefore halves voxel spacing rather than adding empty margin.
+    // Keep the same 64-unit world-space grid at both resolutions, but bake only
+    // a centered, brick-aligned region around the sign. The additional eight
+    // voxel half-margin preserves the baker's one-brick allocation halo.
     const float recipeUnitsPerVoxel = 64.0f / static_cast<float>(bakeResolution);
-    const float bakeCenterCoordinate = static_cast<float>(bakeResolution) * 0.5f;
-    const glm::vec3 bakeCenter{bakeCenterCoordinate};
     constexpr float bandRecipeUnits = 2.5f;
-    const float bandVoxels = bandRecipeUnits / recipeUnitsPerVoxel;
+    const float bakeBandDistance = bandRecipeUnits;
+    const int bakeRegionSide = CenteredBakeRegionSide(
+        bakeResolution, 18.0f, bakeBandDistance, recipeUnitsPerVoxel);
+    const float bakeCenterCoordinate = static_cast<float>(bakeRegionSide) * 0.5f;
+    const glm::vec3 bakeCenter{bakeCenterCoordinate};
     std::ofstream comparison(evidenceDir / "glyphsdf-voxel-vs-analytic.txt", std::ios::out | std::ios::trunc);
     if (!comparison) {
         error = "could not write the GlyphOutline bake comparison evidence";
@@ -658,8 +671,9 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             (gridPoint - bakeCenter) * recipeUnitsPerVoxel, {}, nullptr, nullptr, glyphRows);
     };
     const auto neutralVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
-    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
-                                           Vixen::SVO::NoEmission, neutralVoxelColor);
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bakeBandDistance, 3,
+                                           Vixen::SVO::NoEmission, neutralVoxelColor,
+                                           glm::ivec3(bakeRegionSide));
     float nearestMaxDelta = 0.0f;
     float trilinearMaxDelta = 0.0f;
     float trilinearMaxDeltaWithBandClamp = 0.0f;
@@ -679,7 +693,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             const glm::vec3 gridPoint = bakeCenter + localPoint / recipeUnitsPerVoxel;
             const auto nearest = baked.sampleStored(gridPoint);
             const auto trilinear = baked.sampleStoredTrilinear(gridPoint);
-            const float voxel = trilinear.value_or(std::max(bandVoxels * recipeUnitsPerVoxel + 1.0f,
+            const float voxel = trilinear.value_or(std::max(bandRecipeUnits + 1.0f,
                                                             analytic));
             if (nearest) {
                 nearestMaxDelta = std::max(nearestMaxDelta, std::abs(analytic - *nearest));
@@ -713,7 +727,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         recipeUnitsPerVoxel / 10.0f;
     const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
     const glm::vec3 storedOrigin = storedCenter - glm::vec3(
-        5.0f * instanceScale);
+        10.0f * bakeCenterCoordinate / static_cast<float>(bakeResolution) * instanceScale);
     const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
         glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
     Vixen::SVO::SetInstanceTransform(storedInstance, storedModel);
@@ -743,10 +757,18 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     }
     const float recipeUnitsPerVoxel = 64.0f / static_cast<float>(bakeResolution);
     constexpr float bandRecipeUnits = 2.5f;
-    const float bandVoxels = bandRecipeUnits / recipeUnitsPerVoxel;
+    float bakeBandDistance = bandRecipeUnits;
+    if (std::getenv("VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON")) {
+        // Allocate one additional 8-voxel exterior brick while keeping every
+        // stored distance value unchanged in the original active region.
+        bakeBandDistance += 8.0f * recipeUnitsPerVoxel;
+    }
     constexpr float sphereRadius = 16.0f;
     constexpr float instanceScale = 0.30f;
-    const glm::vec3 bakeCenter(static_cast<float>(bakeResolution) * 0.5f);
+    const int bakeRegionSide = CenteredBakeRegionSide(
+        bakeResolution, sphereRadius, bakeBandDistance, recipeUnitsPerVoxel);
+    const float bakeCenterCoordinate = static_cast<float>(bakeRegionSide) * 0.5f;
+    const glm::vec3 bakeCenter(bakeCenterCoordinate);
 
     SdfInstruction sphere{};
     sphere.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
@@ -766,8 +788,9 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
             (gridPoint - bakeCenter) * recipeUnitsPerVoxel);
     };
     const auto flatVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
-    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bandVoxels, 3,
-                                           Vixen::SVO::NoEmission, flatVoxelColor);
+    auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bakeBandDistance, 3,
+                                           Vixen::SVO::NoEmission, flatVoxelColor,
+                                           glm::ivec3(bakeRegionSide));
     auto bakedBody = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
     const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
     scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
@@ -794,7 +817,8 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     const float storedScale = instanceScale * static_cast<float>(bakeResolution) *
         recipeUnitsPerVoxel / 10.0f;
     const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
-    const glm::vec3 storedOrigin = storedCenter - glm::vec3(5.0f * storedScale);
+    const glm::vec3 storedOrigin = storedCenter - glm::vec3(
+        10.0f * bakeCenterCoordinate / static_cast<float>(bakeResolution) * storedScale);
     const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
         glm::scale(glm::mat4(1.0f), glm::vec3(storedScale));
     Vixen::SVO::SetInstanceTransform(stored, storedModel);

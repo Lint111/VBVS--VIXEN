@@ -105,7 +105,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
-            LABELS "Application;GlyphSdf${_resolution}"
+            LABELS "Application;GlyphSdfText${_resolution}Yaw0"
             TIMEOUT 1800
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_compare_dir};VIXEN_PERF_CSV=${_glyphsdf_compare_dir}/native-perf.csv"
@@ -119,7 +119,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_yaw_test}" PROPERTIES
-            LABELS "Application;GlyphSdf${_resolution}Yaw30"
+            LABELS "Application;GlyphSdfText${_resolution}Yaw30"
             TIMEOUT 1800
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_GLYPHSDF_CAPTURE_YAW_DEGREES=30;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_yaw_dir};VIXEN_PERF_CSV=${_glyphsdf_yaw_dir}/native-perf.csv"
@@ -158,6 +158,35 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             list(APPEND _glyphsdf_capture_tests "${_sdf_filter_nontext_test}")
         endforeach()
     endforeach()
-    vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests})
+
+    # Each isolation capture changes exactly one renderer/bake input from the
+    # 128^3 non-text sphere baseline. The slow-trilinear variant preserves the
+    # eight sampled values but bypasses the contiguous same-brick load path.
+    set(_stored_sdf_isolation_tests)
+    foreach(_diagnostic IN ITEMS ShadowOff StoredNormals SlowTrilinear ExtraApron)
+        set(_diagnostic_test "Application.LookdevCapture.StoredSdf.Isolation.${_diagnostic}")
+        set(_diagnostic_dir "${_glyphsdf_capture_dir}/isolation-${_diagnostic}")
+        if(_diagnostic STREQUAL "ShadowOff")
+            set(_diagnostic_override "VIXEN_SHADOW_CONFIG_ENABLED=set:0")
+        elseif(_diagnostic STREQUAL "StoredNormals")
+            set(_diagnostic_override "VIXEN_SHELL_NORMALS=set:1")
+        elseif(_diagnostic STREQUAL "SlowTrilinear")
+            set(_diagnostic_override "VIXEN_SDF_FORCE_SLOW_TRILINEAR=set:1")
+        else()
+            set(_diagnostic_override "VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON=set:1")
+        endif()
+        add_test(NAME "${_diagnostic_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--gtest_filter=LookdevCapture.RendersSdfFilterNonText")
+        set_tests_properties("${_diagnostic_test}" PROPERTIES
+            LABELS "Application;StoredSdfIsolation${_diagnostic}"
+            TIMEOUT 1800
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_SDF_FILTER_NON_TEXT=1;VIXEN_SDF_FILTER_NON_TEXT_RESOLUTION=128;VIXEN_GLYPHSDF_CAPTURE_YAW_DEGREES=0;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_diagnostic_dir};VIXEN_PERF_CSV=${_diagnostic_dir}/native-perf.csv"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_SCENE=unset:;VIXEN_GLYPHSDF_COMPARE=unset:;VIXEN_BRICKMAP_SCENE=unset:;VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON=unset:;VIXEN_SDF_FORCE_SLOW_TRILINEAR=unset:;VIXEN_SHELL_NORMALS=unset:;VIXEN_SHADOW_CONFIG_ENABLED=unset:;${_diagnostic_override}")
+        list(APPEND _stored_sdf_isolation_tests "${_diagnostic_test}")
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
 endif()
