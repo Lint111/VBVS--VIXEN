@@ -776,6 +776,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             JOB_POOL msbuild
             VERBATIM)
         add_dependencies(exposure_tonemap_gpu_regen frame_targets_ref_regen)
+        # One supported refresh: frame-target schema, typed refs, tone-map outputs and the UI SPIR-V header.
+        if(TARGET ui_shader_spirv_regen)
+            add_custom_target(frame_targets_refresh)
+            add_dependencies(frame_targets_refresh exposure_tonemap_gpu_regen ui_shader_spirv_regen)
+        endif()
     else()
         message(WARNING
             "[codegen] ExposureTonemapSystem GPU-system drift guard DISABLED: "
