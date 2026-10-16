@@ -15,6 +15,8 @@
 #include "Connection/SdiStageWiring.h"
 #include "Connection/ShaderFeature.h"
 #include "CapabilityGraph.h"
+#include "merged/ExposureTonemapReference-SDI.g.h"
+#include "merged/ExposureTonemapSystem-SDI.g.h"
 
 #include <stdexcept>
 #include <string>
@@ -297,4 +299,35 @@ TEST(SdiHazardCensus, OpaqueMembersAreReportedNotDerived) {
     EXPECT_TRUE(DeriveHazardEdges(census).empty());
     ASSERT_EQ(census.OpaqueMembers().size(), 1u);
     EXPECT_EQ(census.OpaqueMembers()[0].memberName, "cameraPos");
+}
+
+// The generated tone-map system names each storage binding exactly as the hand-written reference
+// does, so one provider registration serves both and the graph needs no per-shader alias.
+TEST(SdiStageWiring, GeneratedToneMapSystemSharesReferenceBindingNames) {
+    namespace Ref = ShaderInterface::ExposureTonemapReference;
+    namespace Sys = ShaderInterface::ExposureTonemapSystem;
+    std::unordered_set<std::string> referenceNames;
+    for (const auto& m : Ref::MEMBERS) referenceNames.insert(m.name);
+
+    for (const char* storage : {"meter", "LightingConfigSSBO"}) {
+        bool inSystem = false;
+        for (const auto& m : Sys::MEMBERS) inSystem = inSystem || std::string(m.name) == storage;
+        EXPECT_TRUE(inSystem) << storage;
+        EXPECT_TRUE(referenceNames.count(storage) == 1) << storage;
+    }
+    // One registration under the shared names resolves every member of the generated system.
+    auto plan = BuildSdiWirePlan<Sys::Metadata, Sys::MEMBERS>(
+        /*activeFeatures=*/{},
+        Providers({"sceneRadianceHistoryOutput_current", "outputImage_current", "meter",
+                   "LightingConfigSSBO", "_ExtentX", "_ExtentY"}));
+    EXPECT_EQ(plan.entries.size(), 6u);
+    const auto* meter = Find(plan, "meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->targetSlot, 2u);
+
+    for (const auto& m : Sys::MEMBERS) {
+        const std::string name = m.name;
+        EXPECT_FALSE(name.size() > 5 && name.compare(name.size() - 5, 5, "Block") == 0)
+            << name << " is named by its block type, not its binding";
+    }
 }
