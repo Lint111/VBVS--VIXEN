@@ -76,6 +76,8 @@ cmake -B build
 cmake --build build --config Debug --parallel 16      # or --config Release
 ```
 
+Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN/`, its binary tree is `build/wsl`) is wrapped by one command: `./build-wsl.sh --target VIXEN -j4` (configure, then build; any `cmake --build` args pass through).
+
 Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=ON`.
 
 ### Visual Studio
