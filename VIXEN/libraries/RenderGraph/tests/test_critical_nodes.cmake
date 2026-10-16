@@ -702,14 +702,6 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_procedural_recipe_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_procedural_recipe_render POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_procedural_recipe_render>
-        COMMENT "Copying TBB DLL for test_procedural_recipe_render")
-endif()
-
 set_target_properties(test_procedural_recipe_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
 # PRE_TEST discovery to avoid Vulkan-init timeout during build (same as raymarch render test).

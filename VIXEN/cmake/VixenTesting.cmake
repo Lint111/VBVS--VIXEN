@@ -134,6 +134,9 @@ function(vixen_gtest_discover_tests suite target)
 
     endif()
 
+    # Stage imported runtime DLLs before POST_BUILD test discovery launches the
+    # executable, so discovery itself also works without a PATH workaround.
+    vixen_stage_runtime_dlls_for_target(${target})
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
     vixen_test_class_register(${target} "${_test_list_variable}")
 

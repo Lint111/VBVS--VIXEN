@@ -114,3 +114,6 @@ target_link_libraries(test_voxeldata_integration PRIVATE
 set_target_properties(test_voxeldata_integration PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
 vixen_gtest_discover_tests(GaiaVoxelWorld test_voxeldata_integration)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

@@ -254,3 +254,6 @@ else()
 endif()
 set_target_properties(test_recipe_bucket_data_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
 vixen_gtest_discover_tests(CashSystem test_recipe_bucket_data_cacher)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

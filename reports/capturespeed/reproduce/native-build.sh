@@ -8,7 +8,7 @@ repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
 # Each lane keeps its own source/build checkout. The native runner and GPU queue are
 # still shared; only the mutable Git working tree is isolated so concurrent lanes
 # cannot change the source under another lane's CMake configure or CTest process.
-native_root=/mnt/c/vixen-native/nativerunner-glyphsdf
+native_root=/mnt/c/vixen-native/vixendll
 queue=/home/liory/.local/bin/with-test-lock.sh
 cmd_exe=/mnt/c/Windows/System32/cmd.exe
 native_batch="$native_root/reports/capturespeed/reproduce/native-build.bat"
@@ -38,14 +38,14 @@ if [[ -n "${UNDERTOW_ROOT:-}" ]]; then
   undertow_root_win="$(wslpath -w "$UNDERTOW_ROOT" | sed 's#\\#/#g')"
   native_command="$native_batch_win $repo_commit $undertow_root_win"
 fi
-bash "$queue" --agent nativerunner --resource build \
-  --label "nativerunner:native-build-${repo_commit:0:12}" -- \
+bash "$queue" --agent vixendll --resource build \
+  --label "vixendll:native-build-${repo_commit:0:12}" -- \
   bash -c '
     set -euo pipefail
     heartbeat() {
       while :; do
         sleep 60
-        printf "[heartbeat] nativerunner native Windows build active %s\\n" "$(date +%T)"
+        printf "[heartbeat] vixendll native Windows build active %s\\n" "$(date +%T)"
       done
     }
     heartbeat &
@@ -56,4 +56,4 @@ bash "$queue" --agent nativerunner --resource build \
     }
     trap cleanup EXIT INT TERM
     "$@"
-  ' nativerunner-native-build "$cmd_exe" /d /c "$native_command"
+  ' vixendll-native-build "$cmd_exe" /d /c "$native_command"

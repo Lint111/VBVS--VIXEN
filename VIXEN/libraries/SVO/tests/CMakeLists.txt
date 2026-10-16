@@ -31,16 +31,6 @@ endif()
 # Visual Studio solution folder organization
 set_target_properties(test_svo_builder PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_svo_builder POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_svo_builder>
-        COMMENT "Copying TBB DLL for test_svo_builder"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_svo_builder)
 
 # ===========================================================================
@@ -61,16 +51,6 @@ enable_recipe_strict_fp(test_voxel_injection)
 
 set_target_properties(test_voxel_injection PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_voxel_injection POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_voxel_injection>
-        COMMENT "Copying TBB DLL for test_voxel_injection"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_voxel_injection)
 
 add_executable(test_bulk_materialization_dispatch
@@ -78,12 +58,7 @@ add_executable(test_bulk_materialization_dispatch
 )
 target_link_libraries(test_bulk_materialization_dispatch PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
 set_target_properties(test_bulk_materialization_dispatch PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_bulk_materialization_dispatch POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_bulk_materialization_dispatch>
-        COMMENT "Copying TBB DLL for test_bulk_materialization_dispatch")
-endif()
+
 vixen_gtest_discover_tests(SVO test_bulk_materialization_dispatch)
 
 # ===========================================================================
@@ -102,16 +77,6 @@ else()
 endif()
 
 set_target_properties(test_svo_types PROPERTIES FOLDER "Tests/SVO Tests")
-
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_svo_types POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_svo_types>
-        COMMENT "Copying TBB DLL for test_svo_types"
-    )
-endif()
 
 vixen_gtest_discover_tests(SVO test_svo_types)
 
@@ -186,12 +151,7 @@ else()
     target_link_libraries(test_soa_sdf_serialize PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_soa_sdf_serialize PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_soa_sdf_serialize POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_sdf_serialize>
-        COMMENT "Copying TBB DLL for test_soa_sdf_serialize")
-endif()
+
 vixen_gtest_discover_tests(SVO test_soa_sdf_serialize)
 
 # ===========================================================================
@@ -206,12 +166,7 @@ else()
     target_link_libraries(test_soa_mip_serialize PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_soa_mip_serialize PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_soa_mip_serialize POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_mip_serialize>
-        COMMENT "Copying TBB DLL for test_soa_mip_serialize")
-endif()
+
 vixen_gtest_discover_tests(SVO test_soa_mip_serialize)
 
 # ===========================================================================
@@ -227,12 +182,7 @@ else()
     target_link_libraries(test_tier_ref_table PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_ref_table PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_ref_table POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref_table>
-        COMMENT "Copying TBB DLL for test_tier_ref_table")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_ref_table)
 
 # ===========================================================================
@@ -249,12 +199,7 @@ else()
     target_link_libraries(test_tier_crossing_construction PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_crossing_construction PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_crossing_construction POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_construction>
-        COMMENT "Copying TBB DLL for test_tier_crossing_construction")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_crossing_construction)
 
 # ===========================================================================
@@ -272,12 +217,7 @@ else()
     target_link_libraries(test_tier_crossing_mirror_parity PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_crossing_mirror_parity PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_crossing_mirror_parity POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_mirror_parity>
-        COMMENT "Copying TBB DLL for test_tier_crossing_mirror_parity")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_crossing_mirror_parity)
 
 # ===========================================================================
@@ -293,12 +233,7 @@ else()
     target_link_libraries(test_stored_sdf_march_mirror PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_stored_sdf_march_mirror PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_stored_sdf_march_mirror POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_stored_sdf_march_mirror>
-        COMMENT "Copying TBB DLL for test_stored_sdf_march_mirror")
-endif()
+
 vixen_gtest_discover_tests(SVO test_stored_sdf_march_mirror)
 
 # ===========================================================================
@@ -312,12 +247,7 @@ else()
     target_link_libraries(test_channel_format PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_channel_format PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_channel_format POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_channel_format>
-        COMMENT "Copying TBB DLL for test_channel_format")
-endif()
+
 vixen_gtest_discover_tests(SVO test_channel_format)
 
 # ===========================================================================
@@ -332,12 +262,7 @@ else()
     target_link_libraries(test_mip_sample_filter PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_mip_sample_filter PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_mip_sample_filter POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_filter>
-        COMMENT "Copying TBB DLL for test_mip_sample_filter")
-endif()
+
 vixen_gtest_discover_tests(SVO test_mip_sample_filter)
 
 # ===========================================================================
@@ -352,12 +277,7 @@ else()
     target_link_libraries(test_mip_sample_bake PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_mip_sample_bake PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_mip_sample_bake POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_bake>
-        COMMENT "Copying TBB DLL for test_mip_sample_bake")
-endif()
+
 vixen_gtest_discover_tests(SVO test_mip_sample_bake)
 
 # ===========================================================================
@@ -372,12 +292,7 @@ else()
     target_link_libraries(test_emitter_power PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_emitter_power PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_emitter_power POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_emitter_power>
-        COMMENT "Copying TBB DLL for test_emitter_power")
-endif()
+
 vixen_gtest_discover_tests(SVO test_emitter_power)
 
 # ===========================================================================
@@ -393,12 +308,7 @@ else()
     target_link_libraries(test_mip_aniso_pool PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_mip_aniso_pool PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_mip_aniso_pool POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_aniso_pool>
-        COMMENT "Copying TBB DLL for test_mip_aniso_pool")
-endif()
+
 vixen_gtest_discover_tests(SVO test_mip_aniso_pool)
 
 # ===========================================================================
@@ -414,12 +324,7 @@ else()
     target_link_libraries(test_light_tree PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_light_tree PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_light_tree POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_light_tree>
-        COMMENT "Copying TBB DLL for test_light_tree")
-endif()
+
 vixen_gtest_discover_tests(SVO test_light_tree)
 
 # ===========================================================================
@@ -486,12 +391,7 @@ else()
     target_link_libraries(test_resolvable_level PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_resolvable_level PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_resolvable_level POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_resolvable_level>
-        COMMENT "Copying TBB DLL for test_resolvable_level")
-endif()
+
 vixen_gtest_discover_tests(SVO test_resolvable_level)
 
 # ===========================================================================
@@ -546,12 +446,7 @@ else()
     target_link_libraries(test_frustum_cull PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_frustum_cull PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_frustum_cull POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_frustum_cull>
-        COMMENT "Copying TBB DLL for test_frustum_cull")
-endif()
+
 vixen_gtest_discover_tests(SVO test_frustum_cull)
 
 # ===========================================================================
@@ -566,12 +461,7 @@ else()
     target_link_libraries(test_tier_address PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_address PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_address POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_address>
-        COMMENT "Copying TBB DLL for test_tier_address")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_address)
 
 # ===========================================================================
@@ -586,12 +476,7 @@ else()
     target_link_libraries(test_tier_math PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_math PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_math POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_math>
-        COMMENT "Copying TBB DLL for test_tier_math")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_math)
 
 # ===========================================================================
@@ -607,12 +492,7 @@ else()
     target_link_libraries(test_tier_ref PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_ref PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_ref POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref>
-        COMMENT "Copying TBB DLL for test_tier_ref")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_ref)
 
 # ===========================================================================
@@ -628,12 +508,7 @@ else()
     target_link_libraries(test_tier_direction PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_direction PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_direction POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_direction>
-        COMMENT "Copying TBB DLL for test_tier_direction")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_direction)
 
 # ===========================================================================
@@ -649,12 +524,7 @@ else()
     target_link_libraries(test_tier_magnitude PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_tier_magnitude PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_tier_magnitude POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_magnitude>
-        COMMENT "Copying TBB DLL for test_tier_magnitude")
-endif()
+
 vixen_gtest_discover_tests(SVO test_tier_magnitude)
 
 # ===========================================================================
@@ -669,12 +539,7 @@ else()
     target_link_libraries(test_instance_sort PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_instance_sort PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_instance_sort POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_instance_sort>
-        COMMENT "Copying TBB DLL for test_instance_sort")
-endif()
+
 vixen_gtest_discover_tests(SVO test_instance_sort)
 
 # ===========================================================================
@@ -690,12 +555,7 @@ else()
     target_link_libraries(test_residency_trigger PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_residency_trigger PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_residency_trigger POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_trigger>
-        COMMENT "Copying TBB DLL for test_residency_trigger")
-endif()
+
 vixen_gtest_discover_tests(SVO test_residency_trigger)
 
 # ===========================================================================
@@ -711,12 +571,7 @@ else()
     target_link_libraries(test_occlusion_gate PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_occlusion_gate PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_occlusion_gate POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_occlusion_gate>
-        COMMENT "Copying TBB DLL for test_occlusion_gate")
-endif()
+
 vixen_gtest_discover_tests(SVO test_occlusion_gate)
 
 # ===========================================================================
@@ -730,12 +585,7 @@ else()
     target_link_libraries(test_sdf_bake PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_sdf_bake PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_sdf_bake POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_sdf_bake>
-        COMMENT "Copying TBB DLL for test_sdf_bake")
-endif()
+
 vixen_gtest_discover_tests(SVO test_sdf_bake)
 
 # ===========================================================================
@@ -749,12 +599,7 @@ else()
     target_link_libraries(test_shell_derive PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_shell_derive PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_shell_derive POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_derive>
-        COMMENT "Copying TBB DLL for test_shell_derive")
-endif()
+
 vixen_gtest_discover_tests(SVO test_shell_derive)
 
 # ===========================================================================
@@ -774,12 +619,7 @@ target_compile_definitions(test_recipe_codegen PRIVATE
     SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
 )
 set_target_properties(test_recipe_codegen PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_codegen POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_codegen>
-        COMMENT "Copying TBB DLL for test_recipe_codegen")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_codegen)
 
 # ===========================================================================
@@ -846,12 +686,7 @@ target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
     GLYPH_OUTLINE_INSTANCE_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl"
 )
 set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_glsl_numerical_parity POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_glsl_numerical_parity>
-        COMMENT "Copying TBB DLL for test_recipe_glsl_numerical_parity")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_glsl_numerical_parity
     GPU_TESTS "^RecipeGlslNumericalParityTest\\..*")
 
@@ -895,12 +730,7 @@ target_compile_definitions(test_recipe_nested_invocation PRIVATE
     SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_nested_invocation PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_nested_invocation POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_nested_invocation>
-        COMMENT "Copying TBB DLL for test_recipe_nested_invocation")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_nested_invocation
     GPU_TESTS "^RecipeNestedInvocationGpuParityTest\\..*")
 
@@ -920,12 +750,7 @@ else()
     target_link_libraries(test_rayquery_feasibility PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_rayquery_feasibility PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_rayquery_feasibility POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_rayquery_feasibility>
-        COMMENT "Copying TBB DLL for test_rayquery_feasibility")
-endif()
+
 vixen_gtest_discover_tests(SVO test_rayquery_feasibility GPU)
 
 # ===========================================================================
@@ -953,12 +778,7 @@ target_compile_definitions(test_recipe_declared_position_render PRIVATE
     SDF_RECIPE_TAPE_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl"
 )
 set_target_properties(test_recipe_declared_position_render PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_declared_position_render POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_declared_position_render>
-        COMMENT "Copying TBB DLL for test_recipe_declared_position_render")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_declared_position_render GPU)
 
 # ===========================================================================
@@ -979,12 +799,7 @@ target_compile_definitions(test_uber_shader_splice PRIVATE
     VIXEN_SVO_SHADERS_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
 )
 set_target_properties(test_uber_shader_splice PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_uber_shader_splice POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_uber_shader_splice>
-        COMMENT "Copying TBB DLL for test_uber_shader_splice")
-endif()
+
 vixen_gtest_discover_tests(SVO test_uber_shader_splice)
 
 # ===========================================================================
@@ -998,12 +813,7 @@ else()
     target_link_libraries(test_recipe_bake PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_bake PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_bake POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake>
-        COMMENT "Copying TBB DLL for test_recipe_bake")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_bake)
 
 # ===========================================================================
@@ -1018,12 +828,7 @@ else()
     target_link_libraries(test_recipe_bake_center PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_bake_center PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_bake_center POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake_center>
-        COMMENT "Copying TBB DLL for test_recipe_bake_center")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_bake_center)
 
 # ===========================================================================
@@ -1137,12 +942,7 @@ else()
     target_link_libraries(test_recipe_boot_ingest PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_boot_ingest PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_boot_ingest POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_boot_ingest>
-        COMMENT "Copying TBB DLL for test_recipe_boot_ingest")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_boot_ingest)
 
 # ===========================================================================
@@ -1155,12 +955,7 @@ else()
     target_link_libraries(test_recipe_pack_loader PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_pack_loader PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_pack_loader POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_pack_loader>
-        COMMENT "Copying TBB DLL for test_recipe_pack_loader")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_pack_loader)
 
 # ===========================================================================
@@ -1177,12 +972,7 @@ target_compile_definitions(test_voxel_document_flatten PRIVATE
     SAMPLE_TRI_LAYER_VXD_PATH="${CMAKE_SOURCE_DIR}/BuiltAssets/documents/sample_tri_layer.vxd"
 )
 set_target_properties(test_voxel_document_flatten PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_voxel_document_flatten POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_voxel_document_flatten>
-        COMMENT "Copying TBB DLL for test_voxel_document_flatten")
-endif()
+
 vixen_gtest_discover_tests(SVO test_voxel_document_flatten)
 
 # ===========================================================================
@@ -1196,12 +986,7 @@ else()
     target_link_libraries(test_octree_pool PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_octree_pool PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_octree_pool POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_octree_pool>
-        COMMENT "Copying TBB DLL for test_octree_pool")
-endif()
+
 vixen_gtest_discover_tests(SVO test_octree_pool)
 
 # ===========================================================================
@@ -1215,12 +1000,7 @@ else()
     target_link_libraries(test_recipe_baker PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_baker PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_recipe_baker POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_baker>
-        COMMENT "Copying TBB DLL for test_recipe_baker")
-endif()
+
 vixen_gtest_discover_tests(SVO test_recipe_baker)
 
 # ===========================================================================
@@ -1234,12 +1014,7 @@ else()
     target_link_libraries(test_generation_cost_benchmark PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_generation_cost_benchmark PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_generation_cost_benchmark POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_generation_cost_benchmark>
-        COMMENT "Copying TBB DLL for test_generation_cost_benchmark")
-endif()
+
 vixen_gtest_discover_tests(SVO test_generation_cost_benchmark)
 
 add_executable(benchmark_materialization_simd benchmark_materialization_simd.cpp)
@@ -1265,12 +1040,7 @@ else()
     target_link_libraries(test_residency_default PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_residency_default PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_residency_default POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_default>
-        COMMENT "Copying TBB DLL for test_residency_default")
-endif()
+
 vixen_gtest_discover_tests(SVO test_residency_default)
 
 # ===========================================================================
@@ -1290,16 +1060,6 @@ endif()
 
 set_target_properties(test_samplers PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_samplers POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_samplers>
-        COMMENT "Copying TBB DLL for test_samplers"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_samplers)
 
 # ===========================================================================
@@ -1318,16 +1078,6 @@ else()
 endif()
 
 set_target_properties(test_octree_queries PROPERTIES FOLDER "Tests/SVO Tests")
-
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_octree_queries POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_octree_queries>
-        COMMENT "Copying TBB DLL for test_octree_queries"
-    )
-endif()
 
 vixen_gtest_discover_tests(SVO test_octree_queries)
 
@@ -1355,16 +1105,6 @@ endif()
 
 set_target_properties(test_brick_view PROPERTIES FOLDER "Tests/VoxelData Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_brick_view POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_brick_view>
-        COMMENT "Copying TBB DLL for test_brick_view"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_brick_view)
 
 # ===========================================================================
@@ -1390,16 +1130,6 @@ target_link_libraries(test_entity_brick_view PRIVATE
 
 set_target_properties(test_entity_brick_view PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_entity_brick_view POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_entity_brick_view>
-        COMMENT "Copying TBB DLL for test_entity_brick_view"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_entity_brick_view)
 
 # ===========================================================================
@@ -1421,16 +1151,6 @@ endif()
 
 set_target_properties(test_ray_casting_comprehensive PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_ray_casting_comprehensive POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_ray_casting_comprehensive>
-        COMMENT "Copying TBB DLL for test_ray_casting_comprehensive"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_ray_casting_comprehensive)
 
 # ===========================================================================
@@ -1451,16 +1171,6 @@ target_link_libraries(test_brick_creation PRIVATE
 )
 
 set_target_properties(test_brick_creation PROPERTIES FOLDER "Tests/SVO Tests")
-
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_brick_creation POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_brick_creation>
-        COMMENT "Copying TBB DLL for test_brick_creation"
-    )
-endif()
 
 vixen_gtest_discover_tests(SVO test_brick_creation)
 
@@ -1485,16 +1195,6 @@ target_link_libraries(test_attribute_registry_integration PRIVATE
 
 set_target_properties(test_attribute_registry_integration PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_attribute_registry_integration POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_attribute_registry_integration>
-        COMMENT "Copying TBB DLL for test_attribute_registry_integration"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_attribute_registry_integration)
 
 # ===========================================================================
@@ -1516,16 +1216,6 @@ endif()
 
 set_target_properties(test_brick_traversal PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_brick_traversal POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_brick_traversal>
-        COMMENT "Copying TBB DLL for test_brick_traversal"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_brick_traversal)
 
 # ===========================================================================
@@ -1545,16 +1235,6 @@ target_link_libraries(test_rebuild_hierarchy PRIVATE
 )
 
 set_target_properties(test_rebuild_hierarchy PROPERTIES FOLDER "Tests/SVO Tests")
-
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_rebuild_hierarchy POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_rebuild_hierarchy>
-        COMMENT "Copying TBB DLL for test_rebuild_hierarchy"
-    )
-endif()
 
 vixen_gtest_discover_tests(SVO test_rebuild_hierarchy)
 
@@ -1578,16 +1258,6 @@ target_link_libraries(test_cornell_box PRIVATE
 
 set_target_properties(test_cornell_box PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_cornell_box POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_cornell_box>
-        COMMENT "Copying TBB DLL for test_cornell_box"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_cornell_box)
 
 # ===========================================================================
@@ -1610,16 +1280,6 @@ target_link_libraries(test_lod PRIVATE
 
 set_target_properties(test_lod PROPERTIES FOLDER "Tests/SVO Tests")
 
-# Copy TBB DLLs to test executable directory for runtime
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_lod POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_lod>
-        COMMENT "Copying TBB DLL for test_lod"
-    )
-endif()
-
 vixen_gtest_discover_tests(SVO test_lod)
 
 # ===========================================================================
@@ -1633,12 +1293,7 @@ else()
     target_link_libraries(test_shell_octree PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_shell_octree PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_shell_octree POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree>
-        COMMENT "Copying TBB DLL for test_shell_octree")
-endif()
+
 vixen_gtest_discover_tests(SVO test_shell_octree)
 
 # ===========================================================================
@@ -1652,12 +1307,7 @@ else()
     target_link_libraries(test_shell_octree_gpu PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_shell_octree_gpu PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_shell_octree_gpu POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree_gpu>
-        COMMENT "Copying TBB DLL for test_shell_octree_gpu")
-endif()
+
 vixen_gtest_discover_tests(SVO test_shell_octree_gpu)
 
 # ===========================================================================
@@ -1677,12 +1327,7 @@ else()
     target_link_libraries(test_gpu_parity PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_gpu_parity PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_gpu_parity POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_gpu_parity>
-        COMMENT "Copying TBB DLL for test_gpu_parity")
-endif()
+
 vixen_gtest_discover_tests(SVO test_gpu_parity)
 
 # ===========================================================================
@@ -1710,12 +1355,7 @@ if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star
     target_include_directories(cpu_body_render PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
     set_target_properties(cpu_body_render PROPERTIES FOLDER "Tools/SVO")
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET cpu_body_render POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render>
-            COMMENT "Copying TBB DLL for cpu_body_render")
-    endif()
+
 else()
     message(STATUS "[SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()
@@ -1735,12 +1375,7 @@ if(TARGET SVO)
         target_link_libraries(cpu_castray_cmp PRIVATE stb)
     endif()
     set_target_properties(cpu_castray_cmp PROPERTIES FOLDER "Tools/SVO")
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET cpu_castray_cmp POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_castray_cmp>
-            COMMENT "Copying TBB DLL for cpu_castray_cmp")
-    endif()
+
 endif()
 
 # ===========================================================================
@@ -1759,12 +1394,7 @@ if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star
     target_include_directories(cpu_body_render_diag PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render)
     set_target_properties(cpu_body_render_diag PROPERTIES FOLDER "Tools/SVO")
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET cpu_body_render_diag POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:cpu_body_render_diag>
-            COMMENT "Copying TBB DLL for cpu_body_render_diag")
-    endif()
+
 else()
     message(STATUS "[SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()
@@ -1783,10 +1413,8 @@ else()
     target_link_libraries(test_emitter_sampling PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_emitter_sampling PROPERTIES FOLDER "Tests/SVO Tests")
-if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_emitter_sampling POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_emitter_sampling>
-        COMMENT "Copying TBB DLL for test_emitter_sampling")
-endif()
+
 vixen_gtest_discover_tests(SVO test_emitter_sampling)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

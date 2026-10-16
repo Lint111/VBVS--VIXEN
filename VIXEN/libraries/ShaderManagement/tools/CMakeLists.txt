@@ -39,3 +39,6 @@ set_target_properties(sdi_tool PROPERTIES FOLDER "Application")
 
 # Backward compatibility alias
 add_executable(shader_tool ALIAS sdi_tool)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

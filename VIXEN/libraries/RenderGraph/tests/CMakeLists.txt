@@ -578,16 +578,6 @@ if(TARGET GTest::gtest_main)
         COMMENT "Staging UI assets for test_ui_hud_smoke"
     )
 
-    # Copy TBB DLL (transitive dep via SVO → RenderGraph → TBB)
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_ui_hud_smoke POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb>
-                $<TARGET_FILE_DIR:test_ui_hud_smoke>
-            COMMENT "Copying TBB DLL for test_ui_hud_smoke"
-        )
-    endif()
-
     set_target_properties(test_ui_hud_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     vixen_gtest_discover_tests(RenderGraph test_ui_hud_smoke)
@@ -622,14 +612,7 @@ if(TARGET GTest::gtest_main)
             "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
         COMMENT "Staging UI assets for test_ui_composition_host"
     )
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_ui_composition_host POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:TBB::tbb>
-                $<TARGET_FILE_DIR:test_ui_composition_host>
-            COMMENT "Copying TBB DLL for test_ui_composition_host"
-        )
-    endif()
+
     set_target_properties(test_ui_composition_host PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_ui_composition_host)
     message(STATUS "✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)")
@@ -1121,3 +1104,6 @@ endif()
 add_subdirectory(CompileTimeResourceSystem)
 
 vixen_register_verification_targets("${CMAKE_CURRENT_BINARY_DIR}")
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

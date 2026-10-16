@@ -74,3 +74,6 @@ vixen_set_suite_properties(RenderGraph TESTS
     RenderGraph/CompileTimeResourceSystem/test_recursive_validation)
 
 message(STATUS "[CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)")
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

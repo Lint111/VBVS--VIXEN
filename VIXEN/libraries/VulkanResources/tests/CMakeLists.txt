@@ -27,3 +27,6 @@ target_compile_definitions(test_vulkan_global_names_policy PRIVATE
     VIXEN_WSL_DZN_ICD="${CMAKE_CURRENT_BINARY_DIR}/dzn_policy_missing_manifest.json")
 set_target_properties(test_vulkan_global_names_policy PROPERTIES FOLDER "Tests/VulkanResources Tests")
 vixen_gtest_discover_tests(VulkanResources test_vulkan_global_names_policy)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

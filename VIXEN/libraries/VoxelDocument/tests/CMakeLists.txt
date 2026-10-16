@@ -13,3 +13,6 @@ set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Test
 # This CPU-only module test deliberately uses ordinary GoogleTest discovery so CTest does not
 # attach the RenderGraph suite's Vulkan loader environment.
 vixen_gtest_discover_tests(VoxelDocument test_editor_document_model_preview)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

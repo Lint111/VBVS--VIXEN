@@ -13,3 +13,6 @@ set_target_properties(test_eventbus_basic PROPERTIES FOLDER "Tests/EventBus Test
 
 # Temporarily disabled - GTest not configured
 # gtest_discover_tests(test_eventbus_basic)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()

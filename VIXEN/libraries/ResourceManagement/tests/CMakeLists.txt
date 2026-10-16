@@ -52,3 +52,6 @@ vixen_gtest_discover_tests(ResourceManagement test_resourcemanagement_basic)
 vixen_gtest_discover_tests(ResourceManagement test_resource_management)
 vixen_gtest_discover_tests(ResourceManagement test_budget_manager_integration)
 vixen_gtest_discover_tests(ResourceManagement test_vulkan_buffer_allocator)
+
+# Stage runtime DLLs for every executable declared in this directory.
+vixen_stage_runtime_dlls_in_current_directory()
