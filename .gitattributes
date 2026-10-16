@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp -text whitespace=cr-at-eol
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h -text whitespace=cr-at-eol
