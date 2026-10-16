@@ -158,7 +158,9 @@ void main() {
     // cell's own surface — found live: 86% of cells traced fully dark. The
     // trace therefore SKIPS the cell's own footprint via tMin = cellSize (the
     // cone-tracing offset shape) on top of the normal-offset origin.
-    vec3 shadowOrigin = rc.avgPos + normal * max(shadowConfig.biasEpsilon, 0.5 * cellSize);
+    float originBias = max(storedSdfShadowOriginBias(rep, shadowConfig.biasEpsilon),
+                           0.5 * cellSize);
+    vec3 shadowOrigin = rc.avgPos + normal * originBias;
     for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
         Light light = lightingConfig.lights[i];
         float distanceToLight;
