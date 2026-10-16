@@ -1174,12 +1174,13 @@ float instanceMinimumAxisScale(uint instanceIndex) {
 }
 
 // A stored-SDF hit can sit slightly inside the trilinear surface reconstructed
-// from voxel-centre samples. A fixed world-space shadow epsilon is too small
-// for coarse grids, so offset by three transformed voxel pitches. The
-// multiplier is conservative: one and two pitches reduced the lattice acne
-// but left visible patches in the 128^3 sphere fixture; three removed the
-// visible repeated lattice pattern.
-float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias) {
+// from voxel-centre samples. Keep the normal offset in transformed voxel-pitch
+// units, then add a bounded slope term for grazing light directions. The
+// extra offset is capped at two pitches so contact and concave shadows remain
+// attached while the base three-pitch offset continues to suppress the 128^3
+// lattice acne.
+float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
+                                vec3 surfaceNormal, vec3 lightDirection) {
     if (sourceInstanceIndex >= uint(bodyInstances.length())) return configuredBias;
     BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
     uint octreeIndex = sourceInstance.octreeIndex;
@@ -1205,7 +1206,12 @@ float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias) 
     float voxelCount = float(sourceConfig.bricksPerAxisSdf) * 8.0;
     float voxelWorldPitch = max(length(gridAxisX), max(length(gridAxisY), length(gridAxisZ))) /
                             voxelCount;
-    return max(configuredBias, 3.0 * voxelWorldPitch);
+    float normalOffsetBias = max(configuredBias, 3.0 * voxelWorldPitch);
+    float normalLightCos = clamp(dot(surfaceNormal, lightDirection), 0.0, 1.0);
+    float slope = sqrt(max(1.0 - normalLightCos * normalLightCos, 0.0)) /
+                  max(normalLightCos, 0.2);
+    float slopeOffsetBias = min(slope, 2.0) * voxelWorldPitch;
+    return normalOffsetBias + slopeOffsetBias;
 }
 
 // rtperf S1: ray-query primitive indices address the compact shell pool, not

@@ -2744,14 +2744,9 @@ namespace Vixen.Codegen.Gpu
     }
 
     /// <summary>Schema path for effect_complete_quest; lowered before native dispatch.</summary>
-    public struct EffectCompleteQuestRef
+    public readonly struct EffectCompleteQuestRef
     {
         public const string SchemaKind = "effect_complete_quest";
-        public string Quest
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
     }
 
     /// <summary>Schema path for effect_confiscate_stock; lowered before native dispatch.</summary>
@@ -2839,14 +2834,9 @@ namespace Vixen.Codegen.Gpu
     }
 
     /// <summary>Schema path for effect_fail_quest; lowered before native dispatch.</summary>
-    public struct EffectFailQuestRef
+    public readonly struct EffectFailQuestRef
     {
         public const string SchemaKind = "effect_fail_quest";
-        public string Quest
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
     }
 
     /// <summary>Schema path for effect_fire_effect_set; lowered before native dispatch.</summary>
@@ -4942,30 +4932,24 @@ namespace Vixen.Codegen.Gpu
     }
 
     /// <summary>Schema path for quest_completion_row; lowered before native dispatch.</summary>
-    public struct QuestCompletionRowRef
+    public readonly struct QuestCompletionRowRef
     {
         public const string SchemaKind = "quest_completion_row";
-        public string Id
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
+        public const string QuestRelation = "QuestOfQuestCompletionRowRel";
+        public StorylineRef Quest => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for quest_status; lowered before native dispatch.</summary>
     public struct QuestStatusRef
     {
         public const string SchemaKind = "quest_status";
-        public string Id
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
         public byte Status
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
+        public const string QuestRelation = "QuestOfQuestStatusRel";
+        public StorylineRef Quest => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for recipe_flow_row; lowered before native dispatch.</summary>
@@ -5604,8 +5588,8 @@ namespace Vixen.Codegen.Gpu
         public static PracticeLedger PracticeLedger(ulong id = default, int count = default, FactionRef faction = default, PracticeProfileRef practice = default) => new PracticeLedger { id = id, count = count };
         public static PracticeSaturation PracticeSaturation(ulong id = default, string tag = "", double level = default, FactionRef faction = default, PracticeProfileRef source = default) => new PracticeSaturation { id = id, tag = tag, level = level };
         public static PriceQuote PriceQuote(ulong id = default, string resource = "", double amountPerUnit = default, ulong priceId = default, ulong revision = default) => new PriceQuote { id = id, resource = resource, amountPerUnit = amountPerUnit, priceId = priceId, revision = revision };
-        public static QuestCompletionRow QuestCompletionRow(string id = "") => new QuestCompletionRow { id = id };
-        public static QuestStatus QuestStatus(string id = "", byte status = default) => new QuestStatus { id = id, status = status };
+        public static QuestCompletionRow QuestCompletionRow(StorylineRef quest = default) => new QuestCompletionRow {  };
+        public static QuestStatus QuestStatus(byte status = default, StorylineRef quest = default) => new QuestStatus { status = status };
         public static RecipeFlowRow RecipeFlowRow(string resource = "", double kgPerTick = default) => new RecipeFlowRow { resource = resource, kgPerTick = kgPerTick };
         public static RefineHeadRow RefineHeadRow(FactionRef faction = default) => new RefineHeadRow {  };
         public static Region Region(ulong id = default, byte parentKind = default, int parentBody = default, byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default, ResourceRef material = default) => new Region { id = id, parentKind = parentKind, parentBody = parentBody, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
@@ -6594,10 +6578,7 @@ namespace Vixen.Codegen.Gpu
         public float magnitude;
     }
 
-    public struct EffectCompleteQuest
-    {
-        public string quest;
-    }
+    public struct EffectCompleteQuest { }
 
     public struct EffectConfiscateStock
     {
@@ -6637,10 +6618,7 @@ namespace Vixen.Codegen.Gpu
         public string related_fact;
     }
 
-    public struct EffectFailQuest
-    {
-        public string quest;
-    }
+    public struct EffectFailQuest { }
 
     public struct EffectFireEffectSet
     {
@@ -7539,13 +7517,13 @@ namespace Vixen.Codegen.Gpu
 
     public struct QuestStatus
     {
-        public string id;
         public byte status;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.StorylineRef> quest;
     }
 
     public struct QuestCompletionRow
     {
-        public string id;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.StorylineRef> quest;
     }
 
     public struct ObserverState

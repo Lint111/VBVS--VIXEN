@@ -735,12 +735,12 @@
       { "name": "Status", "storage": "entityId", "refKind": "quest_status", "list": true },
       { "name": "Completed", "storage": "entityId", "refKind": "quest_completion_row", "list": true }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatus", "root": false, "order": 99, "kind": "quest_status", "fields": [
-      { "name": "Id", "storage": "string" },
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatus", "root": false, "order": 99, "kind": "quest_status", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Quest", "storage": "namespacedId", "refKind": "storyline", "kindRefCatalog": "storyline-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.StorylineRef" },
       { "name": "Status", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Narrative.QuestLifecycle" }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestCompletionRow", "root": false, "order": 98, "kind": "quest_completion_row", "fields": [
-      { "name": "Id", "storage": "string" }
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestCompletionRow", "root": false, "order": 98, "kind": "quest_completion_row", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Quest", "storage": "namespacedId", "refKind": "storyline", "kindRefCatalog": "storyline-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.StorylineRef" }
     ] },
     { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverAdmissionSave", "root": true, "order": 88, "kind": "state:observer-admission", "fields": [
       { "name": "Observers", "storage": "entityId", "refKind": "observer_state", "list": true },
@@ -1046,8 +1046,7 @@
     { "id": "core:collaborate", "description": "Record a Collaboration incident between the target and secondary party, recorded as not player-caused.", "arguments": [
       { "name": "magnitude", "scalar": "float", "required": false, "vocab": "", "default": "0.4", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": { "min": -3.4028234663852886E+38, "max": 3.4028234663852886E+38, "overflow": "cap", "default": 0.4 } }
     ] },
-    { "id": "core:complete_quest", "description": "Mark a quest as COMPLETED (quest id).", "arguments": [
-      { "name": "quest", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    { "id": "core:complete_quest", "description": "Mark a storyline as COMPLETED.", "arguments": [
     ] },
     { "id": "core:confiscate_stock", "description": "ATTEMPT to confiscate stock from the target — the ownership contest adjudicates (may stand off).", "arguments": [
       { "name": "place", "scalar": "float", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": { "min": -2147483648, "max": 2147483647, "overflow": "cap", "default": 0 } },
@@ -1082,8 +1081,7 @@
       { "name": "mode", "scalar": "text", "required": false, "vocab": "", "default": "", "enum": ["single", "top_n", "all"], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "range", "scalar": "text", "required": false, "vocab": "", "default": "", "enum": ["connected", "same_place", "same_body", "gated"], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
     ] },
-    { "id": "core:fail_quest", "description": "Mark a quest as FAILED (quest id).", "arguments": [
-      { "name": "quest", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    { "id": "core:fail_quest", "description": "Mark a storyline as FAILED.", "arguments": [
     ] },
     { "id": "core:fire_effect_set", "description": "Fire an authored effect_set bundle by id (set) — its effects run in authored order.", "arguments": [
       { "name": "set", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
@@ -2299,8 +2297,7 @@
     { "name": "magnitude", "required": false, "value": { "kind": "scalar", "scalar": "float" }, "authoringDefault": "0.4" }
   ] },
   "effect_complete_quest": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:complete_quest", "generatedLoader": true }, "fields": [
-    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
-    { "name": "quest", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
   ] },
   "effect_confiscate_stock": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:confiscate_stock", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
@@ -2334,8 +2331,7 @@
     { "name": "related_fact", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
   ] },
   "effect_fail_quest": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:fail_quest", "generatedLoader": true }, "fields": [
-    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
-    { "name": "quest", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
   ] },
   "effect_fire_effect_set": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:fire_effect_set", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
