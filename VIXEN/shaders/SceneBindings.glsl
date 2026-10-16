@@ -1173,6 +1173,41 @@ float instanceMinimumAxisScale(uint instanceIndex) {
                min(length(vec3(r0.y, r1.y, r2.y)), length(vec3(r0.z, r1.z, r2.z))));
 }
 
+// A stored-SDF hit can sit slightly inside the trilinear surface reconstructed
+// from voxel-centre samples. A fixed world-space shadow epsilon is too small
+// for coarse grids, so offset by three transformed voxel pitches. The
+// multiplier is conservative: one and two pitches reduced the lattice acne
+// but left visible patches in the 128^3 sphere fixture; three removed the
+// visible repeated lattice pattern.
+float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias) {
+    if (sourceInstanceIndex >= uint(bodyInstances.length())) return configuredBias;
+    BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
+    uint octreeIndex = sourceInstance.octreeIndex;
+    if (octreeIndex >= uint(configs.length())) return configuredBias;
+
+    OctreeConfig sourceConfig = configs[octreeIndex];
+    if (sourceConfig.formatId != FORMAT_STORED_SDF || sourceConfig.bricksPerAxisSdf == 0u)
+        return configuredBias;
+
+    // localToWorld maps the normalized ESVO grid into the body-local [0,10]^3
+    // frame; the instance transform then maps that body frame to world space.
+    // Compose their three grid axes so non-uniform instance transforms use the
+    // largest actual world-space voxel edge.
+    vec3 gridAxisX = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[0].xyz);
+    vec3 gridAxisY = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[1].xyz);
+    vec3 gridAxisZ = instanceTransformVector(
+        bodyInstanceTransforms[sourceInstanceIndex].localToWorldRows,
+        sourceConfig.localToWorld[2].xyz);
+    float voxelCount = float(sourceConfig.bricksPerAxisSdf) * 8.0;
+    float voxelWorldPitch = max(length(gridAxisX), max(length(gridAxisY), length(gridAxisZ))) /
+                            voxelCount;
+    return max(configuredBias, 3.0 * voxelWorldPitch);
+}
+
 // rtperf S1: ray-query primitive indices address the compact shell pool, not
 // the sparse bpa^3 source grid. The CPU flattens these records in octree order
 // and the TLAS instance custom index supplies each octree's proxy base.
