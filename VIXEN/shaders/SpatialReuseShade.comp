@@ -730,7 +730,7 @@ void main() {
         vec3 dLightDir = lightDirectionAt(dlight, bestWorldPos, dLightDistance);
         float dNdotL = max(dot(bestNormal, dLightDir), 0.0);
         float dOriginBias = storedSdfShadowOriginBias(
-            recReadback._pad0[0], shadowConfig.biasEpsilon);
+            recReadback._pad0[0], shadowConfig.biasEpsilon, bestNormal, dLightDir);
         vec3 dShadowOrigin = bestWorldPos + bestNormal * dOriginBias;
         g_shadowDbgArm      = 1;
         g_shadowDbgInst     = -1;
