@@ -230,7 +230,10 @@ private:
         }
         std::sort(elapsedMs.begin(), elapsedMs.end());
         if (!elapsedMs.empty()) {
-            const double median = elapsedMs[elapsedMs.size() / 2];
+            const size_t middle = elapsedMs.size() / 2;
+            const double median = elapsedMs.size() % 2 != 0
+                ? elapsedMs[middle]
+                : (elapsedMs[middle - 1] + elapsedMs[middle]) * 0.5;
             std::fprintf(stderr,
                          "[FSR3_GPU_TIMING] summary samples=%zu median_ms=%.6f max_ms=%.6f budget_ms=2.000000\n",
                          elapsedMs.size(), median, elapsedMs.back());
