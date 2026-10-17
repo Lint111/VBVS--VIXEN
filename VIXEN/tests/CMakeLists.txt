@@ -20,6 +20,10 @@ vixen_schedule_runtime_dlls_for_current_directory()
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest OPTIONAL)
 
+add_test(NAME Codegen.LauncherArguments
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
+set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)

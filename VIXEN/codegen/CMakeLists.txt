@@ -194,7 +194,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # Resolve the WSL-side dotnet by asking WSL itself, rather than trying to reverse-parse
         # VIXEN_DOTNET's UNC form — deterministic and survives whatever hint matched above.
         execute_process(
-            COMMAND ${WSL_EXE} -e bash -lc "command -v dotnet || echo \$HOME/.dotnet/dotnet"
+            COMMAND ${WSL_EXE} --cd / -e bash -lc "command -v dotnet || echo \$HOME/.dotnet/dotnet"
             OUTPUT_VARIABLE _wsl_dotnet
             OUTPUT_STRIP_TRAILING_WHITESPACE)
         if(NOT _wsl_dotnet)
@@ -205,10 +205,58 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # ${VIXEN_ROOT}/... args are Windows paths (C:/...) on this configure; the WSL tool
         # needs them as /mnt/c/... — translate once via wslpath and reuse for every target below.
         function(_codegen_to_wsl_path win_path out_var)
-            execute_process(
-                COMMAND ${WSL_EXE} -e wslpath -u "${win_path}"
-                OUTPUT_VARIABLE _translated
-                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            # pushd maps a WSL UNC worktree to a drive so cmd.exe can link native
+            # targets. WSL does not know those temporary drive mappings. Expand
+            # the drive to its UNC share before asking wslpath to translate it.
+            string(REPLACE "\\" "/" _path "${win_path}")
+            set(_native_path "${_path}")
+            if(_path MATCHES "^([A-Za-z]):/(.*)$")
+                set(_drive "${CMAKE_MATCH_1}")
+                set(_relative "${CMAKE_MATCH_2}")
+                get_property(_queried GLOBAL PROPERTY "_vixen_wsl_drive_${_drive}_queried")
+                if(NOT _queried)
+                    execute_process(
+                        COMMAND powershell -NoProfile -NonInteractive -Command
+                            "(Get-PSDrive -Name '${_drive}' -ErrorAction SilentlyContinue).DisplayRoot"
+                        OUTPUT_VARIABLE _share OUTPUT_STRIP_TRAILING_WHITESPACE
+                        RESULT_VARIABLE _drive_result)
+                    if(NOT _drive_result EQUAL 0)
+                        message(FATAL_ERROR "[codegen] cannot resolve Windows drive ${_drive} for ${win_path}")
+                    endif()
+                    string(REPLACE "\\" "/" _share "${_share}")
+                    set_property(GLOBAL PROPERTY "_vixen_wsl_drive_${_drive}" "${_share}")
+                    set_property(GLOBAL PROPERTY "_vixen_wsl_drive_${_drive}_queried" TRUE)
+                endif()
+                get_property(_share GLOBAL PROPERTY "_vixen_wsl_drive_${_drive}")
+                if(_share)
+                    set(_path "${_share}/${_relative}")
+                endif()
+            endif()
+            # All source/output arguments share only a few drive/share roots.
+            # Translate those once instead of spawning WSL for every artifact.
+            if(NOT _path MATCHES "^(//[^/]+/[^/]+|[A-Za-z]:)(/.*)?$")
+                message(FATAL_ERROR "[codegen] expected an absolute Windows path: ${win_path}")
+            endif()
+            set(_root "${CMAKE_MATCH_1}")
+            set(_relative "${CMAKE_MATCH_2}")
+            string(SHA256 _root_key "${_root}")
+            get_property(_base GLOBAL PROPERTY "_vixen_wsl_root_${_root_key}")
+            if(NOT _base)
+                execute_process(
+                    COMMAND ${WSL_EXE} --cd / -e wslpath -u "${_root}/"
+                    OUTPUT_VARIABLE _base OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _path_result)
+                if(NOT _path_result EQUAL 0 OR NOT _base)
+                    message(FATAL_ERROR "[codegen] cannot translate ${win_path} (${_path}) to a WSL path")
+                endif()
+                set_property(GLOBAL PROPERTY "_vixen_wsl_root_${_root_key}" "${_base}")
+                message(STATUS "[codegen] WSL path root: ${_root} -> ${_base}")
+            endif()
+            string(REGEX REPLACE "/+$" "" _base "${_base}")
+            string(REGEX REPLACE "^/" "" _relative "${_relative}")
+            set(_translated "${_base}/${_relative}")
+            string(SHA256 _path_key "${_translated}")
+            set_property(GLOBAL PROPERTY "_vixen_codegen_native_path_${_path_key}" "${_native_path}")
             set(${out_var} "${_translated}" PARENT_SCOPE)
         endfunction()
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
@@ -311,7 +359,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # Rml::String overload the tool cannot express -- same "consumer defines by hand" precedent
         # as EditorLayersView's activeLayerCountOverride hook.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp" _out_callables_hdr_run)
-        set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
+        set(_CODEGEN_RUNNER ${WSL_EXE} --cd / -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
@@ -472,7 +520,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         message(FATAL_ERROR "[codegen] CodegenTool must declare its TargetFramework")
     endif()
     if(_codegen_need_wsl_bridge)
-        execute_process(COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" --list-sdks
+        execute_process(COMMAND ${WSL_EXE} --cd / -e "${_wsl_dotnet}" --list-sdks
             OUTPUT_VARIABLE _codegen_dotnet_sdk_list RESULT_VARIABLE _sdk_result)
     else()
         execute_process(COMMAND "${VIXEN_DOTNET}" --list-sdks
@@ -492,7 +540,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_tool_cached_bin}" _tool_cached_bin_run)
         _codegen_to_wsl_path("${_tool_cache}/artifacts" _tool_artifacts_run)
-        set(_tool_build_command ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj")
+        set(_tool_build_command ${WSL_EXE} --cd / -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj")
     elseif(UNIX AND NOT APPLE)
         set(_tool_cached_bin_run "${_tool_cached_bin}")
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
