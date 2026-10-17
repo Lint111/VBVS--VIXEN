@@ -3,6 +3,7 @@
 #include "Connection/SdiStageWiring.h"
 #include "Data/Nodes/BlitNodeConfig.h"
 #include "Core/RenderGraph.h"
+#include "graph/UpscalerContract.h"
 #include "Nodes/SdiStageSynthesis.h"
 #include "ShaderFamily.h"
 
@@ -57,24 +58,36 @@ CONSTEXPR_NODE_CONFIG(UpscalerModulePorts, 4, 2, SlotArrayMode::Single) {
 static_assert(std::is_same_v<UpscalerModulePorts::UPSCALED_TARGET_Slot::Type,
                              BlitNodeConfig::UPSCALED_IMAGE_READ_Slot::Type>);
 
-struct LinearUpscalerParams {};
-
-struct Fsr1UpscalerParams {
+// Engine-owned inputs and services needed while a backend adds its work to the graph. Provider
+// settings remain in the backend implementation; this context carries only frame resources,
+// graph services, extents and generic execution recording.
+struct UpscalerModuleBuildContext {
     ConnectionBatch* batch = nullptr;
     SdiStageCommon common{};
     SdiProviderRegistry sceneProviders;
     NodeHandle sourceTarget{};
     VkExtent2D renderExtent{};
-    uint32_t presentationWidth = 0;
-    uint32_t presentationHeight = 0;
+    VkExtent2D presentationExtent{};
     float renderScale = 1.0f;
     std::function<std::shared_ptr<ShaderManagement::ShaderFamily>(
         const std::string&, const std::string&)> makeShaderFamily;
     std::function<void(NodeHandle, std::shared_ptr<ShaderManagement::ShaderFamily>)> registerShaderFamily;
-    // Publish stable graph identities here; ComputeStageNode creates its GPU logger only
-    // during graph compilation, after the module's Build() function has returned.
-    std::function<void(std::string, NodeHandle)> registerPassMetric;
+    // RenderGraph nodes record commands; the host records their identities here so it can attach
+    // GPU timing after graph compilation without inspecting a backend's private graph members.
+    std::function<void(std::string, NodeHandle)> recordExecution;
 };
+
+struct UpscalerBackendDescriptor {
+    std::string_view id;
+    std::string_view moduleTypeName;
+    std::string_view runtimeCapability;
+    const UpscalerContract* contract = nullptr;
+    bool compiled = false;
+    bool nativeFallback = false;
+};
+
+std::span<const UpscalerBackendDescriptor> GetUpscalerBackendDescriptors() noexcept;
+const UpscalerBackendDescriptor* FindUpscalerBackend(std::string_view id) noexcept;
 
 inline constexpr char kLinearUpscalerModuleTypeName[] = "Upscaler.Linear";
 inline constexpr char kFsr1UpscalerModuleTypeName[] = "Upscaler.Fsr1";
