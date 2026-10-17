@@ -461,6 +461,9 @@ namespace {
 void ValidateDeclaredPortPair(const ResourceDescriptor& source,
                               const ResourceDescriptor& target,
                               const std::string& description) {
+    if (!source.visualRelaxationReason.empty() && !target.acceptsVisualRelaxation)
+        throw std::runtime_error("Visual relaxation cannot feed deterministic input for " + description +
+                                 ": " + source.visualRelaxationReason);
     // Older SubGraphType declarations used only the compile-time slot types and
     // did not initialize the runtime PortConfig descriptors. Keep those
     // declarations compatible; their expanded member edges are checked below.
@@ -543,6 +546,9 @@ void RenderGraph::Connect(NodeHandle source, uint32_t sourceOutput,
     }
     for (const SubGraphBinding& output : target.state_->outputBindings) {
         if (!output.forwardsInput || output.inputPort != targetPort) continue;
+        if (!sourceDesc->visualRelaxationReason.empty() &&
+            target.state_->outputSchema[output.port].visualRelaxationReason.empty())
+            throw std::runtime_error("Forwarding cannot erase a visual relaxation");
         found = true;
         target.state_->forwardedInputs[targetPort].push_back({source, sourceOutput});
         for (const SubGraphEndpoint& downstream : target.state_->forwardedTargets[targetPort]) {
@@ -668,6 +674,9 @@ void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
             }
             for (const SubGraphBinding& targetOutput : target.state_->outputBindings) {
                 if (!targetOutput.forwardsInput || targetOutput.inputPort != targetPort) continue;
+                if (!sourceDesc.visualRelaxationReason.empty() &&
+                    target.state_->outputSchema[targetOutput.port].visualRelaxationReason.empty())
+                    throw std::runtime_error("Forwarding cannot erase a visual relaxation");
                 targetFound = true;
                 target.state_->forwardedInputs[targetPort].push_back(endpoint);
                 for (const SubGraphEndpoint& downstream : target.state_->forwardedTargets[targetPort]) {

@@ -454,3 +454,63 @@ TEST(SubGraphNodesTest, OptionalInputStaysUnconnectedWhenProviderCapabilityIsAbs
 }
 
 } // namespace
+
+namespace {
+CONSTEXPR_NODE_CONFIG(RelaxedOutputPorts, 0, 1, SlotArrayMode::Single) {
+    OUTPUT_SLOT(VISUAL, const VkBuffer, 0, SlotNullability::Required, SlotMutability::WriteOnly);
+    RelaxedOutputPorts() {
+        INIT_OUTPUT_DESC(VISUAL, "jittered_visibility", ResourceLifetime::Transient, HandleDescriptor{"VkBuffer"});
+        outputs[VISUAL.index].visualRelaxationReason = "R494 temporal primary-ray sampling";
+    }
+};
+CONSTEXPR_NODE_CONFIG(VisualInputPorts, 1, 0, SlotArrayMode::Single) {
+    INPUT_SLOT(VISUAL, const VkBuffer, 0, SlotNullability::Required, SlotRole::Execute,
+        SlotMutability::ReadOnly, SlotScope::NodeLevel);
+    VisualInputPorts() {
+        INIT_INPUT_DESC(VISUAL, "visual_input", ResourceLifetime::Transient, HandleDescriptor{"VkBuffer"});
+        inputs[VISUAL.index].acceptsVisualRelaxation = true;
+    }
+};
+class RelaxedOutputGroup : public SubGraphType<RelaxedOutputGroup> {
+public:
+    using PortConfig = RelaxedOutputPorts;
+    using Params = ChainParams;
+    void Build(GraphScope& scope, const Params&) {
+        auto source = scope.AddNode("Source", "sample");
+        scope.BindOutput(PortConfig::VISUAL, source, SourceSlots::SourceOutput);
+    }
+};
+class VisualInputGroup : public SubGraphType<VisualInputGroup> {
+public:
+    using PortConfig = VisualInputPorts;
+    using Params = ChainParams;
+    void Build(GraphScope& scope, const Params&) {
+        auto sink = scope.AddNode("OptionalSink", "visual_sink");
+        scope.BindInput(PortConfig::VISUAL, sink, SinkSlots::SinkInput);
+    }
+};
+class LaunderedOutputGroup : public SubGraphType<LaunderedOutputGroup> {
+public:
+    using PortConfig = ProviderPorts;
+    using Params = ChainParams;
+    void Build(GraphScope& scope, const Params&) {
+        auto nested = scope.Instantiate<RelaxedOutputGroup>("nested", Params{});
+        scope.BindOutput(ProviderPorts::IndirectLighting, nested, RelaxedOutputPorts::VISUAL);
+    }
+};
+}
+
+TEST(SubGraphNodesTest, RelaxedSamplingCannotFeedADeterministicBoundaryOrRawAlias) {
+    GraphFixture fixture;
+    auto source = fixture.graph.Instantiate<RelaxedOutputGroup>("sampling");
+    EXPECT_FALSE(source.GetOutputSchema()[0].visualRelaxationReason.empty());
+    EXPECT_THROW(fixture.graph.Connect(source, 0u, fixture.AddSink("picking"), 0u), std::runtime_error);
+    EXPECT_THROW(source.ResolveOutput(0u), std::runtime_error);
+    auto visual = fixture.graph.Instantiate<VisualInputGroup>("lighting");
+    EXPECT_NO_THROW(fixture.graph.Connect(source, 0u, visual, 0u));
+}
+
+TEST(SubGraphNodesTest, NestingCannotStripASamplingRelaxation) {
+    GraphFixture fixture;
+    EXPECT_THROW(fixture.graph.Instantiate<LaunderedOutputGroup>("laundered"), std::runtime_error);
+}

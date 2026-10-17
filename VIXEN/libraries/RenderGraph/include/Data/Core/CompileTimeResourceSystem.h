@@ -1347,6 +1347,10 @@ struct ResourceDescriptor {
     std::type_index declaredType{typeid(void)}; // C++ type retained for runtime-registered group ports
     SlotRole role = static_cast<SlotRole>(0);    // Declared input/output role (output uses SlotRole::Output)
 
+    // R494: authored on a named group's output port. Empty means deterministic.
+    std::string visualRelaxationReason;
+    bool acceptsVisualRelaxation = false;
+
     // Constructor for compatibility
     ResourceDescriptor() = default;
 

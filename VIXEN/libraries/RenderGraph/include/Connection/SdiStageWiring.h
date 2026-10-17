@@ -126,6 +126,8 @@ struct SdiProviderSource {
     bool known = false;
 };
 
+enum class VisualInputAcceptance { DeterministicOnly, VisualOnly };
+
 class SdiProviderRegistry {
 public:
     using ConnectFn = std::function<void(ConnectionBatch&, NodeHandle, uint32_t)>;
@@ -163,8 +165,9 @@ public:
 
     /** @brief Register a reflected-field provider from a module group's declared output. */
     void ProvideSubGraphOutput(const std::string& name, const SubGraphHandle& group,
-                               uint32_t outputPort, SlotRole roles) {
-        const auto resolved = group.ResolveOutput(outputPort);
+                               uint32_t outputPort, SlotRole roles,
+                               VisualInputAcceptance acceptance = VisualInputAcceptance::DeterministicOnly) {
+        const auto resolved = group.ResolveOutput(outputPort, acceptance == VisualInputAcceptance::VisualOnly);
         if (!resolved) {
             throw std::runtime_error("SdiProviderRegistry: group output '" + name +
                                      "' does not resolve to a member output");

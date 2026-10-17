@@ -1158,6 +1158,7 @@ struct SubGraphBinding {
     uint32_t inputPort = 0;
     bool isVariadic = false;
     SlotRole role = SlotRole::Dependency;
+    std::string visualRelaxationReason;
 };
 
 struct SubGraphEndpoint {
@@ -1196,8 +1197,11 @@ struct SubGraphHandle {
         static const std::vector<NodeHandle> empty;
         return state_ ? state_->members : empty;
     }
-    std::optional<std::pair<NodeHandle, uint32_t>> ResolveOutput(uint32_t port) const {
+    std::optional<std::pair<NodeHandle, uint32_t>> ResolveOutput(uint32_t port, bool acceptsVisualRelaxation = false) const {
         if (!state_) return std::nullopt;
+        if (port < state_->outputSchema.size() &&
+            !state_->outputSchema[port].visualRelaxationReason.empty() && !acceptsVisualRelaxation)
+            throw std::runtime_error("Relaxed group output requires an explicitly visual consumer: " + state_->name);
         const auto it = std::find_if(state_->outputBindings.begin(), state_->outputBindings.end(),
             [port](const SubGraphBinding& binding) { return binding.port == port; });
         if (it == state_->outputBindings.end()) return std::nullopt;
@@ -1433,6 +1437,8 @@ public:
         outputBindings_.push_back({PortType::index,
                                    nestedOutput->member,
                                    nestedOutput->memberSlot});
+        outputBindings_.back().visualRelaxationReason =
+            nested.state_->outputSchema[NestedPortType::index].visualRelaxationReason;
     }
 
     /** Forward a typed input port directly to a typed output port without a wrapper resource. */
@@ -1503,7 +1509,7 @@ private:
         }
     }
 
-    void Finalize(const std::vector<ResourceDescriptor>& inputs, size_t outputCount) {
+    void Finalize(const std::vector<ResourceDescriptor>& inputs, const std::vector<ResourceDescriptor>& outputs) {
         for (const SubGraphBinding& binding : inputBindings_) {
             if (binding.port >= inputs.size()) {
                 throw std::runtime_error("Sub-graph input port index " +
@@ -1512,11 +1518,15 @@ private:
             }
         }
         for (const SubGraphBinding& binding : outputBindings_) {
-            if (binding.port >= outputCount) {
+            if (binding.port >= outputs.size()) {
                 throw std::runtime_error("Sub-graph output port index " +
                                          std::to_string(binding.port) + " is out of range in " +
                                          scopeName_);
             }
+        }
+        for (const auto& binding : outputBindings_) {
+            if (!binding.visualRelaxationReason.empty() && outputs[binding.port].visualRelaxationReason.empty())
+                throw std::runtime_error("Nested relaxed output cannot become deterministic in " + scopeName_);
         }
         for (size_t port = 0; port < inputs.size(); ++port) {
             const bool bound = std::any_of(inputBindings_.begin(), inputBindings_.end(),
@@ -1530,7 +1540,7 @@ private:
                                          std::to_string(port) + " in " + scopeName_);
             }
         }
-        for (size_t port = 0; port < outputCount; ++port) {
+        for (size_t port = 0; port < outputs.size(); ++port) {
             const size_t count = static_cast<size_t>(std::count_if(
                 outputBindings_.begin(), outputBindings_.end(),
                 [port](const SubGraphBinding& binding) { return binding.port == port; }));
@@ -1617,7 +1627,7 @@ SubGraphHandle RenderGraph::InstantiateImpl(
         definition.Build(scope, params);
         using PortConfig = typename TSubGraph::PortConfig;
         const PortConfig portConfig{};
-        scope.Finalize(portConfig.GetInputVector(), PortConfig::OUTPUT_COUNT);
+        scope.Finalize(portConfig.GetInputVector(), portConfig.GetOutputVector());
 
         auto state = std::make_shared<SubGraphState>();
         state->graph = this;
