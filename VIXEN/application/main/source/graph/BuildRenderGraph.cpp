@@ -9826,8 +9826,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.recordExecution = [this](std::string columnName, NodeHandle node) {
             upscalerPerfPasses_.push_back({std::move(columnName), node});
         };
-        params.providerContextInitialized = [this] {
-            selectedUpscalerHasRealContext_ = true;
+        params.providerInitializationReported = [this](UpscalerProviderInitializationResult result) {
+            selectedUpscalerHasRealContext_ = result.initialized;
+            reportedUpscalerInitialization_ = std::move(result);
         };
         upscalerModule = renderGraph->InstantiateRegistered(
             std::string(selectedUpscalerBackend->moduleTypeName), "render_path/upscaler",

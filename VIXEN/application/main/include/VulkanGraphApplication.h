@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <stdexcept>
 #include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
@@ -283,6 +284,9 @@ private:
     std::vector<UpscalerProviderCandidate> upscalerCandidatesForCompile_;
     std::string selectedUpscalerProviderId_;
     bool selectedUpscalerHasRealContext_ = false;
+    // Set by the selected provider's context initialization during CompileRenderGraph; Prepare()
+    // reads it to decide whether to fall back. Cleared before every graph build.
+    std::optional<UpscalerProviderInitializationResult> reportedUpscalerInitialization_;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index

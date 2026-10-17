@@ -268,40 +268,45 @@ void VulkanGraphApplication::Prepare() {
 
     try {
         for (;;) {
-            try {
-                // PHASE 1: Nodes manage their own resources. Provider selection is provisional
-                // until CompileRenderGraph has initialized the selected provider's real context.
-                if (mainLogger && mainLogger->IsEnabled()) {
-                    mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
-                }
-                BuildRenderGraph();
-                if (mainLogger && mainLogger->IsEnabled()) {
-                    mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
-                }
+            // PHASE 1: Nodes manage their own resources. Provider selection is provisional
+            // until CompileRenderGraph has initialized the selected provider's real context.
+            reportedUpscalerInitialization_.reset();
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
+            }
+            BuildRenderGraph();
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
+            }
 
-                if (mainLogger && mainLogger->IsEnabled()) {
-                    mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
-                }
-                CompileRenderGraph();
-                if (!selectedUpscalerHasRealContext_ &&
-                    selectedUpscalerProviderId_ != "fsr3") {
-                    // FSR 1 and linear own graph-compiled pipelines rather than an external
-                    // SDK context; successful graph compilation is their initialization proof.
-                    selectedUpscalerHasRealContext_ = true;
-                }
-                const auto selectedCandidate = std::find_if(
-                    upscalerCandidatesForCompile_.begin(), upscalerCandidatesForCompile_.end(),
-                    [this](const auto& candidate) {
-                        return candidate.id == selectedUpscalerProviderId_;
-                    });
-                if (selectedCandidate == upscalerCandidatesForCompile_.end()) {
-                    throw std::logic_error("Compiled upscaler provider is absent from its candidate set");
-                }
-                if (!selectedUpscalerHasRealContext_) {
-                    throw UpscalerProviderInitializationError(
-                        selectedUpscalerProviderId_,
-                        "provider compile completed without reporting an initialized context");
-                }
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
+            }
+            CompileRenderGraph();
+            if (!selectedUpscalerHasRealContext_ && !reportedUpscalerInitialization_ &&
+                selectedUpscalerProviderId_ != "fsr3") {
+                // FSR 1 and linear own graph-compiled pipelines rather than an external
+                // SDK context; successful graph compilation is their initialization proof.
+                selectedUpscalerHasRealContext_ = true;
+            }
+            const auto selectedCandidate = std::find_if(
+                upscalerCandidatesForCompile_.begin(), upscalerCandidatesForCompile_.end(),
+                [this](const auto& candidate) {
+                    return candidate.id == selectedUpscalerProviderId_;
+                });
+            if (selectedCandidate == upscalerCandidatesForCompile_.end()) {
+                throw std::logic_error("Compiled upscaler provider is absent from its candidate set");
+            }
+            UpscalerProviderInitializationResult initialization{
+                selectedUpscalerProviderId_, true, {}};
+            if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
+                initialization = *reportedUpscalerInitialization_;
+            } else if (!selectedUpscalerHasRealContext_) {
+                initialization.initialized = false;
+                initialization.message =
+                    "provider compile completed without reporting an initialized context";
+            }
+            if (initialization.initialized) {
                 selectedCandidate->eligibility.initialized = true;
                 const auto initializedSelection =
                     SelectUpscalerProvider(upscalerCandidatesForCompile_);
@@ -314,35 +319,42 @@ void VulkanGraphApplication::Prepare() {
                     mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
                 }
                 break;
-            } catch (const UpscalerProviderInitializationError& error) {
-                if (upscalerInitializationFailures_.size() >= 3 ||
-                    !RecordUpscalerProviderInitializationFailure(
-                        upscalerInitializationFailures_, error.ProviderId())) {
-                    throw;
-                }
-                const auto* failedBackend = FindUpscalerBackend(error.ProviderId());
-                const std::string variantCapability =
-                    failedBackend && !failedBackend->runtimeCapability.empty()
-                        ? std::string(failedBackend->runtimeCapability)
-                        : error.ProviderId();
-                if (mainLogger) {
-                    mainLogger->Warning(
-                        "[VulkanGraphApplication::Prepare] Upscaler provider '" +
-                        error.ProviderId() + "' failed context initialization: " + error.what() +
-                        "; trying the next provider; suggest a device variant that includes '" +
-                        variantCapability + "'");
-                }
-
-                // Compile has already created the graph device and may have compiled dependent
-                // nodes. Destroy that EngineContext as a unit so the retry starts with fresh
-                // Vulkan resources and a new graph topology.
-                engine_.reset();
-                nodeRegistry = nullptr;
-                messageBus = nullptr;
-                renderGraph = nullptr;
-                graphCompiled = false;
-                CreateEngineContext();
             }
+
+            if (upscalerInitializationFailures_.size() >= 3 ||
+                !RecordUpscalerProviderInitializationFailure(
+                    upscalerInitializationFailures_, initialization.providerId)) {
+                // No provider is left to try: report through the host-facing error state.
+                lastError_ = "Prepare failed: " + initialization.message;
+                if (mainLogger) {
+                    mainLogger->Error("[VulkanGraphApplication::Prepare] " + lastError_);
+                }
+                isPrepared = false;
+                return;
+            }
+            const auto* failedBackend = FindUpscalerBackend(initialization.providerId);
+            const std::string variantCapability =
+                failedBackend && !failedBackend->runtimeCapability.empty()
+                    ? std::string(failedBackend->runtimeCapability)
+                    : initialization.providerId;
+            if (mainLogger) {
+                mainLogger->Warning(
+                    "[VulkanGraphApplication::Prepare] Upscaler provider '" +
+                    initialization.providerId + "' failed context initialization: " +
+                    initialization.message +
+                    "; trying the next provider; suggest a device variant that includes '" +
+                    variantCapability + "'");
+            }
+
+            // Compile has already created the graph device and may have compiled dependent
+            // nodes. Destroy that EngineContext as a unit so the retry starts with fresh
+            // Vulkan resources and a new graph topology.
+            engine_.reset();
+            nodeRegistry = nullptr;
+            messageBus = nullptr;
+            renderGraph = nullptr;
+            graphCompiled = false;
+            CreateEngineContext();
         }
 
         // The application does NOT own or cache the GLFW window. WindowNode owns it entirely (created

@@ -143,19 +143,18 @@ TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative
     };
     std::vector<std::string> failedProviders;
 
-    // First graph compile attempt selects FSR3 provisionally. Inject the same typed error emitted
-    // when FFX context creation fails, and record it through Prepare's failure-recording helper.
+    // First graph compile attempt selects FSR3 provisionally. Inject the same failure result a
+    // provider reports when FFX context creation fails, and record it through Prepare's helper.
     auto result = SelectUpscalerProviderForInitialization(candidates);
     ASSERT_NE(result.selected, nullptr);
     EXPECT_EQ(result.selected->id, "fsr3");
     EXPECT_FALSE(result.selected->eligibility.initialized);
-    try {
-        throw UpscalerProviderInitializationError("fsr3", "forced FFX context creation failure");
-    } catch (const UpscalerProviderInitializationError& error) {
-        EXPECT_EQ(error.ProviderId(), "fsr3");
-        ASSERT_TRUE(RecordUpscalerProviderInitializationFailure(
-            failedProviders, error.ProviderId()));
-    }
+    const UpscalerProviderInitializationResult initialization{
+        "fsr3", false, "forced FFX context creation failure"};
+    EXPECT_FALSE(initialization.initialized);
+    EXPECT_EQ(initialization.providerId, "fsr3");
+    ASSERT_TRUE(RecordUpscalerProviderInitializationFailure(
+        failedProviders, initialization.providerId));
     candidates[0].initializationFailed =
         std::find(failedProviders.begin(), failedProviders.end(), candidates[0].id) !=
         failedProviders.end();

@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -32,18 +33,11 @@ public:
 
     ~Fsr3ContextState() { Cleanup(); }
 
-    void Initialize(VulkanDevice* device) {
-        try {
-            InitializeContext(device);
-        } catch (const std::exception& error) {
-            Cleanup();
-            throw UpscalerProviderInitializationError(
-                "fsr3", std::string("FSR 3.1.4 context initialization failed: ") + error.what());
-        } catch (...) {
-            Cleanup();
-            throw UpscalerProviderInitializationError(
-                "fsr3", "FSR 3.1.4 context initialization failed with an unknown error");
-        }
+    UpscalerProviderInitializationResult Initialize(VulkanDevice* device) {
+        std::string failure = InitializeContext(device);
+        if (failure.empty()) return {"fsr3", true, {}};
+        Cleanup();
+        return {"fsr3", false, "FSR 3.1.4 context initialization failed: " + std::move(failure)};
     }
 
     void Record(ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
@@ -160,25 +154,26 @@ public:
     }
 
 private:
-    void InitializeContext(VulkanDevice* device) {
+    // Returns the failure text, or an empty string once the context is ready.
+    std::string InitializeContext(VulkanDevice* device) {
         if (!device || device->device == VK_NULL_HANDLE || !device->gpu ||
             *device->gpu == VK_NULL_HANDLE) {
-            throw std::runtime_error("FSR 3.1.4 cannot initialize without a live Vulkan device");
+            return "FSR 3.1.4 cannot initialize without a live Vulkan device";
         }
         if (depthConvention_ != ReconstructionDepthConvention::ForwardZeroToOne &&
             depthConvention_ != ReconstructionDepthConvention::ReversedZeroToOne) {
-            throw std::runtime_error("FSR 3.1.4 requires a zero-to-one depth convention");
+            return "FSR 3.1.4 requires a zero-to-one depth convention";
         }
         if (renderExtent_.width == 0 || renderExtent_.height == 0 ||
             outputExtent_.width == 0 || outputExtent_.height == 0 ||
             nearPlane_ <= 0.0f || farPlane_ <= nearPlane_) {
-            throw std::runtime_error("FSR 3.1.4 context dimensions or clip planes are invalid");
+            return "FSR 3.1.4 context dimensions or clip planes are invalid";
         }
         device_ = device;
         const size_t scratchSize = ffxGetScratchMemorySizeVK(*device_->gpu, 1);
         scratch_.reset(static_cast<uint8_t*>(std::calloc(1, scratchSize)));
         if (!scratch_) {
-            throw std::bad_alloc();
+            return "FSR 3.1.4 scratch memory allocation failed";
         }
         VkDeviceContext vkContext{};
         vkContext.vkDevice = device_->device;
@@ -187,7 +182,10 @@ private:
         const FfxDevice ffxDevice = ffxGetDeviceVK(&vkContext);
         const FfxErrorCode interfaceResult = ffxGetInterfaceVK(
             &backendInterface_, ffxDevice, scratch_.get(), scratchSize, 1);
-        CheckFfx(interfaceResult, "ffxGetInterfaceVK");
+        if (std::string failure = FfxFailure(interfaceResult, "ffxGetInterfaceVK");
+            !failure.empty()) {
+            return failure;
+        }
 
         FfxFsr3UpscalerContextDescription description{};
         if (depthConvention_ == ReconstructionDepthConvention::ReversedZeroToOne) {
@@ -196,11 +194,15 @@ private:
         description.maxRenderSize = {renderExtent_.width, renderExtent_.height};
         description.maxUpscaleSize = {outputExtent_.width, outputExtent_.height};
         description.backendInterface = backendInterface_;
-        CheckFfx(ffxFsr3UpscalerContextCreate(&context_, &description),
-                 "ffxFsr3UpscalerContextCreate");
+        if (std::string failure = FfxFailure(
+                ffxFsr3UpscalerContextCreate(&context_, &description),
+                "ffxFsr3UpscalerContextCreate");
+            !failure.empty()) {
+            return failure;
+        }
         initialized_ = true;
         CreateTimingPool();
-        CreateSharedResources();
+        return CreateSharedResources();
     }
 
     static constexpr size_t kFramesInFlight = 4;
@@ -286,12 +288,11 @@ private:
         case FFX_SURFACE_FORMAT_R32_FLOAT: return VK_FORMAT_R32_SFLOAT;
         case FFX_SURFACE_FORMAT_R16G16_FLOAT: return VK_FORMAT_R16G16_SFLOAT;
         case FFX_SURFACE_FORMAT_R32_UINT: return VK_FORMAT_R32_UINT;
-        default:
-            throw std::runtime_error("FSR 3.1.4 requested an unsupported shared-resource format");
+        default: return VK_FORMAT_UNDEFINED;
         }
     }
 
-    uint32_t FindMemoryType(uint32_t memoryTypeBits) const {
+    std::optional<uint32_t> FindMemoryType(uint32_t memoryTypeBits) const {
         VkPhysicalDeviceMemoryProperties properties{};
         vkGetPhysicalDeviceMemoryProperties(*device_->gpu, &properties);
         for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
@@ -303,14 +304,17 @@ private:
         for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
             if ((memoryTypeBits & (1u << i)) != 0) return i;
         }
-        throw std::runtime_error("FSR 3.1.4 shared image has no compatible Vulkan memory type");
+        return std::nullopt;
     }
 
-    void CreateSharedImage(const FfxCreateResourceDescription& description, SharedImage& shared) {
+    std::string CreateSharedImage(const FfxCreateResourceDescription& description, SharedImage& shared) {
         const FfxResourceDescription& resourceDescription = description.resourceDescription;
         VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
         imageInfo.format = ToVkFormat(static_cast<FfxSurfaceFormat>(resourceDescription.format));
+        if (imageInfo.format == VK_FORMAT_UNDEFINED) {
+            return "FSR 3.1.4 requested an unsupported shared-resource format";
+        }
         imageInfo.extent = {resourceDescription.width, resourceDescription.height, 1};
         imageInfo.mipLevels = resourceDescription.mipCount;
         imageInfo.arrayLayers = 1;
@@ -321,36 +325,53 @@ private:
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         if (vkCreateImage(device_->device, &imageInfo, nullptr, &shared.image) != VK_SUCCESS) {
-            throw std::runtime_error("FSR 3.1.4 shared Vulkan image creation failed");
+            return "FSR 3.1.4 shared Vulkan image creation failed";
         }
 
         VkMemoryRequirements requirements{};
         vkGetImageMemoryRequirements(device_->device, shared.image, &requirements);
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocation.allocationSize = requirements.size;
-        allocation.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits);
+        const std::optional<uint32_t> memoryType = FindMemoryType(requirements.memoryTypeBits);
+        if (!memoryType) {
+            return "FSR 3.1.4 shared image has no compatible Vulkan memory type";
+        }
+        allocation.memoryTypeIndex = *memoryType;
         if (vkAllocateMemory(device_->device, &allocation, nullptr, &shared.memory) != VK_SUCCESS) {
-            throw std::runtime_error("FSR 3.1.4 shared Vulkan image memory allocation failed");
+            return "FSR 3.1.4 shared Vulkan image memory allocation failed";
         }
         if (vkBindImageMemory(device_->device, shared.image, shared.memory, 0) != VK_SUCCESS) {
-            throw std::runtime_error("FSR 3.1.4 shared Vulkan image memory binding failed");
+            return "FSR 3.1.4 shared Vulkan image memory binding failed";
         }
 
         const FfxResourceDescription ffxDescription = ffxGetImageResourceDescriptionVK(
             shared.image, imageInfo, resourceDescription.usage);
         shared.resource = ffxGetResourceVK(reinterpret_cast<void*>(shared.image), ffxDescription,
                                            description.name, FFX_RESOURCE_STATE_UNORDERED_ACCESS);
+        return {};
     }
 
-    void CreateSharedResources() {
+    std::string CreateSharedResources() {
         FfxFsr3UpscalerSharedResourceDescriptions descriptions{};
-        CheckFfx(ffxFsr3UpscalerGetSharedResourceDescriptions(&context_, &descriptions),
-                 "ffxFsr3UpscalerGetSharedResourceDescriptions");
-        for (SharedFrameResources& frame : sharedResources_) {
-            CreateSharedImage(descriptions.reconstructedPrevNearestDepth, frame.reconstructedPrevNearestDepth);
-            CreateSharedImage(descriptions.dilatedMotionVectors, frame.dilatedMotionVectors);
-            CreateSharedImage(descriptions.dilatedDepth, frame.dilatedDepth);
+        if (std::string failure = FfxFailure(
+                ffxFsr3UpscalerGetSharedResourceDescriptions(&context_, &descriptions),
+                "ffxFsr3UpscalerGetSharedResourceDescriptions");
+            !failure.empty()) {
+            return failure;
         }
+        for (SharedFrameResources& frame : sharedResources_) {
+            std::string failure = CreateSharedImage(descriptions.reconstructedPrevNearestDepth,
+                                                    frame.reconstructedPrevNearestDepth);
+            if (failure.empty()) {
+                failure = CreateSharedImage(descriptions.dilatedMotionVectors,
+                                            frame.dilatedMotionVectors);
+            }
+            if (failure.empty()) {
+                failure = CreateSharedImage(descriptions.dilatedDepth, frame.dilatedDepth);
+            }
+            if (!failure.empty()) return failure;
+        }
+        return {};
     }
 
     void DestroySharedImage(SharedImage& shared) noexcept {
@@ -365,10 +386,15 @@ private:
         shared.resource = {};
     }
 
+    static std::string FfxFailure(FfxErrorCode result, const char* operation) {
+        if (result == FFX_OK) return {};
+        return std::string(operation) + " failed with FidelityFX error " +
+               std::to_string(static_cast<int>(result));
+    }
+
     static void CheckFfx(FfxErrorCode result, const char* operation) {
-        if (result != FFX_OK) {
-            throw std::runtime_error(std::string(operation) + " failed with FidelityFX error " +
-                                     std::to_string(static_cast<int>(result)));
+        if (const std::string failure = FfxFailure(result, operation); !failure.empty()) {
+            throw std::runtime_error(failure);
         }
     }
 
@@ -450,7 +476,7 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
     auto state = std::make_shared<Fsr3ContextState>(
         renderExtent, outputExtent, depthConvention, nearPlane, farPlane);
     return {
-        [state](VulkanDevice* device) { state->Initialize(device); },
+        [state](VulkanDevice* device) { return state->Initialize(device); },
         [state](ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
                 uint32_t imageIndex, uint32_t frameIndex) {
             state->Record(context, commandBuffer, imageIndex, frameIndex);

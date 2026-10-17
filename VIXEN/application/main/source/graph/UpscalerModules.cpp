@@ -265,9 +265,9 @@ public:
         compute->SetExternalCommandRecorder(
             hooks.record,
             [initialize = hooks.initialize,
-             initialized = params.providerContextInitialized](VulkanDevice* device) {
-                initialize(device);
-                if (initialized) initialized();
+             reported = params.providerInitializationReported](VulkanDevice* device) {
+                UpscalerProviderInitializationResult result = initialize(device);
+                if (reported) reported(std::move(result));
             },
             hooks.cleanup);
 

@@ -109,8 +109,9 @@ struct UpscalerModuleBuildContext {
     // RenderGraph nodes record commands; the host records their identities here so it can attach
     // GPU timing after graph compilation without inspecting a backend's private graph members.
     std::function<void(std::string, NodeHandle)> recordExecution;
-    // Called only after a provider's real context has been initialized during graph compilation.
-    std::function<void()> providerContextInitialized;
+    // Called once a provider's real context has been initialized or has failed to initialize
+    // during graph compilation; the host decides whether to fall back.
+    std::function<void(UpscalerProviderInitializationResult)> providerInitializationReported;
     float cameraNearPlane = 0.1f;
     float cameraFarPlane = 5000.0f;
 };

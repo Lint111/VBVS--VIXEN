@@ -5,7 +5,6 @@
 #include <limits>
 #include <optional>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -276,15 +275,12 @@ inline UpscalerSelectionResult SelectUpscalerProviderForInitialization(
     return result;
 }
 
-class UpscalerProviderInitializationError final : public std::runtime_error {
-public:
-    UpscalerProviderInitializationError(std::string providerId, std::string message)
-        : std::runtime_error(std::move(message)), providerId_(std::move(providerId)) {}
-
-    [[nodiscard]] const std::string& ProviderId() const noexcept { return providerId_; }
-
-private:
-    std::string providerId_;
+// A provider reports whether its real context was created. A failure is data for the host's
+// fallback loop, not an exception that unwinds through graph compilation.
+struct UpscalerProviderInitializationResult {
+    std::string providerId;
+    bool initialized = false;
+    std::string message;
 };
 
 inline bool RecordUpscalerProviderInitializationFailure(
