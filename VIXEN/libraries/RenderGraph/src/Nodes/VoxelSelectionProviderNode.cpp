@@ -8,6 +8,7 @@
 #include "Core/RenderGraph.h"
 
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -32,6 +33,51 @@ uint32_t FindHostVisibleMemoryType(
         }
     }
     return UINT32_MAX;
+}
+
+bool CreateHostBuffer(VulkanDevice* device, VkDeviceSize bytes, VkBuffer& buffer, VkDeviceMemory& memory) {
+    VkDevice vkDevice = device->device;
+
+    VkBufferCreateInfo bufInfo{};
+    bufInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufInfo.size        = bytes;
+    bufInfo.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(vkDevice, &bufInfo, nullptr, &buffer) != VK_SUCCESS) {
+        buffer = VK_NULL_HANDLE;
+        return false;
+    }
+
+    VkMemoryRequirements req{};
+    vkGetBufferMemoryRequirements(vkDevice, buffer, &req);
+    const uint32_t memType = FindHostVisibleMemoryType(
+        device->gpuMemoryProperties,
+        req.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (memType == UINT32_MAX) {
+        vkDestroyBuffer(vkDevice, buffer, nullptr);
+        buffer = VK_NULL_HANDLE;
+        return false;
+    }
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize  = req.size;
+    allocInfo.memoryTypeIndex = memType;
+    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
+        vkDestroyBuffer(vkDevice, buffer, nullptr);
+        buffer = VK_NULL_HANDLE;
+        memory = VK_NULL_HANDLE;
+        return false;
+    }
+    vkBindBufferMemory(vkDevice, buffer, memory, 0);
+    return true;
+}
+
+// Window pixels -> texel of the render-extent pick image.
+glm::uvec2 ToRenderTexel(const glm::vec2& windowPos, const glm::vec2& windowExtent, const glm::uvec2& renderExtent) {
+    const glm::vec2 scaled = windowPos * glm::vec2(renderExtent) / windowExtent;
+    return glm::uvec2(glm::clamp(scaled, glm::vec2(0.0f), glm::vec2(renderExtent) - 1.0f));
 }
 } // namespace
 
@@ -73,20 +119,23 @@ void VoxelSelectionProviderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // If the device changes on recompile, tear down the staging buffer first so we never free it
     // against the wrong device. On a same-device recompile we keep it (it is reused across clicks).
     if (device != GetDevice()) {
+        DestroyReadbackSlots();
         DestroyStagingBuffer();
     }
     SetDevice(device);
     commandPool_ = ctx.In(VoxelSelectionProviderNodeConfig::COMMAND_POOL);
-    idImage_     = ctx.In(VoxelSelectionProviderNodeConfig::ID_IMAGE);
 
     // KI-012: cache once per Compile, not re-queried per click.
     requiresFullImageTransfers_ = GetDevice() && GetDevice()->RequiresFullImageTransfers();
 
-    const bool ready = GetDevice() && commandPool_ != VK_NULL_HANDLE && idImage_ != VK_NULL_HANDLE;
+    ResetTracking();
+    previousFrame_ = {};
+
+    const bool ready = GetDevice() && commandPool_ != VK_NULL_HANDLE;
     NODE_LOG_INFO(std::string("[VoxelSelectionProvider] compile: priority=") +
                   std::to_string(priority_) + "; " +
-                  (ready ? "configured (device+pool+ID image acquired)"
-                         : "INERT (missing device/pool/ID image)"));
+                  (ready ? "configured (device+pool acquired)"
+                         : "INERT (missing device/pool)"));
 }
 
 void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -104,6 +153,53 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
         return;  // no input state this frame
     }
+
+    const uint32_t width  = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH);
+    const uint32_t height = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
+    uint32_t windowWidth  = ctx.In(VoxelSelectionProviderNodeConfig::PRESENTATION_WIDTH);
+    uint32_t windowHeight = ctx.In(VoxelSelectionProviderNodeConfig::PRESENTATION_HEIGHT);
+    if (windowWidth == 0 || windowHeight == 0) {  // not wired: window and render extents coincide
+        windowWidth  = width;
+        windowHeight = height;
+    }
+    const glm::vec2 jitter = ctx.In(VoxelSelectionProviderNodeConfig::JITTER);
+    const bool jittered = jitter != glm::vec2(0.0f);
+    const bool resourcesReady = GetDevice() && commandPool_ != VK_NULL_HANDLE && width != 0 && height != 0;
+    const glm::vec2 windowExtent(float(std::max(windowWidth, 1u)), float(std::max(windowHeight, 1u)));
+    const glm::uvec2 renderExtent(width, height);
+
+    // The vote is only per-frame when sub-pixel jitter makes one frame's hit unrepresentative.
+    const bool tracking = jittered && resourcesReady;
+    RetireReadbacks(tracking, glm::vec2(renderExtent));
+    if (!tracking) {
+        ResetTracking();
+    } else {
+        if (trackedExtent_ != renderExtent) {
+            ResetTracking();
+            trackedExtent_ = renderExtent;
+        }
+        trackedTexel_[kCrosshair] = renderExtent / 2u;
+        const glm::uvec2 cursor = ToRenderTexel(input->mousePosition, windowExtent, renderExtent);
+        if (cursor != trackedTexel_[kCursor]) history_[kCursor].Reset();
+        trackedTexel_[kCursor] = cursor;
+        if (previousFrame_.jittered && previousFrame_.pick != VK_NULL_HANDLE) SubmitTrackingReadback(previousFrame_);
+    }
+
+    // The pick image the frame's own trace writes is complete once that frame is queued, which is
+    // one Execute from now; the snapshot is what the next frame copies.
+    const VkImage pickImage = ctx.In(VoxelSelectionProviderNodeConfig::ID_IMAGE);
+    const VkImage settledPick = previousFrame_.pick != VK_NULL_HANDLE ? previousFrame_.pick : pickImage;
+    FrameSnapshot frame;
+    frame.pick = pickImage;
+    frame.jitter = jitter;
+    frame.jittered = tracking;
+    if (tracking) {
+        frame.motion = ctx.In(VoxelSelectionProviderNodeConfig::MOTION_TARGET);
+        frame.validity = ctx.In(VoxelSelectionProviderNodeConfig::VALIDITY_TARGET);
+        if (frame.motion) frame.motionIndex = frame.motion->GetCurrentIndex();
+        if (frame.validity) frame.validityIndex = frame.validity->GetCurrentIndex();
+    }
+    previousFrame_ = frame;
 
     // Find the left-button press entry (input-rework slice 1 M3: the shared click list replaces
     // the old private lastLeftDown_ edge detector). Several presses in one frame: the LAST one
@@ -125,40 +221,38 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         return;  // cheap: only read back on a click edge
     }
 
-    const uint32_t width  = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH);
-    const uint32_t height = ctx.In(VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
-
-    if (!GetDevice() || commandPool_ == VK_NULL_HANDLE || idImage_ == VK_NULL_HANDLE ||
-        width == 0 || height == 0) {
+    if (!resourcesReady || settledPick == VK_NULL_HANDLE) {
         // Resources or viewport not ready — emit a miss (never crash).
         NODE_LOG_INFO("[VoxelSelectionProvider] click ignored — resources/viewport not ready");
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
         return;
     }
 
-    // Read back the pixel under the actual cursor position of the current frame's pick target.
-    //
-    // Which frame's image: PickIdTargetNode re-emits images_[frameIndex % count] as ID_IMAGE each
-    // Execute and binds that same slot at binding 9, so the configured idImage_ is exactly the image
-    // this frame's dispatch wrote. We record both RG32_UINT channels on a one-shot command buffer and
-    // wait on its fence rather than calling vkQueueWaitIdle. Submitting on device->queue preserves
-    // order after earlier dispatches, and the fence guarantees that work has completed
-    // before we map. The 4-deep ID-image ring means the slot we read is never being written
-    // concurrently (it is not reused until MAX_FRAMES_IN_FLIGHT frames later), so even in the worst
-    // ordering (this frame's dispatch not yet submitted) we read a complete, recent pickID — never a
-    // torn write. If stale reads are ever observed under fast motion, the principled fallback is the
-    // previous-completed-frame slot — not needed so far.
-    //
-    // Clamp the click position into the image: a click can legitimately land at the exact edge
-    // (e.g. width-1 rounding) or, transiently, just outside during a resize race.
-    const uint32_t targetX = static_cast<uint32_t>(glm::clamp(clickX, 0.0f, float(width) - 1.0f));
-    const uint32_t targetY = static_cast<uint32_t>(glm::clamp(clickY, 0.0f, float(height) - 1.0f));
+    // The clicked texel in the render-extent pick image: window pixels scale to render texels
+    // (render scale < 1), and a click can land at the exact edge or just outside during a resize race.
+    const glm::uvec2 clickTexel = ToRenderTexel(glm::vec2(clickX, clickY), windowExtent, renderExtent);
+    const uint32_t targetX = clickTexel.x;
+    const uint32_t targetY = clickTexel.y;
 
     PickTargetPixel pixel{kMissSentinel, kMissSentinel};
-    if (!ReadPixelAt(width, height, targetX, targetY, pixel) || pixel.address == kMissSentinel) {
+    std::string how = "single read";
+    bool read = false;
+    if (tracking && clickTexel == trackedTexel_[kCursor] && history_[kCursor].Count() > 0) {
+        // The cursor texel has been voting every frame; the click resolves from that vote.
+        const PickVoteResult vote = history_[kCursor].Winner();
+        pixel = {vote.address, vote.instance};
+        how = "vote samples=" + std::to_string(vote.sampleCount) + " weight=" + std::to_string(vote.weight) +
+              (vote.unanimous ? " unanimous" : " split");
+        read = true;
+    } else {
+        // One-shot fenced copy of the last settled frame's pick image: no vote history exists for a
+        // texel that was not being tracked (or there is no jitter), so this is the single current hit.
+        read = ReadPixelAt(settledPick, width, height, targetX, targetY, pixel);
+    }
+    if (!read || pixel.address == kMissSentinel) {
         // Readback failed (see prior error log) or empty space under the cursor — report a miss.
         NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under cursor) pixel=(" +
-                      std::to_string(targetX) + "," + std::to_string(targetY) + ")");
+                      std::to_string(targetX) + "," + std::to_string(targetY) + ") " + how);
         ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
         return;
     }
@@ -182,9 +276,211 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                   " voxel=" + std::to_string(voxelLinearIdx) +
                   " instance=" + (candidate.instanceIndex ? std::to_string(*candidate.instanceIndex) : "none") +
                   " priority=" + std::to_string(priority_) +
-                  " pixel=(" + std::to_string(targetX) + "," + std::to_string(targetY) + ")");
+                  " pixel=(" + std::to_string(targetX) + "," + std::to_string(targetY) + ") " + how);
 
     ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+}
+
+bool VoxelSelectionProviderNode::EnsureReadbackSlots() {
+    VulkanDevice* device = GetDevice();
+    if (!device) return false;
+    const VkDeviceSize bytes = requiresFullImageTransfers_
+        ? kTrackedTexelBytes * trackedExtent_.x * trackedExtent_.y
+        : kTrackedTexelBytes * kTrackedTexels;
+    for (ReadbackSlot& slot : slots_) {
+        if (slot.buffer != VK_NULL_HANDLE && slot.capacity == bytes) continue;
+        if (slot.inFlight) return false;  // still reading the old size: retry once it retires
+        if (slot.buffer != VK_NULL_HANDLE) {
+            vkUnmapMemory(device->device, slot.memory);
+            vkDestroyBuffer(device->device, slot.buffer, nullptr);
+            vkFreeMemory(device->device, slot.memory, nullptr);
+            slot.buffer = VK_NULL_HANDLE;
+            slot.memory = VK_NULL_HANDLE;
+            slot.mapped = nullptr;
+        }
+        if (!CreateHostBuffer(device, bytes, slot.buffer, slot.memory) ||
+            vkMapMemory(device->device, slot.memory, 0, VK_WHOLE_SIZE, 0, &slot.mapped) != VK_SUCCESS) {
+            return false;
+        }
+        slot.capacity = bytes;
+        if (slot.fence != VK_NULL_HANDLE) continue;
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        if (vkCreateFence(device->device, &fenceInfo, nullptr, &slot.fence) != VK_SUCCESS) return false;
+    }
+    return true;
+}
+
+void VoxelSelectionProviderNode::DestroyReadbackSlots() {
+    VulkanDevice* device = GetDevice();
+    for (ReadbackSlot& slot : slots_) {
+        if (device) {
+            if (slot.inFlight) {
+                // A submission that never finishes stays with device teardown; freeing its resources now would race it.
+                if (!BoundedWaitFence(device->device, slot.fence).Ok()) { slot = {}; continue; }
+                vkFreeCommandBuffers(device->device, commandPool_, 1, &slot.cmd);
+            }
+            if (slot.fence != VK_NULL_HANDLE) vkDestroyFence(device->device, slot.fence, nullptr);
+            if (slot.mapped) vkUnmapMemory(device->device, slot.memory);
+            if (slot.buffer != VK_NULL_HANDLE) vkDestroyBuffer(device->device, slot.buffer, nullptr);
+            if (slot.memory != VK_NULL_HANDLE) vkFreeMemory(device->device, slot.memory, nullptr);
+        }
+        slot = {};
+    }
+    nextSlot_ = 0;
+    retireSlot_ = 0;
+}
+
+void VoxelSelectionProviderNode::ResetTracking() {
+    for (PickVoteHistory& history : history_) history.Reset();
+    trackedTexel_ = {};
+    trackedExtent_ = glm::uvec2(0u);
+}
+
+void VoxelSelectionProviderNode::RetireReadbacks(bool observe, const glm::vec2& extent) {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+    for (uint32_t n = 0; n < kReadbackSlots; ++n) {
+        ReadbackSlot& slot = slots_[retireSlot_];
+        if (!slot.inFlight) return;
+        if (vkGetFenceStatus(device->device, slot.fence) != VK_SUCCESS) return;  // not finished (or lost): later Executes retry
+
+        if (observe) {
+            for (uint32_t t = 0; t < kTrackedTexels; ++t) {
+                if (slot.texel[t] != trackedTexel_[t]) continue;  // the tracked pixel moved since this was queued
+                float values[5];
+                const uint8_t* base = static_cast<const uint8_t*>(slot.mapped);
+                if (requiresFullImageTransfers_) {
+                    const size_t texels = size_t(slot.extent.x) * slot.extent.y;
+                    const size_t index = size_t(slot.texel[t].y) * slot.extent.x + slot.texel[t].x;
+                    std::memcpy(values, base + index * 8u, 8u);
+                    std::memcpy(values + 2, base + texels * 8u + index * 8u, 8u);
+                    std::memcpy(values + 4, base + texels * 16u + index * 4u, 4u);
+                } else {
+                    std::memcpy(values, base + t * kTrackedTexelBytes, sizeof(values));
+                }
+                uint32_t ids[2];
+                std::memcpy(ids, values, sizeof(ids));
+                const bool hit = ids[0] != kPickMissSentinel;
+                const PickMotion motion = slot.motionRead
+                    ? ClassifyPickMotion(hit, glm::vec2(values[2], values[3]), values[4], extent)
+                    : PickMotion::Unknown;
+                history_[t].Observe({ids[0], ids[1], slot.jitter}, motion, true);
+            }
+        }
+        vkResetFences(device->device, 1, &slot.fence);
+        vkFreeCommandBuffers(device->device, commandPool_, 1, &slot.cmd);
+        slot.cmd = VK_NULL_HANDLE;
+        slot.inFlight = false;
+        retireSlot_ = (retireSlot_ + 1u) % kReadbackSlots;
+    }
+}
+
+void VoxelSelectionProviderNode::SubmitTrackingReadback(const FrameSnapshot& frame) {
+    VulkanDevice* device = GetDevice();
+    ReadbackSlot& slot = slots_[nextSlot_];
+    if (slot.inFlight) return;  // the GPU is more than a ring behind: drop this sample
+    if (!EnsureReadbackSlots()) return;
+
+    VkCommandBufferAllocateInfo cbAlloc{};
+    cbAlloc.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbAlloc.commandPool        = commandPool_;
+    cbAlloc.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbAlloc.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(device->device, &cbAlloc, &cmd) != VK_SUCCESS) return;
+
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vkBeginCommandBuffer(cmd, &begin) != VK_SUCCESS) {
+        vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
+        return;
+    }
+
+    // Motion and validity are only read while their recorded layout is GENERAL (the storage-write layout).
+    const bool motionReadable =
+        frame.motion && frame.validity &&
+        frame.motion->GetImageLayout(frame.motionIndex) == VK_IMAGE_LAYOUT_GENERAL &&
+        frame.validity->GetImageLayout(frame.validityIndex) == VK_IMAGE_LAYOUT_GENERAL;
+    const VkImage motionImage = motionReadable ? frame.motion->GetImage(frame.motionIndex) : VK_NULL_HANDLE;
+    const VkImage validityImage = motionReadable ? frame.validity->GetImage(frame.validityIndex) : VK_NULL_HANDLE;
+
+    std::array<VkImageMemoryBarrier, 3> toCopy{};
+    uint32_t barrierCount = 0;
+    for (VkImage image : {frame.pick, motionImage, validityImage}) {
+        if (image == VK_NULL_HANDLE) continue;
+        VkImageMemoryBarrier& barrier = toCopy[barrierCount++];
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    }
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, barrierCount, toCopy.data());
+
+    if (requiresFullImageTransfers_) {
+        const VkDeviceSize texels = VkDeviceSize(trackedExtent_.x) * trackedExtent_.y;
+        VkBufferImageCopy region{};
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageExtent = {trackedExtent_.x, trackedExtent_.y, 1};
+        vkCmdCopyImageToBuffer(cmd, frame.pick, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+        if (motionReadable) {
+            region.bufferOffset = texels * 8u;
+            vkCmdCopyImageToBuffer(cmd, motionImage, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+            region.bufferOffset = texels * 16u;
+            vkCmdCopyImageToBuffer(cmd, validityImage, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+        }
+    } else {
+        for (uint32_t t = 0; t < kTrackedTexels; ++t) {
+            VkBufferImageCopy region{};
+            region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            region.imageOffset = {static_cast<int32_t>(trackedTexel_[t].x), static_cast<int32_t>(trackedTexel_[t].y), 0};
+            region.imageExtent = {1, 1, 1};
+            region.bufferOffset = t * kTrackedTexelBytes;
+            vkCmdCopyImageToBuffer(cmd, frame.pick, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+            if (motionReadable) {
+                region.bufferOffset = t * kTrackedTexelBytes + 8u;
+                vkCmdCopyImageToBuffer(cmd, motionImage, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+                region.bufferOffset = t * kTrackedTexelBytes + 16u;
+                vkCmdCopyImageToBuffer(cmd, validityImage, VK_IMAGE_LAYOUT_GENERAL, slot.buffer, 1, &region);
+            }
+        }
+    }
+
+    // Execution dependency for later submissions: the next trace may overwrite the images only after these reads.
+    VkMemoryBarrier readsDone{};
+    readsDone.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         0, 1, &readsDone, 0, nullptr, 0, nullptr);
+
+    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+        vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
+        return;
+    }
+    VkSubmitInfo submit{};
+    submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers    = &cmd;
+    {
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
+        if (vkQueueSubmit(device->queue, 1, &submit, slot.fence) != VK_SUCCESS) {
+            vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
+            return;
+        }
+    }
+    slot.cmd = cmd;
+    slot.inFlight = true;
+    slot.motionRead = motionReadable;
+    slot.extent = trackedExtent_;
+    slot.jitter = frame.jitter;
+    slot.texel = trackedTexel_;
+    nextSlot_ = (nextSlot_ + 1u) % kReadbackSlots;
 }
 
 // ----------------------------------------------------------------------------
@@ -200,53 +496,17 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer(VkDeviceSize bytesNeeded) {
     if (!device) {
         return false;
     }
-    VkDevice vkDevice = device->device;
 
     // Grown (or first-ever) allocation: drop the old one first (idempotent if none exists).
     DestroyStagingBuffer();
-
-    VkBufferCreateInfo bufInfo{};
-    bufInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufInfo.size        = bytesNeeded;
-    bufInfo.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(vkDevice, &bufInfo, nullptr, &stagingBuffer_) != VK_SUCCESS) {
-        stagingBuffer_ = VK_NULL_HANDLE;
+    if (!CreateHostBuffer(device, bytesNeeded, stagingBuffer_, stagingMemory_)) {
         return false;
     }
-
-    VkMemoryRequirements req{};
-    vkGetBufferMemoryRequirements(vkDevice, stagingBuffer_, &req);
-
-    const uint32_t memType = FindHostVisibleMemoryType(
-        device->gpuMemoryProperties,
-        req.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    if (memType == UINT32_MAX) {
-        vkDestroyBuffer(vkDevice, stagingBuffer_, nullptr);
-        stagingBuffer_ = VK_NULL_HANDLE;
-        return false;
-    }
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize  = req.size;
-    allocInfo.memoryTypeIndex = memType;
-
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &stagingMemory_) != VK_SUCCESS) {
-        vkDestroyBuffer(vkDevice, stagingBuffer_, nullptr);
-        stagingBuffer_ = VK_NULL_HANDLE;
-        stagingMemory_ = VK_NULL_HANDLE;
-        return false;
-    }
-
-    vkBindBufferMemory(vkDevice, stagingBuffer_, stagingMemory_, 0);
     stagingCapacity_ = bytesNeeded;
     return true;
 }
 
-bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
+bool VoxelSelectionProviderNode::ReadPixelAt(VkImage image, uint32_t width, uint32_t height,
                                              uint32_t targetX, uint32_t targetY,
                                              PickTargetPixel& pixelOut) {
     // KI-012: a queue family with minImageTransferGranularity=(0,0,0) only accepts whole-image
@@ -317,14 +577,14 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
     imageToCopy.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageToCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     imageToCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageToCopy.image = idImage_;
+    imageToCopy.image = image;
     imageToCopy.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     vkCmdPipelineBarrier(cmd,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &imageToCopy);
 
-    vkCmdCopyImageToBuffer(cmd, idImage_, VK_IMAGE_LAYOUT_GENERAL, stagingBuffer_, 1, &region);
+    vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_GENERAL, stagingBuffer_, 1, &region);
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
         vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
@@ -409,9 +669,11 @@ void VoxelSelectionProviderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Release the host-visible staging buffer we own (RAII). The device lives in the base
     // NodeInstance and is re-set every CompileImpl via SetDevice(), so it is intentionally not
     // reset here; drop the cached Dependency handles (re-acquired next CompileImpl).
+    DestroyReadbackSlots();
     DestroyStagingBuffer();
+    ResetTracking();
+    previousFrame_ = {};
     commandPool_ = VK_NULL_HANDLE;
-    idImage_     = VK_NULL_HANDLE;
     // No click-edge state to reset: it lives in InputState.clicksThisFrame (owned by InputNode), not
     // this node — the duplicate-fire-after-recompile bug dies with that private state.
 }

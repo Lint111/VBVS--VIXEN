@@ -12,6 +12,9 @@ enum class ReconstructionSamplingPath {
     AuthoritativePicking,
 };
 
+// Samples per Halton cycle; the pick vote keeps one cycle of history.
+inline constexpr uint32_t kReconstructionJitterCycle = 16u;
+
 // Input-resolution pixel units, positive right/down. This finite Halton(2,3)
 // sequence restarts with viewport history; the unjittered camera is unchanged.
 inline glm::vec2 ReconstructionJitter(uint32_t frame, ReconstructionSamplingPath path) {
@@ -26,7 +29,7 @@ inline glm::vec2 ReconstructionJitter(uint32_t frame, ReconstructionSamplingPath
         }
         return result;
     };
-    const uint32_t sample = frame % 16u + 1u;
+    const uint32_t sample = frame % kReconstructionJitterCycle + 1u;
     return {radicalInverse(sample, 2u) - 0.5f, radicalInverse(sample, 3u) - 0.5f};
 }
 

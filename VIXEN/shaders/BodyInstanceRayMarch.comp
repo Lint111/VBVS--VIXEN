@@ -224,20 +224,6 @@ layout(rg32f, binding = 48) uniform writeonly image2D motionVectorImage;
 layout(r32f, binding = 49) uniform writeonly image2D motionValidityImage;
 #include "ReconstructionMotion.glsl"
 #endif
-#ifdef VIXEN_PRIMARY_JITTER
-bool hasReconstructionJitter() { return any(notEqual(prevCameraConfig.reconstructionSampling.xy, vec2(0.0))); }
-void writeNativePick(ivec2 pixel) {
-    ivec2 extent = imageSize(idOutputImage);
-    if (any(greaterThanEqual(pixel, extent))) return;
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(extent);
-    reconstructionRaySizeCoef = prevCameraConfig.reconstructionSampling.z;
-    WorldHit pick;
-    bool hit = TraceWorld(pc.cameraPos, getRayDir(uv), 0.0, 1.0e30, pick);
-    reconstructionRaySizeCoef = pc.raySizeCoef;
-    uint packed = hit ? (pick.brickIndex << 10u) | (pick.voxelIdx & 0x3ffu) : 0xffffffffu;
-    imageStore(idOutputImage, pixel, uvec4(packed, hit ? pick.instIdx : 0xffffffffu, 0u, 0u));
-}
-#endif
 
 // ============================================================================
 // MAIN (Sampled Lighting Inc3 M1, KI-018: TRAVERSAL ONLY)
@@ -262,10 +248,7 @@ void main() {
 
 #ifdef VIXEN_PRIMARY_JITTER
     reconstructionRaySizeCoef = pc.raySizeCoef;
-    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) {
-        if (hasReconstructionJitter()) writeNativePick(pixelCoords);
-        return;
-    }
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
 #else
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
 #endif
@@ -578,12 +561,7 @@ void main() {
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     uint pickInstanceIndex = anyHitRT ? worldHit.instIdx : 0xFFFFFFFFu;
-#ifdef VIXEN_PRIMARY_JITTER
-    if (hasReconstructionJitter()) writeNativePick(pixelCoords);
-    else imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
-#else
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
-#endif
 #ifdef VIXEN_B1_OCCLUSION_CULL
     imageStore(depthDistanceImage, pixelCoords,
                vec4(anyHitRT ? recReadback.hitT : 1.0e30, 0.0, 0.0, 0.0));

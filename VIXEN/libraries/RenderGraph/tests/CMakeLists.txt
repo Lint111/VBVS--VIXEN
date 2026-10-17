@@ -48,6 +48,7 @@ add_executable(test_rendergraph_core
     Nodes/test_instance_motion_history.cpp
     Nodes/test_reconstruction_jitter.cpp
     Nodes/test_reconstruction_history.cpp
+    Selection/test_pick_vote.cpp
 )
 
 # Keep this consumer fixture strict: its typed callback names must never hide

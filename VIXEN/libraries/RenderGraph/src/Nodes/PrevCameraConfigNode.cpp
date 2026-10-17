@@ -77,7 +77,7 @@ void PrevCameraConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const auto jitter = ctx.In(PrevCameraConfigNodeConfig::PRIMARY_JITTER);
     cfg.reconstructionSamplingX = jitter.x;
     cfg.reconstructionSamplingY = jitter.y;
-    cfg.reconstructionSamplingZ = ctx.In(PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF);
+    cfg.reconstructionSamplingZ = 0.0f;  // unused since the second pick trace was removed
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

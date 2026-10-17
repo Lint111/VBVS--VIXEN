@@ -4,8 +4,11 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
+#include "Selection/PickVote.h"
 #include "VulkanDeviceFwd.h"
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -66,6 +69,10 @@ public:
     );
     ~VoxelSelectionProviderNode() override = default;
 
+    // Weighted vote at the render-extent centre texel (the crosshair) over the last jitter cycle.
+    // Only populated while the frame is sub-pixel jittered; empty (Valid() == false) otherwise.
+    PickVoteResult CrosshairVote() const { return history_[kCrosshair].Winner(); }
+
 protected:
     void TypedSetupImpl(TypedSetupContext& ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -95,8 +102,50 @@ private:
     // full-size staging buffer and indexes the target texel on the CPU side instead.
     // (Was VoxelSelectionProvider::ReadCenterPixel — renamed/parameterized to pick at the
     // actual cursor position instead of always the viewport center.)
-    bool ReadPixelAt(uint32_t width, uint32_t height, uint32_t targetX, uint32_t targetY,
+    bool ReadPixelAt(VkImage image, uint32_t width, uint32_t height, uint32_t targetX, uint32_t targetY,
                      PickTargetPixel& pixelOut);
+
+    // ----- Per-frame vote tracking (sub-pixel jitter only) -----
+    // Texels whose hit ID is read every frame: the crosshair (render-extent centre) and the cursor.
+    static constexpr uint32_t kCrosshair = 0;
+    static constexpr uint32_t kCursor = 1;
+    static constexpr uint32_t kTrackedTexels = 2;
+    static constexpr uint32_t kReadbackSlots = 8;
+    // Per tracked texel in a slot's staging buffer: pick RG32_UINT (8) + motion RG32F (8) + validity R32F (4).
+    // KI-012 devices copy the three whole images instead (planes at 0, 8*w*h, 16*w*h) and index the texel on the CPU.
+    static constexpr VkDeviceSize kTrackedTexelBytes = 20;
+
+    struct ReadbackSlot {
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        void* mapped = nullptr;
+        VkDeviceSize capacity = 0;
+        glm::uvec2 extent{0u};  // render extent when queued; the plane stride on KI-012 devices
+        bool inFlight = false;
+        bool motionRead = false;
+        glm::vec2 jitter{0.0f};
+        std::array<glm::uvec2, kTrackedTexels> texel{};
+    };
+
+    // What one frame's trace wrote; copied out in the next frame's Execute, once that trace is queued.
+    struct FrameSnapshot {
+        VkImage pick = VK_NULL_HANDLE;
+        Vixen::Vulkan::Resources::IRenderTarget* motion = nullptr;
+        Vixen::Vulkan::Resources::IRenderTarget* validity = nullptr;
+        uint32_t motionIndex = 0;
+        uint32_t validityIndex = 0;
+        glm::vec2 jitter{0.0f};
+        bool jittered = false;
+    };
+
+    bool EnsureReadbackSlots();
+    void DestroyReadbackSlots();
+    // Folds every finished readback (oldest first, stopping at the first unfinished one) into the histories.
+    void RetireReadbacks(bool observe, const glm::vec2& extent);
+    void SubmitTrackingReadback(const FrameSnapshot& frame);
+    void ResetTracking();
 
     // Free the staging buffer + memory (idempotent). Called from CleanupImpl and on
     // a device change at CompileImpl. (Was VoxelSelectionProvider::DestroyStagingBuffer.)
@@ -104,9 +153,8 @@ private:
 
     // ----- Compile-cached Dependency handles (stable for the cached scene's lifetime) -----
     // The device is NOT cached here: it lives in the base NodeInstance (SetDevice/GetDevice),
-    // re-set each CompileImpl. Only the command pool + ID image are cached locally.
+    // re-set each CompileImpl. Only the command pool is cached locally; the ID image arrives per frame.
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
-    VkImage       idImage_     = VK_NULL_HANDLE;
 
     // KI-012: cached once per Compile from GetDevice()->RequiresFullImageTransfers() — whether
     // this device's graphics queue family requires whole-image transfers (see VulkanDevice.h).
@@ -119,6 +167,15 @@ private:
     VkDeviceMemory stagingMemory_ = VK_NULL_HANDLE;
     VkDeviceSize   stagingCapacity_ = 0;  // bytes actually allocated; EnsureStagingBuffer grows-only
     static constexpr VkDeviceSize kSingleTexelSize = sizeof(PickTargetPixel);  // one RG32_UINT texel
+
+    // ----- Vote state -----
+    std::array<PickVoteHistory, kTrackedTexels> history_{};
+    std::array<glm::uvec2, kTrackedTexels> trackedTexel_{};
+    std::array<ReadbackSlot, kReadbackSlots> slots_{};
+    uint32_t nextSlot_ = 0;   // submission order
+    uint32_t retireSlot_ = 0; // retirement order
+    glm::uvec2 trackedExtent_{0u};
+    FrameSnapshot previousFrame_{};
 
     // ----- Provider config -----
     int priority_ = 0;  ///< Layer priority (PARAM_PRIORITY) stamped on every candidate.

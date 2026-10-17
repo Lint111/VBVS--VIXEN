@@ -9,7 +9,7 @@
 #include "Nodes/ReconstructionHistoryStateNode.h"
 #include "Nodes/SceneRadianceNode.h"
 #include "Nodes/PickIdTargetNode.h"
-#include "Nodes/RenderTargetExtentNode.h"
+#include "Nodes/VoxelSelectionProviderNode.h"
 #include "Data/Nodes/SceneRadianceNodeConfig.h"
 #include <glm/gtc/packing.hpp>
 #include "Debug/RenderTargetReadback.h"
@@ -1405,11 +1405,6 @@ private:
         pickTarget.format = VK_FORMAT_R32G32_UINT;
         pickTarget.imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         pickTarget.extent = extent;
-        if (auto* nativeExtent = graph->GetInstanceByName("native_pick_extent")) {
-            pickTarget.extent = {
-                nativeExtent->GetOutput(RenderTargetExtentNodeConfig::WIDTH.index)->GetHandle<uint32_t>(),
-                nativeExtent->GetOutput(RenderTargetExtentNodeConfig::HEIGHT.index)->GetHandle<uint32_t>()};
-        }
         std::vector<uint8_t> pickingBytes;
         if (!Debug::ReadRenderTargetBytes(device, &pickTarget, device->queue, device->graphicsQueueIndex,
                                          pickingBytes, captureError_)) return false;
@@ -1417,10 +1412,37 @@ private:
         pickRaw.write(reinterpret_cast<const char*>(pickingBytes.data()), pickingBytes.size());
         auto* jitterResource = historyState->GetOutput(ReconstructionHistoryStateNodeConfig::JITTER.index);
         const auto jitter = jitterResource->GetHandle<glm::vec2>();
+
+        // The pick is the weighted vote over the last jitter cycle at the crosshair texel (the centre of
+        // the render-extent pick image); without jitter it is the single current hit, which is the raw
+        // centre texel and is not voted.
+        auto* provider = dynamic_cast<VoxelSelectionProviderNode*>(graph->GetInstanceByName("voxel_selection_provider"));
+        if (!provider || pickingBytes.size() != size_t(pickTarget.extent.width) * pickTarget.extent.height * 8u) {
+            captureError_ = "missing voxel selection provider or pick image size mismatch";
+            return false;
+        }
+        uint32_t centre[2];
+        std::memcpy(centre, pickingBytes.data() +
+            (size_t(pickTarget.extent.height / 2u) * pickTarget.extent.width + pickTarget.extent.width / 2u) * 8u, sizeof(centre));
+        const PickVoteResult vote = provider->CrosshairVote();
+        const bool jittered = jitter != glm::vec2(0.0f);
+        // Every voter agreeing must agree with the newest trace's centre texel (a split vote is a voxel edge).
+        const bool pickFailed = jittered ? (!vote.Valid() || (vote.unanimous && vote.sampleCount > 1 && vote.address != centre[0]))
+                                         : vote.Valid();
         std::ofstream samplingResult(stem.string() + ".sampling.json");
         samplingResult << "{\"jitter_input_pixels\":[" << jitter.x << ',' << jitter.y
                        << "],\"pick_width\":" << pickTarget.extent.width
-                       << ",\"pick_height\":" << pickTarget.extent.height << "}\n";
+                       << ",\"pick_height\":" << pickTarget.extent.height
+                       << ",\"pick_vote\":{\"samples\":" << vote.sampleCount << ",\"address\":" << vote.address
+                       << ",\"instance\":" << vote.instance << ",\"weight\":" << vote.weight
+                       << ",\"unanimous\":" << (vote.unanimous ? "true" : "false")
+                       << ",\"centre_address\":" << centre[0] << "}}\n";
+        if (pickFailed) {
+            captureError_ = "voted crosshair pick disagrees with the pick image: samples=" +
+                std::to_string(vote.sampleCount) + " voted=" + std::to_string(vote.address) +
+                " centre=" + std::to_string(centre[0]);
+            return false;
+        }
         if (!pickRaw || !samplingResult ||
             (std::getenv("VIXEN_LOOKDEV_JITTER_PROBE") && jitter == glm::vec2(0.0f))) return false;
         auto* exposure = targetByName("render_path/reconstruction_exposure/exposure");

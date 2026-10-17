@@ -31,7 +31,6 @@
 #include "graph/ReconstructionDepth.h"
 #include "graph/ReconstructionMotion.h"
 #include "graph/ReconstructionSampling.h"
-#include "Nodes/RenderTargetExtentNode.h"
 #include "graph/ReconstructionExposure.h"
 #include "graph/ReconstructionHistory.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
@@ -1448,12 +1447,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (auto* rscInst = renderGraph->GetInstance(raySizeCoefNode)) {
         if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
     }
-    NodeHandle nativePickExtent{};
-    NodeHandle nativePickCoefficient{};
-    if (jitterEnabled) {
-        nativePickExtent = renderGraph->AddNode<RenderTargetExtentNodeType>("native_pick_extent");
-        nativePickCoefficient = renderGraph->AddNode<RaySizeCoefNodeType>("native_pick_ray_size_coef");
-    }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
 
     // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc: cosmicK
@@ -1896,8 +1889,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
     auto* raySizeCoef = static_cast<RaySizeCoefNode*>(renderGraph->GetInstance(raySizeCoefNode));
     raySizeCoef->SetParameter(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
-    if (jitterEnabled) renderGraph->GetInstance(nativePickCoefficient)->SetParameter(
-        RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
 
@@ -8447,14 +8438,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
          // M4.4: the crosshair readback samples PickIdTargetNode's ring, which now follows the
          // RENDER extent (not the window) — VIEWPORT_WIDTH/HEIGHT must be the same extent so
          // width/2,height/2 lands on the actual image center. Was windowNode::WIDTH_OUT/HEIGHT_OUT.
-         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
-                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::WIDTH_Slot>("WIDTH")
-                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
+         .ConnectOutput(renderTargetNode,
+                  SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH)
-         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
-                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::HEIGHT_Slot>("HEIGHT")
-                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
+         .ConnectOutput(renderTargetNode,
+                  SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
+    if (usesWsi) {
+        // Cursor and click positions are window pixels; the pick image is render-extent.
+        batch.Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                      voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::PRESENTATION_WIDTH)
+             .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                      voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::PRESENTATION_HEIGHT);
+    }
 
     // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
     // the HUD's Rml::Context via the UIRenderNode reference wired above (SetUiRenderNode), not a slot.
@@ -8489,13 +8485,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
-         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
-                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::WIDTH_Slot>("WIDTH")
-                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
+         .ConnectOutput(renderTargetNode,
+                  SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
                   pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
-         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
-                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::HEIGHT_Slot>("HEIGHT")
-                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
+         .ConnectOutput(renderTargetNode,
+                  SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
                   pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
@@ -9080,29 +9074,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (jitterEnabled) {
         samplingGroup = renderGraph->Instantiate<ReconstructionSamplingModule>(
             "render_path/primary_sampling", ReconstructionSamplingParams{
-                hitRecordBufferNode, pickIdTargetNode, prevCameraConfigNode});
+                hitRecordBufferNode, prevCameraConfigNode});
         sceneProviders.ProvideSubGraphOutput("HitRecordBuffer", *samplingGroup,
             ReconstructionSamplingPorts::VISUAL_HITS.index, kSceneRoles, VisualInputAcceptance::VisualOnly);
-        batch.ConnectOutput(presentationTargetNode, targetContract.target,
-                            nativePickExtent, RenderTargetExtentNodeConfig::TARGET)
-             .Connect(nativePickExtent, RenderTargetExtentNodeConfig::HEIGHT,
-                      nativePickCoefficient, RaySizeCoefNodeConfig::HEIGHT);
     }
-    if (jitterEnabled) {
-        batch.ConnectOutput(presentationTargetNode, targetContract.target,
-                            computeDispatch, ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE);
-    } else {
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      computeDispatch, ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE);
-    }
-    if (reconstructionInputsEnabled) {
-        if (tierCrossingLodCoefOverrideActive)
-            batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
-                prevCameraConfigNode, PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF, SlotRoleModifier(SlotRole::Execute));
-        else
-            batch.Connect(jitterEnabled ? nativePickCoefficient : raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
-                prevCameraConfigNode, PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF, SlotRoleModifier(SlotRole::Execute));
-    }
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  computeDispatch, ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE);
 
     // Sampled Lighting Inc1 M3: Binding 18: HitRecord SSBO. Device input + extent-driven sizing
     // from renderTargetNode's own RENDER_TARGET output (NOT the raw swapchain) — so this buffer
@@ -9570,6 +9547,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (samplingGroup) {
             renderGraph->Connect(*reconstructionHistoryModule, ReconstructionHistoryPorts::JITTER,
                                  *samplingGroup, ReconstructionSamplingPorts::JITTER);
+            // Jittered picks vote over the last jitter cycle; the motion targets reset that history.
+            renderGraph->Connect(*reconstructionHistoryModule, ReconstructionHistoryPorts::JITTER,
+                                 voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::JITTER);
+            if (reconstructionMotionModule) {
+                renderGraph->Connect(*reconstructionMotionModule, ReconstructionMotionPorts::MOTION,
+                                     voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::MOTION_TARGET);
+                renderGraph->Connect(*reconstructionMotionModule, ReconstructionMotionPorts::VALIDITY,
+                                     voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VALIDITY_TARGET);
+            }
         }
         sceneProviders.ProvideSubGraphOutput("reconstructionJitter", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::JITTER.index, SlotRole::Execute, VisualInputAcceptance::VisualOnly);
