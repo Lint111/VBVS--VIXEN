@@ -2173,6 +2173,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // writes; audit D1 Task 2.1).
     std::vector<std::string> marchShaderFeatures;
     if (reconstructionInputsEnabled) marchShaderFeatures.push_back(kFeatureReconstructionInputs.define);
+    if (jitterEnabled) marchShaderFeatures.push_back(kFeaturePrimaryJitter.define);
     if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }

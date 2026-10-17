@@ -28,7 +28,10 @@
 // ============================================================================
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-#ifdef VIXEN_RECONSTRUCTION_INPUTS
+#if defined(VIXEN_PRIMARY_JITTER) && !defined(VIXEN_RECONSTRUCTION_INPUTS)
+#error Primary jitter requires the declared reconstruction inputs
+#endif
+#ifdef VIXEN_PRIMARY_JITTER
 float reconstructionRaySizeCoef;
 #define VIXEN_QUERY_RAY_SIZE_COEF reconstructionRaySizeCoef
 #endif
@@ -220,6 +223,8 @@ layout(std430, binding = 50) readonly buffer BodyInstanceMotionBuffer { BodyInst
 layout(rg32f, binding = 48) uniform writeonly image2D motionVectorImage;
 layout(r32f, binding = 49) uniform writeonly image2D motionValidityImage;
 #include "ReconstructionMotion.glsl"
+#endif
+#ifdef VIXEN_PRIMARY_JITTER
 bool hasReconstructionJitter() { return any(notEqual(prevCameraConfig.reconstructionSampling.xy, vec2(0.0))); }
 void writeNativePick(ivec2 pixel) {
     ivec2 extent = imageSize(idOutputImage);
@@ -255,7 +260,7 @@ void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imgSize     = imageSize(outputImage);
 
-#ifdef VIXEN_RECONSTRUCTION_INPUTS
+#ifdef VIXEN_PRIMARY_JITTER
     reconstructionRaySizeCoef = pc.raySizeCoef;
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) {
         if (hasReconstructionJitter()) writeNativePick(pixelCoords);
@@ -268,7 +273,7 @@ void main() {
     incrFarGenRectRay();  // batch-24 FARGEN: rect-scoped invocation census (c1∪c2)
 
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
-#ifdef VIXEN_RECONSTRUCTION_INPUTS
+#ifdef VIXEN_PRIMARY_JITTER
     uv += prevCameraConfig.reconstructionSampling.xy / vec2(imgSize);
 #endif
     vec3 rayOrigin = pc.cameraPos;
@@ -573,7 +578,7 @@ void main() {
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     uint pickInstanceIndex = anyHitRT ? worldHit.instIdx : 0xFFFFFFFFu;
-#ifdef VIXEN_RECONSTRUCTION_INPUTS
+#ifdef VIXEN_PRIMARY_JITTER
     if (hasReconstructionJitter()) writeNativePick(pixelCoords);
     else imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
 #else

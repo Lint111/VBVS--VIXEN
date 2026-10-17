@@ -52,6 +52,8 @@ inline constexpr ShaderFeature kFeaturePolicyStencil{"VIXEN_POLICY_STENCIL"};
 // Requires kFeaturePolicyStencil; env-gated, no capability requirement.
 inline constexpr ShaderFeature kFeaturePolicyStencilTiles{"VIXEN_POLICY_STENCIL_TILES"};
 inline constexpr ShaderFeature kFeatureReconstructionInputs{"VIXEN_RECONSTRUCTION_INPUTS"};
+// Interface-invariant: uses only the resources declared by reconstruction inputs.
+inline constexpr ShaderFeature kFeaturePrimaryJitter{"VIXEN_PRIMARY_JITTER"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
 // Raster-proxy B2: same-frame graphics pre-pass emits a compact union interval
 // plus ordered 192-bit candidate mask consumed only by the primary march.
