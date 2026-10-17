@@ -15,6 +15,7 @@ enum class ReconstructionHistoryReset : uint32_t {
     ProviderChanged = 32u,
     SceneChanged = 64u,
     Recompile = 128u,
+    WriteNotCommitted = 256u,
 };
 
 // Transient renderer state, owned by one viewport's graph instance. It does not
@@ -34,6 +35,8 @@ public:
     }
 
     Frame BeginFrame(const glm::mat4& inverseProjection, VkExtent2D internal, VkExtent2D output) {
+        if (frameOpen_)
+            Invalidate(ReconstructionHistoryReset::WriteNotCommitted);
         if (initialized_) {
             if (inverseProjection != projection_)
                 Invalidate(ReconstructionHistoryReset::ProjectionChanged);
@@ -56,7 +59,8 @@ public:
     }
 
     // Call only after the selected provider has successfully recorded/submitted
-    // the current history write. Failed initialization/fallback leaves it invalid.
+    // the current history write. A skipped write invalidates correspondence at
+    // the next BeginFrame, even if an older history image was previously valid.
     void CommitHistoryFrame() {
         if (!frameOpen_) return;
         valid_ = true;

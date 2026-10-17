@@ -55,3 +55,16 @@ TEST(ReconstructionHistory, ProjectionAndEitherExtentChangeInvalidateHistory) {
     state.CommitHistoryFrame();
     EXPECT_EQ(state.BeginFrame(projection, {251, 250}, {501, 500}).valid, 0u);
 }
+
+TEST(ReconstructionHistory, MissingWriteInvalidatesPreviouslyValidHistory) {
+    ReconstructionHistoryState state;
+    state.BeginFrame(glm::mat4(1.0f), {250, 250}, {500, 500});
+    state.CommitHistoryFrame();
+    EXPECT_EQ(state.BeginFrame(glm::mat4(1.0f), {250, 250}, {500, 500}).valid, 1u);
+    // The provider failed or fell back; no current history image was written.
+    const auto next = state.BeginFrame(glm::mat4(1.0f), {250, 250}, {500, 500});
+    EXPECT_EQ(next.reset, 1u);
+    EXPECT_EQ(next.valid, 0u);
+    EXPECT_EQ(next.frameIndex, 0u);
+    EXPECT_EQ(next.resetReasons, static_cast<uint32_t>(ReconstructionHistoryReset::WriteNotCommitted));
+}
