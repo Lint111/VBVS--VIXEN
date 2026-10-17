@@ -38,8 +38,9 @@ public:
 class ComputeStageNode : public TypedNode<ComputeStageNodeConfig> {
 public:
     using Base = TypedNode<ComputeStageNodeConfig>;
-    using ExternalRecorder = std::function<void(Context&, VkCommandBuffer,
-                                                uint32_t imageIndex, uint32_t frameIndex)>;
+    // Returns an empty string on success, otherwise the failure text (R213: no per-frame throws).
+    using ExternalRecorder = std::function<std::string(Context&, VkCommandBuffer,
+                                                       uint32_t imageIndex, uint32_t frameIndex)>;
 
     ComputeStageNode(const std::string& instanceName, NodeType* nodeType);
     uint64_t GetSubmissionSerial() const { return submissionSerial_; }

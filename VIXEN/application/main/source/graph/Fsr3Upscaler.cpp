@@ -40,17 +40,17 @@ public:
         return {"fsr3", false, "FSR 3.1.4 context initialization failed: " + std::move(failure)};
     }
 
-    void Record(ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
-                uint32_t, uint32_t frameIndex) {
+    std::string Record(ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
+                       uint32_t, uint32_t frameIndex) {
         if (!initialized_ || !device_) {
-            throw std::runtime_error("FSR 3.1.4 dispatch requested before context initialization");
+            return "FSR 3.1.4 dispatch requested before context initialization";
         }
         const auto recordStart = std::chrono::steady_clock::now();
         auto* output = context.In(ComputeStageNodeConfig::IMAGE_WRITE);
         const auto inputs = context.In(ComputeStageNodeConfig::IMAGE_READ_ARRAY);
         if (!output || inputs.size() != 4 ||
             !inputs[0] || !inputs[1] || !inputs[2] || !inputs[3]) {
-            throw std::runtime_error("FSR 3.1.4 requires color, depth, motion and exposure images");
+            return "FSR 3.1.4 requires color, depth, motion and exposure images";
         }
 
         auto* color = inputs[0];
@@ -66,7 +66,7 @@ public:
         const VkExtent2D outputExtent = output->GetExtent();
         if (renderExtent.width > renderExtent_.width || renderExtent.height > renderExtent_.height ||
             outputExtent.width > outputExtent_.width || outputExtent.height > outputExtent_.height) {
-            throw std::runtime_error("FSR 3.1.4 frame extent exceeds its initialized context");
+            return "FSR 3.1.4 frame extent exceeds its initialized context";
         }
 
         const glm::vec2 jitter = context.In(ComputeStageNodeConfig::EXTERNAL_UV_JITTER);
@@ -114,8 +114,9 @@ public:
             timingOverflow_ = true;
         }
         const auto dispatchStart = std::chrono::steady_clock::now();
-        CheckFfx(ffxFsr3UpscalerContextDispatch(&context_, &dispatch),
-                 "ffxFsr3UpscalerContextDispatch");
+        const std::string dispatchFailure = FfxFailure(
+            ffxFsr3UpscalerContextDispatch(&context_, &dispatch), "ffxFsr3UpscalerContextDispatch");
+        if (!dispatchFailure.empty()) return dispatchFailure;
         const auto dispatchEnd = std::chrono::steady_clock::now();
         if (recordGpuTiming) {
             vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -127,6 +128,7 @@ public:
             cpuRecordMs_.push_back(Millis(std::chrono::steady_clock::now() - recordStart).count());
             cpuDispatchMs_.push_back(Millis(dispatchEnd - dispatchStart).count());
         }
+        return {};
     }
 
     void Cleanup() noexcept {
@@ -392,12 +394,6 @@ private:
                std::to_string(static_cast<int>(result));
     }
 
-    static void CheckFfx(FfxErrorCode result, const char* operation) {
-        if (const std::string failure = FfxFailure(result, operation); !failure.empty()) {
-            throw std::runtime_error(failure);
-        }
-    }
-
     static FfxResource WrapImage(Vixen::Vulkan::Resources::IRenderTarget& target,
                                  FfxResourceUsage extraUsage,
                                  FfxResourceStates state, const wchar_t* name) {
@@ -479,7 +475,7 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
         [state](VulkanDevice* device) { return state->Initialize(device); },
         [state](ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
                 uint32_t imageIndex, uint32_t frameIndex) {
-            state->Record(context, commandBuffer, imageIndex, frameIndex);
+            return state->Record(context, commandBuffer, imageIndex, frameIndex);
         },
         [state] { state->Cleanup(); }
     };

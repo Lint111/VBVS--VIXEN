@@ -322,26 +322,33 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     }
 
     if (externalRecorder_) {
+        std::string failure;
         auto* outputTarget = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
         if (!outputTarget) {
-            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] External recorder has no output image");
+            failure = "external recorder has no output image";
+        } else {
+            const uint32_t outputIndex = outputTarget->GetCurrentIndex();
+            const VkImageLayout previousLayout = DecideRenderTargetPriorLayoutAndUpdate(
+                *outputTarget, outputIndex, VK_IMAGE_LAYOUT_GENERAL);
+            SwapchainBarriers::TransitionImageToGeneralBarrier2(
+                GetDevice(), cmd, outputTarget->GetImage(outputIndex), previousLayout);
+            if (gpuPerfLogger_) {
+                gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
+            }
+            failure = externalRecorder_(ctx, cmd, imageIndex, frameIndex);
+            if (gpuPerfLogger_) {
+                gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex,
+                    outputTarget->GetExtent().width, outputTarget->GetExtent().height);
+            }
+            if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(cmd);
         }
-        const uint32_t outputIndex = outputTarget->GetCurrentIndex();
-        const VkImageLayout previousLayout = DecideRenderTargetPriorLayoutAndUpdate(
-            *outputTarget, outputIndex, VK_IMAGE_LAYOUT_GENERAL);
-        SwapchainBarriers::TransitionImageToGeneralBarrier2(
-            GetDevice(), cmd, outputTarget->GetImage(outputIndex), previousLayout);
-        if (gpuPerfLogger_) {
-            gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
-        }
-        externalRecorder_(ctx, cmd, imageIndex, frameIndex);
-        if (gpuPerfLogger_) {
-            gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex,
-                outputTarget->GetExtent().width, outputTarget->GetExtent().height);
-        }
-        if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(cmd);
-        if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] External recorder failed to end command buffer");
+        const VkResult endResult = vkEndCommandBuffer(cmd);
+        if (endResult != VK_SUCCESS) {
+            GetOwningGraph()->ReportGpuFault(
+                "ComputeStageNode::RecordComputeCommands external recorder vkEndCommandBuffer", endResult);
+        } else if (!failure.empty()) {
+            GetOwningGraph()->ReportGpuFault(
+                "ComputeStageNode::RecordComputeCommands external recorder: " + failure, VK_ERROR_UNKNOWN);
         }
         return;
     }

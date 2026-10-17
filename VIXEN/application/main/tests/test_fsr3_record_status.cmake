@@ -1,0 +1,12 @@
+if(NOT BUILD_TESTS)
+    return()
+endif()
+
+if(TARGET VixenApp AND TARGET GTest::gtest_main)
+    add_executable(test_fsr3_record_status ${CMAKE_CURRENT_LIST_DIR}/test_fsr3_record_status.cpp)
+    vixen_whole_archive_link_vixen_app(test_fsr3_record_status PRIVATE)
+    target_link_libraries(test_fsr3_record_status PRIVATE GTest::gtest_main)
+    set_target_properties(test_fsr3_record_status PROPERTIES FOLDER "Tests/Application")
+    vixen_gtest_discover_tests(Application test_fsr3_record_status)
+    message(STATUS "[Application Tests] Added: test_fsr3_record_status (FSR3 per-frame Record returns a status, offline)")
+endif()
