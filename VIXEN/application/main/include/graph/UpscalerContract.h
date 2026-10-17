@@ -162,6 +162,7 @@ inline void ResetUpscalerHistory(const UpscalerContract& contract,
 enum class UpscalerSelectionFailureReason : uint8_t {
     None,
     NotCompiled,
+    NotInRuntimeProfile,
     NotPermittedByPass,
     RuntimeUnsupported,
     InputIncompatible,
@@ -172,6 +173,7 @@ enum class UpscalerSelectionFailureReason : uint8_t {
 
 struct UpscalerEligibility {
     bool compiled = false;
+    bool permittedByRuntimeProfile = true;
     bool permittedByPass = false;
     bool runtimeSupported = false;
     bool inputCompatible = false;
@@ -183,6 +185,7 @@ struct UpscalerEligibility {
 constexpr UpscalerSelectionFailureReason EvaluateUpscalerEligibility(
     const UpscalerEligibility& eligibility) noexcept {
     if (!eligibility.compiled) return UpscalerSelectionFailureReason::NotCompiled;
+    if (!eligibility.permittedByRuntimeProfile) return UpscalerSelectionFailureReason::NotInRuntimeProfile;
     if (!eligibility.permittedByPass) return UpscalerSelectionFailureReason::NotPermittedByPass;
     if (!eligibility.runtimeSupported) return UpscalerSelectionFailureReason::RuntimeUnsupported;
     if (!eligibility.inputCompatible) return UpscalerSelectionFailureReason::InputIncompatible;
@@ -197,6 +200,7 @@ constexpr std::string_view UpscalerSelectionFailureText(
     switch (reason) {
         case UpscalerSelectionFailureReason::None: return "eligible";
         case UpscalerSelectionFailureReason::NotCompiled: return "not compiled";
+        case UpscalerSelectionFailureReason::NotInRuntimeProfile: return "not in runtime machine profile";
         case UpscalerSelectionFailureReason::NotPermittedByPass: return "not permitted by pass";
         case UpscalerSelectionFailureReason::RuntimeUnsupported: return "runtime unsupported";
         case UpscalerSelectionFailureReason::InputIncompatible: return "input incompatible";
@@ -247,6 +251,7 @@ inline UpscalerSelectionResult SelectUpscalerProvider(
 constexpr UpscalerSelectionFailureReason EvaluateUpscalerEligibilityBeforeInitialization(
     const UpscalerEligibility& eligibility) noexcept {
     if (!eligibility.compiled) return UpscalerSelectionFailureReason::NotCompiled;
+    if (!eligibility.permittedByRuntimeProfile) return UpscalerSelectionFailureReason::NotInRuntimeProfile;
     if (!eligibility.permittedByPass) return UpscalerSelectionFailureReason::NotPermittedByPass;
     if (!eligibility.runtimeSupported) return UpscalerSelectionFailureReason::RuntimeUnsupported;
     if (!eligibility.inputCompatible) return UpscalerSelectionFailureReason::InputIncompatible;

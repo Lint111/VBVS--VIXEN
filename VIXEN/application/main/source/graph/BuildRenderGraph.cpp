@@ -263,6 +263,16 @@ bool PopulateSelectedDeviceCapabilities(VkInstance instance,
     return true;
 }
 
+std::string_view RuntimeOperatingSystem() noexcept {
+#if defined(_WIN32)
+    return "Windows";
+#elif defined(__linux__)
+    return "Linux";
+#else
+    return "unknown";
+#endif
+}
+
 bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     const char* raw = std::getenv(name);
     if (raw == nullptr) return defaultValue;
@@ -9619,6 +9629,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // so selection can consume the read-only record query without depending on a created device.
     Vixen::CapabilityGraph upscalerCapabilities;
     PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
+    auto upscalerRuntime = upscalerCapabilities.GetUpscalerCapabilityRecords().runtime;
+    const auto* runtimeProfile = Vixen::ResolveUpscalerMachineProfile(
+        upscalerRuntime, RuntimeOperatingSystem());
+    upscalerRuntime.machineProfileId = runtimeProfile ? runtimeProfile->profileId : std::string{};
+    upscalerCapabilities.SetUpscalerRuntimeFacts(std::move(upscalerRuntime));
     auto upscalerPolicy = upscalerCapabilities.GetUpscalerCapabilityRecords().policy;
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     const bool fsr3QualificationCapture = offscreenPresentation &&
@@ -9637,6 +9652,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                 : Vixen::UpscalerWorkRole::Interactive;
     upscalerCapabilities.SetUpscalerPolicyRecord(upscalerPolicy);
     const auto& upscalerRecords = upscalerCapabilities.GetUpscalerCapabilityRecords();
+    if (mainLogger && runtimeProfile) {
+        mainLogger->Info("[BuildRenderGraph] Resolved upscaler machine profile '" +
+                         runtimeProfile->profileId + "' for '" +
+                         upscalerRecords.runtime.physicalDevice + "'");
+    } else if (mainLogger) {
+        mainLogger->Warning("[BuildRenderGraph] No upscaler machine profile matched the selected "
+                            "adapter; optional providers are held back");
+    }
 
     const UpscalerFrameDescription upscalerFrame{
         {renderExtent.width, renderExtent.height},
@@ -9664,6 +9687,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::find(upscalerRecords.build.compiledAdapters.begin(),
                       upscalerRecords.build.compiledAdapters.end(), compiledAdapter) !=
                 upscalerRecords.build.compiledAdapters.end();
+        eligibility.permittedByRuntimeProfile = backend->nativeFallback ||
+            (runtimeProfile &&
+             std::find(runtimeProfile->providerCompileSet.begin(),
+                       runtimeProfile->providerCompileSet.end(), compiledAdapter) !=
+                 runtimeProfile->providerCompileSet.end());
         // Entries in this ordered list are the providers the render pass permits, followed by
         // the required native fallback.
         eligibility.permittedByPass = backend->nativeFallback ||

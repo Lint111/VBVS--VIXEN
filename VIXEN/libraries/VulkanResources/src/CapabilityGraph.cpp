@@ -112,33 +112,39 @@ const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles() {
             "amd-8060s-windows", "AMD Radeon 8060S", "Windows", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+            {{"8060S"}, {}, 0x1002, "Windows", 100},
         },
         {
             "amd-8060s-linux", "AMD Radeon 8060S", "Linux", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+            {{"8060S"}, {}, 0x1002, "Linux", 100},
         },
         {
             "nvidia-rtx-3060-windows", "NVIDIA GeForce RTX 3060", "Windows", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4",
              "Upscaler.DlssSr"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+            {{"RTX 3060"}, {}, 0x10DE, "Windows", 100},
         },
         {
             "nvidia-rtx-3060-linux", "NVIDIA GeForce RTX 3060", "Linux", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4",
              "Upscaler.DlssSr"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+            {{"RTX 3060"}, {}, 0x10DE, "Linux", 100},
         },
         {
             "amd-laptop", "Unidentified AMD laptop", "unspecified", "unspecified", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+            {{"780M"}, {}, 0x1002, {}, 25},
         },
         {
             "wsl2-dozen", "WSL2 developer machine", "WSL2", "x86_64", "Dozen",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Development},
+            {{}, "Dozen", 0, "Linux", 200},
         },
         {
             "build-worker", "CPU/RAM-rich build worker", "host", "host", "none",
@@ -149,11 +155,13 @@ const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles() {
             "headless-native-runner", "Headless native test/capture runner", "native", "host", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::HeadlessCapture},
+            {{"llvmpipe", "lavapipe", "SwiftShader"}, {}, 0, {}, 50},
         },
         {
             "intel-arc-native", "Intel Arc", "native", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.XeSsSr"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Qualification},
+            {{"Arc"}, {}, 0x8086, {}, 50},
         },
     };
     return profiles;
@@ -165,6 +173,44 @@ const UpscalerMachineProfile* FindUpscalerMachineProfile(std::string_view profil
         return profile.profileId == profileId;
     });
     return found == profiles.end() ? nullptr : &*found;
+}
+
+const UpscalerMachineProfile* ResolveUpscalerMachineProfile(
+    const UpscalerRuntimeFacts& runtime, std::string_view runtimeOS) noexcept {
+    const std::string_view deviceName = runtime.physicalDevice.empty()
+        ? std::string_view(runtime.deviceDriver.deviceName)
+        : std::string_view(runtime.physicalDevice);
+    const std::string_view driverName = runtime.icdOrTranslationLayer.empty()
+        ? std::string_view(runtime.deviceDriver.driverName)
+        : std::string_view(runtime.icdOrTranslationLayer);
+
+    const auto& profiles = GetUpscalerMachineProfiles();
+    const UpscalerMachineProfile* resolved = nullptr;
+    for (const auto& profile : profiles) {
+        const auto& match = profile.runtimeMatch;
+        if (match.runtimeOS.size() > 0 && match.runtimeOS != runtimeOS) continue;
+        if (match.vendorId != 0 && match.vendorId != runtime.deviceDriver.vendorId) continue;
+        if (!match.deviceNameContainsAny.empty() &&
+            std::none_of(match.deviceNameContainsAny.begin(), match.deviceNameContainsAny.end(),
+                         [&](std::string_view term) { return deviceName.find(term) != std::string_view::npos; })) {
+            continue;
+        }
+        if (!match.translationLayerContains.empty() &&
+            driverName.find(match.translationLayerContains) == std::string_view::npos) {
+            continue;
+        }
+        if (match.deviceNameContainsAny.empty() && match.translationLayerContains.empty() &&
+            match.vendorId == 0) {
+            continue;
+        }
+        if (resolved == nullptr || match.priority > resolved->runtimeMatch.priority) {
+            resolved = &profile;
+        } else if (match.priority == resolved->runtimeMatch.priority) {
+            // Ambiguous identity matches fail closed; do not admit optional providers.
+            return nullptr;
+        }
+    }
+    return resolved;
 }
 
 std::optional<CapabilityVersionValue> CapabilityVersionValue::Parse(const std::string& value) {

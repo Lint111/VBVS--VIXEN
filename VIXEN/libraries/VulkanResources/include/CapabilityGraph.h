@@ -158,6 +158,7 @@ struct UpscalerFormatFact {
 
 /// Facts observed from the selected physical adapter and logical device.
 struct UpscalerRuntimeFacts {
+    std::string machineProfileId;
     std::string physicalDevice;
     std::string icdOrTranslationLayer;
     DeviceDriverIdentityBuildFact deviceDriver;
@@ -233,6 +234,14 @@ struct UpscalerCapabilityRecords {
 
 /// Declarative machine profile. providerCompileSet is profile intent; build.compiledAdapters
 /// reports the adapters actually compiled into the current artifact.
+struct UpscalerRuntimeProfileMatch {
+    std::vector<std::string_view> deviceNameContainsAny;
+    std::string_view translationLayerContains;
+    uint32_t vendorId = 0;
+    std::string_view runtimeOS;
+    uint8_t priority = 0;
+};
+
 struct UpscalerMachineProfile {
     std::string profileId;
     std::string hardware;
@@ -241,12 +250,15 @@ struct UpscalerMachineProfile {
     std::string runtimeLabel;
     std::vector<std::string> providerCompileSet;
     UpscalerPolicyRecord policy;
+    UpscalerRuntimeProfileMatch runtimeMatch;
 };
 
 /// Stable, read-only table of machine profiles used by build and selection tooling.
 [[nodiscard]] const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles();
 [[nodiscard]] const UpscalerMachineProfile* FindUpscalerMachineProfile(
     std::string_view profileId) noexcept;
+[[nodiscard]] const UpscalerMachineProfile* ResolveUpscalerMachineProfile(
+    const UpscalerRuntimeFacts& runtime, std::string_view runtimeOS) noexcept;
 
 using CapabilityBuildFact = std::variant<PlatformBuildFact,
                                          ProductVariantBuildFact,
