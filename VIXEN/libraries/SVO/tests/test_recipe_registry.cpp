@@ -65,6 +65,20 @@ TEST(RecipeRegistry, RejectsDuplicateAndEmptyAndBadOpcode) {
     EXPECT_EQ(reg.Register(4u, pm), RecipeRegistry::RegisterResult::ParamMaskUnsupported);
 }
 
+TEST(RecipeRegistry, ClearAllowsReregistrationAndAdvancesGeneration) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{}; e.bytecode = { sphere(1.0f) };
+    ASSERT_EQ(reg.Register(1u, e), RecipeRegistry::RegisterResult::Ok);
+    ASSERT_EQ(reg.Register(1u, e), RecipeRegistry::RegisterResult::DuplicateId);
+    const uint64_t before = reg.GetGeneration();
+
+    reg.Clear();
+    EXPECT_TRUE(reg.Ids().empty());
+    EXPECT_EQ(reg.Get(1u), nullptr);
+    EXPECT_GT(reg.GetGeneration(), before);
+    EXPECT_EQ(reg.Register(1u, e), RecipeRegistry::RegisterResult::Ok);
+}
+
 TEST(RecipeRegistry, RejectsStackOverflow) {
     RecipeRegistry reg;
     RecipeRegistry::RecipeEntry e{};

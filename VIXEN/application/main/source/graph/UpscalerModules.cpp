@@ -261,7 +261,8 @@ public:
         const auto hooks = CreateFsr3UpscalerHooks(
             params.renderExtent, params.presentationExtent,
             kFsr3DepthConventions[0].convention,
-            params.cameraNearPlane, params.cameraFarPlane);
+            params.cameraNearPlane, params.cameraFarPlane,
+            params.providerInitializationReported);
         compute->SetExternalCommandRecorder(
             hooks.record,
             [initialize = hooks.initialize,

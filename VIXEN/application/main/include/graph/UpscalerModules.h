@@ -110,7 +110,8 @@ struct UpscalerModuleBuildContext {
     // GPU timing after graph compilation without inspecting a backend's private graph members.
     std::function<void(std::string, NodeHandle)> recordExecution;
     // Called once a provider's real context has been initialized or has failed to initialize
-    // during graph compilation; the host decides whether to fall back.
+    // during graph compilation, and with initialized=false when its per-frame record fails;
+    // the host decides whether to fall back.
     std::function<void(UpscalerProviderInitializationResult)> providerInitializationReported;
     float cameraNearPlane = 0.1f;
     float cameraFarPlane = 5000.0f;

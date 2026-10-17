@@ -256,12 +256,28 @@ void VulkanGraphApplication::CreateEngineContext() {
 }
 
 void VulkanGraphApplication::Prepare() {
+    upscalerInitializationFailures_.clear();
+    PrepareWithUpscalerFallback();
+}
+
+void VulkanGraphApplication::ResetEngineContextForRetry() {
+    // BuildRenderGraph overrides re-register their recipes on every build, so the registry
+    // must start empty or the retry fails with DuplicateId.
+    engine_.reset();
+    proceduralRecipes_.Clear();
+    nodeRegistry = nullptr;
+    messageBus = nullptr;
+    renderGraph = nullptr;
+    graphCompiled = false;
+    CreateEngineContext();
+}
+
+void VulkanGraphApplication::PrepareWithUpscalerFallback() {
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::Prepare] START");
     }
     isPrepared = false;
     graphCompiled = false;
-    upscalerInitializationFailures_.clear();
     upscalerCandidatesForCompile_.clear();
     selectedUpscalerProviderId_.clear();
     selectedUpscalerHasRealContext_ = false;
@@ -349,12 +365,7 @@ void VulkanGraphApplication::Prepare() {
             // Compile has already created the graph device and may have compiled dependent
             // nodes. Destroy that EngineContext as a unit so the retry starts with fresh
             // Vulkan resources and a new graph topology.
-            engine_.reset();
-            nodeRegistry = nullptr;
-            messageBus = nullptr;
-            renderGraph = nullptr;
-            graphCompiled = false;
-            CreateEngineContext();
+            ResetEngineContextForRetry();
         }
 
         // The application does NOT own or cache the GLFW window. WindowNode owns it entirely (created
@@ -404,6 +415,27 @@ bool VulkanGraphApplication::Render() {
     // (UNDERTOW) boundary is undefined behaviour. RenderFrame() already catches node-Execute failures
     // (2a); this guard covers anything else (the event-callback handlers fired by glfwPollEvents, etc.).
     try {
+        // A provider fault latched by the previous frame demotes through Prepare()'s fallback path:
+        // the failed provider joins the failure list and the graph is rebuilt with the next one.
+        if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
+            const UpscalerProviderInitializationResult fault = *reportedUpscalerInitialization_;
+            if (!RecordUpscalerProviderInitializationFailure(upscalerInitializationFailures_,
+                                                              fault.providerId)) {
+                lastError_ = "Render failed: upscaler provider '" + fault.providerId +
+                             "' faulted and no provider is left: " + fault.message;
+                mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
+                return false;
+            }
+            mainLogger->Info("[VulkanGraphApplication::Render] Demoting upscaler provider '" +
+                             fault.providerId + "' and rebuilding the graph");
+            ResetEngineContextForRetry();
+            PrepareWithUpscalerFallback();
+            if (!isPrepared || !graphCompiled || !renderGraph) {
+                if (lastError_.empty()) lastError_ = "Render failed: upscaler demotion did not produce a graph";
+                return false;
+            }
+        }
+
         // Pump the OS event queue only when this graph owns a window. Offscreen graph frames have no
         // GLFW initialization, surface, or event source.
         if (presentationTarget_ == PresentationTarget::Window) glfwPollEvents();
@@ -427,6 +459,18 @@ bool VulkanGraphApplication::Render() {
                 static_cast<long long>(wallUs));
         }
 
+
+        // A provider record fault aborted this frame inside the graph, so nothing new was presented
+        // and the display keeps the last good frame. The next Render() demotes the provider.
+        if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized &&
+            result != VK_ERROR_DEVICE_LOST) {
+            mainLogger->Warning("[VulkanGraphApplication::Render] Upscaler provider '" +
+                                reportedUpscalerInitialization_->providerId + "' faulted: " +
+                                reportedUpscalerInitialization_->message +
+                                "; this frame is dropped and the next provider is used from the next frame");
+            currentFrame++;
+            return true;
+        }
 
         // Event-driven swapchain recreation is handled internally; VK_ERROR_OUT_OF_DATE_KHR triggers
         // events that mark nodes for recompilation.

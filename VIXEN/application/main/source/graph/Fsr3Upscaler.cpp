@@ -18,6 +18,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -468,14 +469,20 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
     VkExtent2D outputExtent,
     ReconstructionDepthConvention depthConvention,
     float nearPlane,
-    float farPlane) {
+    float farPlane,
+    std::function<void(UpscalerProviderInitializationResult)> reportRecordFailure) {
     auto state = std::make_shared<Fsr3ContextState>(
         renderExtent, outputExtent, depthConvention, nearPlane, farPlane);
     return {
         [state](VulkanDevice* device) { return state->Initialize(device); },
-        [state](ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
-                uint32_t imageIndex, uint32_t frameIndex) {
-            return state->Record(context, commandBuffer, imageIndex, frameIndex);
+        [state, reportRecordFailure = std::move(reportRecordFailure)](
+            ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
+            uint32_t imageIndex, uint32_t frameIndex) {
+            std::string failure = state->Record(context, commandBuffer, imageIndex, frameIndex);
+            if (!failure.empty() && reportRecordFailure) {
+                reportRecordFailure({"fsr3", false, failure});
+            }
+            return failure;
         },
         [state] { state->Cleanup(); }
     };

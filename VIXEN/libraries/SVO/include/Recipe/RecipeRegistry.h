@@ -225,6 +225,12 @@ public:
         return RegisterResult::Ok;
     }
 
+    // Drops every entry. The generation still advances so cached snapshots keyed on it are invalidated.
+    void Clear() {
+        entries_.clear();
+        ++generation_;
+    }
+
     /// Monotonic generation for consumers that cache derived registry data.
     [[nodiscard]] std::uint64_t GetGeneration() const noexcept { return generation_; }
 

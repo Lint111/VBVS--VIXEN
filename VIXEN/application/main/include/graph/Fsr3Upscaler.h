@@ -19,6 +19,7 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
     VkExtent2D outputExtent,
     ReconstructionDepthConvention depthConvention,
     float nearPlane,
-    float farPlane);
+    float farPlane,
+    std::function<void(UpscalerProviderInitializationResult)> reportRecordFailure = {});
 
 } // namespace Vixen::RenderGraph

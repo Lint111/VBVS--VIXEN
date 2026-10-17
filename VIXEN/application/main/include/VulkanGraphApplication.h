@@ -258,6 +258,11 @@ protected:
 
 private:
     void CreateEngineContext();
+    // Prepare()'s provider-fallback loop. Prepare() clears the failure list first; a mid-run
+    // demotion re-enters here with the faulted provider already recorded.
+    void PrepareWithUpscalerFallback();
+    // Destroys the EngineContext as a unit and creates a fresh one for the next graph build.
+    void ResetEngineContextForRetry();
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: per-frame orchestration for the opt-in
     // bucketed-dispatch path, called from PreTick() only when recipeBucketedDispatchEnabled_
