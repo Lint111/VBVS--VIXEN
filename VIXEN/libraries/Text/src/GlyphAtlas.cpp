@@ -412,4 +412,16 @@ std::uint32_t GlyphAtlas::Version() const {
     return impl_->version;
 }
 
+std::span<const std::uint8_t> GlyphAtlas::Pixels() const noexcept {
+    return *impl_->pixels;
+}
+
+std::uint32_t GlyphAtlas::PageDimension() const noexcept {
+    return impl_->pageDimension;
+}
+
+float GlyphAtlas::DistanceRange() const noexcept {
+    return impl_->distanceRange;
+}
+
 } // namespace Vixen::Text

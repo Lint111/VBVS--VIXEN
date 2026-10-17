@@ -92,11 +92,13 @@ private:
     void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
     void DestroyCompositeSemaphores();  // destroy the owned per-image "ui complete" semaphores
     void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex);
+    void DrawTextShaderCapture(float timeSeconds);
     void ConfigureHudHotReload();
     bool RebindPrimaryView(const std::shared_ptr<IView>& candidate);
     bool RestorePrimaryView(const std::shared_ptr<IView>& previous);
 
     bool initialized_ = false;
+    uint64_t renderedFrameCounter_ = 0;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2_ = nullptr;  // cached from VulkanDevice each compile

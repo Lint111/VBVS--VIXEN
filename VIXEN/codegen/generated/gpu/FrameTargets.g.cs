@@ -2217,6 +2217,32 @@ namespace Vixen.Codegen.Gpu
         }
     }
 
+    /// <summary>Schema path for text_animation; lowered before native dispatch.</summary>
+    public struct TextAnimationRef
+    {
+        public const string SchemaKind = "text_animation";
+        public byte Kind
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public float DurationS
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public float Amplitude
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public float Frequency
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
     /// <summary>Schema path for text_tag; lowered before native dispatch.</summary>
     public struct TextTagRef
     {
@@ -6351,6 +6377,14 @@ namespace Vixen.Codegen.Gpu
         public string display;
     }
 
+    public struct TextAnimation
+    {
+        public byte kind;
+        public float duration_s;
+        public float amplitude;
+        public float frequency;
+    }
+
     public struct TextTag
     {
         public byte @class;
@@ -9218,6 +9252,15 @@ namespace Undertow.Modding
         public static void SET(global::Vixen.Codegen.Gpu.TagRowRef[] path, global::Vixen.Codegen.Gpu.TagRow value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void SET(global::Vixen.Codegen.Gpu.TagRowRef[] path, global::Vixen.Codegen.Gpu.TagRowRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void REMOVE(global::Vixen.Codegen.Gpu.TagRowRef path, global::Vixen.Codegen.Gpu.TagRowRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.TextAnimationRef ADD(global::Vixen.Codegen.Gpu.TextAnimationRef path, global::Vixen.Codegen.Gpu.TextAnimation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.TextAnimationRef ADD(global::Vixen.Codegen.Gpu.TextAnimationRef path, global::Vixen.Codegen.Gpu.TextAnimationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.TextAnimationRef path, global::Vixen.Codegen.Gpu.TextAnimation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.TextAnimationRef path, global::Vixen.Codegen.Gpu.TextAnimationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.TextAnimationRef ADD(global::Vixen.Codegen.Gpu.TextAnimationRef[] path, global::Vixen.Codegen.Gpu.TextAnimation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.TextAnimationRef ADD(global::Vixen.Codegen.Gpu.TextAnimationRef[] path, global::Vixen.Codegen.Gpu.TextAnimationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.TextAnimationRef[] path, global::Vixen.Codegen.Gpu.TextAnimation value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void SET(global::Vixen.Codegen.Gpu.TextAnimationRef[] path, global::Vixen.Codegen.Gpu.TextAnimationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.TextAnimationRef path, global::Vixen.Codegen.Gpu.TextAnimationRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.TextTagRef ADD(global::Vixen.Codegen.Gpu.TextTagRef path, global::Vixen.Codegen.Gpu.TextTag value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static global::Vixen.Codegen.Gpu.TextTagRef ADD(global::Vixen.Codegen.Gpu.TextTagRef path, global::Vixen.Codegen.Gpu.TextTagRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void SET(global::Vixen.Codegen.Gpu.TextTagRef path, global::Vixen.Codegen.Gpu.TextTag value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");

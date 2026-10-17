@@ -4,7 +4,7 @@ param(
   [ValidateSet('lookdev', 'planet', 'glyphsdf')][string]$Capture,
   [string]$State,
   [string]$CtestLabel,
-  [string]$Root = 'C:\vixen-native\vixendll'
+  [string]$Root = 'C:\vixen-native\nativerunner-textshader'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $Root 'VIXEN\scripts\build\SetWindowsChildErrorMode.ps1')

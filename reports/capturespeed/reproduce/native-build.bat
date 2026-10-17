@@ -1,10 +1,11 @@
 @echo off
 setlocal
-if "%~1"=="" (
-  echo Usage: native-build.bat ^<40-character VIXEN commit^>
+if "%~2"=="" (
+  echo Usage: native-build.bat ^<40-character VIXEN commit^> ^<UNDERTOW_ROOT^>
   exit /b 2
 )
 set "VIXEN_NATIVE_BUILD_KEY=%~1"
+set "UNDERTOW_ROOT=%~2"
 for /f "delims=" %%I in ("%~dp0..\..\..") do set "NATIVE_ROOT=%%~fI"
 set "NATIVE_CACHE_ROOT=%NATIVE_ROOT%\.tmp"
 set "VIXEN_NATIVE_BUILD_DIR=%NATIVE_ROOT%\build\native\%VIXEN_NATIVE_BUILD_KEY%"
@@ -43,6 +44,12 @@ set "VIXEN_MAX_BUILD_JOBS=4"
 set "VIXEN_KERNEL_CACHE_DIR=%VIXEN_NATIVE_KERNEL_CACHE_DIR%"
 rem Build the complete graph so every application and test executable gets its runtime DLL staging step.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -BuildId "vixendll-all-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-all-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
+if errorlevel 1 exit /b %errorlevel%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target test_text_shader_layout -BuildId "nativerunner-text-shader-layout-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-text-shader-layout-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
+if errorlevel 1 exit /b %errorlevel%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target vixen_lookdev_capture -BuildId "nativerunner-lookdev-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-lookdev-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
+if errorlevel 1 exit /b %errorlevel%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target vixen_planet_capture -BuildId "nativerunner-planet-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-planet-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
 if errorlevel 1 exit /b %errorlevel%
 >"%READY_FILE%" echo %VIXEN_NATIVE_BUILD_KEY%
 exit /b 0

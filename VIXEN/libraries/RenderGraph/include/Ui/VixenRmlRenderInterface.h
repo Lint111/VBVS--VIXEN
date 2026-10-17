@@ -11,8 +11,13 @@
 
 #include <cstdint>
 #include <mutex>
+#include <span>
+#include <unordered_map>
 #include <utility>
 #include <vector>
+
+namespace Vixen::Text { class GlyphAtlas; }
+namespace Vixen::Text { struct GlyphInstance; struct SpanStyle; struct SpanAnim; }
 
 namespace Vixen::Ui {
 
@@ -34,6 +39,14 @@ public:
 
     // Per-frame: bind the active command buffer + context dimensions before context->Render().
     void BeginFrame(VkCommandBuffer cmd, VkExtent2D extent);
+
+    // Record one generated MSDF batch. Text uses its own pipeline and descriptor layout; the
+    // existing RmlUi geometry path remains unchanged.
+    void DrawTextInstances(const Vixen::Text::GlyphAtlas& atlas,
+                  std::span<const Vixen::Text::GlyphInstance> glyphs,
+                  std::span<const Vixen::Text::SpanStyle> styles,
+                  std::span<const Vixen::Text::SpanAnim> animations,
+                  float timeSeconds);
 
     // --- Rml::RenderInterface (the 8 required functions) ---
     Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -57,12 +70,24 @@ private:
         VkDescriptorSet set = VK_NULL_HANDLE;
         bool isMsdf = false;
     };
+    struct TextDrawResources {
+        VkBuffer glyphBuffer = VK_NULL_HANDLE; VkDeviceMemory glyphMemory = VK_NULL_HANDLE;
+        VkBuffer styleBuffer = VK_NULL_HANDLE; VkDeviceMemory styleMemory = VK_NULL_HANDLE;
+        VkBuffer animationBuffer = VK_NULL_HANDLE; VkDeviceMemory animationMemory = VK_NULL_HANDLE;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    };
+    struct AtlasTexture {
+        uint32_t version = 0;
+        Texture* texture = nullptr;
+    };
 
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const;
     void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
                       VkBuffer& outBuf, VkDeviceMemory& outMem);
     Texture* CreateTextureRGBA(const uint8_t* rgba, uint32_t width, uint32_t height, bool isMsdf = false);
     void CreatePipeline();
+    void CreateTextPipeline();
+    void DestroyTextDrawResources(TextDrawResources* resources);
 
     // Per-struct Vulkan teardown — shared by the deferred-free path (BeginFrame) and Shutdown so the
     // two destroy a resource identically. Both null-check, destroy the owned objects, and `delete` the
@@ -82,6 +107,7 @@ private:
     uint64_t frameCounter_ = 0;  // ++ per BeginFrame; the age clock for deferred frees.
     std::vector<std::pair<uint64_t, Geometry*>> pendingGeometryDeletes_;  // {releaseFrame, ptr}
     std::vector<std::pair<uint64_t, Texture*>> pendingTextureDeletes_;    // {releaseFrame, ptr}
+    std::vector<std::pair<uint64_t, TextDrawResources*>> pendingTextDrawDeletes_;
 
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -97,6 +123,10 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
+    VkDescriptorSetLayout textDescriptorLayout_ = VK_NULL_HANDLE;
+    VkPipelineLayout textPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline textPipeline_ = VK_NULL_HANDLE;
+
     Texture* defaultTexture_ = nullptr;  // 1x1 white, handle for untextured geometry
 
     // Per-frame state set by BeginFrame().
@@ -107,6 +137,7 @@ private:
 
     std::vector<Geometry*> geometries_;  // owned; destroyed in Shutdown
     std::vector<Texture*> textures_;     // owned; destroyed in Shutdown
+    std::unordered_map<const Vixen::Text::GlyphAtlas*, AtlasTexture> atlasTextures_;
 };
 
 } // namespace Vixen::Ui
