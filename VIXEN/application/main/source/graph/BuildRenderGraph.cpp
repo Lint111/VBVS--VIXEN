@@ -494,14 +494,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const bool hdrExposureFixed = hdrExposureEnabled &&
                                  envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
-    const bool fsr1UpscalerRequested = renderPathConfig.upscaler == UpscalerKind::Fsr1;
-    const bool fsr1UpscalerSelected = fsr1UpscalerRequested &&
-        IsSelectedDeviceCapabilityAvailable(instanceObj.instance, "Upscaler:Fsr1");
-    const bool linearUpscalerRequested = renderPathConfig.upscaler == UpscalerKind::Linear;
-    if (fsr1UpscalerRequested && !fsr1UpscalerSelected && mainLogger) {
-        mainLogger->Warning("[BuildRenderGraph] CapabilityGraph reports Upscaler:Fsr1 unavailable; "
-                            "leaving the typed upscaler slot empty and using the native render path");
-    }
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
@@ -9458,7 +9450,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         });
     };
 
-    if (envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH")) {
+    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH");
+    if (reconstructionInputsEnabled) {
         ReconstructionDepthParams params;
         params.batch = &batch;
         params.common = lightingCommon;
@@ -9510,31 +9503,116 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
     }
 
-    if (fsr1UpscalerSelected || linearUpscalerRequested) {
-        if (fsr1UpscalerSelected) {
-            Fsr1UpscalerParams params;
-            params.batch = &batch;
-            params.common = lightingCommon;
-            params.sceneProviders = sceneProviders;
-            params.sourceTarget = renderTargetNode;
-            params.renderExtent = renderExtent;
-            params.presentationWidth = static_cast<uint32_t>(width);
-            params.presentationHeight = static_cast<uint32_t>(height);
-            params.renderScale = renderScale;
-            params.makeShaderFamily = [&makeLightingFamily](const std::string& sourceFile,
-                                                            const std::string& familyName) {
-                return makeLightingFamily(sourceFile, familyName);
-            };
-            params.registerShaderFamily = registerModuleShaderFamily;
-            params.registerPassMetric = [this](std::string columnName, NodeHandle node) {
-                upscalerPerfPasses_.push_back({std::move(columnName), node});
-            };
-            upscalerModule = renderGraph->InstantiateRegistered(
-                kFsr1UpscalerModuleTypeName, "render_path/upscaler", std::any(std::move(params)));
-        } else {
-            upscalerModule = renderGraph->InstantiateRegistered(
-                kLinearUpscalerModuleTypeName, "render_path/upscaler", std::any(LinearUpscalerParams{}));
+    std::array<std::string_view, 3> requestedUpscalerOrder{};
+    size_t requestedUpscalerCount = 0;
+    if (renderPathConfig.upscaler == UpscalerKind::Fsr1) {
+        requestedUpscalerOrder = {"fsr1", "linear", "native"};
+        requestedUpscalerCount = 3;
+    } else if (renderPathConfig.upscaler == UpscalerKind::Linear) {
+        requestedUpscalerOrder = {"linear", "native", ""};
+        requestedUpscalerCount = 2;
+    } else {
+        requestedUpscalerOrder = {"native", "", ""};
+        requestedUpscalerCount = 1;
+    }
+
+    std::vector<UpscalerFrameInput> availableUpscalerInputs{UpscalerFrameInput::Color};
+    if (reconstructionInputsEnabled) {
+        availableUpscalerInputs.push_back(UpscalerFrameInput::Depth);
+        if (hdrExposureEnabled) availableUpscalerInputs.push_back(UpscalerFrameInput::Exposure);
+    }
+    const UpscalerFrameDescription upscalerFrame{
+        {renderExtent.width, renderExtent.height},
+        {static_cast<uint32_t>(width), static_cast<uint32_t>(height)},
+        UpscalerImageFormat::Rgba8Unorm,
+        UpscalerImageFormat::Rgba8Unorm,
+        availableUpscalerInputs
+    };
+    std::vector<UpscalerProviderCandidate> upscalerCandidates;
+    std::vector<const UpscalerBackendDescriptor*> orderedUpscalerBackends;
+    upscalerCandidates.reserve(requestedUpscalerCount);
+    orderedUpscalerBackends.reserve(requestedUpscalerCount);
+    for (size_t candidateIndex = 0; candidateIndex < requestedUpscalerCount; ++candidateIndex) {
+        const UpscalerBackendDescriptor* backend =
+            FindUpscalerBackend(requestedUpscalerOrder[candidateIndex]);
+        if (!backend || !backend->contract) {
+            continue;
         }
+
+        UpscalerEligibility eligibility;
+        eligibility.compiled = backend->compiled;
+        // Entries in this ordered list are the providers the render pass permits, followed by
+        // the required native fallback.
+        eligibility.permittedByPass = true;
+        eligibility.runtimeSupported = backend->runtimeCapability.empty() ||
+            IsSelectedDeviceCapabilityAvailable(instanceObj.instance,
+                                                std::string(backend->runtimeCapability).c_str());
+        eligibility.inputCompatible = SupportsUpscalerFrame(*backend->contract, upscalerFrame);
+        eligibility.initialized = backend->nativeFallback || backend->id == "linear" ||
+            lightingCommon.device.IsValid();
+        // Qualification and admission are explicit predicate inputs. The built-in paths remain
+        // opt-in and available as in stage 1 while per-profile qualification and budget records
+        // are being added through CapabilityGraph.
+        eligibility.qualified = true;
+        eligibility.admittedByBudget = true;
+
+        upscalerCandidates.push_back({backend->id, eligibility, backend->nativeFallback});
+        orderedUpscalerBackends.push_back(backend);
+    }
+
+    const UpscalerSelectionResult upscalerSelection =
+        SelectUpscalerProvider(upscalerCandidates);
+    for (const auto& rejected : upscalerSelection.rejected) {
+        const UpscalerBackendDescriptor* backend = FindUpscalerBackend(rejected.id);
+        const std::string variantSuggestion =
+            backend && !backend->runtimeCapability.empty()
+                ? "a device variant that includes " + std::string(backend->runtimeCapability)
+                : "a device variant that permits this backend";
+        if (mainLogger) {
+            mainLogger->Warning("[BuildRenderGraph] Upscaler provider '" +
+                                std::string(rejected.id) + "' rejected: " +
+                                std::string(UpscalerSelectionFailureText(rejected.reason)) +
+                                "; trying the next provider; suggest " + variantSuggestion);
+        }
+    }
+
+    const UpscalerBackendDescriptor* selectedUpscalerBackend = nullptr;
+    if (upscalerSelection.selected) {
+        const auto selectedIndex = static_cast<size_t>(
+            upscalerSelection.selected - upscalerCandidates.data());
+        if (selectedIndex < orderedUpscalerBackends.size()) {
+            selectedUpscalerBackend = orderedUpscalerBackends[selectedIndex];
+        }
+    }
+    if (!selectedUpscalerBackend) {
+        selectedUpscalerBackend = FindUpscalerBackend("native");
+        if (mainLogger) {
+            mainLogger->Warning("[BuildRenderGraph] No upscaler provider passed selection; "
+                                "using the native render path");
+        }
+    }
+
+    if (selectedUpscalerBackend && !selectedUpscalerBackend->nativeFallback) {
+        UpscalerModuleBuildContext params;
+        params.batch = &batch;
+        params.common = lightingCommon;
+        params.sceneProviders = sceneProviders;
+        params.sourceTarget = renderTargetNode;
+        params.renderExtent = renderExtent;
+        params.presentationExtent = {static_cast<uint32_t>(width),
+                                     static_cast<uint32_t>(height)};
+        params.renderScale = renderScale;
+        params.makeShaderFamily = [&makeLightingFamily](const std::string& sourceFile,
+                                                        const std::string& familyName) {
+            return makeLightingFamily(sourceFile, familyName);
+        };
+        params.registerShaderFamily = registerModuleShaderFamily;
+        params.recordExecution = [this](std::string columnName, NodeHandle node) {
+            upscalerPerfPasses_.push_back({std::move(columnName), node});
+        };
+        upscalerModule = renderGraph->InstantiateRegistered(
+            std::string(selectedUpscalerBackend->moduleTypeName), "render_path/upscaler",
+            std::any(std::move(params)));
 
         renderGraph->Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                              *upscalerModule, UpscalerModulePorts::SOURCE_TARGET);

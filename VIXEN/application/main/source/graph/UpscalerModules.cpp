@@ -15,7 +15,10 @@
 #include "merged/Fsr1Easu-SDI.g.h"
 #include "merged/Fsr1Rcas-SDI.g.h"
 
+#include <array>
+#include <algorithm>
 #include <stdexcept>
+#include <span>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -26,7 +29,7 @@ public:
     static constexpr std::string_view TYPE_NAME = kLinearUpscalerModuleTypeName;
     static constexpr std::string_view CAPABILITY_NAME = "";
     using PortConfig = UpscalerModulePorts;
-    using Params = LinearUpscalerParams;
+    using Params = UpscalerModuleBuildContext;
 
     void Build(GraphScope& scope, const Params&) {
         scope.BindOutput(UpscalerModulePorts::UPSCALED_TARGET,
@@ -41,7 +44,7 @@ public:
     static constexpr std::string_view TYPE_NAME = kFsr1UpscalerModuleTypeName;
     static constexpr std::string_view CAPABILITY_NAME = "Upscaler:Fsr1";
     using PortConfig = UpscalerModulePorts;
-    using Params = Fsr1UpscalerParams;
+    using Params = UpscalerModuleBuildContext;
 
     void Build(GraphScope& scope, const Params& params) {
         if (!params.batch || !params.makeShaderFamily || !params.registerShaderFamily ||
@@ -142,8 +145,8 @@ public:
             stage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
         };
         setDispatch(inputAa, params.renderExtent.width, params.renderExtent.height);
-        setDispatch(easu, params.presentationWidth, params.presentationHeight);
-        setDispatch(rcas, params.presentationWidth, params.presentationHeight);
+        setDispatch(easu, params.presentationExtent.width, params.presentationExtent.height);
+        setDispatch(rcas, params.presentationExtent.width, params.presentationExtent.height);
 
         batch.Connect(inputRead, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       inputAa, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
@@ -174,15 +177,83 @@ public:
              .Connect(easu, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       rcas, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
 
-        if (params.registerPassMetric) {
-            params.registerPassMetric("fsr_input_aa", inputAa);
-            params.registerPassMetric("fsr1_easu", easu);
-            params.registerPassMetric("fsr1_rcas", rcas);
+        if (params.recordExecution) {
+            params.recordExecution("fsr_input_aa", inputAa);
+            params.recordExecution("fsr1_easu", easu);
+            params.recordExecution("fsr1_rcas", rcas);
         }
     }
 };
 
+void ResetNoUpscalerHistory(void*, UpscalerHistoryResetCause) noexcept {}
+
+constexpr UpscalerImageFormat kRgba8Format[] = {UpscalerImageFormat::Rgba8Unorm};
+constexpr UpscalerFrameInput kColorInput[] = {UpscalerFrameInput::Color};
+constexpr UpscalerExternalResourceDependency kNativeDependencies[] = {
+    {UpscalerExternalResource::SourceColor, true},
+    {UpscalerExternalResource::PresentationTarget, true},
+    {UpscalerExternalResource::Device, true},
+    {UpscalerExternalResource::ExecutionOrder, true}
+};
+constexpr UpscalerExternalResourceDependency kLinearDependencies[] = {
+    {UpscalerExternalResource::SourceColor, true},
+    {UpscalerExternalResource::ExecutionOrder, true}
+};
+constexpr UpscalerExternalResourceDependency kFsr1Dependencies[] = {
+    {UpscalerExternalResource::SourceColor, true},
+    {UpscalerExternalResource::PresentationTarget, true},
+    {UpscalerExternalResource::Device, true},
+    {UpscalerExternalResource::ExecutionOrder, true}
+};
+
+const UpscalerContract kNativeContract{
+    .inputFormats = kRgba8Format,
+    .outputFormats = kRgba8Format,
+    .requiredFrameInputs = kColorInput,
+    .contextLifetime = UpscalerContextLifetime::None,
+    .retainsHistory = false,
+    .resetHistory = &ResetNoUpscalerHistory,
+    .executionRecording = UpscalerExecutionRecording::RenderGraph,
+    .externalResourceDependencies = kNativeDependencies
+};
+const UpscalerContract kLinearContract{
+    .inputFormats = kRgba8Format,
+    .outputFormats = kRgba8Format,
+    .requiredFrameInputs = kColorInput,
+    .contextLifetime = UpscalerContextLifetime::None,
+    .retainsHistory = false,
+    .resetHistory = &ResetNoUpscalerHistory,
+    .executionRecording = UpscalerExecutionRecording::RenderGraph,
+    .externalResourceDependencies = kLinearDependencies
+};
+const UpscalerContract kFsr1Contract{
+    .inputFormats = kRgba8Format,
+    .outputFormats = kRgba8Format,
+    .requiredFrameInputs = kColorInput,
+    .contextLifetime = UpscalerContextLifetime::RenderGraph,
+    .retainsHistory = false,
+    .resetHistory = &ResetNoUpscalerHistory,
+    .executionRecording = UpscalerExecutionRecording::RenderGraph,
+    .externalResourceDependencies = kFsr1Dependencies
+};
+
+const std::array<UpscalerBackendDescriptor, 3> kUpscalerBackends{{
+    {"native", "", "", &kNativeContract, true, true},
+    {"linear", kLinearUpscalerModuleTypeName, "", &kLinearContract, true, false},
+    {"fsr1", kFsr1UpscalerModuleTypeName, "Upscaler:Fsr1", &kFsr1Contract, true, false}
+}};
+
 } // namespace
+
+std::span<const UpscalerBackendDescriptor> GetUpscalerBackendDescriptors() noexcept {
+    return kUpscalerBackends;
+}
+
+const UpscalerBackendDescriptor* FindUpscalerBackend(std::string_view id) noexcept {
+    const auto found = std::find_if(kUpscalerBackends.begin(), kUpscalerBackends.end(),
+                                    [id](const auto& backend) { return backend.id == id; });
+    return found == kUpscalerBackends.end() ? nullptr : &*found;
+}
 
 VIXEN_REGISTER_NODE(LinearUpscalerModuleType);
 VIXEN_REGISTER_NODE(Fsr1UpscalerModuleType);

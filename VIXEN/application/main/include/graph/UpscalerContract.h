@@ -1,0 +1,214 @@
+#pragma once
+
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <span>
+#include <string_view>
+#include <vector>
+
+namespace Vixen::RenderGraph {
+
+struct UpscalerExtent {
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
+struct UpscalerExtentSupport {
+    UpscalerExtent minimum{1, 1};
+    UpscalerExtent maximum{
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max()};
+    uint32_t widthMultiple = 1;
+    uint32_t heightMultiple = 1;
+
+    constexpr bool Supports(UpscalerExtent extent) const noexcept {
+        return extent.width >= minimum.width && extent.width <= maximum.width &&
+               extent.height >= minimum.height && extent.height <= maximum.height &&
+               widthMultiple != 0 && heightMultiple != 0 &&
+               extent.width % widthMultiple == 0 && extent.height % heightMultiple == 0;
+    }
+};
+
+// Formats and frame semantics are engine vocabulary. Provider adapters translate them to the
+// format and input names used by their own APIs.
+enum class UpscalerImageFormat : uint8_t {
+    Rgba8Unorm,
+    Rgba16Float,
+    Rg16Float,
+    R32Float
+};
+
+enum class UpscalerFrameInput : uint8_t {
+    Color,
+    Depth,
+    MotionVectors,
+    Jitter,
+    Exposure,
+    ReactiveMask,
+    TransparencyMask
+};
+
+enum class UpscalerContextLifetime : uint8_t {
+    None,
+    Frame,
+    RenderGraph,
+    Device
+};
+
+enum class UpscalerHistoryResetCause : uint8_t {
+    InputExtentChanged,
+    OutputExtentChanged,
+    CameraCut,
+    DeviceChanged,
+    Explicit
+};
+
+using UpscalerHistoryReset = void (*)(void* context,
+                                      UpscalerHistoryResetCause cause) noexcept;
+
+enum class UpscalerExecutionRecording : uint8_t {
+    RenderGraph,
+    ExternalCommandBuffer
+};
+
+enum class UpscalerExternalResource : uint8_t {
+    SourceColor,
+    PresentationTarget,
+    Device,
+    ExecutionOrder
+};
+
+struct UpscalerExternalResourceDependency {
+    UpscalerExternalResource resource;
+    bool required;
+};
+
+struct UpscalerContract {
+    UpscalerExtentSupport inputExtents{};
+    UpscalerExtentSupport outputExtents{};
+    std::span<const UpscalerImageFormat> inputFormats{};
+    std::span<const UpscalerImageFormat> outputFormats{};
+    std::span<const UpscalerFrameInput> requiredFrameInputs{};
+    UpscalerContextLifetime contextLifetime = UpscalerContextLifetime::None;
+    bool retainsHistory = false;
+    UpscalerHistoryReset resetHistory = nullptr;
+    UpscalerExecutionRecording executionRecording = UpscalerExecutionRecording::RenderGraph;
+    std::span<const UpscalerExternalResourceDependency> externalResourceDependencies{};
+};
+
+struct UpscalerFrameDescription {
+    UpscalerExtent inputExtent{};
+    UpscalerExtent outputExtent{};
+    UpscalerImageFormat inputFormat = UpscalerImageFormat::Rgba8Unorm;
+    UpscalerImageFormat outputFormat = UpscalerImageFormat::Rgba8Unorm;
+    std::span<const UpscalerFrameInput> availableFrameInputs{};
+};
+
+inline bool SupportsUpscalerFrame(const UpscalerContract& contract,
+                                 const UpscalerFrameDescription& frame) noexcept {
+    if (!contract.inputExtents.Supports(frame.inputExtent) ||
+        !contract.outputExtents.Supports(frame.outputExtent) ||
+        std::find(contract.inputFormats.begin(), contract.inputFormats.end(),
+                  frame.inputFormat) == contract.inputFormats.end() ||
+        std::find(contract.outputFormats.begin(), contract.outputFormats.end(),
+                  frame.outputFormat) == contract.outputFormats.end()) {
+        return false;
+    }
+
+    return std::all_of(contract.requiredFrameInputs.begin(),
+                       contract.requiredFrameInputs.end(),
+                       [&frame](UpscalerFrameInput required) {
+                           return std::find(frame.availableFrameInputs.begin(),
+                                            frame.availableFrameInputs.end(), required) !=
+                                  frame.availableFrameInputs.end();
+                       });
+}
+
+inline void ResetUpscalerHistory(const UpscalerContract& contract,
+                                 void* context,
+                                 UpscalerHistoryResetCause cause) noexcept {
+    if (contract.resetHistory) {
+        contract.resetHistory(context, cause);
+    }
+}
+
+enum class UpscalerSelectionFailureReason : uint8_t {
+    None,
+    NotCompiled,
+    NotPermittedByPass,
+    RuntimeUnsupported,
+    InputIncompatible,
+    NotInitialized,
+    Unqualified,
+    OverBudget
+};
+
+struct UpscalerEligibility {
+    bool compiled = false;
+    bool permittedByPass = false;
+    bool runtimeSupported = false;
+    bool inputCompatible = false;
+    bool initialized = false;
+    bool qualified = false;
+    bool admittedByBudget = false;
+};
+
+constexpr UpscalerSelectionFailureReason EvaluateUpscalerEligibility(
+    const UpscalerEligibility& eligibility) noexcept {
+    if (!eligibility.compiled) return UpscalerSelectionFailureReason::NotCompiled;
+    if (!eligibility.permittedByPass) return UpscalerSelectionFailureReason::NotPermittedByPass;
+    if (!eligibility.runtimeSupported) return UpscalerSelectionFailureReason::RuntimeUnsupported;
+    if (!eligibility.inputCompatible) return UpscalerSelectionFailureReason::InputIncompatible;
+    if (!eligibility.initialized) return UpscalerSelectionFailureReason::NotInitialized;
+    if (!eligibility.qualified) return UpscalerSelectionFailureReason::Unqualified;
+    if (!eligibility.admittedByBudget) return UpscalerSelectionFailureReason::OverBudget;
+    return UpscalerSelectionFailureReason::None;
+}
+
+constexpr std::string_view UpscalerSelectionFailureText(
+    UpscalerSelectionFailureReason reason) noexcept {
+    switch (reason) {
+        case UpscalerSelectionFailureReason::None: return "eligible";
+        case UpscalerSelectionFailureReason::NotCompiled: return "not compiled";
+        case UpscalerSelectionFailureReason::NotPermittedByPass: return "not permitted by pass";
+        case UpscalerSelectionFailureReason::RuntimeUnsupported: return "runtime unsupported";
+        case UpscalerSelectionFailureReason::InputIncompatible: return "input incompatible";
+        case UpscalerSelectionFailureReason::NotInitialized: return "not initialized";
+        case UpscalerSelectionFailureReason::Unqualified: return "not qualified";
+        case UpscalerSelectionFailureReason::OverBudget: return "not admitted by budget";
+    }
+    return "unknown";
+}
+
+struct UpscalerProviderCandidate {
+    std::string_view id;
+    UpscalerEligibility eligibility{};
+    bool nativeFallback = false;
+};
+
+struct UpscalerRejectedProvider {
+    std::string_view id;
+    UpscalerSelectionFailureReason reason = UpscalerSelectionFailureReason::None;
+};
+
+struct UpscalerSelectionResult {
+    const UpscalerProviderCandidate* selected = nullptr;
+    std::vector<UpscalerRejectedProvider> rejected;
+};
+
+inline UpscalerSelectionResult SelectUpscalerProvider(
+    std::span<const UpscalerProviderCandidate> candidates) {
+    UpscalerSelectionResult result;
+    for (const auto& candidate : candidates) {
+        const auto reason = EvaluateUpscalerEligibility(candidate.eligibility);
+        if (reason == UpscalerSelectionFailureReason::None) {
+            result.selected = &candidate;
+            return result;
+        }
+        result.rejected.push_back({candidate.id, reason});
+    }
+    return result;
+}
+
+} // namespace Vixen::RenderGraph
