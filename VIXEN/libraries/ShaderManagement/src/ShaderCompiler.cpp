@@ -7,6 +7,7 @@
 #include <spirv-tools/libspirv.hpp>
 
 #include <fstream>
+#include <mutex>
 
 namespace ShaderManagement {
 

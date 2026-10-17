@@ -12,7 +12,9 @@
 #ifdef _WIN32
 #pragma comment(linker, "/subsystem:console")
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #define APP_NAME_STR_LEN 80
 #define _CRT_SECURE_NO_WARNINGS
 #else // _WIN32

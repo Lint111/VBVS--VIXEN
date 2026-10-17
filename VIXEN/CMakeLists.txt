@@ -406,6 +406,12 @@ endif()
 # and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
 project(${Recipe_Name} VERSION 0.1.0)
 
+# Windows headers can arrive through Vulkan before the optional central PCH.
+# Preserve ordinary C++ min/max semantics in both PCH and non-PCH builds.
+if(WIN32)
+    add_compile_definitions("$<$<COMPILE_LANGUAGE:CXX>:NOMINMAX=>")
+endif()
+
 # The CapabilityGraph owns build-time capability evaluation as well as runtime resolution. The
 # configure probe compiles that graph with its Vulkan loader dependency and asks it to emit the
 # constexpr header consumed by all VIXEN targets.
