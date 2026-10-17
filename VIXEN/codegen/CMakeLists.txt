@@ -540,8 +540,12 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         message(FATAL_ERROR "[codegen] cannot identify the SDK for the CodegenTool cache")
     endif()
     file(SHA256 "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake" _build_recipe)
+    set(_tool_materializer_suffix "")
+    if(_codegen_need_wsl_bridge)
+        set(_tool_materializer_suffix "|wsl-materializer-v1")
+    endif()
     string(SHA256 _tool_key
-        "${YEROKET_KERNEL_SHA}|${CMAKE_HOST_SYSTEM_NAME}|${CMAKE_HOST_SYSTEM_PROCESSOR}|${_codegen_need_wsl_bridge}|${VIXEN_DOTNET}|${_codegen_dotnet_sdk_list}|${_yk_tfm}|Release|invariant|${_build_recipe}|artifacts-v1")
+        "${YEROKET_KERNEL_SHA}|${CMAKE_HOST_SYSTEM_NAME}|${CMAKE_HOST_SYSTEM_PROCESSOR}|${_codegen_need_wsl_bridge}|${VIXEN_DOTNET}|${_codegen_dotnet_sdk_list}|${_yk_tfm}|Release|invariant|${_build_recipe}|artifacts-v1${_tool_materializer_suffix}")
     set(_tool_cache "${VIXEN_KERNEL_CACHE_DIR}/tools/${_tool_key}")
     set(_tool_cached_bin "${_tool_cache}/bin")
     set(_tool_local_bin "${CMAKE_CURRENT_BINARY_DIR}/tool")
@@ -549,8 +553,20 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_tool_config "${CMAKE_CURRENT_BINARY_DIR}/tool-build.cmake")
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_tool_cached_bin}" _tool_cached_bin_run)
+        _codegen_to_wsl_path("${_tool_cache}" _tool_cache_run)
+        _codegen_to_wsl_path("${_tool_local_bin}" _tool_local_bin_run)
+        _codegen_to_wsl_path("${_tool_stamp}" _tool_stamp_run)
+        _codegen_to_wsl_path("${_tool_config}" _tool_config_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake" _tool_script_run)
         _codegen_to_wsl_path("${_tool_cache}/artifacts" _tool_artifacts_run)
-        set(_tool_build_command ${WSL_EXE} --cd / -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj")
+        execute_process(COMMAND ${WSL_EXE} --cd / -e sh -lc "command -v cmake"
+            RESULT_VARIABLE _cmake_result OUTPUT_VARIABLE _wsl_cmake OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT _cmake_result EQUAL 0 OR NOT _wsl_cmake)
+            message(FATAL_ERROR "[codegen] WSL CodegenTool materialization requires cmake in WSL")
+        endif()
+        set(_tool_build_command "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj")
+        set(_tool_materialize_command ${WSL_EXE} --cd / -e "${_wsl_cmake}"
+            "-DVIXEN_CODEGEN_BUILD_CONFIG=${_tool_config_run}" -P "${_tool_script_run}")
     elseif(UNIX AND NOT APPLE)
         set(_tool_cached_bin_run "${_tool_cached_bin}")
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
@@ -563,8 +579,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
         -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
         --output "${_tool_cached_bin_run}")
-    vixen_codegen_build_config("${_tool_config}" "${_tool_cache}"
-        "${_tool_cached_bin}" "${_tool_local_bin}" "${_tool_stamp}" ${_tool_build_command})
+    if(_codegen_need_wsl_bridge)
+        vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
+            "${_tool_cached_bin_run}" "${_tool_local_bin_run}" "${_tool_stamp_run}" ${_tool_build_command})
+    else()
+        vixen_codegen_build_config("${_tool_config}" "${_tool_cache}"
+            "${_tool_cached_bin}" "${_tool_local_bin}" "${_tool_stamp}" ${_tool_build_command})
+        set(_tool_materialize_command "${CMAKE_COMMAND}" "-DVIXEN_CODEGEN_BUILD_CONFIG=${_tool_config}"
+            -P "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake")
+    endif()
     set(_yk_dll "${_tool_local_bin}/CodegenTool.dll")
     # The DLL is a direct dependency of the tool/check targets, so declare it as
     # an OUTPUT alongside the completion stamp. Makefiles do not infer a rule for
@@ -572,8 +595,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_command(OUTPUT "${_tool_stamp}" "${_yk_dll}"
         BYPRODUCTS "${_tool_local_bin}/CodegenTool.deps.json"
             "${_tool_local_bin}/CodegenTool.runtimeconfig.json"
-        COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CODEGEN_BUILD_CONFIG=${_tool_config}"
-            -P "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake"
+        COMMAND ${_tool_materialize_command}
         DEPENDS "${_tool_config}" "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake"
             "${_yk_root}/.archive-complete"
         COMMENT "[codegen] materializing cached kernel CodegenTool"
