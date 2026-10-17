@@ -82,6 +82,7 @@
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
 #include "ShaderCompiler.h"
+#include "ShaderPreprocessor.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
@@ -942,7 +943,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
 
 TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
     using GlyphInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
-    using GlyphSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
+    using GlyphSegment = Yeroket::Sdf::Generated::PathSegment;
 
     auto appendContour = [](GlyphInstance& glyph, std::initializer_list<glm::vec2> vertices) {
         ASSERT_GE(vertices.size(), 3U);
@@ -988,11 +989,10 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
     std::array<GlyphInstance, 2> glyphInstances{makeGlyph(false), makeGlyph(true)};
     const std::span<const GlyphInstance> glyphRows(glyphInstances);
 
-    std::ifstream glyphFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
-    ASSERT_TRUE(glyphFile.good()) << "Cannot open generated glyph layout: "
-                                 << GLYPH_OUTLINE_INSTANCE_GLSL_PATH;
-    std::ostringstream glyphSource;
-    glyphSource << glyphFile.rdbuf();
+    ShaderManagement::ShaderPreprocessor glyphPreprocessor;
+    const auto glyphSource = glyphPreprocessor.PreprocessFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
+    ASSERT_TRUE(glyphSource.success) << "Cannot resolve generated glyph layout: "
+                                     << GLYPH_OUTLINE_INSTANCE_GLSL_PATH << ": " << glyphSource.errorMessage;
     std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
     ASSERT_TRUE(kernelFile.good()) << "Cannot open generated SDF kernels: "
                                    << SDF_CORE_KERNELS_GLSL_PATH;
@@ -1026,7 +1026,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
         const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
             &instruction, 1U, /*recipeId=*/0, false, nullptr, glyphRows);
         const std::string shaderSource = ComposeGlyphComputeShader(
-            glyphSource.str(), kernelSource.str(), fieldFn);
+            glyphSource.processedSource, kernelSource.str(), fieldFn);
         ShaderManagement::CompilationOptions options;
         options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
         auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSource, "main", options);

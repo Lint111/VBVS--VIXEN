@@ -428,7 +428,7 @@
     ] },
     { "owner": "core:haul-stock-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulStockSpend", "root": false, "order": 68, "message": true, "kind": "haul_stock_spend", "indexes": [{ "name": "Source", "fields": ["Subject", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Subject", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
-      { "name": "Resource", "storage": "namespacedId", "refKind": "resource", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef>", "kindRefCatalog": "resource-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.ResourceRef" },
+      { "name": "Resource", "storage": "entityId", "refKind": "resource", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef>" },
       { "name": "FromBody", "storage": "int" },
       { "name": "CargoKg", "storage": "double", "unit": { "name": "Kilogram", "symbol": "kg", "dimensions": [1, 0, 0, 0, 0, 0], "scaleToSi": 1 } }
     ] },
@@ -1658,7 +1658,7 @@
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } }
   ] },
   "knowledge_density_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
-    { "name": "value", "required": true, "detail": "the per-tag density scalar (erodible)", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "value", "required": true, "detail": "the per-tag density scalar (erodible)", "value": { "kind": "scalar", "scalar": "float", "rate": "(float value, float t, float decay) => -decay * value", "rateSubsteps": 32, "rateSite": "SubstrateKinds.cs:173" } },
     { "name": "tag", "required": true, "detail": "which tag this density is for (stored ref into the tag catalog)", "value": { "kind": "scalar", "scalar": "id", "refKind": "tag", "kindRefCatalog": "tag-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.TagRef" } }
   ] },
   "knowledge_map": { "codegen": { "introducedInVersion": 96 }, "fields": [
@@ -1692,7 +1692,7 @@
     { "name": "shaping_class", "required": true, "detail": "default | joining | indic | cluster", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.ShapingClass", "options": ["default", "joining", "indic", "cluster"] } },
     { "name": "line_breaking_class", "required": true, "detail": "word | phrase | dictionary", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.LineBreakingClass", "options": ["word", "phrase", "dictionary"] } },
     { "name": "casing_behavior", "required": true, "detail": "locale-sensitive | none | turkic", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.CasingBehavior", "options": ["locale-sensitive", "none", "turkic"] } },
-    { "name": "plural_categories", "required": true, "detail": "zero | one | two | few | many | other", "value": { "kind": "valueList", "element": "enum", "clrType": "Undertow.Modding.PluralCategory" } },
+    { "name": "plural_categories", "required": true, "detail": "zero | one | two | few | many | other", "value": { "kind": "valueList", "element": "enum", "elementBacking": "byte", "elementRealEnum": "Undertow.Modding.PluralCategory", "clrType": "Undertow.Modding.PluralCategory" } },
     { "name": "gender_categories", "required": true, "detail": "declared grammatical gender categories", "value": { "kind": "valueList", "element": "text" } },
     { "name": "font_fallback", "required": true, "detail": "ordered font faces used for glyph fallback", "value": { "kind": "scalar", "scalar": "id", "refKind": "font_face", "kindRefCatalog": "font-face-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.FontFaceRef", "kindRefList": true } },
     { "name": "minimum_font_size_pt", "required": true, "detail": "minimum readable font size in points", "value": { "kind": "scalar", "scalar": "float" } },

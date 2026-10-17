@@ -100,7 +100,8 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                                id,
                                                usesDeclarePosition(entry),
                                                &registry,
-                                               entry->glyphInstances)
+                                               entry->glyphInstances,
+                                               entry->pathInstances)
             << "\n";
     }
 

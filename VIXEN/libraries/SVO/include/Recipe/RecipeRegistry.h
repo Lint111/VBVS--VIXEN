@@ -14,6 +14,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 
 namespace Vixen::SVO {
 
@@ -101,6 +102,8 @@ public:
         // Each typed reference in bytecode indexes one complete GPU glyph instance.
         // The instance owns its fixed-width contour bucket; no separate contour pool exists.
         std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances;
+        // Each PathDistance reference indexes one complete GPU path instance.
+        std::vector<Yeroket::Sdf::Generated::PathInstance> pathInstances;
     };
 
     enum class RegisterResult {

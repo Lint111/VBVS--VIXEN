@@ -469,7 +469,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         const float centerY = (normalized.BoundsMin.Y + normalized.BoundsMax.Y) * 0.5f;
         for (std::uint32_t segmentIndex = 0; segmentIndex < normalized.SegmentCount; ++segmentIndex) {
             auto& segment = normalized.Segments[segmentIndex];
-            for (Vixen::Text::GlyphOutlinePoint* point :
+            for (Yeroket::Sdf::Generated::PathPoint* point :
                  {&segment.P0, &segment.P1, &segment.P2, &segment.P3}) {
                 point->X = (point->X - centerX) * kOutlineScale;
                 point->Y = (point->Y - centerY) * kOutlineScale;
