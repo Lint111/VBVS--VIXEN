@@ -1241,8 +1241,9 @@ private:
             graph->GetInstanceByName("render_path/reconstruction_history/state"));
         if (!historyA || !historyB || !display || !historyState ||
             historyA->GetImageCount() != 1 || historyB->GetImageCount() != 1 ||
+            historyA->GetImage(0) == VK_NULL_HANDLE || historyB->GetImage(0) == VK_NULL_HANDLE ||
             historyA->GetImage(0) == historyB->GetImage(0) ||
-            historyA->GetView(0) == historyB->GetView(0) ||
+            (historyA->GetView(0) != VK_NULL_HANDLE && historyA->GetView(0) == historyB->GetView(0)) ||
             historyA->GetFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
             historyB->GetFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
             historyA->GetExtent().width != display->GetExtent().width ||
