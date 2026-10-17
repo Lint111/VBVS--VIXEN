@@ -257,6 +257,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
+    src/Nodes/ReconstructionHistoryStateNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
     src/Nodes/ComputeStageNode.cpp      # auto-sync P5b M2: generic single-compute-pass submit node

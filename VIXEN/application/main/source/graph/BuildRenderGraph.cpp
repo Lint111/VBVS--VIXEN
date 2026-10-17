@@ -29,6 +29,8 @@
 #include "graph/CornellBoxSceneDefinition.h"
 #include "graph/UpscalerModules.h"
 #include "graph/ReconstructionDepth.h"
+#include "graph/ReconstructionExposure.h"
+#include "graph/ReconstructionHistory.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
@@ -9474,6 +9476,38 @@ void VulkanGraphApplication::BuildRenderGraph() {
             ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
         sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", depth,
             ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
+        ReconstructionHistoryParams historyParams;
+        historyParams.batch = &batch;
+        historyParams.common = lightingCommon;
+        historyParams.sourceTarget = renderTargetNode;
+        historyParams.camera = cameraNode;
+        const auto history = renderGraph->Instantiate<ReconstructionHistoryModule>(
+            "render_path/reconstruction_history", historyParams);
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryA", history,
+            ReconstructionHistoryPorts::HISTORY_A_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryB", history,
+            ReconstructionHistoryPorts::HISTORY_B_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryReset", history,
+            ReconstructionHistoryPorts::RESET.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryValid", history,
+            ReconstructionHistoryPorts::VALID.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryWriteIndex", history,
+            ReconstructionHistoryPorts::WRITE_INDEX.index, SlotRole::Execute);
+        if (hdrExposureEnabled) {
+            ReconstructionExposureParams exposure;
+            exposure.batch = &batch;
+            exposure.common = lightingCommon;
+            exposure.providers = sceneProviders;
+            exposure.meterBuffer = exposureMeterBuffer;
+            exposure.meterProducer = exposureReduceNode;
+            exposure.makeShaderFamily = makeLightingFamily;
+            exposure.registerShaderFamily = registerModuleShaderFamily;
+            exposure.registerPassMetric = params.registerPassMetric;
+            const auto input = renderGraph->Instantiate<ReconstructionExposureModule>(
+                "render_path/reconstruction_exposure", exposure);
+            sceneProviders.ProvideSubGraphOutput("exposureImage", input,
+                ReconstructionExposurePorts::EXPOSURE_VIEW.index, SlotRole::Execute);
+        }
     }
 
     if (fsr1UpscalerSelected || linearUpscalerRequested) {

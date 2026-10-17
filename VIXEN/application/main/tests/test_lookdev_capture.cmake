@@ -31,10 +31,14 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
     message(STATUS "[Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)")
 
-    foreach(_depth_case IN ITEMS native reduced-odd)
+    foreach(_depth_case IN ITEMS native reduced-odd fixed-exposure)
         set(_depth_scale 1.0)
+        set(_depth_fixed_exposure 0)
         if(_depth_case STREQUAL "reduced-odd")
             set(_depth_scale 0.5)
+        endif()
+        if(_depth_case STREQUAL "fixed-exposure")
+            set(_depth_fixed_exposure 1)
         endif()
         set(_depth_test "Application.ReconstructionInputs.Depth.${_depth_case}")
         set(_depth_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/${_depth_case}")
@@ -42,7 +46,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
             "--render-scale=${_depth_scale}" "--upscaler=none")
         set_tests_properties("${_depth_test}" PROPERTIES LABELS "Application" TIMEOUT 900
-            ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_depth_dir};VIXEN_PERF_CSV=${_depth_dir}/perf.csv"
+            ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_depth_dir};VIXEN_PERF_CSV=${_depth_dir}/perf.csv;VIXEN_HDR_EXPOSURE_FIXED=${_depth_fixed_exposure}"
             ENVIRONMENT_MODIFICATION "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
         vixen_lock_gpu_tests(TESTS "${_depth_test}")
     endforeach()

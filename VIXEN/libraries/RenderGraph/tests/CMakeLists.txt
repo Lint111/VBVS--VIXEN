@@ -45,6 +45,7 @@ add_executable(test_rendergraph_core
     test_lightingconfig_parity.cpp
     Nodes/test_camera_history.cpp
     Nodes/test_reconstruction_depth.cpp
+    Nodes/test_reconstruction_history.cpp
 )
 
 # Keep this consumer fixture strict: its typed callback names must never hide

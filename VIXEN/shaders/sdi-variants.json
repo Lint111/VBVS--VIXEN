@@ -7,6 +7,11 @@
   ],
   "programs": [
     {
+      "name": "ReconstructionExposure",
+      "source": "ReconstructionExposure.comp",
+      "variants": [[]]
+    },
+    {
       "name": "ReconstructionDepth",
       "source": "ReconstructionDepth.comp",
       "variants": [[]]

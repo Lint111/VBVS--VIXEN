@@ -25,6 +25,7 @@ add_library(VixenApp STATIC
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp  # auto-sync P4 M4
@@ -49,6 +50,7 @@ vixen_generate_node_manifest(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp

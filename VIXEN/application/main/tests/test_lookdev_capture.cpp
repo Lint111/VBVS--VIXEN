@@ -6,6 +6,7 @@
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Nodes/ReconstructionHistoryStateNode.h"
 #include "Debug/RenderTargetReadback.h"
 #include "Nodes/PushConstantGathererNode.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
@@ -1231,6 +1232,56 @@ private:
         if (!viewFile || !normalizedFile || !result || !png || !hits || !misses || !offAxis || failures) {
             captureError_ = "depth witness failed: " + std::to_string(failures) + " pixel mismatches; " +
                 std::to_string(hits) + " hits, " + std::to_string(misses) + " misses";
+            return false;
+        }
+        auto* historyA = targetByName("render_path/reconstruction_history/history_a");
+        auto* historyB = targetByName("render_path/reconstruction_history/history_b");
+        auto* display = targetByName("main_offscreen_target");
+        auto* historyState = dynamic_cast<ReconstructionHistoryStateNode*>(
+            graph->GetInstanceByName("render_path/reconstruction_history/state"));
+        if (!historyA || !historyB || !display || !historyState ||
+            historyA->GetImageCount() != 1 || historyB->GetImageCount() != 1 ||
+            historyA->GetImage(0) == historyB->GetImage(0) ||
+            historyA->GetView(0) == historyB->GetView(0) ||
+            historyA->GetFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
+            historyB->GetFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
+            historyA->GetExtent().width != display->GetExtent().width ||
+            historyA->GetExtent().height != display->GetExtent().height ||
+            historyB->GetExtent().width != display->GetExtent().width ||
+            historyB->GetExtent().height != display->GetExtent().height ||
+            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::RESET.index)->GetHandle<uint32_t>() != 1u ||
+            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::VALID.index)->GetHandle<uint32_t>() != 0u) {
+            captureError_ = "unwritten viewport history must own two distinct output-size images and remain invalid";
+            return false;
+        }
+        auto* exposure = targetByName("render_path/reconstruction_exposure/exposure");
+        std::vector<uint8_t> exposureBytes;
+        auto* meter = dynamic_cast<StorageBufferNode*>(graph->GetInstanceByName("exposure_meter_buffer"));
+        if (!exposure || exposure->GetExtent().width != 1 || exposure->GetExtent().height != 1 ||
+            exposure->GetFormat() != VK_FORMAT_R32_SFLOAT || !meter ||
+            !Debug::ReadRenderTargetBytes(device, exposure, device->queue, device->graphicsQueueIndex,
+                                         exposureBytes, captureError_) || exposureBytes.size() != 4) {
+            captureError_ = "reconstruction exposure must be a 1x1 R32F image";
+            return false;
+        }
+        void* mappedMeter = meter->MapForReadback(device);
+        if (!mappedMeter) {
+            captureError_ = "cannot read the whole-frame exposure meter";
+            return false;
+        }
+        float ev100, actualExposure;
+        std::memcpy(&ev100, mappedMeter, sizeof(ev100));
+        std::memcpy(&actualExposure, exposureBytes.data(), sizeof(actualExposure));
+        meter->UnmapReadback(device);
+        const float expectedExposure = std::exp2(ev100 + scenario.lighting.exposureCompensationEV);
+        std::ofstream exposureFile(stem.string() + ".exposure.f32", std::ios::binary);
+        exposureFile.write(reinterpret_cast<const char*>(exposureBytes.data()), exposureBytes.size());
+        std::ofstream exposureResult(stem.string() + ".exposure.json");
+        exposureResult << "{\"exposure\":" << actualExposure << ",\"expected\":" << expectedExposure
+                       << ",\"ev100\":" << ev100 << ",\"pre_exposure\":1}\n";
+        if (!exposureFile || !exposureResult || !std::isfinite(actualExposure) || actualExposure <= 0.0f ||
+            std::abs(actualExposure - expectedExposure) > expectedExposure * 2.0e-5f) {
+            captureError_ = "reconstruction exposure does not match the scene-linear meter scale";
             return false;
         }
         return true;
