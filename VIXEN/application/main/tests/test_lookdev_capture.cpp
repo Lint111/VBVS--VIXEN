@@ -261,9 +261,11 @@ std::vector<CaptureScenario> BuildScenarios() {
         for (size_t angle = 0; angle < angleCount; ++angle) {
             if (!slowPan && requestedAngle >= 0 && static_cast<int>(angle) != requestedAngle)
                 continue;
-            const float yaw = slowPan
+            float yaw = slowPan
                 ? 6.28318530718f * static_cast<float>(angle) / static_cast<float>(kPanAngles)
                 : yaws[angle];
+            if (const char* offsetText = std::getenv("VIXEN_LOOKDEV_CAPTURE_YAW_OFFSET_DEGREES"))
+                yaw += std::strtof(offsetText, nullptr) * 0.017453292519943295f;
             std::ostringstream filename;
             filename << preset.name << (slowPan ? "-pan-" : "-angle-")
                      << std::setfill('0') << std::setw(slowPan ? 2 : 0) << angle << ".png";
@@ -973,6 +975,15 @@ public:
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_DISTANCE, orbitDistance);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_YAW, scenarios_.front().yawRadians);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_PITCH, kPitchRadians);
+            if (const char* shiftText = std::getenv("VIXEN_LOOKDEV_CAPTURE_LOOK_SHIFT")) {
+                char* end = nullptr;
+                const float shiftX = std::strtof(shiftText, &end);
+                const float shiftY = (end && *end == ',') ? std::strtof(end + 1, &end) : 0.0f;
+                const float shiftZ = (end && *end == ',') ? std::strtof(end + 1, nullptr) : 0.0f;
+                camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_LOOK_TARGET_X, orbitCenterX + shiftX);
+                camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_LOOK_TARGET_Y, orbitCenterY + shiftY);
+                camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_LOOK_TARGET_Z, orbitCenterZ + shiftZ);
+            }
         }
 
         lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
@@ -1135,6 +1146,7 @@ public:
                 return false;
             }
         }
+        if (std::getenv("VIXEN_LOOKDEV_PICK_TRACE") && !TracePick()) return false;
         ++framesInScenario_;
         if (framesInScenario_ < framesPerScenario_) return true;
 
@@ -1172,6 +1184,41 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    // Per frame: the raw centre texel of the pick image (a single jittered read) next to the voted crosshair pick.
+    bool TracePick() {
+        using namespace Vixen::RenderGraph;
+        auto* graph = GetRenderGraph();
+        auto* deviceNode = dynamic_cast<DeviceNode*>(graph->GetInstanceByName("main_device"));
+        auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+        auto* pickNode = graph->GetInstanceByName("pick_id_target");
+        auto* provider = dynamic_cast<VoxelSelectionProviderNode*>(graph->GetInstanceByName("voxel_selection_provider"));
+        auto* sourceNode = graph->GetInstanceByName("compute_render_target");
+        auto* sourceOutput = sourceNode ? sourceNode->GetOutput(RenderTargetNodeConfig::RENDER_TARGET.index) : nullptr;
+        if (!device || !pickNode || !provider || !sourceOutput) {
+            captureError_ = "pick trace needs the pick target, provider and render target";
+            return false;
+        }
+        Vixen::Vulkan::Resources::RenderTargetData pickTarget;
+        pickTarget.buffers = {{pickNode->GetOutput(PickIdTargetNodeConfig::ID_IMAGE.index)->GetHandle<VkImage>(),
+            VK_NULL_HANDLE, pickNode->GetOutput(PickIdTargetNodeConfig::ID_IMAGE_VIEW.index)->GetHandle<VkImageView>(),
+            VK_IMAGE_LAYOUT_GENERAL}};
+        pickTarget.format = VK_FORMAT_R32G32_UINT;
+        pickTarget.imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        pickTarget.extent = sourceOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>()->GetExtent();
+        std::vector<uint8_t> bytes;
+        if (!Debug::ReadRenderTargetBytes(device, &pickTarget, device->queue, device->graphicsQueueIndex, bytes, captureError_) ||
+            bytes.size() != size_t(pickTarget.extent.width) * pickTarget.extent.height * 8u) return false;
+        uint32_t centre[2];
+        std::memcpy(centre, bytes.data() +
+            (size_t(pickTarget.extent.height / 2u) * pickTarget.extent.width + pickTarget.extent.width / 2u) * 8u, sizeof(centre));
+        const PickVoteResult vote = provider->CrosshairVote();
+        pickTrace_ += std::to_string(framesInScenario_) + ',' + std::to_string(centre[0]) + ',' + std::to_string(centre[1]) +
+                      ',' + std::to_string(vote.address) + ',' + std::to_string(vote.instance) + ',' +
+                      std::to_string(vote.sampleCount) + '\n';
+        std::ofstream(outputDir_ / "pick_trace.csv") << "frame,raw_address,raw_instance,vote_address,vote_instance,vote_samples\n" << pickTrace_;
+        return true;
+    }
+
     bool ExportDepthReadback(const CaptureScenario& scenario) {
         using namespace Vixen::RenderGraph;
         auto* graph = GetRenderGraph();
@@ -1630,6 +1677,7 @@ private:
     uint32_t framesInScenario_ = 0;
     bool modulePushChecked_ = false;
     std::string captureError_;
+    std::string pickTrace_;
     VkDevice snapshotDevice_ = VK_NULL_HANDLE;
     VkBuffer snapshotBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory snapshotMemory_ = VK_NULL_HANDLE;

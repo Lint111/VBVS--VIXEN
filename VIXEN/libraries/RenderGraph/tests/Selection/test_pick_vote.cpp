@@ -108,7 +108,8 @@ TEST(PickVote, WithoutJitterTheVoteIsTheSingleCurrentHit) {
 TEST(PickVote, ClassifiesMotionFromVectorAndValidity) {
     const glm::vec2 extent(1280.0f, 720.0f);
     EXPECT_EQ(ClassifyPickMotion(false, {0.2f, 0.2f}, 1.0f, extent), PickMotion::Unknown);
-    EXPECT_EQ(ClassifyPickMotion(true, {0.0f, 0.0f}, 0.0f, extent), PickMotion::Moved);
+    EXPECT_EQ(ClassifyPickMotion(true, {0.0f, 0.0f}, 0.0f, extent), PickMotion::Unknown);
+    EXPECT_EQ(ClassifyPickMotion(true, {0.0f, 0.01f}, 0.0f, extent), PickMotion::Moved);
     EXPECT_EQ(ClassifyPickMotion(true, {1e-6f, -1e-6f}, 1.0f, extent), PickMotion::Still);
     EXPECT_EQ(ClassifyPickMotion(true, {0.0f, 0.001f}, 1.0f, extent), PickMotion::Moved);
 }

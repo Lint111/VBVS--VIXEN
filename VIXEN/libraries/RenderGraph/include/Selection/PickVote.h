@@ -32,16 +32,17 @@ inline float PickVoteWeight(const glm::vec2& jitter) {
 // What the motion vector and validity under a sample say about the pixel.
 //   Moved   - the camera or the instance under the pixel moved, so older samples are another surface.
 //   Still   - the surface at this pixel did not move.
-//   Unknown - no evidence (miss, or the motion texel was not read).
+//   Unknown - no evidence (miss, no instance correspondence, or the motion texel was not read).
 enum class PickMotion { Unknown, Still, Moved };
 
-// Motion is previous UV minus current UV (unjittered cameras); validity 0 means no correspondence.
+// Motion is previous UV minus current UV (unjittered cameras). Validity 0 means no instance
+// correspondence: the vector still carries camera motion, but stillness cannot be confirmed.
 inline constexpr float kPickMotionTolerance = 0.05f;  // texels of render extent
 inline PickMotion ClassifyPickMotion(bool hit, const glm::vec2& motionUv, float validity, const glm::vec2& extent) {
     if (!hit) return PickMotion::Unknown;
-    if (validity < 0.5f) return PickMotion::Moved;
     const glm::vec2 texels = glm::abs(motionUv * extent);
-    return std::fmax(texels.x, texels.y) > kPickMotionTolerance ? PickMotion::Moved : PickMotion::Still;
+    if (std::fmax(texels.x, texels.y) > kPickMotionTolerance) return PickMotion::Moved;
+    return validity < 0.5f ? PickMotion::Unknown : PickMotion::Still;
 }
 
 struct PickVoteResult {
