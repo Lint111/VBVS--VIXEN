@@ -88,12 +88,12 @@ TEST(PrevCameraConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Struct SIZE == C++ struct size (64 B, per the codegen's own static_asserts).
+    // (a) Struct SIZE == C++ struct size (80 B, per the codegen's own static_asserts).
     EXPECT_EQ(static_cast<std::size_t>(prevCameraConfig->type.sizeInBytes), sizeof(PrevCameraConfig))
         << "PrevCameraConfig size (" << prevCameraConfig->type.sizeInBytes
         << ") != sizeof(PrevCameraConfig) (" << sizeof(PrevCameraConfig) << ") — std430 drift";
-    EXPECT_EQ(prevCameraConfig->type.sizeInBytes, 64u)
-        << "PrevCameraConfig size must be 64 (Inc2 M3 contract — a single mat4)";
+    EXPECT_EQ(prevCameraConfig->type.sizeInBytes, 80u)
+        << "PrevCameraConfig contains the previous matrix and the frame sampling record";
 
     // (b) Per-field offsets.
     ASSERT_FALSE(prevCameraConfig->members.empty())
@@ -102,6 +102,8 @@ TEST(PrevCameraConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
     struct Field { const char* name; std::size_t cppOffset; };
     const Field fields[] = {
         {"prevViewProj", offsetof(PrevCameraConfig, prevViewProj)},
+        {"reconstructionSampling", offsetof(PrevCameraConfig, reconstructionSamplingX)},
+        {"_samplingPadding", offsetof(PrevCameraConfig, _samplingPadding)},
     };
     for (const auto& f : fields) {
         const SpirvStructMember* sm = FindSubMember(*prevCameraConfig, f.name);

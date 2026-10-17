@@ -96,12 +96,23 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_INFO("[AccumulationHistoryNode] Reusing persistent history image pair across recompile");
     }
 
+    for (uint32_t i = 0; i < 2; ++i) {
+        targets_[i].buffers = {{images_[i], memories_[i], views_[i], VK_IMAGE_LAYOUT_GENERAL}};
+        targets_[i].format = kFormat;
+        targets_[i].extent = {width_, height_};
+        targets_[i].imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+
     const uint32_t currentIndex = nextWriteImageIndex_;
     const uint32_t previousIndex = 1u - currentIndex;
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, views_[previousIndex]);
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      images_[previousIndex]);
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, views_[currentIndex]);
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE,      images_[currentIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_TARGET,
+            static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[previousIndex]));
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET,
+            static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[currentIndex]));
 
     NODE_LOG_INFO("[AccumulationHistoryNode] History image pair published (" + std::to_string(width_) + "x" +
                   std::to_string(height_) + ", R16G16B16A16_SFLOAT storage images)");
@@ -114,6 +125,10 @@ void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      images_[previousIndex]);
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, views_[currentIndex]);
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE,      images_[currentIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_TARGET,
+            static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[previousIndex]));
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET,
+            static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[currentIndex]));
     nextWriteImageIndex_ = previousIndex;
 }
 
@@ -152,7 +167,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     imgInfo.arrayLayers   = 1;
     imgInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
     imgInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imgInfo.usage         = VK_IMAGE_USAGE_STORAGE_BIT;  // M1: storage only, no transfer needed yet
+    imgInfo.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 

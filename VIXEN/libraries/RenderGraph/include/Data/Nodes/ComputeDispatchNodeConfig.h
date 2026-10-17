@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 23;  // +B2 BUFFER_READ_ARRAY/ORDERING_WAIT_BUFFER appended at 20/21
+    static constexpr size_t INPUTS = 24;  // +B2 BUFFER_READ_ARRAY/ORDERING_WAIT_BUFFER appended at 20/21
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -339,6 +339,11 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadWrite,
         SlotScope::NodeLevel, ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    // Launch extent is independent of images this dispatch writes or presents.
+    INPUT_SLOT(DISPATCH_EXTENT_SOURCE, Vixen::Vulkan::Resources::IRenderTarget*, 23,
+        SlotNullability::Optional, SlotRole::Dependency | SlotRole::Execute,
+        SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -442,6 +447,8 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
 
         HandleDescriptor imageWriteArrayDesc{"std::vector<IRenderTarget*>"};
         INIT_INPUT_DESC(IMAGE_WRITE_ARRAY, "image_write_array", ResourceLifetime::Transient, imageWriteArrayDesc);
+
+        INIT_INPUT_DESC(DISPATCH_EXTENT_SOURCE, "dispatch_extent_source", ResourceLifetime::Persistent, renderTargetDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

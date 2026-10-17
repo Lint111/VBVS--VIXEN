@@ -2,10 +2,13 @@
 
 #include "Core/RenderGraph.h"
 #include "Nodes/SdiStageSynthesis.h"
+#include "ShaderFamily.h"
+#include "Data/ReconstructionJitter.h"
+#include <functional>
 
 namespace Vixen::RenderGraph {
 
-CONSTEXPR_NODE_CONFIG(ReconstructionHistoryPorts, 0, 9, SlotArrayMode::Single) {
+CONSTEXPR_NODE_CONFIG(ReconstructionHistoryPorts, 0, 10, SlotArrayMode::Single) {
     OUTPUT_SLOT(HISTORY_A, Vixen::Vulkan::Resources::IRenderTarget*, 0,
                 SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(HISTORY_B, Vixen::Vulkan::Resources::IRenderTarget*, 1,
@@ -17,8 +20,11 @@ CONSTEXPR_NODE_CONFIG(ReconstructionHistoryPorts, 0, 9, SlotArrayMode::Single) {
     OUTPUT_SLOT(FRAME_INDEX, uint32_t, 6, SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(WRITE_INDEX, uint32_t, 7, SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(RESET_REASONS, uint32_t, 8, SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(JITTER, glm::vec2, 9, SlotNullability::Required, SlotMutability::WriteOnly);
     ReconstructionHistoryPorts() {
         HandleDescriptor target{"IRenderTarget*"}, view{"VkImageView"}, scalar{"uint32_t"};
+        INIT_OUTPUT_DESC(JITTER, "primary_jitter", ResourceLifetime::Transient, HandleDescriptor{"glm::vec2"});
+        outputs[JITTER.index].visualRelaxationReason = "R494 temporal primary-ray sampling";
         INIT_OUTPUT_DESC(HISTORY_A, "history_a", ResourceLifetime::Persistent, target);
         INIT_OUTPUT_DESC(HISTORY_B, "history_b", ResourceLifetime::Persistent, target);
         INIT_OUTPUT_DESC(HISTORY_A_VIEW, "history_a_view", ResourceLifetime::Persistent, view);
@@ -36,12 +42,19 @@ struct ReconstructionHistoryParams {
     SdiStageCommon common{};
     NodeHandle sourceTarget{};
     NodeHandle camera{};
+    ReconstructionSamplingPath samplingPath = ReconstructionSamplingPath::CanonicalCapture;
+    NodeHandle sceneRadiance{};
+    NodeHandle sceneProducer{};
+    std::function<std::shared_ptr<ShaderManagement::ShaderFamily>(const std::string&, const std::string&)>
+        makeShaderFamily;
+    std::function<void(NodeHandle, std::shared_ptr<ShaderManagement::ShaderFamily>)> registerShaderFamily;
+    std::function<void(std::string, NodeHandle)> registerPassMetric;
 };
 
-// One group per viewport. The selected provider writes WRITE_INDEX and reads its
-// complement only when VALID is true, skipping prior contents whenever RESET is set.
-// The owner signals semantic cuts/switches via the bound state node's Invalidate,
-// and acknowledges successful writes with CommitHistoryFrame.
+// One group per viewport. The optional scene-radiance seed writes WRITE_INDEX;
+// its successful submission is acknowledged by the viewport owner. A temporal
+// provider replaces that seed and acknowledgement with its own history write,
+// reading the complement only when VALID is true and RESET is clear.
 class ReconstructionHistoryModule final : public SubGraphType<ReconstructionHistoryModule> {
 public:
     using PortConfig = ReconstructionHistoryPorts;

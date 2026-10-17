@@ -1,3 +1,4 @@
+#include <string_view>
 #include "Headers.h"
 #include "VulkanGraphApplication.h"
 #include "VulkanGlobalNames.h"
@@ -67,6 +68,11 @@ int main(int argc, char** argv) {
     // Instantiate the application directly (AR#7: the singleton is gone). unique_ptr so
     // teardown (~VulkanGraphApplication -> DeInitialize) runs deterministically on scope exit.
     auto app = std::make_unique<VulkanGraphApplication>();
+    auto samplingConfig = app->GetRenderPathConfig();
+    samplingConfig.samplingPath = Vixen::RenderGraph::ReconstructionSamplingPath::InteractiveVisual;
+    samplingConfig.temporalJitter = std::getenv("VIXEN_RECONSTRUCTION_JITTER") &&
+        std::string_view(std::getenv("VIXEN_RECONSTRUCTION_JITTER")) == "1";
+    app->SetRenderPathConfig(samplingConfig);
 
     // VIXEN_EXIT_AFTER_FRAMES=<n>: close cleanly after n frames (unattended A/B runs; exits
     // through the same path as a window close so logs flush via ExtractLogs).

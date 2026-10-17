@@ -6,7 +6,13 @@
 namespace Vixen::Gpu {
 struct PrevCameraConfig {
     glm::mat4 prevViewProj;
+    float reconstructionSamplingX;
+    float reconstructionSamplingY;
+    float reconstructionSamplingZ;
+    uint32_t _samplingPadding;
 };
-static_assert(sizeof(PrevCameraConfig) == 64, "PrevCameraConfig std430 size");
+static_assert(sizeof(PrevCameraConfig) == 80, "PrevCameraConfig std430 size");
 static_assert(offsetof(PrevCameraConfig, prevViewProj) == 0, "prevViewProj@0");
+static_assert(offsetof(PrevCameraConfig, reconstructionSamplingX) == 64, "reconstructionSamplingX@64");
+static_assert(offsetof(PrevCameraConfig, _samplingPadding) == 76, "_samplingPadding@76");
 } // namespace Vixen::Gpu

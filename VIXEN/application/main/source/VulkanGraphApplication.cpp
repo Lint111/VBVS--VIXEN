@@ -35,6 +35,7 @@
 // std::hash<> specialisations must be visible before RmlUi's bundled robin_hood.h wraps them.
 #include "Nodes/WindowNode.h"
 #include "Nodes/InputNode.h"
+#include "Nodes/ReconstructionHistoryStateNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
 #include "Nodes/ComputeDispatchNode.h"         // Inc1 M4 Task 6b: GetGPUPerformanceLogger() for the perf-CSV writer
 #include "Nodes/ComputeStageNode.h"            // Task 0.1: GetGPUPerformanceLogger() for direct_lighting/spatial_reuse/probe_update columns
@@ -381,6 +382,9 @@ bool VulkanGraphApplication::Render() {
             std::fprintf(stderr, "[RECIPE/latency] phase=render edge=begin wall_us=%lld\n",
                 static_cast<long long>(wallUs));
         }
+        auto* historyWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
+            renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
+        const uint64_t historySerial = historyWriter ? historyWriter->GetSubmissionSerial() : 0;
         VkResult result = renderGraph->RenderFrame();
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -412,6 +416,13 @@ bool VulkanGraphApplication::Render() {
             return false;
         }
 
+        auto* submittedHistoryWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
+            renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
+        if (submittedHistoryWriter && submittedHistoryWriter->GetSubmissionSerial() > historySerial) {
+            auto* state = dynamic_cast<Vixen::RenderGraph::ReconstructionHistoryStateNode*>(
+                renderGraph->GetInstanceByName("render_path/reconstruction_history/state"));
+            if (state) state->CommitHistoryFrame();
+        }
         currentFrame++;
         return true;
     } catch (const std::exception& e) {
@@ -4875,4 +4886,18 @@ bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path,
     auto* device = deviceNode->GetVulkanDevice();
     return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
         device, target, device->queue, device->graphicsQueueIndex, path, err);
+}
+
+void VulkanGraphApplication::NotifyReconstructionCameraCut() {
+    if (!renderGraph) return;
+    auto* camera = dynamic_cast<Vixen::RenderGraph::CameraNode*>(
+        renderGraph->GetInstanceByName("raymarch_camera"));
+    if (camera) camera->NotifyCameraCut();
+}
+
+void VulkanGraphApplication::SetReconstructionViewportActive(bool active) {
+    if (!renderGraph) return;
+    auto* state = dynamic_cast<Vixen::RenderGraph::ReconstructionHistoryStateNode*>(
+        renderGraph->GetInstanceByName("render_path/reconstruction_history/state"));
+    if (state) state->SetViewportActive(active);
 }

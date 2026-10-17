@@ -40,6 +40,8 @@ public:
     using Base = TypedNode<ComputeStageNodeConfig>;
 
     ComputeStageNode(const std::string& instanceName, NodeType* nodeType);
+    uint64_t GetSubmissionSerial() const { return submissionSerial_; }
+
     ~ComputeStageNode() override = default;
 
 protected:
@@ -55,6 +57,7 @@ private:
                              VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout);
 
+    uint64_t submissionSerial_ = 0;
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
 
     // Per-swapchain-image command buffers with dirty-state tracking.

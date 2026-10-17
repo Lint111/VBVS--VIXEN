@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // RayQueryTraversal.glsl -- VK_KHR_ray_query per-brick-AABB TLAS backend
 // (W-RTQUERY Slice A: third search backend alongside ESVO / the coarse-grid
@@ -280,8 +281,8 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // correctly measure the same physical camera-to-cell-entry distance in
         // their OWN respective frames -- they are not the same variable in the
         // same frame, and no ULP-exact identity between them holds in general.
-        recordFarFieldGateOperands(tCellEnter * pc.raySizeCoef + pc.raySizeBias, worldCellSize);  // round-6 probe
-        recordFarGenRectLhsHistogram(tCellEnter * pc.raySizeCoef + pc.raySizeBias);  // batch-25 JOB 2
+        recordFarFieldGateOperands(tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias, worldCellSize);  // round-6 probe
+        recordFarGenRectLhsHistogram(tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias);  // batch-25 JOB 2
         // Regime-1/regime-2 transition test (deep-field mip-accessor policy
         // design doc §regimes: regime-1 is "footprint < voxel size", NOT
         // "footprint < cell/brick size"). BATCH-33 FIX -- same rationale as
@@ -295,8 +296,8 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 #ifdef VIXEN_MIP_POLICY
         const float kFarFieldBrickSize = 8.0;  // BRICK_SIZE_SDF
         float policyAdmitFootprint = worldCellSize / kFarFieldBrickSize;
-        bool policyAdmits = pc.raySizeCoef > 0.0 &&
-            tCellEnter * pc.raySizeCoef + pc.raySizeBias >= policyAdmitFootprint;
+        bool policyAdmits = VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+            tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= policyAdmitFootprint;
         // Batch-35: RT's candidate gate IS already the entry-point decision
         // (no march precedes it -- marchBrickSdfCell below only runs when
         // this branch is NOT taken), so no dispatch inversion is needed here,
@@ -306,8 +307,8 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         recordPolicyEntryDispatch(policyAdmits);
         if (policyAdmits) {
 #else
-        if (pc.raySizeCoef > 0.0 &&
-            tCellEnter * pc.raySizeCoef + pc.raySizeBias >= worldCellSize) {
+        if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+            tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= worldCellSize) {
 #endif
             incrFarGenRectGateCross();  // batch-24 FARGEN: rect-scoped gate-cross funnel
             if (isCloserHit(tCellEnter, ci, bestT, bestInstIdx)) {
@@ -320,9 +321,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 // Inline exact CellFootprintRegime formula (the production helper
                 // specified by the residency doc does not exist yet).
                 float compositionFootprint =
-                    tCellEnter * pc.raySizeCoef + pc.raySizeBias;
+                    tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
                 g_lastFootprintRegime =
-                    (pc.raySizeCoef <= 0.0 || compositionFootprint < worldCellSize / 8.0)
+                    (VIXEN_QUERY_RAY_SIZE_COEF <= 0.0 || compositionFootprint < worldCellSize / 8.0)
                         ? 1u
                         : (compositionFootprint < pc.cosmicK * worldCellSize ? 2u : 3u);
 #endif
@@ -517,9 +518,9 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         // CellFootprintRegime is not materialized in code yet, so keep the design
         // formula inline for this probe call site.
         float compositionCellWorldSize = (1.0 / float(bpa)) / dirLen;
-        float compositionFootprint = tCellEnter * pc.raySizeCoef + pc.raySizeBias;
+        float compositionFootprint = tCellEnter * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
         uint compositionRegime =
-            (pc.raySizeCoef <= 0.0 || compositionFootprint < compositionCellWorldSize / 8.0)
+            (VIXEN_QUERY_RAY_SIZE_COEF <= 0.0 || compositionFootprint < compositionCellWorldSize / 8.0)
                 ? 1u
                 : (compositionFootprint < pc.cosmicK * compositionCellWorldSize ? 2u : 3u);
         g_lastShadowCompositionRegime =

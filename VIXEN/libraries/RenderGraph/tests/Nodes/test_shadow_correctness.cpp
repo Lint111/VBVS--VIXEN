@@ -30,8 +30,11 @@
  * Run: ./test_shadow_correctness
  */
 
+#include "Headers.h"
+#include "Generated/PrevCameraConfig.g.h"
 #include <gtest/gtest.h>
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/SpatialReuseShade-SDI.g.h"
 
 #include "Core/NodeContext.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
@@ -93,7 +96,9 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
+// The shading block includes the optional indirect-lighting tail. Its common
+// prefix also satisfies march and visibility; zero initialization disables it.
+using PushConstants = ::ShaderInterface::SpatialReuseShade::PushBlock;
 
 // Use the same generated upload type as the runtime; reflection parity is
 // checked separately against the shipped GLSL layout.
@@ -126,10 +131,8 @@ struct AccumulationConfigCpu {
 };
 static_assert(sizeof(AccumulationConfigCpu) == 20, "AccumulationConfigCpu std430 mirror size");
 
-struct PrevCameraConfigCpu {
-    float prevViewProj[16];
-};
-static_assert(sizeof(PrevCameraConfigCpu) == 64, "PrevCameraConfigCpu std430 mirror size");
+using PrevCameraConfigCpu = Vixen::Gpu::PrevCameraConfig;
+static_assert(sizeof(PrevCameraConfigCpu) == 80);
 
 struct ReservoirConfigCpu {
     uint32_t reservoirEnabled;
@@ -538,6 +541,8 @@ protected:
             const std::filesystem::path shaderDir(VIXEN_SHADER_SOURCE_DIR);
             ShaderManagement::ShaderBundleBuilder builder;
             builder.SetProgramName("SpatialReuseShade")
+                   .SetTargetVulkanVersion(12)
+                   .SetTargetSpirvVersion(15)
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
                    .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
@@ -564,6 +569,8 @@ protected:
             const std::filesystem::path shaderDir(VIXEN_SHADER_SOURCE_DIR);
             ShaderManagement::ShaderBundleBuilder builder;
             builder.SetProgramName("ShadowVisibilityWave")
+                   .SetTargetVulkanVersion(12)
+                   .SetTargetSpirvVersion(15)
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
                    .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
@@ -588,6 +595,8 @@ protected:
         source << file.rdbuf();
         ShaderManagement::ShaderBundleBuilder builder;
         builder.SetProgramName(filename)
+            .SetTargetVulkanVersion(12)
+            .SetTargetSpirvVersion(15)
             .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
             .AddIncludePath(shaderDir)
             .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
@@ -1164,7 +1173,9 @@ protected:
         barrierToGeneral(colorImg);
         barrierToGeneral(idImg);
         barrierToGeneral(historyImg);
+        barrierToGeneral(historyOutputImg);
         barrierToGeneral(worldPosImg);
+        barrierToGeneral(worldPosOutputImg);
         barrierToGeneral(probeIrrImg);
         barrierToGeneral(probeVisImg);
         barrierToGeneral(skySphereImg);

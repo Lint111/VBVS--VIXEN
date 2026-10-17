@@ -225,7 +225,7 @@ TEST(ShellOctreeGpu, ConcatAcceptsMoreThanThree) {
 
 TEST(ShellOctreeGpu, InstanceStreamsHaveStableRecords) {
     EXPECT_EQ(sizeof(Affine3x4Gpu), 48u);
-    EXPECT_EQ(sizeof(BodyInstanceTransformGpu), 176u);
+    EXPECT_EQ(sizeof(BodyInstanceTransformGpu), 96u);
     EXPECT_EQ(sizeof(BodyInstanceMaterialGpu), 48u);
     EXPECT_EQ(sizeof(BodyInstanceGpu), 224u);
 }
@@ -256,7 +256,7 @@ TEST(ShellOctreeGpu, InstanceStreamsPackContiguousRecords) {
     const std::vector<uint8_t> materials = PackInstanceMaterials(source);
     ASSERT_EQ(transforms.size(), source.size() * sizeof(BodyInstanceTransformGpu));
     ASSERT_EQ(materials.size(), source.size() * sizeof(BodyInstanceMaterialGpu));
-    EXPECT_EQ(transforms.size() + materials.size(), source.size() * (176u + 48u));
+    EXPECT_EQ(transforms.size() + materials.size(), source.size() * (96u + 48u));
     EXPECT_EQ(std::memcmp(transforms.data(), &source[0].transform, sizeof(BodyInstanceTransformGpu)), 0);
     EXPECT_EQ(std::memcmp(transforms.data() + sizeof(BodyInstanceTransformGpu), &source[1].transform,
                           sizeof(BodyInstanceTransformGpu)), 0);

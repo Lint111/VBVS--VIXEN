@@ -10,6 +10,7 @@ std::unique_ptr<NodeInstance> ReconstructionHistoryStateNodeType::CreateInstance
 
 void ReconstructionHistoryStateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     state_.Invalidate(ReconstructionHistoryReset::Recompile);
+    ctx.Out(ReconstructionHistoryStateNodeConfig::JITTER, glm::vec2(0.0f));
     ctx.Out(ReconstructionHistoryStateNodeConfig::RESET, 1u);
     ctx.Out(ReconstructionHistoryStateNodeConfig::VALID, 0u);
     ctx.Out(ReconstructionHistoryStateNodeConfig::FRAME_INDEX, 0u);
@@ -22,7 +23,9 @@ void ReconstructionHistoryStateNode::TypedExecuteImpl(TypedExecuteContext& ctx) 
     const auto& camera = ctx.In(ReconstructionHistoryStateNodeConfig::CAMERA);
     auto* internal = ctx.In(ReconstructionHistoryStateNodeConfig::INTERNAL_TARGET);
     auto* output = ctx.In(ReconstructionHistoryStateNodeConfig::OUTPUT_TARGET);
-    const auto frame = state_.BeginFrame(camera.invProjection, internal->GetExtent(), output->GetExtent());
+    const auto frame = state_.BeginFrame(camera.invProjection, internal->GetExtent(), output->GetExtent(),
+        ctx.In(ReconstructionHistoryStateNodeConfig::CAMERA_CUT_EPOCH));
+    ctx.Out(ReconstructionHistoryStateNodeConfig::JITTER, ReconstructionJitter(frame.frameIndex, samplingPath_));
     ctx.Out(ReconstructionHistoryStateNodeConfig::RESET, frame.reset);
     ctx.Out(ReconstructionHistoryStateNodeConfig::VALID, frame.valid);
     ctx.Out(ReconstructionHistoryStateNodeConfig::FRAME_INDEX, frame.frameIndex);

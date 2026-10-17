@@ -28,6 +28,10 @@
 // ============================================================================
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+float reconstructionRaySizeCoef;
+#define VIXEN_QUERY_RAY_SIZE_COEF reconstructionRaySizeCoef
+#endif
 
 // ============================================================================
 // BUFFER BINDINGS
@@ -211,9 +215,23 @@ layout(std430, binding = 22) readonly buffer PrevCameraConfigSSBO {
 };
 
 #ifdef VIXEN_RECONSTRUCTION_INPUTS
+#include "Generated/BodyInstanceMotion.glsl"
+layout(std430, binding = 50) readonly buffer BodyInstanceMotionBuffer { BodyInstanceMotion instanceMotions[]; };
 layout(rg32f, binding = 48) uniform writeonly image2D motionVectorImage;
 layout(r32f, binding = 49) uniform writeonly image2D motionValidityImage;
 #include "ReconstructionMotion.glsl"
+bool hasReconstructionJitter() { return any(notEqual(prevCameraConfig.reconstructionSampling.xy, vec2(0.0))); }
+void writeNativePick(ivec2 pixel) {
+    ivec2 extent = imageSize(idOutputImage);
+    if (any(greaterThanEqual(pixel, extent))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(extent);
+    reconstructionRaySizeCoef = prevCameraConfig.reconstructionSampling.z;
+    WorldHit pick;
+    bool hit = TraceWorld(pc.cameraPos, getRayDir(uv), 0.0, 1.0e30, pick);
+    reconstructionRaySizeCoef = pc.raySizeCoef;
+    uint packed = hit ? (pick.brickIndex << 10u) | (pick.voxelIdx & 0x3ffu) : 0xffffffffu;
+    imageStore(idOutputImage, pixel, uvec4(packed, hit ? pick.instIdx : 0xffffffffu, 0u, 0u));
+}
 #endif
 
 // ============================================================================
@@ -237,11 +255,22 @@ void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imgSize     = imageSize(outputImage);
 
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+    reconstructionRaySizeCoef = pc.raySizeCoef;
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) {
+        if (hasReconstructionJitter()) writeNativePick(pixelCoords);
+        return;
+    }
+#else
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+#endif
 
     incrFarGenRectRay();  // batch-24 FARGEN: rect-scoped invocation census (c1∪c2)
 
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+    uv += prevCameraConfig.reconstructionSampling.xy / vec2(imgSize);
+#endif
     vec3 rayOrigin = pc.cameraPos;
     vec3 rayDir    = getRayDir(uv);
 
@@ -544,7 +573,12 @@ void main() {
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     uint pickInstanceIndex = anyHitRT ? worldHit.instIdx : 0xFFFFFFFFu;
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+    if (hasReconstructionJitter()) writeNativePick(pixelCoords);
+    else imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
+#else
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
+#endif
 #ifdef VIXEN_B1_OCCLUSION_CULL
     imageStore(depthDistanceImage, pixelCoords,
                vec4(anyHitRT ? recReadback.hitT : 1.0e30, 0.0, 0.0, 0.0));

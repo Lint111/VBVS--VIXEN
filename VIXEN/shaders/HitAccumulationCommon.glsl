@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // HitAccumulationCommon.glsl — Wavefront W3b: the GPU twin of
 // libraries/SVO/include/HitAccumulation.h.
@@ -116,7 +117,7 @@ uint HitAccumProbeStride(uint keyLo) {
 // shade, the resolve). C++ twin: VulkanGraphApplication.cpp's HitAccumParamsCpu.
 struct HitAccumParams {
     uint  frameEpoch;
-    float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT pc.raySizeCoef, which carries the SECONDARY constant on the tracing stages)
+    float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT VIXEN_QUERY_RAY_SIZE_COEF, which carries the SECONDARY constant on the tracing stages)
     float primaryBias;
     float detailSize0;
     vec4  camPos;        // xyz camera; w = W3c-3 temporal EMA alpha (spare pad reused; 1.0 = off)

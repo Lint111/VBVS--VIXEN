@@ -513,10 +513,9 @@ static_assert(alignof(Affine3x4Gpu) == 16);
 struct alignas(16) BodyInstanceTransformGpu {
     Affine3x4Gpu localToWorld{};
     Affine3x4Gpu worldToLocal{};
-    Vixen::Gpu::BodyInstanceMotion motion{};
 };
-static_assert(sizeof(BodyInstanceTransformGpu) == 176,
-              "current affine pair and declared previous-frame correspondence");
+static_assert(sizeof(BodyInstanceTransformGpu) == 96,
+              "the hot instance transform record is two packed 3x4 matrices");
 
 /** Material, provider and recipe values. This is the cold std430 record. */
 struct alignas(16) BodyInstanceMaterialGpu {
@@ -538,6 +537,7 @@ static_assert(offsetof(BodyInstanceMaterialGpu, recipeParams) == 24);
 struct alignas(16) BodyInstanceGpu {
     BodyInstanceTransformGpu transform{};
     BodyInstanceMaterialGpu material{};
+    Vixen::Gpu::BodyInstanceMotion motion{};
 };
 static_assert(sizeof(BodyInstanceGpu) == 224);
 static_assert(offsetof(BodyInstanceGpu, material) == sizeof(BodyInstanceTransformGpu));

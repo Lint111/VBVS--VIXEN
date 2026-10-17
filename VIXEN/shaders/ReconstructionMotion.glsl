@@ -8,11 +8,12 @@
 void writeReconstructionMotion(ivec2 pixel, bool hit, WorldHit surface, vec3 world) {
     vec2 motion = vec2(0.0);
     float valid = 0.0;
-    if (hit && surface.instIdx < bodyInstanceTransforms.length()) {
+    if (hit && surface.instIdx < bodyInstanceTransforms.length() && surface.instIdx < instanceMotions.length()) {
         BodyInstanceTransform instance = bodyInstanceTransforms[surface.instIdx];
+        BodyInstanceMotion correspondence = instanceMotions[surface.instIdx];
         vec3 local = instanceTransformPoint(instance.worldToLocalRows, world);
-        vec3 previousWorld = instance.motion.valid != 0u
-            ? (instance.motion.previousLocalToWorld * vec4(local, 1.0)).xyz : world;
+        vec3 previousWorld = correspondence.valid != 0u
+            ? (correspondence.previousLocalToWorld * vec4(local, 1.0)).xyz : world;
         vec4 previousClip = prevCameraConfig.prevViewProj * vec4(previousWorld, 1.0);
         vec3 displacement = world - pc.cameraPos;
         float z = dot(displacement, pc.cameraDir);
@@ -24,7 +25,7 @@ void writeReconstructionMotion(ivec2 pixel, bool hit, WorldHit surface, vec3 wor
             vec2 candidate = previousUV - currentUV;
             if (!any(isnan(candidate)) && !any(isinf(candidate))) {
                 motion = candidate;
-                valid = instance.motion.valid != 0u &&
+                valid = correspondence.valid != 0u &&
                     all(greaterThanEqual(previousUV, vec2(0.0))) &&
                     all(lessThan(previousUV, vec2(1.0))) ? 1.0 : 0.0;
             }

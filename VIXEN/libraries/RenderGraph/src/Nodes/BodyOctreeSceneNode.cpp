@@ -272,7 +272,8 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
         instanceTransforms_.size() * sizeof(Vixen::SVO::BodyInstanceTransformGpu));
     const VkDeviceSize neededMaterialBytes = static_cast<VkDeviceSize>(
         instanceMaterials_.size() * sizeof(Vixen::SVO::BodyInstanceMaterialGpu));
-    if (neededTransformBytes > transformRingCapacity_ || neededMaterialBytes > materialRingCapacity_) {
+    if (neededTransformBytes > transformRingCapacity_ || neededMaterialBytes > materialRingCapacity_ ||
+        (motionGuidesEnabled_ && instanceMotions_.size() * sizeof(Vixen::Gpu::BodyInstanceMotion) > motionRingCapacity_)) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: stream capacities exceeded (transforms=" +
                       std::to_string(neededTransformBytes) + "/" + std::to_string(transformRingCapacity_) +
                       "B, materials=" + std::to_string(neededMaterialBytes) + "/" +
@@ -286,10 +287,13 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
 void BodyOctreeSceneNode::RefreshInstanceStreams() {
     instanceTransforms_.clear();
     instanceTransforms_.reserve(instances_.size());
+    instanceMotions_.clear();
+    if (motionGuidesEnabled_) instanceMotions_.reserve(instances_.size());
     std::vector<Vixen::SVO::BodyInstanceMaterialGpu> nextMaterials;
     nextMaterials.reserve(instances_.size());
     for (const Vixen::SVO::BodyInstanceGpu& instance : instances_) {
         instanceTransforms_.push_back(instance.transform);
+        if (motionGuidesEnabled_) instanceMotions_.push_back(instance.motion);
         nextMaterials.push_back(instance.material);
     }
 
@@ -595,6 +599,8 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,    materialPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,   transformPerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER,
+            motionGuidesEnabled_ ? motionPerFrame_.GetUniformBuffer(0) : VkBuffer(VK_NULL_HANDLE));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
     // Inc2 M3: SDF + lookup buffers (bindings 11/12). Always emitted — placeholder
     // for binary/Procedural, real data for Stored-SDF bodies.
@@ -723,6 +729,21 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                     std::min(static_cast<size_t>(transformRingCapacity_), transformSourceBytes));
     }
 
+    if (motionGuidesEnabled_) {
+        const Vixen::Gpu::BodyInstanceMotion emptyMotion{};
+        const auto* motions = instanceMotions_.empty() ? &emptyMotion : instanceMotions_.data();
+        const size_t bytes = instanceMotions_.empty() ? sizeof(emptyMotion) : instanceMotions_.size() * sizeof(emptyMotion);
+        if (auto* mappedMotion = motionPerFrame_.GetUniformBufferMapped(frameIndex)) {
+            const auto copied = std::min(size_t(motionRingCapacity_), bytes);
+            std::memcpy(mappedMotion, motions, copied);
+            if (octreeRepublished) {
+                auto* records = static_cast<Vixen::Gpu::BodyInstanceMotion*>(mappedMotion);
+                for (size_t i = 0; i < copied / sizeof(emptyMotion); ++i) records[i].valid = 0u;
+            }
+        }
+        ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER, motionPerFrame_.GetUniformBuffer(frameIndex));
+    }
+
     // Cold material bytes are uploaded only for slots dirtied by an instance change.
     if (frameIndex >= materialDirty_.size()) materialDirty_.resize(kRingSize, true);
     if (materialDirty_[frameIndex]) {
@@ -750,7 +771,9 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu));
     const int32_t materialCount = static_cast<int32_t>(
         materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu));
-    const int32_t ringCapacityCount = std::min(transformCount, materialCount);
+    int32_t ringCapacityCount = std::min(transformCount, materialCount);
+    if (motionGuidesEnabled_) ringCapacityCount = std::min(ringCapacityCount,
+        static_cast<int32_t>(motionRingCapacity_ / sizeof(Vixen::Gpu::BodyInstanceMotion)));
     const int32_t emittedCount = std::min(instanceCount_, ringCapacityCount);
     if (emittedCount < instanceCount_) {
         static bool warnedOnce = false;
@@ -1399,8 +1422,11 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
                                                VkDeviceSize transformCapacity,
                                                VkDeviceSize materialCapacity) {
+    const VkDeviceSize motionCapacity = motionGuidesEnabled_
+        ? std::max<VkDeviceSize>(sizeof(Vixen::Gpu::BodyInstanceMotion), instanceMotions_.size() * sizeof(Vixen::Gpu::BodyInstanceMotion)) : 0;
     if (transformPerFrame_.IsInitialized() && materialPerFrame_.IsInitialized() &&
-        transformCapacity <= transformRingCapacity_ && materialCapacity <= materialRingCapacity_) {
+        transformCapacity <= transformRingCapacity_ && materialCapacity <= materialRingCapacity_ &&
+        (!motionGuidesEnabled_ || (motionPerFrame_.IsInitialized() && motionCapacity <= motionRingCapacity_))) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent instance rings (transforms=" +
                       std::to_string(static_cast<uint64_t>(transformRingCapacity_)) +
                       "B, materials=" + std::to_string(static_cast<uint64_t>(materialRingCapacity_)) + "B)");
@@ -1414,6 +1440,8 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
         vkDeviceWaitIdle(device->device);
         transformPerFrame_.Cleanup();
         materialPerFrame_.Cleanup();
+        motionPerFrame_.Cleanup();
+        motionRingCapacity_ = 0;
         transformRingCapacity_ = 0;
         materialRingCapacity_ = 0;
     }
@@ -1421,12 +1449,15 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
     // Allocate fresh, separately sized rings of kRingSize storage buffers.
     transformPerFrame_.Initialize(device, kRingSize);
     materialPerFrame_.Initialize(device, kRingSize);
+    if (motionGuidesEnabled_) motionPerFrame_.Initialize(device, kRingSize);
     for (uint32_t i = 0; i < kRingSize; ++i) {
         transformPerFrame_.CreateStorageBuffer(i, transformCapacity);
         materialPerFrame_.CreateStorageBuffer(i, materialCapacity);
+        if (motionGuidesEnabled_) motionPerFrame_.CreateStorageBuffer(i, motionCapacity);
     }
     transformRingCapacity_ = transformCapacity;
     materialRingCapacity_ = materialCapacity;
+    motionRingCapacity_ = motionCapacity;
     materialDirty_.assign(kRingSize, true);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Allocated instance rings: " +
@@ -2442,6 +2473,8 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     // Destroy both instance rings via PerFrameResources (mirrors DynamicInstanceBufferNode).
     transformPerFrame_.Cleanup();
     materialPerFrame_.Cleanup();
+    motionPerFrame_.Cleanup();
+    motionRingCapacity_ = 0;
     transformRingCapacity_ = 0;
     materialRingCapacity_ = 0;
     materialDirty_.clear();

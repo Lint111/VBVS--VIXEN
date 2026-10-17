@@ -1,0 +1,21 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba16f, binding = 0) uniform readonly image2D sceneRadianceImage;
+layout(rgba16f, binding = 1) uniform writeonly image2D historyA;
+layout(rgba16f, binding = 2) uniform writeonly image2D historyB;
+layout(push_constant) uniform HistoryPush { uint writeIndex; } pc;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(historyA);
+    if (any(greaterThanEqual(pixel, extent))) return;
+    // A neutral, unblended scene-linear history seed. The eventual temporal
+    // provider owns reconstructed history writes; this pass never blends it
+    // into the visible image or stacks another temporal AA stage.
+    ivec2 sourceExtent = imageSize(sceneRadianceImage);
+    ivec2 source = min(ivec2((vec2(pixel) + 0.5) * vec2(sourceExtent) / vec2(extent)), sourceExtent - 1);
+    vec4 color = imageLoad(sceneRadianceImage, source);
+    if (pc.writeIndex == 0u) imageStore(historyA, pixel, color);
+    else imageStore(historyB, pixel, color);
+}

@@ -22,4 +22,7 @@ using Yeroket.Util.KernelFramework;
 public struct PrevCameraConfig
 {
     public Mat4 prevViewProj;
+    // Current input-pixel jitter (XY), native picking ray-cone coefficient (Z).
+    public Float3 reconstructionSampling;
+    public uint _samplingPadding;
 }

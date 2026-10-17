@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // TraceWorld.glsl - The single traversal seam every lighting ray uses
 // ============================================================================
@@ -360,8 +361,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // Gated on raySizeCoef>0.0 so LOD-disabled builds/tests (raySizeCoef==0,
                 // e.g. the M4/M5 offscreen harnesses) never take this path.
                 bool farSubPixel = false;
-                if (pc.raySizeCoef > 0.0) {
-                    float footprint = entryTWorld * pc.raySizeCoef + pc.raySizeBias;
+                if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0) {
+                    float footprint = entryTWorld * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
                     // footprint is world metres; boundRadius is instance-local, so convert it.
                     farSubPixel = footprint >= 2.0 * boundRadius * worldUnitsPerInstUnit;
                 }
@@ -384,7 +385,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pc.raySizeCoef, uberParams, pNormal, pT, pSteps);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -572,7 +573,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             float compositionCellWorldSize =
                 ((1.0 / float(compositionBpa)) / compositionDirLen) * worldUnitsPerInstUnit;
             g_lastFootprintRegime = classifyCellFootprintRegime(
-                compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+                compositionWorldDist, compositionCellWorldSize, VIXEN_QUERY_RAY_SIZE_COEF, pc.raySizeBias, pc.cosmicK);
         }
 #endif
 
@@ -977,7 +978,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
-                                           pc.raySizeCoef, uberParams, pNormal, pT, pSteps);
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
                 g_recipeProvenStepOnly = false;
             }
 #endif
@@ -1049,7 +1050,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             float compositionCellWorldSize =
                 ((1.0 / float(compositionBpa)) / compositionDirLen) * worldUnitsPerInstUnit;
             instCompositionRegime = classifyCellFootprintRegime(
-                compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+                compositionWorldDist, compositionCellWorldSize, VIXEN_QUERY_RAY_SIZE_COEF, pc.raySizeBias, pc.cosmicK);
         }
         // Slice 0 counts destination wave ENTRIES, not only occluders. Reaching
         // this AABB means the materialized evaluator participated in the entry;

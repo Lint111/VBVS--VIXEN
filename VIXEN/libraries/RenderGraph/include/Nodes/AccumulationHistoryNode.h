@@ -68,6 +68,8 @@ private:
     void TransitionToGeneral(VkCommandPool commandPool, VkImage image);
     void DestroyImages();
 
+    Vixen::Vulkan::Resources::RenderTargetData targets_[2];
+
     VkImage        images_[2]  = {VK_NULL_HANDLE, VK_NULL_HANDLE};
     VkDeviceMemory memories_[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
     VkImageView    views_[2]   = {VK_NULL_HANDLE, VK_NULL_HANDLE};

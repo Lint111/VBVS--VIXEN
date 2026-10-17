@@ -45,6 +45,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
         case VK_FORMAT_B8G8R8A8_SINT:
             bytesPerTexel = 4;
             break;
+        case VK_FORMAT_R32G32_UINT:
+        case VK_FORMAT_R32G32_SINT:
         case VK_FORMAT_R32G32_SFLOAT:
         case VK_FORMAT_R16G16B16A16_SFLOAT:
             bytesPerTexel = 8;

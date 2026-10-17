@@ -71,9 +71,13 @@ void PrevCameraConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t frameIndex = ctx.In(PrevCameraConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
     // Copy CameraNode's retained prev-frame view*proj verbatim into this frame's record —
-    // no other content, no computation (see this node's file header).
+    // alongside the matching frame sampling inputs.
     Vixen::Gpu::PrevCameraConfig cfg{};
     cfg.prevViewProj = ctx.In(PrevCameraConfigNodeConfig::PREV_VIEW_PROJ);
+    const auto jitter = ctx.In(PrevCameraConfigNodeConfig::PRIMARY_JITTER);
+    cfg.reconstructionSamplingX = jitter.x;
+    cfg.reconstructionSamplingY = jitter.y;
+    cfg.reconstructionSamplingZ = ctx.In(PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

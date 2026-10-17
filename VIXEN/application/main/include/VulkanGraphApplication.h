@@ -2,6 +2,7 @@
 
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
+#include "Data/ReconstructionJitter.h"
 #include "Core/EngineContext.h"  // AR#7: instantiable engine aggregate
 #include "RuntimeCachePaths.h"
 #include "Core/NodeTypeRegistry.h"
@@ -90,12 +91,20 @@ public:
     struct RenderPathConfig {
         float renderScale = 1.0f;
         UpscalerKind upscaler = UpscalerKind::None;
+        bool temporalJitter = false;
+        Vixen::RenderGraph::ReconstructionSamplingPath samplingPath =
+            Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
     };
     // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
     // constructs and owns the application directly. Only main.cpp ever created it, and no
     // library code reached for the global instance, so there is nothing else to re-thread.
     VulkanGraphApplication();
     ~VulkanGraphApplication() override;
+
+    // Each application graph owns one viewport's reconstruction resources.
+    // Hosts call these for semantic cuts and viewport activation, never ordinary motion.
+    void NotifyReconstructionCameraCut();
+    void SetReconstructionViewportActive(bool active);
 
     // ====== Lifecycle Methods ======
     

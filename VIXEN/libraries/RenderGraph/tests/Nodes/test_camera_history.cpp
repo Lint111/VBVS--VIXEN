@@ -62,3 +62,22 @@ TEST(CameraHistory, PreviousOutputSurvivesCurrentCameraUpdate) {
     camera.CompileCamera();
     ExpectMatrixEqual(camera.Previous(), camera.GetCurrentViewProj());
 }
+
+TEST(CameraHistory, ContinuousPoseUpdatesKeepEpochAndExplicitCutsAdvanceIt) {
+    CameraNodeType type;
+    CameraProbe camera(&type);
+    Vixen::Vulkan::Resources::RenderTargetData target;
+    target.extent = {501, 333};
+    auto resource = Resource::Create<Vixen::Vulkan::Resources::IRenderTarget*>(HandleDescriptor{"IRenderTarget*"});
+    resource.SetHandle<Vixen::Vulkan::Resources::IRenderTarget*>(&target);
+    camera.SetInput(CameraNodeConfig::SWAPCHAIN_PUBLIC.index, 0, &resource);
+    camera.CompileCamera();
+    auto epoch = [&] { return camera.GetOutput(CameraNodeConfig::HISTORY_EPOCH.index)->GetHandle<uint32_t>(); };
+    const auto first = epoch();
+    camera.SetPositionForTest({4, 2, 8});
+    camera.ExecuteCamera();
+    EXPECT_EQ(epoch(), first);
+    camera.NotifyCameraCut();
+    camera.ExecuteCamera();
+    EXPECT_EQ(epoch(), first + 1u);
+}

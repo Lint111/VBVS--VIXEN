@@ -68,3 +68,24 @@ TEST(ReconstructionHistory, MissingWriteInvalidatesPreviouslyValidHistory) {
     EXPECT_EQ(next.frameIndex, 0u);
     EXPECT_EQ(next.resetReasons, static_cast<uint32_t>(ReconstructionHistoryReset::WriteNotCommitted));
 }
+
+TEST(ReconstructionHistory, CameraEpochAndViewportActivationAreSemanticResets) {
+    ReconstructionHistoryState state;
+    state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 17u);
+    state.CommitHistoryFrame();
+    EXPECT_EQ(state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 17u).valid, 1u);
+    state.CommitHistoryFrame();
+    auto cut = state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 18u);
+    EXPECT_EQ(cut.resetReasons, static_cast<uint32_t>(ReconstructionHistoryReset::CameraCut));
+    state.CommitHistoryFrame();
+    state.SetViewportActive(false);
+    auto inactive = state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 18u);
+    EXPECT_EQ(inactive.valid, 0u);
+    state.CommitHistoryFrame(); // An inactive viewport cannot acknowledge a write.
+    state.SetViewportActive(true);
+    auto active = state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 18u);
+    EXPECT_EQ(active.valid, 0u);
+    EXPECT_NE(active.resetReasons & static_cast<uint32_t>(ReconstructionHistoryReset::ViewportSwitch), 0u);
+    state.CommitHistoryFrame();
+    EXPECT_EQ(state.BeginFrame(glm::mat4(1.0f), {251, 167}, {501, 333}, 18u).valid, 1u);
+}

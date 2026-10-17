@@ -10,7 +10,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts (declared early for reuse)
 namespace PrevCameraConfigNodeCounts {
-    static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, CURRENT_FRAME_INDEX, PREV_VIEW_PROJ
+    static constexpr size_t INPUTS  = 5;  // VULKAN_DEVICE_IN, CURRENT_FRAME_INDEX, PREV_VIEW_PROJ
     static constexpr size_t OUTPUTS = 1;  // PREV_CAMERA_CONFIG_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -69,6 +69,11 @@ CONSTEXPR_NODE_CONFIG(PrevCameraConfigNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    INPUT_SLOT(PRIMARY_JITTER, glm::vec2, 3, SlotNullability::Optional, SlotRole::Execute,
+        SlotMutability::ReadOnly, SlotScope::NodeLevel);
+    INPUT_SLOT(NATIVE_PICK_RAY_SIZE_COEF, float, 4, SlotNullability::Optional, SlotRole::Execute,
+        SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ----- Output slots -----
     // PREV_CAMERA_CONFIG_BUFFER is re-emitted every frame from ExecuteImpl (Transient
     // lifetime): the handle rotates through the ring, so the descriptor re-binds
@@ -91,6 +96,10 @@ CONSTEXPR_NODE_CONFIG(PrevCameraConfigNodeConfig,
         // stable; the matrix it refers to is read fresh every Execute).
         HandleDescriptor prevViewProjDesc{"glm::mat4"};
         INIT_INPUT_DESC(PREV_VIEW_PROJ, "prev_view_proj", ResourceLifetime::Persistent, prevViewProjDesc);
+
+        INIT_INPUT_DESC(PRIMARY_JITTER, "primary_jitter", ResourceLifetime::Transient, HandleDescriptor{"glm::vec2"});
+        inputs[PRIMARY_JITTER.index].acceptsVisualRelaxation = true;
+        INIT_INPUT_DESC(NATIVE_PICK_RAY_SIZE_COEF, "native_pick_ray_size_coef", ResourceLifetime::Transient, HandleDescriptor{"float"});
 
         // Output: per-frame prev-camera-config storage buffer. Transient — the emitted
         // VkBuffer handle changes every frame as the ring rotates (the underlying

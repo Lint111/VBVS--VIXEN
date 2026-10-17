@@ -15,7 +15,7 @@ using CameraDataPtr = const CameraData*;
 // Compile-time slot counts
 namespace CameraNodeCounts {
     static constexpr size_t INPUTS = 4;  // Added INPUT_STATE
-    static constexpr size_t OUTPUTS = 3;  // CameraData struct + PREV_VIEW_PROJ (Sampled Lighting Inc2 M3) + CURRENT_VIEW_PROJ (Recipe Bucketing Inc2 M1)
+    static constexpr size_t OUTPUTS = 4;  // CameraData struct + PREV_VIEW_PROJ (Sampled Lighting Inc2 M3) + CURRENT_VIEW_PROJ (Recipe Bucketing Inc2 M1)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -85,6 +85,8 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(HISTORY_EPOCH, uint32_t, 3, SlotNullability::Required, SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_FOV = "fov";
     static constexpr const char* PARAM_NEAR_PLANE = "near";
@@ -139,6 +141,8 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 
         HandleDescriptor inputStateDesc{"InputState*"};
         INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Persistent, inputStateDesc);
+
+        INIT_OUTPUT_DESC(HISTORY_EPOCH, "history_epoch", ResourceLifetime::Transient, imageIndexDesc);
 
         // Initialize output descriptor
         HandleDescriptor cameraDataDesc{"CameraDataPtr"};

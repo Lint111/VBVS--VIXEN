@@ -111,6 +111,7 @@ public:
      * on every frame — the per-tick recompile cascade is gone entirely.
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+    void SetMotionGuidesEnabled(bool enabled) { motionGuidesEnabled_ = enabled; RefreshInstanceStreams(); }
 
     /**
      * @brief Reorder the current instance list front-to-back by distance from
@@ -500,6 +501,8 @@ private:
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
+    std::vector<Vixen::Gpu::BodyInstanceMotion> instanceMotions_;
+    bool motionGuidesEnabled_ = false;
     std::vector<Vixen::SVO::BodyInstanceTransformGpu> instanceTransforms_;
     std::vector<Vixen::SVO::BodyInstanceMaterialGpu> instanceMaterials_;
     // int32_t (not uint32_t) to match the shader's reflected `int instanceCount` push-constant field
@@ -595,9 +598,11 @@ private:
     // Hot transforms upload each frame; cold materials upload once per changed ring slot.
     PerFrameResources transformPerFrame_;
     PerFrameResources materialPerFrame_;
+    PerFrameResources motionPerFrame_;
     std::vector<bool> materialDirty_;
     VkDeviceSize transformRingCapacity_ = 0;
     VkDeviceSize materialRingCapacity_ = 0;
+    VkDeviceSize motionRingCapacity_ = 0;
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
     // One BLAS per octree (the compact ShellProxyAabb records in octree-local [0,1]^3

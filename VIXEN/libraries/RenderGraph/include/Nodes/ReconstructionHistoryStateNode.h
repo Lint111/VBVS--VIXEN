@@ -3,18 +3,22 @@
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/ReconstructionHistoryStateNodeConfig.h"
 #include "Data/ReconstructionHistory.h"
+#include "Data/ReconstructionJitter.h"
 
 namespace Vixen::RenderGraph {
 
 class ReconstructionHistoryStateNode final : public TypedNode<ReconstructionHistoryStateNodeConfig> {
 public:
     ReconstructionHistoryStateNode(const std::string& name, NodeType* type) : TypedNode(name, type) {}
+    void SetSamplingPath(ReconstructionSamplingPath path) { samplingPath_ = path; }
     void Invalidate(ReconstructionHistoryReset reason) { state_.Invalidate(reason); }
+    void SetViewportActive(bool active) { state_.SetViewportActive(active); }
     void CommitHistoryFrame() { state_.CommitHistoryFrame(); }
 protected:
     void TypedCompileImpl(TypedCompileContext& ctx) override;
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
 private:
+    ReconstructionSamplingPath samplingPath_ = ReconstructionSamplingPath::CanonicalCapture;
     ReconstructionHistoryState state_;
 };
 

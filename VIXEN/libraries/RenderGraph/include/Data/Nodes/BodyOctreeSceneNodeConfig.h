@@ -15,7 +15,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
-    static constexpr size_t OUTPUTS = 17;
+    static constexpr size_t OUTPUTS = 18;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -172,6 +172,9 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::WriteOnly);
 
     // Constructor: runtime descriptor initialization
+    OUTPUT_SLOT(INSTANCE_MOTION_BUFFER, VkBuffer, 17,
+        SlotNullability::Optional, SlotMutability::WriteOnly);
+
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
@@ -212,6 +215,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         BufferDescriptor instanceTransformDesc{};
         instanceTransformDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(INSTANCE_TRANSFORM_BUFFER, "body_instance_transform_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
+        INIT_OUTPUT_DESC(INSTANCE_MOTION_BUFFER, "body_instance_motion_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
 
         // Instance count — transient scalar value.
         BufferDescriptor instanceCountDesc{};

@@ -488,6 +488,8 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     // Dispatch dims, shader output image, and GPU-perf extent come from the render target when
     // connected (M4); otherwise from the swapchain, byte-identical to pre-M4 behavior.
     Vixen::Vulkan::Resources::IRenderTarget* dispatchTarget = renderTargetInfo ? renderTargetInfo : swapchainInfo;
+    if (auto* extentSource = ctx.In(ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE))
+        dispatchTarget = extentSource;
     VkExtent2D dispatchExtent = dispatchTarget->GetExtent();
 
     // Get dispatch dimensions (8x8 workgroup size)

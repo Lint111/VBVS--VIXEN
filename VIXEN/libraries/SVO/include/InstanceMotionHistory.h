@@ -12,7 +12,7 @@ namespace Vixen::SVO {
 template<class TKindRef>
 struct BodyInstanceSource {
     TKindRef sourceRef;
-    uint32_t generation;
+    uint64_t generation;
     BodyInstanceGpu instance;
 };
 
@@ -29,15 +29,15 @@ public:
         result.reserve(rows.size());
         for (const auto& row : rows) {
             auto instance = row.instance;
-            instance.transform.motion.valid = 0u;
-            instance.transform.motion.previousLocalToWorld = ToMat4(instance.transform.localToWorld);
+            instance.motion.valid = 0u;
+            instance.motion.previousLocalToWorld = ToMat4(instance.transform.localToWorld);
             const auto previous = previous_.find(row.sourceRef);
             const bool unique = occurrences[row.sourceRef] == 1u;
             if (unique && previous != previous_.end() &&
                 previous->second.generation == row.generation &&
                 std::memcmp(&previous->second.material, &instance.material, sizeof(instance.material)) == 0) {
-                instance.transform.motion.previousLocalToWorld = ToMat4(previous->second.localToWorld);
-                instance.transform.motion.valid = 1u;
+                instance.motion.previousLocalToWorld = ToMat4(previous->second.localToWorld);
+                instance.motion.valid = 1u;
             }
             if (unique) next.emplace(row.sourceRef, Snapshot{
                 row.generation, instance.transform.localToWorld, instance.material});
@@ -51,7 +51,7 @@ public:
 
 private:
     struct Snapshot {
-        uint32_t generation;
+        uint64_t generation;
         Affine3x4Gpu localToWorld;
         BodyInstanceMaterialGpu material;
     };

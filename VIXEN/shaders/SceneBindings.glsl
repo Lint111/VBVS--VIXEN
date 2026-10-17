@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // SceneBindings.glsl - Shared scene bindings + traversal machinery
 // ============================================================================
@@ -1100,13 +1101,11 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
 
-// HOT INSTANCE TRANSFORM STREAM (binding 47, std430, 176 B / element).
-#include "Generated/BodyInstanceMotion.glsl"
+// HOT INSTANCE TRANSFORM STREAM (binding 47, std430, 96 B / element).
 // Each matrix is three row-major vec4 values with an implicit (0,0,0,1) row.
 struct BodyInstanceTransform {
     vec4 localToWorldRows[3];
     vec4 worldToLocalRows[3];
-    BodyInstanceMotion motion;
 };
 layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
     BodyInstanceTransform bodyInstanceTransforms[];
@@ -1373,7 +1372,7 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 //   tc_max      = tv_max (exit-t of the voxel being tested)
 //   scale_exp2  = 2^(scale - esvoMaxScale)  (normalized voxel size)
 //
-// Set pc.raySizeCoef = 0.0 to disable (full-detail traversal regardless).
+// Set VIXEN_QUERY_RAY_SIZE_COEF = 0.0 to disable (full-detail traversal regardless).
 // The condition is gated on raySizeCoef > 0.0 to make the zero case free.
 #define LOD_ENABLED
 
@@ -1997,8 +1996,8 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                 float kPhys = sqrt(tcDirLen2) * tLocalUnitWorld;
                                 float worldDistToChild = tWorldBase + (tEntryWorld + tChild) * kPhys;
                                 float childWorldSize = tcChildScale * state.scale_exp2 * tLocalUnitWorld;
-                                bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
-                                    worldDistToChild * pc.raySizeCoef + pc.raySizeBias >= childWorldSize);
+                                bool subPixelFootprint = (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+                                    worldDistToChild * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= childWorldSize);
 
                                 // Tiered-ESVO Inc2 M4 Task 10: residency reuse. A TierRef
                                 // whose child octree is not (yet) brick-resident is, per the
@@ -2111,7 +2110,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                         // counted as arm 1 same as today) the streaming-grace leaf
                         // sample is used unchanged.
                         float leafWorldSize = state.scale_exp2 * 0.5;
-                        float policyFootprint = tv_max * pc.raySizeCoef + pc.raySizeBias;
+                        float policyFootprint = tv_max * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
                         int policyLevel = mipPolicyLevel(policyFootprint, leafWorldSize,
                                                           state.scale);
                         uint policyNodeOrdinal = leafDescriptorIndex;
@@ -2203,10 +2202,10 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                 // gate's if()). Level (state.scale) is the depth this exact evaluation
                 // ran at, recorded unconditionally so both the crossing AND rejecting
                 // levels are visible via min/max.
-                recordEsvoCutoffOperands(tv_max * pc.raySizeCoef + pc.raySizeBias,
+                recordEsvoCutoffOperands(tv_max * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias,
                                           state.scale_exp2, uint(state.scale));
-                if (pc.raySizeCoef > 0.0 &&
-                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
+                if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+                    tv_max * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= state.scale_exp2) {
                     hitT = tEntryWorld + state.t_min;
                     recordEsvoMipArm(2u);  // batch-29 JOB 4: deliberate LOD screen-space cutoff arm
                     g_mipSampleLevel = uint(max(state.scale - octreeConfig.brickESVOScale, 0));
@@ -2660,8 +2659,8 @@ bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
                                 float kPhys = sqrt(tcDirLen2) * tLocalUnitWorld;
                                 float worldDistToChild = tWorldBase + (tEntryWorld + tChild) * kPhys;
                                 float childWorldSize = tcChildScale * state.scale_exp2 * tLocalUnitWorld;
-                                bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
-                                    worldDistToChild * pc.raySizeCoef + pc.raySizeBias >= childWorldSize);
+                                bool subPixelFootprint = (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+                                    worldDistToChild * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= childWorldSize);
 
                                 uint childOctreeIdxTc = tierRefTable[absoluteTierRefIdx].childOctreeIndex;
                                 bool childNotResident = (configs[childOctreeIdxTc].brickResident == 0u);
@@ -2737,8 +2736,8 @@ bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
 
             } else {
 #ifdef LOD_ENABLED
-                if (pc.raySizeCoef > 0.0 &&
-                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
+                if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+                    tv_max * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= state.scale_exp2) {
                     // M10 Task 10.2 MECH 1 fix: same coarse-coverage rationale -- a
                     // LOD sub-pixel non-leaf's whole-footprint coverage bit is not a
                     // real surface crossing, so any-hit rays must not accept it.
@@ -2974,7 +2973,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
         float compositionCellWorldSize =
             ((1.0 / bpaF) / compositionEntryDirLen) * instRenderScale;
         g_lastFootprintRegime = classifyCellFootprintRegime(
-            compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+            compositionWorldDist, compositionCellWorldSize, VIXEN_QUERY_RAY_SIZE_COEF, pc.raySizeBias, pc.cosmicK);
     }
 #endif
 
@@ -3019,9 +3018,9 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
             float entryCellWorldSize = ((1.0 / bpaF) / entryDirLen) * instRenderScale;
             const float kEntryBrickSize = 8.0;  // BRICK_SIZE_SDF, matches the mid-march gate
             float entryAdmitFootprint = entryCellWorldSize / kEntryBrickSize;  // finest ladder rung == one voxel
-            float entryGateLhs = entryWorldDist * pc.raySizeCoef + pc.raySizeBias;
+            float entryGateLhs = entryWorldDist * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
             recordEntryGateLhs(entryGateLhs);  // batch-38: the entry gate's OWN probe
-            bool entryPolicyAdmits = pc.raySizeCoef > 0.0 &&
+            bool entryPolicyAdmits = VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
                 entryGateLhs >= entryAdmitFootprint;
 #ifdef VIXEN_REGIME3
             // Deep-field-mip-policy design doc, regime 3 (cosmic accumulation) first
@@ -3078,11 +3077,11 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                         int walkFloorLevel = clamp(VIXEN_REGIME3_LEVEL_FLOOR, 0, walkDepth);
                         float walkFloorFootprint = entryCellWorldSize *
                             float(1u << uint(walkFloorLevel));
-                        float walkFootprint = cellWorldDist * pc.raySizeCoef + pc.raySizeBias;
+                        float walkFootprint = cellWorldDist * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
                         walkFootprint = max(walkFootprint, walkFloorFootprint);
-                        if (pc.raySizeCoef > 0.0) {
+                        if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0) {
                             walkWorldDist = max(cellWorldDist,
-                                (walkFootprint - pc.raySizeBias) / pc.raySizeCoef);
+                                (walkFootprint - pc.raySizeBias) / VIXEN_QUERY_RAY_SIZE_COEF);
                         }
 #endif
                         bool walkReachedBrick = descendToNodeOrdinal(walkCell, walkOctantMask, walkDepth,
@@ -3253,8 +3252,8 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
             float cellWorldSize = ((1.0 / bpaF) / farDirLen) * instRenderScale;
             incrFarFieldCandidates();  // round-5: counts candidates reaching the gate test, before it runs
             incrFarGenRectCellEntry();  // batch-24 FARGEN: rect-scoped cell-entry funnel
-            recordFarFieldGateOperands(worldDistToCell * pc.raySizeCoef + pc.raySizeBias, cellWorldSize);  // round-6 probe
-            recordFarGenRectLhsHistogram(worldDistToCell * pc.raySizeCoef + pc.raySizeBias);  // batch-25 JOB 2
+            recordFarFieldGateOperands(worldDistToCell * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias, cellWorldSize);  // round-6 probe
+            recordFarGenRectLhsHistogram(worldDistToCell * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias);  // batch-25 JOB 2
             // BATCH-35: SAFETY NET, not the primary dispatch anymore. The
             // entry-point decision above (this function's head, right after
             // tBias) now handles the common case -- a ray whose footprint
@@ -3297,11 +3296,11 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
 #ifdef VIXEN_MIP_POLICY
             const float kFarFieldBrickSize = 8.0;  // BRICK_SIZE_SDF, see brickSize below
             float policyAdmitFootprint = cellWorldSize / kFarFieldBrickSize;  // finest ladder rung == one voxel
-            bool policyAdmits = pc.raySizeCoef > 0.0 &&
-                worldDistToCell * pc.raySizeCoef + pc.raySizeBias >= policyAdmitFootprint;
+            bool policyAdmits = VIXEN_QUERY_RAY_SIZE_COEF > 0.0 &&
+                worldDistToCell * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= policyAdmitFootprint;
             if (policyAdmits) {
 #else
-            if (pc.raySizeCoef > 0.0 && worldDistToCell * pc.raySizeCoef + pc.raySizeBias >= cellWorldSize) {
+            if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 && worldDistToCell * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias >= cellWorldSize) {
 #endif
                 incrFarGenRectGateCross();  // batch-24 FARGEN: rect-scoped gate-cross funnel
                 vec3 farEntryPos = rayOriginLocal + rayDirLocal * tCellEnter;

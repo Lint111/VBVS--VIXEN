@@ -2,6 +2,7 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDeviceFwd.h"
 #include <vulkan/vulkan.h>
+#include "IRenderTarget.h"
 
 namespace Vixen::RenderGraph {
 
@@ -11,7 +12,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts (declared early for reuse)
 namespace AccumulationHistoryNodeCounts {
     static constexpr size_t INPUTS  = 4;  // VULKAN_DEVICE_IN, COMMAND_POOL, WIDTH, HEIGHT
-    static constexpr size_t OUTPUTS = 4;  // previous/current history views and images
+    static constexpr size_t OUTPUTS = 6;  // previous/current history views and images
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -94,6 +95,11 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(HISTORY_TARGET, Vixen::Vulkan::Resources::IRenderTarget*, 4,
+        SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(CURRENT_HISTORY_TARGET, Vixen::Vulkan::Resources::IRenderTarget*, 5,
+        SlotNullability::Required, SlotMutability::WriteOnly);
+
     // ----- Constructor: runtime descriptor initialization -----
     AccumulationHistoryNodeConfig() {
         HandleDescriptor deviceDesc{"VulkanDevice*"};
@@ -105,6 +111,10 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         HandleDescriptor uint32Desc{"uint32_t"};
         INIT_INPUT_DESC(WIDTH,  "width",  ResourceLifetime::Transient, uint32Desc);
         INIT_INPUT_DESC(HEIGHT, "height", ResourceLifetime::Transient, uint32Desc);
+
+        HandleDescriptor targetDesc{"IRenderTarget*"};
+        INIT_OUTPUT_DESC(HISTORY_TARGET, "history_target", ResourceLifetime::Persistent, targetDesc);
+        INIT_OUTPUT_DESC(CURRENT_HISTORY_TARGET, "current_history_target", ResourceLifetime::Persistent, targetDesc);
 
         // Each output role selects one of the pair's persistent views/images for this frame.
         HandleDescriptor viewDesc{"VkImageView"};

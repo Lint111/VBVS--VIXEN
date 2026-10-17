@@ -7,6 +7,7 @@
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Nodes/BufferSyncGathererNode.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Nodes/ConstantNode.h"
 #include "Nodes/ConstantNodeType.h"
 #include "Nodes/ImageSyncGathererNode.h"
@@ -52,6 +53,7 @@ struct ReconstructionDepthParams {
     NodeHandle sourceTarget{};
     NodeHandle camera{};
     NodeHandle hitRecords{};
+    NodeHandle hitProducer{};
     ReconstructionDepthConvention convention = ReconstructionDepthConvention::ForwardZeroToOne;
     std::function<std::shared_ptr<ShaderManagement::ShaderFamily>(const std::string&, const std::string&)>
         makeShaderFamily;
@@ -68,7 +70,8 @@ public:
 
     void Build(GraphScope& scope, const Params& params) {
         if (!params.batch || !params.makeShaderFamily || !params.registerShaderFamily ||
-            !params.sourceTarget.IsValid() || !params.camera.IsValid() || !params.hitRecords.IsValid()) {
+            !params.sourceTarget.IsValid() || !params.camera.IsValid() || !params.hitRecords.IsValid() ||
+            !params.hitProducer.IsValid()) {
             throw std::invalid_argument("Reconstruction depth module is missing its frame-input producers");
         }
         auto& batch = *params.batch;
@@ -123,6 +126,8 @@ public:
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
              .Connect(writes, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       stage, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(params.hitProducer, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      stage, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH, view, RenderTargetNodeConfig::RENDER_TARGET);
         scope.BindOutput(ReconstructionDepthPorts::NORMALIZED_DEPTH, normalized, RenderTargetNodeConfig::RENDER_TARGET);
         scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH_VIEW, view, RenderTargetNodeConfig::CURRENT_VIEW);

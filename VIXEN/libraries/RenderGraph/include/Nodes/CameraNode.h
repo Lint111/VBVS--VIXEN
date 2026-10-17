@@ -127,6 +127,8 @@ public:
      * in the same session. Combine with SetLookTargetForTest to aim the flight independent of
      * position, exactly as a real approach-and-orbit trajectory does.
      */
+    void NotifyCameraCut() { ++historyEpoch_; }
+
     void SetPositionForTest(glm::vec3 position) { cameraPosition = position; }
 
     /**
@@ -184,6 +186,8 @@ private:
     void EngageOrbit();
 
     bool orbitActive_ = false;
+
+    uint32_t historyEpoch_ = 0;
 
     // Current camera data struct
     CameraData currentCameraData;

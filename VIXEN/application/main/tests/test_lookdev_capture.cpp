@@ -7,6 +7,11 @@
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/ReconstructionHistoryStateNode.h"
+#include "Nodes/SceneRadianceNode.h"
+#include "Nodes/PickIdTargetNode.h"
+#include "Nodes/RenderTargetExtentNode.h"
+#include "Data/Nodes/SceneRadianceNodeConfig.h"
+#include <glm/gtc/packing.hpp>
 #include "Debug/RenderTargetReadback.h"
 #include "Nodes/PushConstantGathererNode.h"
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
@@ -861,7 +866,15 @@ public:
         : outputDir_(std::move(outputDir)), scenarios_(std::move(scenarios)),
           framesPerScenario_(framesPerScenario) {
         SetPresentationTarget(PresentationTarget::Offscreen);
-        SetRenderPathConfig(gRenderPathConfig);
+        auto config = gRenderPathConfig;
+        config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None
+            ? Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture
+            : Vixen::RenderGraph::ReconstructionSamplingPath::InteractiveVisual;
+        if (std::getenv("VIXEN_LOOKDEV_JITTER_PROBE")) {
+            config.samplingPath = Vixen::RenderGraph::ReconstructionSamplingPath::InteractiveVisual;
+            config.temporalJitter = true;
+        }
+        SetRenderPathConfig(config);
     }
 
     void SetProcessStart(CaptureClock::time_point start) { processStart_ = start; }
@@ -1050,7 +1063,25 @@ public:
     bool Render() override {
         const auto frameStart = CaptureClock::now();
         if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
+        if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
+            camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));
+        const bool historyProbe = std::getenv("VIXEN_LOOKDEV_HISTORY_PROBE") != nullptr;
+        if (historyProbe && framesInScenario_ == 1u) SetReconstructionViewportActive(false);
+        if (historyProbe && framesInScenario_ == 2u) {
+            SetReconstructionViewportActive(true);
+            NotifyReconstructionCameraCut();
+        }
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        if (historyProbe && framesInScenario_ >= 1u && framesInScenario_ <= 3u) {
+            auto* state = GetRenderGraph()->GetInstanceByName("render_path/reconstruction_history/state");
+            const auto valid = state->GetOutput(ReconstructionHistoryStateNodeConfig::VALID.index)->GetHandle<uint32_t>();
+            const auto reasons = state->GetOutput(ReconstructionHistoryStateNodeConfig::RESET_REASONS.index)->GetHandle<uint32_t>();
+            if ((framesInScenario_ < 3u && valid != 0u) || (framesInScenario_ == 3u && valid != 1u) ||
+                (framesInScenario_ == 2u && !(reasons & static_cast<uint32_t>(ReconstructionHistoryReset::CameraCut)))) {
+                captureError_ = "viewport switch/cut history acknowledgement failed";
+                return false;
+            }
+        }
         frameWallMs_.push_back(MsBetween(frameStart, CaptureClock::now()));
         if (!modulePushChecked_ && std::getenv("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING")) {
             modulePushChecked_ = true;
@@ -1234,6 +1265,64 @@ private:
                 std::to_string(hits) + " hits, " + std::to_string(misses) + " misses";
             return false;
         }
+        auto* motion = targetByName("render_path/reconstruction_motion/motion");
+        auto* validity = targetByName("render_path/reconstruction_motion/validity");
+        std::vector<uint8_t> motionBytes, validityBytes;
+        if (!motion || !validity || motion->GetFormat() != VK_FORMAT_R32G32_SFLOAT ||
+            validity->GetFormat() != VK_FORMAT_R32_SFLOAT ||
+            !Debug::ReadRenderTargetBytes(device, motion, device->queue, device->graphicsQueueIndex, motionBytes, captureError_) ||
+            !Debug::ReadRenderTargetBytes(device, validity, device->queue, device->graphicsQueueIndex, validityBytes, captureError_)) return false;
+        if (motionBytes.size() != size_t(extent.width) * extent.height * 8u ||
+            validityBytes.size() != size_t(extent.width) * extent.height * 4u) return false;
+        if (vkMapMemory(device->device, snapshotMemory_, 0, snapshotSize_, 0, &mapped) != VK_SUCCESS) return false;
+        const auto previousVP = camera_->GetOutput(CameraNodeConfig::PREV_VIEW_PROJ.index)->GetHandle<const glm::mat4&>();
+        const auto currentVP = camera_->GetCurrentViewProj();
+        size_t motionFailures = 0, nonzeroMotion = 0;
+        float maxMotionError = 0.0f;
+        std::vector<uint8_t> motionPreview(size_t(extent.width) * extent.height * 3u, 0);
+        for (size_t i = 0; i < size_t(extent.width) * extent.height; ++i) {
+            float vector[2], correspondence;
+            std::memcpy(vector, motionBytes.data() + i * 8u, 8u);
+            std::memcpy(&correspondence, validityBytes.data() + i * 4u, 4u);
+            const auto* record = static_cast<const uint8_t*>(mapped) + i * 64u;
+            uint32_t flags;
+            glm::vec3 world;
+            std::memcpy(&world, record + 32u, sizeof(world));
+            std::memcpy(&flags, record + 44u, sizeof(flags));
+            glm::vec2 expected(0.0f);
+            if (flags & 1u) {
+                const auto previous = previousVP * glm::vec4(world, 1.0f);
+                const auto current = currentVP * glm::vec4(world, 1.0f);
+                if (previous.w > 0.0f && current.w > 0.0f)
+                    expected = (glm::vec2(previous) / previous.w - glm::vec2(current) / current.w) * 0.5f;
+            }
+            const float error = glm::length(glm::vec2(vector[0], vector[1]) - expected);
+            maxMotionError = std::max(maxMotionError, error);
+            motionFailures += !std::isfinite(vector[0]) || !std::isfinite(vector[1]) || error > 3e-6f || correspondence != 0.0f;
+            nonzeroMotion += glm::length(expected) > 1e-5f;
+            if (flags & 1u) {
+                motionPreview[i * 3] = uint8_t(glm::clamp(128.0f + vector[0] * float(extent.width) * 32.0f, 0.0f, 255.0f));
+                motionPreview[i * 3 + 1] = uint8_t(glm::clamp(128.0f + vector[1] * float(extent.height) * 32.0f, 0.0f, 255.0f));
+                motionPreview[i * 3 + 2] = 128u;
+            }
+        }
+        vkUnmapMemory(device->device, snapshotMemory_);
+        std::ofstream motionFile(stem.string() + ".motion.f32", std::ios::binary);
+        motionFile.write(reinterpret_cast<const char*>(motionBytes.data()), motionBytes.size());
+        std::ofstream validityFile(stem.string() + ".motion-validity.f32", std::ios::binary);
+        validityFile.write(reinterpret_cast<const char*>(validityBytes.data()), validityBytes.size());
+        std::ofstream motionResult(stem.string() + ".motion.json");
+        motionResult << "{\"convention\":\"previousUV-currentUV; right/down; unjittered cameras\",\"failures\":"
+                     << motionFailures << ",\"nonzero_camera_vectors\":" << nonzeroMotion
+                     << ",\"max_uv_error\":" << maxMotionError
+                     << ",\"procedural_correspondence_valid\":false}\n";
+        if (!motionFile || !validityFile || !motionResult || motionFailures ||
+            (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && !nonzeroMotion) ||
+            !stbi_write_png((stem.string() + ".motion.png").c_str(), int(extent.width), int(extent.height),
+                            3, motionPreview.data(), int(extent.width) * 3)) {
+            captureError_ = "motion guide oracle failed: " + std::to_string(motionFailures);
+            return false;
+        }
         auto* historyA = targetByName("render_path/reconstruction_history/history_a");
         auto* historyB = targetByName("render_path/reconstruction_history/history_b");
         auto* display = targetByName("main_offscreen_target");
@@ -1250,11 +1339,90 @@ private:
             historyA->GetExtent().height != display->GetExtent().height ||
             historyB->GetExtent().width != display->GetExtent().width ||
             historyB->GetExtent().height != display->GetExtent().height ||
-            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::RESET.index)->GetHandle<uint32_t>() != 1u ||
-            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::VALID.index)->GetHandle<uint32_t>() != 0u) {
-            captureError_ = "unwritten viewport history must own two distinct output-size images and remain invalid";
+            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::RESET.index)->GetHandle<uint32_t>() != (framesPerScenario_ < 2u ? 1u : 0u) ||
+            historyState->GetOutput(ReconstructionHistoryStateNodeConfig::VALID.index)->GetHandle<uint32_t>() != (framesPerScenario_ < 2u ? 0u : 1u)) {
+            captureError_ = "viewport history must own distinct output-size images and commit only written frames";
             return false;
         }
+        auto* radianceNode = graph->GetInstanceByName("scene_radiance");
+        auto* radiance = radianceNode->GetOutput(SceneRadianceNodeConfig::HISTORY_TARGET.index)
+            ->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+        std::vector<uint8_t> radianceBytes;
+        if (!Debug::ReadRenderTargetBytes(device, radiance, device->queue, device->graphicsQueueIndex,
+                                         radianceBytes, captureError_)) return false;
+        std::ofstream sourceRaw(stem.string() + ".history-source.f16", std::ios::binary);
+        sourceRaw.write(reinterpret_cast<const char*>(radianceBytes.data()), radianceBytes.size());
+        if (!sourceRaw || radiance->GetExtent().width != extent.width || radiance->GetExtent().height != extent.height) {
+            captureError_ = "scene history source extent mismatch";
+            return false;
+        }
+        const auto writeIndex = historyState->GetOutput(ReconstructionHistoryStateNodeConfig::WRITE_INDEX.index)->GetHandle<uint32_t>();
+        size_t historyFailures = 0, positiveHistory = 0;
+        for (uint32_t imageIndex = 0; imageIndex < 2; ++imageIndex) {
+            auto* target = imageIndex == 0 ? historyA : historyB;
+            std::vector<uint8_t> bytes;
+            if (!Debug::ReadRenderTargetBytes(device, target, device->queue, device->graphicsQueueIndex,
+                                             bytes, captureError_)) return false;
+            const auto outputExtent = target->GetExtent();
+            std::vector<uint8_t> preview(size_t(outputExtent.width) * outputExtent.height * 3u);
+            for (uint32_t y = 0; y < outputExtent.height; ++y) for (uint32_t x = 0; x < outputExtent.width; ++x) {
+                const size_t i = size_t(y) * outputExtent.width + x;
+                const uint32_t sx = std::min(uint32_t((float(x) + 0.5f) * float(extent.width) / float(outputExtent.width)), extent.width - 1);
+                const uint32_t sy = std::min(uint32_t((float(y) + 0.5f) * float(extent.height) / float(outputExtent.height)), extent.height - 1);
+                if (imageIndex == writeIndex)
+                    historyFailures += std::memcmp(bytes.data() + i * 8u,
+                        radianceBytes.data() + (size_t(sy) * extent.width + sx) * 8u, 8u) != 0;
+                for (size_t c = 0; c < 3; ++c) {
+                    uint16_t half;
+                    std::memcpy(&half, bytes.data() + i * 8u + c * 2u, 2u);
+                    const float value = glm::unpackHalf1x16(half);
+                    historyFailures += !std::isfinite(value) || value < 0.0f;
+                    positiveHistory += value > 0.0f;
+                    const float mappedValue = std::pow(std::max(value, 0.0f) / (1.0f + std::max(value, 0.0f)), 1.0f / 2.2f);
+                    preview[i * 3u + c] = uint8_t(glm::clamp(mappedValue * 255.0f, 0.0f, 255.0f));
+                }
+            }
+            const std::string imageStem = stem.string() + (imageIndex == 0 ? ".history-a" : ".history-b");
+            std::ofstream raw(imageStem + ".f16", std::ios::binary);
+            raw.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            if (!raw || !stbi_write_png((imageStem + ".png").c_str(), int(outputExtent.width), int(outputExtent.height),
+                                        3, preview.data(), int(outputExtent.width) * 3)) return false;
+        }
+        std::ofstream historyResult(stem.string() + ".history.json");
+        historyResult << "{\"kind\":\"unblended scene-linear seed; not temporal reconstruction\",\"failures\":"
+                      << historyFailures << ",\"positive_channels\":" << positiveHistory
+                      << ",\"write_index\":" << writeIndex << "}\n";
+        if (!historyResult || historyFailures || !positiveHistory) {
+            captureError_ = "history seed oracle failed: " + std::to_string(historyFailures);
+            return false;
+        }
+        auto* pickNode = graph->GetInstanceByName("pick_id_target");
+        if (!pickNode) { captureError_ = "missing native picking target"; return false; }
+        Vixen::Vulkan::Resources::RenderTargetData pickTarget;
+        pickTarget.buffers = {{pickNode->GetOutput(PickIdTargetNodeConfig::ID_IMAGE.index)->GetHandle<VkImage>(),
+            VK_NULL_HANDLE, pickNode->GetOutput(PickIdTargetNodeConfig::ID_IMAGE_VIEW.index)->GetHandle<VkImageView>(),
+            VK_IMAGE_LAYOUT_GENERAL}};
+        pickTarget.format = VK_FORMAT_R32G32_UINT;
+        pickTarget.imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        pickTarget.extent = extent;
+        if (auto* nativeExtent = graph->GetInstanceByName("native_pick_extent")) {
+            pickTarget.extent = {
+                nativeExtent->GetOutput(RenderTargetExtentNodeConfig::WIDTH.index)->GetHandle<uint32_t>(),
+                nativeExtent->GetOutput(RenderTargetExtentNodeConfig::HEIGHT.index)->GetHandle<uint32_t>()};
+        }
+        std::vector<uint8_t> pickingBytes;
+        if (!Debug::ReadRenderTargetBytes(device, &pickTarget, device->queue, device->graphicsQueueIndex,
+                                         pickingBytes, captureError_)) return false;
+        std::ofstream pickRaw(stem.string() + ".picking.rg32ui", std::ios::binary);
+        pickRaw.write(reinterpret_cast<const char*>(pickingBytes.data()), pickingBytes.size());
+        auto* jitterResource = historyState->GetOutput(ReconstructionHistoryStateNodeConfig::JITTER.index);
+        const auto jitter = jitterResource->GetHandle<glm::vec2>();
+        std::ofstream samplingResult(stem.string() + ".sampling.json");
+        samplingResult << "{\"jitter_input_pixels\":[" << jitter.x << ',' << jitter.y
+                       << "],\"pick_width\":" << pickTarget.extent.width
+                       << ",\"pick_height\":" << pickTarget.extent.height << "}\n";
+        if (!pickRaw || !samplingResult ||
+            (std::getenv("VIXEN_LOOKDEV_JITTER_PROBE") && jitter == glm::vec2(0.0f))) return false;
         auto* exposure = targetByName("render_path/reconstruction_exposure/exposure");
         std::vector<uint8_t> exposureBytes;
         auto* meter = dynamic_cast<StorageBufferNode*>(graph->GetInstanceByName("exposure_meter_buffer"));

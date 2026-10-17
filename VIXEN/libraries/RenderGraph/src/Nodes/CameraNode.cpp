@@ -52,6 +52,7 @@ void CameraNode::TypedSetupImpl(TypedSetupContext& ctx) {
         const float seq = GetParameterValue<float>(CameraNodeConfig::PARAM_POSE_SEQ, 0.0f);
         if (std::isnan(lastPoseSeq_) || seq != lastPoseSeq_) {
             forceApply = true;
+            NotifyCameraCut();
             lastPoseSeq_ = seq;
         }
     }
@@ -179,6 +180,7 @@ void CameraNode::TypedCompileImpl(TypedCompileContext& ctx) {
     currentCameraData.invView = glm::inverse(view);
 
     // Output pointer to the camera data struct
+    ctx.Out(CameraNodeConfig::HISTORY_EPOCH, historyEpoch_);
     ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
 
     // Sampled Lighting Inc2 M3: seed prevViewProj from THIS (first) frame's own matrices —
@@ -306,6 +308,7 @@ void CameraNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(CameraNodeConfig::CURRENT_VIEW_PROJ, const_cast<const glm::mat4&>(currentViewProj));
 
     // Output pointer to the camera data struct
+    ctx.Out(CameraNodeConfig::HISTORY_EPOCH, historyEpoch_);
     ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
 }
 

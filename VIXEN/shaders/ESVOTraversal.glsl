@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // ESVOTraversal.glsl - Core ESVO Octree Traversal Algorithm
 // ============================================================================
@@ -142,7 +143,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
     nodeOrdinal = 0u;
     outLevel = uint(depth);
     g_mipSampleLevel = outLevel;
-    float footprint = worldDistToBrick * pc.raySizeCoef + pc.raySizeBias;
+    float footprint = worldDistToBrick * VIXEN_QUERY_RAY_SIZE_COEF + pc.raySizeBias;
 #ifdef VIXEN_MIP_POLICY
     // Deep-Field Mip-Accessor Policy (design doc §regimes, regime 2 MIP HIT):
     // consult the ONE shared footprint->level function (mipPolicyLevel,
@@ -175,7 +176,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         // than the policy's answer, and stop at EQUALITY -- i.e. return the
         // node whose own level (level+1) equals policyTargetLevel, which is
         // exactly the level mipPolicyLevel() selected for this footprint.
-        if (pc.raySizeCoef > 0.0 && (level + 1) <= policyTargetLevel) {
+        if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 && (level + 1) <= policyTargetLevel) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
             g_mipSampleLevel = outLevel;
@@ -183,7 +184,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         }
 #else
         float nodeWorldSize = brickWorldSize * float(1u << uint(level + 1));
-        if (pc.raySizeCoef > 0.0 && footprint >= nodeWorldSize) {
+        if (VIXEN_QUERY_RAY_SIZE_COEF > 0.0 && footprint >= nodeWorldSize) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
             g_mipSampleLevel = outLevel;

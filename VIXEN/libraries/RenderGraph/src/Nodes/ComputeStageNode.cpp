@@ -283,6 +283,8 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
+    ++submissionSerial_;
+
     // Only WSI consumers have a presentable binary semaphore. Offscreen producers still publish
     // the output slot, with a null handle, so downstream graph topology stays target-agnostic.
     const VkSemaphore renderCompleteSemaphore = handoffs.present;

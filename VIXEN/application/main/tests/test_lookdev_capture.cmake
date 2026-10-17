@@ -51,6 +51,26 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         vixen_lock_gpu_tests(TESTS "${_depth_test}")
     endforeach()
 
+    set(_temporal_test "Application.ReconstructionInputs.TemporalLifecycle")
+    set(_temporal_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/temporal-lifecycle")
+    add_test(NAME "${_temporal_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+        "--render-scale=0.5" "--upscaler=none")
+    set_tests_properties("${_temporal_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+        ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_MOTION_PROBE=1;VIXEN_LOOKDEV_HISTORY_PROBE=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_temporal_dir};VIXEN_HDR_EXPOSURE_FIXED=1")
+    vixen_lock_gpu_tests(TESTS "${_temporal_test}")
+
+    foreach(_jitter_scale IN ITEMS 1.0 0.5)
+        set(_jitter_test "Application.ReconstructionInputs.Jitter.${_jitter_scale}")
+        set(_jitter_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/jitter-${_jitter_scale}")
+        add_test(NAME "${_jitter_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+            "--render-scale=${_jitter_scale}" "--upscaler=none")
+        set_tests_properties("${_jitter_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+            ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_JITTER_PROBE=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_jitter_dir};VIXEN_HDR_EXPOSURE_FIXED=1")
+        vixen_lock_gpu_tests(TESTS "${_jitter_test}")
+    endforeach()
+
     # Native S2 parity jobs capture one state/angle/mode per CTest case. Keeping
     # each GPU capture as its own test lets the box queue admit it independently;
     # the lane compares each reference/system pair after both jobs finish.

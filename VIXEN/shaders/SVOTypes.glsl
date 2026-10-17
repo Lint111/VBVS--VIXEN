@@ -1,3 +1,4 @@
+#include "RayFootprint.glsl"
 // ============================================================================
 // SVOTypes.glsl - Shared SVO/ESVO Data Structures
 // ============================================================================
@@ -291,7 +292,7 @@ int farFieldDescentDepth(int bricksPerAxis) {
 // only 1-2%. The old header also claimed "the same criterion, not an analog";
 // that was false in ~70% of cases. Rule and claim both corrected here.
 // raySizeCoef<=0 disables LOD entirely (full-detail marching) — returns 0,
-// same convention every other pc.raySizeCoef>0.0 gate in this codebase uses.
+// same convention every other VIXEN_QUERY_RAY_SIZE_COEF>0.0 gate in this codebase uses.
 // maxLevel caps the search (callers pass their own hierarchy depth so this
 // never walks past the root).
 int mipPolicyLevel(float footprint, float leafWorldSize, int maxLevel) {

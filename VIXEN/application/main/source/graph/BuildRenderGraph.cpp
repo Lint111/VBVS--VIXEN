@@ -30,6 +30,8 @@
 #include "graph/UpscalerModules.h"
 #include "graph/ReconstructionDepth.h"
 #include "graph/ReconstructionMotion.h"
+#include "graph/ReconstructionSampling.h"
+#include "Nodes/RenderTargetExtentNode.h"
 #include "graph/ReconstructionExposure.h"
 #include "graph/ReconstructionHistory.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
@@ -481,7 +483,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
-    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH");
+    const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
+    const bool jitterEnabled = renderPathConfig.temporalJitter &&
+        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
+    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
@@ -492,9 +497,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Keep its explicit opt-in out of every ordinary/default graph build.
     const bool testIndirectLightingEnabled =
         envFlagEnabled("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING");
+    if (jitterEnabled && (!hdrExposureEnabled || envFlagEnabled("VIXEN_B1_OCCLUSION_CULL") ||
+        envFlagEnabled("VIXEN_B2_PROXY_PREPASS") || envFlagEnabled("VIXEN_DEBUG_CAPTURE")))
+        throw std::invalid_argument("Temporal sampling requires HDR inputs and non-proxy traversal without trace capture");
     const bool hdrExposureFixed = hdrExposureEnabled &&
                                  envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
-    const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
@@ -603,6 +610,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // so the descriptor wiring for bindings 1/2/3/5 just points here instead) plus
     // INSTANCE_BUFFER (binding 10) and INSTANCE_COUNT.
     NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
+    static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))->SetMotionGuidesEnabled(reconstructionInputsEnabled);
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
 
     // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
@@ -1425,6 +1433,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (auto* rscInst = renderGraph->GetInstance(raySizeCoefNode)) {
         if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
     }
+    NodeHandle nativePickExtent{};
+    NodeHandle nativePickCoefficient{};
+    if (jitterEnabled) {
+        nativePickExtent = renderGraph->AddNode<RenderTargetExtentNodeType>("native_pick_extent");
+        nativePickCoefficient = renderGraph->AddNode<RaySizeCoefNodeType>("native_pick_ray_size_coef");
+    }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
 
     // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc: cosmicK
@@ -1867,6 +1881,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lock-step. raySizeBias = 0.0 (pinhole camera; zero cone diameter at origin).
     auto* raySizeCoef = static_cast<RaySizeCoefNode*>(renderGraph->GetInstance(raySizeCoefNode));
     raySizeCoef->SetParameter(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
+    if (jitterEnabled) renderGraph->GetInstance(nativePickCoefficient)->SetParameter(
+        RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, kRaymarchCameraFovDegrees);
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
 
@@ -8415,9 +8431,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
          // M4.4: the crosshair readback samples PickIdTargetNode's ring, which now follows the
          // RENDER extent (not the window) — VIEWPORT_WIDTH/HEIGHT must be the same extent so
          // width/2,height/2 lands on the actual image center. Was windowNode::WIDTH_OUT/HEIGHT_OUT.
-         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
+                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::WIDTH_Slot>("WIDTH")
+                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH)
-         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
+                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::HEIGHT_Slot>("HEIGHT")
+                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
                   voxelSelectionProviderNode, VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT);
 
     // SEL-P3 UI provider: only needs per-frame InputState (cursor position + left button). It reads
@@ -8453,9 +8473,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pickIdTargetNode, PickIdTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   pickIdTargetNode, PickIdTargetNodeConfig::COMMAND_POOL)
-         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
+                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::WIDTH_Slot>("WIDTH")
+                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::WIDTH_OUT_Slot>("WIDTH_OUT"),
                   pickIdTargetNode, PickIdTargetNodeConfig::WIDTH)
-         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+         .ConnectOutput(jitterEnabled ? nativePickExtent : renderTargetNode,
+                  jitterEnabled ? SlotInfo::FromOutputSlot<RenderTargetExtentNodeConfig::HEIGHT_Slot>("HEIGHT")
+                                : SlotInfo::FromOutputSlot<RenderTargetNodeConfig::HEIGHT_OUT_Slot>("HEIGHT_OUT"),
                   pickIdTargetNode, PickIdTargetNodeConfig::HEIGHT)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   pickIdTargetNode, PickIdTargetNodeConfig::CURRENT_FRAME_INDEX);
@@ -8986,6 +9010,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
             ReconstructionMotionPorts::MOTION_VIEW.index, SlotRole::Execute);
         sceneProviders.ProvideSubGraphOutput("motionValidityImage", motion,
             ReconstructionMotionPorts::VALIDITY_VIEW.index, SlotRole::Execute);
+        sceneProviders.Provide("BodyInstanceMotionBuffer", bodyOctreeSceneNode,
+            BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER, kSceneRoles);
         marchFeatures.Enable(kFeatureReconstructionInputs);
     }
 
@@ -9032,6 +9058,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] March descriptors wired from merged SDI (sceneProviders registry)");
+    }
+
+    std::optional<SubGraphHandle> samplingGroup;
+    if (jitterEnabled) {
+        samplingGroup = renderGraph->Instantiate<ReconstructionSamplingModule>(
+            "render_path/primary_sampling", ReconstructionSamplingParams{
+                hitRecordBufferNode, pickIdTargetNode, prevCameraConfigNode});
+        sceneProviders.ProvideSubGraphOutput("HitRecordBuffer", *samplingGroup,
+            ReconstructionSamplingPorts::VISUAL_HITS.index, kSceneRoles, VisualInputAcceptance::VisualOnly);
+        batch.ConnectOutput(presentationTargetNode, targetContract.target,
+                            nativePickExtent, RenderTargetExtentNodeConfig::TARGET)
+             .Connect(nativePickExtent, RenderTargetExtentNodeConfig::HEIGHT,
+                      nativePickCoefficient, RaySizeCoefNodeConfig::HEIGHT);
+    }
+    if (jitterEnabled) {
+        batch.ConnectOutput(presentationTargetNode, targetContract.target,
+                            computeDispatch, ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE);
+    } else {
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      computeDispatch, ComputeDispatchNodeConfig::DISPATCH_EXTENT_SOURCE);
+    }
+    if (reconstructionInputsEnabled) {
+        if (tierCrossingLodCoefOverrideActive)
+            batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
+                prevCameraConfigNode, PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF, SlotRoleModifier(SlotRole::Execute));
+        else
+            batch.Connect(jitterEnabled ? nativePickCoefficient : raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                prevCameraConfigNode, PrevCameraConfigNodeConfig::NATIVE_PICK_RAY_SIZE_COEF, SlotRoleModifier(SlotRole::Execute));
     }
 
     // Sampled Lighting Inc1 M3: Binding 18: HitRecord SSBO. Device input + extent-driven sizing
@@ -9470,6 +9524,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.sourceTarget = renderTargetNode;
         params.camera = cameraNode;
         params.hitRecords = hitRecordBufferNode;
+        params.hitProducer = computeDispatch;
         params.makeShaderFamily = makeLightingFamily;
         params.registerShaderFamily = registerModuleShaderFamily;
         params.registerPassMetric = [this](std::string name, NodeHandle node) {
@@ -9486,8 +9541,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
         historyParams.common = lightingCommon;
         historyParams.sourceTarget = renderTargetNode;
         historyParams.camera = cameraNode;
+        historyParams.samplingPath = jitterEnabled ? ReconstructionSamplingPath::InteractiveVisual : ReconstructionSamplingPath::CanonicalCapture;
+        if (hdrExposureEnabled) {
+            historyParams.sceneRadiance = sceneRadianceNode;
+            historyParams.sceneProducer = spatialReuseNode;
+            historyParams.makeShaderFamily = makeLightingFamily;
+            historyParams.registerShaderFamily = registerModuleShaderFamily;
+            historyParams.registerPassMetric = params.registerPassMetric;
+        }
         const auto history = renderGraph->Instantiate<ReconstructionHistoryModule>(
             "render_path/reconstruction_history", historyParams);
+        if (samplingGroup) {
+            renderGraph->Connect(history, ReconstructionHistoryPorts::JITTER,
+                                 *samplingGroup, ReconstructionSamplingPorts::JITTER);
+        }
+        sceneProviders.ProvideSubGraphOutput("reconstructionJitter", history,
+            ReconstructionHistoryPorts::JITTER.index, SlotRole::Execute, VisualInputAcceptance::VisualOnly);
         sceneProviders.ProvideSubGraphOutput("reconstructionHistoryA", history,
             ReconstructionHistoryPorts::HISTORY_A_VIEW.index, SlotRole::Execute);
         sceneProviders.ProvideSubGraphOutput("reconstructionHistoryB", history,
@@ -9531,6 +9600,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     std::vector<UpscalerFrameInput> availableUpscalerInputs{UpscalerFrameInput::Color};
     if (reconstructionInputsEnabled) {
         availableUpscalerInputs.push_back(UpscalerFrameInput::Depth);
+        availableUpscalerInputs.push_back(UpscalerFrameInput::MotionVectors);
+        availableUpscalerInputs.push_back(UpscalerFrameInput::Jitter);
         if (hdrExposureEnabled) availableUpscalerInputs.push_back(UpscalerFrameInput::Exposure);
     }
 
@@ -9540,7 +9611,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     Vixen::CapabilityGraph upscalerCapabilities;
     PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
     auto upscalerPolicy = upscalerCapabilities.GetUpscalerCapabilityRecords().policy;
-    upscalerPolicy.viewMode = renderPathConfig.upscaler == UpscalerKind::None
+    upscalerPolicy.viewMode = !jitterEnabled && renderPathConfig.renderScale == 1.0f && renderPathConfig.upscaler == UpscalerKind::None
         ? Vixen::UpscalerViewMode::Canonical
         : Vixen::UpscalerViewMode::Relaxed;
     upscalerPolicy.outputExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};

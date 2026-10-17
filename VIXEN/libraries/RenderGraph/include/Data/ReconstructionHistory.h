@@ -34,10 +34,18 @@ public:
         pendingReasons_ |= static_cast<uint32_t>(reason);
     }
 
-    Frame BeginFrame(const glm::mat4& inverseProjection, VkExtent2D internal, VkExtent2D output) {
+    void SetViewportActive(bool active) {
+        if (active != active_) Invalidate(ReconstructionHistoryReset::ViewportSwitch);
+        active_ = active;
+    }
+
+    Frame BeginFrame(const glm::mat4& inverseProjection, VkExtent2D internal, VkExtent2D output,
+                     uint32_t cameraCutEpoch = 0u) {
         if (frameOpen_)
             Invalidate(ReconstructionHistoryReset::WriteNotCommitted);
         if (initialized_) {
+            if (cameraCutEpoch != cameraCutEpoch_)
+                Invalidate(ReconstructionHistoryReset::CameraCut);
             if (inverseProjection != projection_)
                 Invalidate(ReconstructionHistoryReset::ProjectionChanged);
             if (internal.width != internal_.width || internal.height != internal_.height ||
@@ -50,6 +58,7 @@ public:
             frameIndex_ = 0;
         }
         pendingReasons_ = 0;
+        cameraCutEpoch_ = cameraCutEpoch;
         projection_ = inverseProjection;
         internal_ = internal;
         output_ = output;
@@ -62,7 +71,7 @@ public:
     // the current history write. A skipped write invalidates correspondence at
     // the next BeginFrame, even if an older history image was previously valid.
     void CommitHistoryFrame() {
-        if (!frameOpen_) return;
+        if (!frameOpen_ || !active_) return;
         valid_ = true;
         ++frameIndex_;
         frameOpen_ = false;
@@ -73,6 +82,8 @@ private:
     VkExtent2D internal_{}, output_{};
     uint32_t pendingReasons_ = static_cast<uint32_t>(ReconstructionHistoryReset::FirstUse);
     uint32_t frameIndex_ = 0;
+    uint32_t cameraCutEpoch_ = 0;
+    bool active_ = true;
     bool initialized_ = false;
     bool valid_ = false;
     bool frameOpen_ = false;
