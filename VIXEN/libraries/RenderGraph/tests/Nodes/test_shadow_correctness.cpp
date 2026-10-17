@@ -976,10 +976,18 @@ protected:
         // DIAG (temporary, root-causing the anyHitCount=0 regression): separate pools per set,
         // matching the plain RenderScene's own exact single-pool-single-set shape, in case a
         // shared pool across two differently-sized layouts confuses this non-conformant driver.
-        const std::array<VkDescriptorPoolSize, 2> marchPoolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17},
-        }};
+        const auto poolSizesFor = [](const auto& bindings) {
+            std::array<VkDescriptorPoolSize, 2> sizes{{
+                {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0},
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0},
+            }};
+            for (const auto& binding : bindings)
+                for (auto& size : sizes)
+                    if (size.type == binding.descriptorType)
+                        size.descriptorCount += binding.descriptorCount;
+            return sizes;
+        };
+        const auto marchPoolSizes = poolSizesFor(marchBindings);
         VkDescriptorPoolCreateInfo marchDpci{};
         marchDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         marchDpci.maxSets = 1; marchDpci.poolSizeCount = static_cast<uint32_t>(marchPoolSizes.size()); marchDpci.pPoolSizes = marchPoolSizes.data();
@@ -992,10 +1000,7 @@ protected:
         VkDescriptorSet marchDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &marchDsai, &marchDescSet), VK_SUCCESS);
 
-        const std::array<VkDescriptorPoolSize, 2> shadePoolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  6},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 25},
-        }};
+        const auto shadePoolSizes = poolSizesFor(shadeBindings);
         VkDescriptorPoolCreateInfo shadeDpci{};
         shadeDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         shadeDpci.maxSets = 1; shadeDpci.poolSizeCount = static_cast<uint32_t>(shadePoolSizes.size()); shadeDpci.pPoolSizes = shadePoolSizes.data();

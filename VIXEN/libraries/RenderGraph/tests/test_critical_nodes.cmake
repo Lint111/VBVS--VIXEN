@@ -205,7 +205,8 @@ add_custom_command(
             -fshader-stage=compute
             -I ${_brm_shader_dir}
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
-            --target-env=vulkan1.3
+            # Match the Dozen Vulkan 1.2 device, as the B1/B2 fixtures do below.
+            --target-env=vulkan1.2
             # Baked-perf-pipeline M2 (audit D1, Task 2.2): test_body_instance_occlusion_reject.cpp
             # and test_tier_crossing_lod_residency.cpp (both share this SPV, see
             # body_instance_raymarch_spv's DEPENDS below) read back binding 14
