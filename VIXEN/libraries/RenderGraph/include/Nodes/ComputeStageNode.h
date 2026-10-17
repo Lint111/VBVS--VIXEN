@@ -38,6 +38,8 @@ public:
 class ComputeStageNode : public TypedNode<ComputeStageNodeConfig> {
 public:
     using Base = TypedNode<ComputeStageNodeConfig>;
+    using ExternalRecorder = std::function<void(Context&, VkCommandBuffer,
+                                                uint32_t imageIndex, uint32_t frameIndex)>;
 
     ComputeStageNode(const std::string& instanceName, NodeType* nodeType);
     uint64_t GetSubmissionSerial() const { return submissionSerial_; }
@@ -78,6 +80,15 @@ public:
     /// Get GPU performance logger for external metrics extraction (e.g. PerfCsvWriter).
     /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
     [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
+    // External SDKs such as FSR3 record several compute passes into this node's
+    // command buffer while RenderGraph continues to own ordering, submission and timing.
+    void SetExternalCommandRecorder(ExternalRecorder recorder,
+                                    std::function<void(VulkanDevice*)> initialize = {},
+                                    std::function<void()> cleanup = {}) {
+        externalRecorder_ = std::move(recorder);
+        externalInitialize_ = std::move(initialize);
+        externalCleanup_ = std::move(cleanup);
+    }
     // Capture diagnostics may snapshot a pass's output before a later pipelined
     // writer replaces it. Install before the first command-buffer recording.
     void SetPostDispatchRecorderForTest(std::function<void(VkCommandBuffer)> recorder) {
@@ -85,6 +96,9 @@ public:
     }
 private:
     std::function<void(VkCommandBuffer)> postDispatchRecorderForTest_;
+    ExternalRecorder externalRecorder_;
+    std::function<void(VulkanDevice*)> externalInitialize_;
+    std::function<void()> externalCleanup_;
 };
 
 } // namespace Vixen::RenderGraph

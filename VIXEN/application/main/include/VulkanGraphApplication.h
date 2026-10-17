@@ -87,7 +87,7 @@ ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig();
 class VulkanGraphApplication : public VulkanApplicationBase {
 public:
     enum class PresentationTarget { Window, Offscreen };
-    enum class UpscalerKind { None, Linear, Fsr1 };
+    enum class UpscalerKind { None, Linear, Fsr1, Fsr3 };
     struct RenderPathConfig {
         float renderScale = 1.0f;
         UpscalerKind upscaler = UpscalerKind::None;

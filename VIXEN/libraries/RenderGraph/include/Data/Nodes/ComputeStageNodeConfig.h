@@ -4,7 +4,9 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/CameraData.h"
 #include "ShaderDataBundle.h"
+#include <glm/vec2.hpp>
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
@@ -19,7 +21,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 23;  // R495: optional module indirect-light input (22)
+    static constexpr size_t INPUTS  = 26;  // External temporal recorder inputs (23-25)
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -435,6 +437,27 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    /** @brief Pixel-space jitter supplied to an external temporal command recorder. */
+    INPUT_SLOT(EXTERNAL_UV_JITTER, glm::vec2, 23,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief Nonzero when a viewport history reset must be applied this frame. */
+    INPUT_SLOT(EXTERNAL_HISTORY_RESET, uint32_t, 24,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief Camera projection data for an external temporal recorder. */
+    INPUT_SLOT(EXTERNAL_CAMERA_DATA, const CameraData&, 25,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -548,6 +571,13 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         INIT_INPUT_DESC(INDIRECT_LIGHTING, "indirect_lighting",
                         ResourceLifetime::Transient, indirectLightingDesc);
 
+        INIT_INPUT_DESC(EXTERNAL_UV_JITTER, "external_uv_jitter",
+                        ResourceLifetime::Transient, HandleDescriptor{"glm::vec2"});
+        INIT_INPUT_DESC(EXTERNAL_HISTORY_RESET, "external_history_reset",
+                        ResourceLifetime::Transient, uint32Desc);
+        INIT_INPUT_DESC(EXTERNAL_CAMERA_DATA, "external_camera_data",
+                        ResourceLifetime::Transient, HandleDescriptor{"CameraDataPtr"});
+
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
@@ -584,6 +614,12 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(INDIRECT_LIGHTING_Slot::nullable);
     static_assert(INDIRECT_LIGHTING_Slot::role == SlotRole::Execute);
     static_assert(std::is_same_v<INDIRECT_LIGHTING_Slot::Type, glm::vec3>);
+    static_assert(EXTERNAL_UV_JITTER_Slot::index == 23);
+    static_assert(std::is_same_v<EXTERNAL_UV_JITTER_Slot::Type, glm::vec2>);
+    static_assert(EXTERNAL_HISTORY_RESET_Slot::index == 24);
+    static_assert(std::is_same_v<EXTERNAL_HISTORY_RESET_Slot::Type, uint32_t>);
+    static_assert(EXTERNAL_CAMERA_DATA_Slot::index == 25);
+    static_assert(std::is_same_v<EXTERNAL_CAMERA_DATA_Slot::Type, const CameraData&>);
 };
 
 } // namespace Vixen::RenderGraph

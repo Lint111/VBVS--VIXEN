@@ -132,7 +132,7 @@ const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles() {
         },
         {
             "amd-laptop", "Unidentified AMD laptop", "unspecified", "unspecified", "native",
-            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
         },
         {
@@ -1010,6 +1010,10 @@ void CapabilityGraph::BuildStandardCapabilities() {
     fsr1Upscaler->AddDependency(storageImageWriteWithoutFormat);
     RegisterCapability(fsr1Upscaler);
 
+    auto fsr3Upscaler = std::make_shared<CompositeCapability>("Upscaler:Fsr3.1.4");
+    fsr3Upscaler->AddDependency(storageImageWriteWithoutFormat);
+    RegisterCapability(fsr3Upscaler);
+
     // SwapchainMaintenance1 - the VK_EXT_swapchain_maintenance1 extension for present fences
     // Note: This is VK_EXT_swapchain_maintenance1, NOT VK_KHR_maintenance1
     // The extension provides present fences via VkSwapchainPresentFenceInfoEXT
@@ -1079,12 +1083,19 @@ void CapabilityGraph::BuildStandardCapabilities() {
         "Upscaler.Linear",
         "Upscaler.Fsr1",
     };
+#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+    upscalerBuild.compiledAdapters.push_back("Upscaler.Fsr3.1.4");
+#endif
     upscalerBuild.sdkPackageRevisions = {
         {"Vulkan SDK", VIXEN_CONFIGURED_VULKAN_SDK_VERSION},
         {"glslang", VIXEN_CONFIGURED_GLSLANG_VERSION},
         {"SPIR-V target", VIXEN_CONFIGURED_SPIRV_TARGET_VERSION},
         {"AMD FidelityFX FSR 1", "a21ffb8f6c13233ba336352bdff293894c706575"},
     };
+#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+    upscalerBuild.sdkPackageRevisions.push_back(
+        {"AMD FidelityFX FSR 3.1.4", "c6efa6bf7f2027b3ec94f28578bb5965eabb9e55"});
+#endif
     upscalerBuild.nativeFallbackRetained = true;
 
     RegisterBuildFact("BuildFact:ConfiguredPlatform",

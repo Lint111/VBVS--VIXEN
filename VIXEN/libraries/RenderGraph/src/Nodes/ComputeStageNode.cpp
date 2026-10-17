@@ -68,6 +68,10 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     }
     SetDevice(devicePtr);
 
+    if (externalInitialize_) {
+        externalInitialize_(devicePtr);
+    }
+
     commandPool_ = ctx.In(ComputeStageNodeConfig::COMMAND_POOL);
     if (commandPool_ == VK_NULL_HANDLE) {
         throw std::runtime_error("[ComputeStageNode::CompileImpl] Command pool is null/invalid");
@@ -317,6 +321,31 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         gpuPerfLogger_->BeginFrame(cmd, frameIndex);
     }
 
+    if (externalRecorder_) {
+        auto* outputTarget = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
+        if (!outputTarget) {
+            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] External recorder has no output image");
+        }
+        const uint32_t outputIndex = outputTarget->GetCurrentIndex();
+        const VkImageLayout previousLayout = DecideRenderTargetPriorLayoutAndUpdate(
+            *outputTarget, outputIndex, VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(
+            GetDevice(), cmd, outputTarget->GetImage(outputIndex), previousLayout);
+        if (gpuPerfLogger_) {
+            gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
+        }
+        externalRecorder_(ctx, cmd, imageIndex, frameIndex);
+        if (gpuPerfLogger_) {
+            gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex,
+                outputTarget->GetExtent().width, outputTarget->GetExtent().height);
+        }
+        if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(cmd);
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] External recorder failed to end command buffer");
+        }
+        return;
+    }
+
     // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch
     // guard (see PARAM_DISPATCH_ENABLED's own doc comment) -- skips the descriptor
     // bind, push constants, image-layout barriers, and the vkCmdDispatch itself
@@ -512,6 +541,9 @@ void ComputeStageNode::SetPushConstants(Context& ctx, VkCommandBuffer cmd, VkPip
 // ============================================================================
 
 void ComputeStageNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
+    if (externalCleanup_) {
+        externalCleanup_();
+    }
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             std::vector<VkCommandBuffer> rawHandles;

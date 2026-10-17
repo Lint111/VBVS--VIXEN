@@ -61,8 +61,12 @@ TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClos
     EXPECT_EQ(records.build.spirvCompilerVersion, VIXEN_CONFIGURED_GLSLANG_VERSION);
     EXPECT_EQ(records.build.spirvTargetVersion, VIXEN_CONFIGURED_SPIRV_TARGET_VERSION);
     EXPECT_TRUE(records.build.nativeFallbackRetained);
-    EXPECT_EQ(records.build.compiledAdapters,
-              (std::vector<std::string>{"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}));
+    std::vector<std::string> expectedCompiledAdapters{
+        "Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"};
+#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+    expectedCompiledAdapters.push_back("Upscaler.Fsr3.1.4");
+#endif
+    EXPECT_EQ(records.build.compiledAdapters, expectedCompiledAdapters);
 
     const auto vulkanPackage = std::find_if(
         records.build.sdkPackageRevisions.begin(), records.build.sdkPackageRevisions.end(),
@@ -74,6 +78,13 @@ TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClos
         [](const auto& package) { return package.packageId == "AMD FidelityFX FSR 1"; });
     ASSERT_NE(fsr1Package, records.build.sdkPackageRevisions.end());
     EXPECT_EQ(fsr1Package->revision, "a21ffb8f6c13233ba336352bdff293894c706575");
+#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+    const auto fsr3Package = std::find_if(
+        records.build.sdkPackageRevisions.begin(), records.build.sdkPackageRevisions.end(),
+        [](const auto& package) { return package.packageId == "AMD FidelityFX FSR 3.1.4"; });
+    ASSERT_NE(fsr3Package, records.build.sdkPackageRevisions.end());
+    EXPECT_EQ(fsr3Package->revision, "c6efa6bf7f2027b3ec94f28578bb5965eabb9e55");
+#endif
     EXPECT_EQ(records.qualification.status, UpscalerQualificationStatus::UnqualifiedNoRunner);
     EXPECT_EQ(records.qualification.parity, UpscalerParityResult::NotRun);
     EXPECT_EQ(records.policy.viewMode, UpscalerViewMode::Canonical);
@@ -168,7 +179,8 @@ TEST(VulkanResources_CapabilityGraph, UpscalerMachineProfilesDeclareRequiredProv
                         {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
                          "Upscaler.Fsr3.1.4", "Upscaler.DlssSr"}},
         ExpectedProfile{"amd-laptop",
-                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.Fsr3.1.4"}},
         ExpectedProfile{"wsl2-dozen",
                         {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
         ExpectedProfile{"build-worker",

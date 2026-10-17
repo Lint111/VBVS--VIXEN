@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
 
 namespace Vixen::RenderGraph {
+
+enum class ReconstructionDepthConvention : uint32_t;
 
 struct UpscalerExtent {
     uint32_t width = 0;
@@ -47,6 +50,14 @@ enum class UpscalerFrameInput : uint8_t {
     Exposure,
     ReactiveMask,
     TransparencyMask
+};
+
+// Depth values are shared engine data, but each backend consumes a declared convention. Keep
+// these rows on the provider contract so an SDK adapter cannot silently reinterpret the common
+// normalized-depth image.
+struct UpscalerDepthConsumerConvention {
+    std::string_view consumer;
+    ReconstructionDepthConvention convention{};
 };
 
 enum class UpscalerContextLifetime : uint8_t {
@@ -90,12 +101,24 @@ struct UpscalerContract {
     std::span<const UpscalerImageFormat> inputFormats{};
     std::span<const UpscalerImageFormat> outputFormats{};
     std::span<const UpscalerFrameInput> requiredFrameInputs{};
+    std::span<const UpscalerDepthConsumerConvention> depthConventions{};
     UpscalerContextLifetime contextLifetime = UpscalerContextLifetime::None;
     bool retainsHistory = false;
     UpscalerHistoryReset resetHistory = nullptr;
     UpscalerExecutionRecording executionRecording = UpscalerExecutionRecording::RenderGraph;
     std::span<const UpscalerExternalResourceDependency> externalResourceDependencies{};
 };
+
+inline std::optional<ReconstructionDepthConvention> FindUpscalerDepthConvention(
+    const UpscalerContract& contract, std::string_view consumer) noexcept {
+    const auto found = std::find_if(contract.depthConventions.begin(),
+                                    contract.depthConventions.end(),
+                                    [consumer](const auto& row) {
+                                        return row.consumer == consumer;
+                                    });
+    if (found == contract.depthConventions.end()) return std::nullopt;
+    return found->convention;
+}
 
 struct UpscalerFrameDescription {
     UpscalerExtent inputExtent{};

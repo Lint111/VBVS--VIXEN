@@ -15,6 +15,10 @@ file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
 set(APP_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/shaders")
 set(APP_SDI_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/sdi")
 
+# This lane adds the pinned SDK's temporal upscaler provider and Vulkan shaders.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FidelityFXFsr3.cmake")
+target_compile_definitions(VulkanResources PUBLIC VIXEN_CONFIGURED_FSR3_UPSCALER=1)
+
 # ----------------------------------------------------------------------------
 # VixenApp: the engine's render driver, as a reusable static library.
 # ----------------------------------------------------------------------------
@@ -25,6 +29,7 @@ add_library(VixenApp STATIC
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/Fsr3Upscaler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
@@ -78,6 +83,7 @@ target_link_libraries(VixenApp PUBLIC
     RenderGraphCore
     CashSystem
     VulkanResources
+    FidelityFXFsr3VK
     Logger
     stb   # FrameCapture.cpp: stb_image_write.h / stb_image_resize2.h (headless PNG snapshot)
     ${VULKAN_LIB_LIST}

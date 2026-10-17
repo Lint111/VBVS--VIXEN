@@ -97,6 +97,34 @@ TEST(UpscalerSelectionTest, EndsAtNativeWhenAllRequestedBackendsFail) {
               UpscalerSelectionFailureReason::OverBudget);
 }
 
+TEST(UpscalerSelectionTest, Fsr3FallsBackToFsr1ThenNativeWhenUnqualifiedOrUnsupported) {
+    auto fsr3 = Eligible();
+    fsr3.qualified = false;
+    const std::array withFsr1{
+        UpscalerProviderCandidate{"fsr3", fsr3, false},
+        UpscalerProviderCandidate{"fsr1", Eligible(), false},
+        UpscalerProviderCandidate{"native", Eligible(), true}
+    };
+    const auto fsr1Result = SelectUpscalerProvider(withFsr1);
+    ASSERT_NE(fsr1Result.selected, nullptr);
+    EXPECT_EQ(fsr1Result.selected->id, "fsr1");
+    ASSERT_EQ(fsr1Result.rejected.size(), 1u);
+    EXPECT_EQ(fsr1Result.rejected.front().reason,
+              UpscalerSelectionFailureReason::Unqualified);
+
+    auto fsr1 = Eligible();
+    fsr1.runtimeSupported = false;
+    const std::array withNative{
+        UpscalerProviderCandidate{"fsr3", fsr3, false},
+        UpscalerProviderCandidate{"fsr1", fsr1, false},
+        UpscalerProviderCandidate{"native", Eligible(), true}
+    };
+    const auto nativeResult = SelectUpscalerProvider(withNative);
+    ASSERT_NE(nativeResult.selected, nullptr);
+    EXPECT_EQ(nativeResult.selected->id, "native");
+    ASSERT_EQ(nativeResult.rejected.size(), 2u);
+}
+
 TEST(UpscalerContractTest, RequiresDeclaredInputsAndSupportedExtentsAndFormats) {
     constexpr std::array formats{UpscalerImageFormat::Rgba8Unorm};
     constexpr std::array required{UpscalerFrameInput::Color,

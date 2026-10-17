@@ -484,7 +484,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
-    const bool jitterEnabled = renderPathConfig.temporalJitter &&
+    const bool jitterEnabled = (renderPathConfig.temporalJitter ||
+        renderPathConfig.upscaler == UpscalerKind::Fsr3) &&
         renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
     const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
@@ -750,6 +751,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // The optional upscaler is instantiated later into the typed UpscalerModulePorts slot,
     // after render-target extent, shader providers, and stage-order inputs are available.
     std::optional<SubGraphHandle> upscalerModule;
+    std::optional<SubGraphHandle> reconstructionMotionModule;
+    std::optional<SubGraphHandle> reconstructionDepthModule;
+    std::optional<SubGraphHandle> reconstructionHistoryModule;
+    std::optional<SubGraphHandle> reconstructionExposureModule;
 
     // Sampled Lighting Inc2 M1: AccumulationConfig data (binding 19). Same per-frame ring
     // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
@@ -9004,12 +9009,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the member table (the epoch's original promise for this exact site).
     SdiFeatureSet marchFeatures;
     if (reconstructionInputsEnabled) {
-        const auto motion = renderGraph->Instantiate<ReconstructionMotionModule>(
+        reconstructionMotionModule = renderGraph->Instantiate<ReconstructionMotionModule>(
             "render_path/reconstruction_motion", ReconstructionMotionParams{
                 &batch, deviceNode, renderTargetNode, computeDispatch});
-        sceneProviders.ProvideSubGraphOutput("motionVectorImage", motion,
+        sceneProviders.ProvideSubGraphOutput("motionVectorImage", *reconstructionMotionModule,
             ReconstructionMotionPorts::MOTION_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("motionValidityImage", motion,
+        sceneProviders.ProvideSubGraphOutput("motionValidityImage", *reconstructionMotionModule,
             ReconstructionMotionPorts::VALIDITY_VIEW.index, SlotRole::Execute);
         sceneProviders.Provide("BodyInstanceMotionBuffer", bodyOctreeSceneNode,
             BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER, kSceneRoles);
@@ -9531,11 +9536,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.registerPassMetric = [this](std::string name, NodeHandle node) {
             upscalerPerfPasses_.push_back({std::move(name), node});
         };
-        const auto depth = renderGraph->Instantiate<ReconstructionDepthModule>(
+        reconstructionDepthModule = renderGraph->Instantiate<ReconstructionDepthModule>(
             "render_path/reconstruction_inputs", params);
-        sceneProviders.ProvideSubGraphOutput("viewDepthImage", depth,
+        sceneProviders.ProvideSubGraphOutput("viewDepthImage", *reconstructionDepthModule,
             ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", depth,
+        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", *reconstructionDepthModule,
             ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
         ReconstructionHistoryParams historyParams;
         historyParams.batch = &batch;
@@ -9550,23 +9555,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
             historyParams.registerShaderFamily = registerModuleShaderFamily;
             historyParams.registerPassMetric = params.registerPassMetric;
         }
-        const auto history = renderGraph->Instantiate<ReconstructionHistoryModule>(
+        reconstructionHistoryModule = renderGraph->Instantiate<ReconstructionHistoryModule>(
             "render_path/reconstruction_history", historyParams);
         if (samplingGroup) {
-            renderGraph->Connect(history, ReconstructionHistoryPorts::JITTER,
+            renderGraph->Connect(*reconstructionHistoryModule, ReconstructionHistoryPorts::JITTER,
                                  *samplingGroup, ReconstructionSamplingPorts::JITTER);
         }
-        sceneProviders.ProvideSubGraphOutput("reconstructionJitter", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionJitter", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::JITTER.index, SlotRole::Execute, VisualInputAcceptance::VisualOnly);
-        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryA", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryA", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::HISTORY_A_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryB", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryB", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::HISTORY_B_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryReset", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryReset", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::RESET.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryValid", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryValid", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::VALID.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryWriteIndex", history,
+        sceneProviders.ProvideSubGraphOutput("reconstructionHistoryWriteIndex", *reconstructionHistoryModule,
             ReconstructionHistoryPorts::WRITE_INDEX.index, SlotRole::Execute);
         if (hdrExposureEnabled) {
             ReconstructionExposureParams exposure;
@@ -9578,16 +9583,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
             exposure.makeShaderFamily = makeLightingFamily;
             exposure.registerShaderFamily = registerModuleShaderFamily;
             exposure.registerPassMetric = params.registerPassMetric;
-            const auto input = renderGraph->Instantiate<ReconstructionExposureModule>(
+            reconstructionExposureModule = renderGraph->Instantiate<ReconstructionExposureModule>(
                 "render_path/reconstruction_exposure", exposure);
-            sceneProviders.ProvideSubGraphOutput("exposureImage", input,
+            sceneProviders.ProvideSubGraphOutput("exposureImage", *reconstructionExposureModule,
                 ReconstructionExposurePorts::EXPOSURE_VIEW.index, SlotRole::Execute);
         }
     }
 
     std::array<std::string_view, 3> requestedUpscalerOrder{};
     size_t requestedUpscalerCount = 0;
-    if (renderPathConfig.upscaler == UpscalerKind::Fsr1) {
+    if (renderPathConfig.upscaler == UpscalerKind::Fsr3) {
+        requestedUpscalerOrder = {"fsr3", "fsr1", "native"};
+        requestedUpscalerCount = 3;
+    } else if (renderPathConfig.upscaler == UpscalerKind::Fsr1) {
         requestedUpscalerOrder = {"fsr1", "linear", "native"};
         requestedUpscalerCount = 3;
     } else if (renderPathConfig.upscaler == UpscalerKind::Linear) {
@@ -9612,13 +9620,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     Vixen::CapabilityGraph upscalerCapabilities;
     PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
     auto upscalerPolicy = upscalerCapabilities.GetUpscalerCapabilityRecords().policy;
+#if defined(VIXEN_CAPTURE_TEST_HOOKS)
+    const bool fsr3QualificationCapture = offscreenPresentation &&
+        renderPathConfig.upscaler == UpscalerKind::Fsr3 &&
+        std::getenv("VIXEN_FSR3_QUALIFICATION_CAPTURE") != nullptr;
+#else
+    constexpr bool fsr3QualificationCapture = false;
+#endif
     upscalerPolicy.viewMode = !jitterEnabled && renderPathConfig.renderScale == 1.0f && renderPathConfig.upscaler == UpscalerKind::None
         ? Vixen::UpscalerViewMode::Canonical
         : Vixen::UpscalerViewMode::Relaxed;
     upscalerPolicy.outputExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-    upscalerPolicy.role = offscreenPresentation
-        ? Vixen::UpscalerWorkRole::HeadlessCapture
-        : Vixen::UpscalerWorkRole::Interactive;
+    upscalerPolicy.role = fsr3QualificationCapture
+        ? Vixen::UpscalerWorkRole::Qualification
+        : offscreenPresentation ? Vixen::UpscalerWorkRole::HeadlessCapture
+                                : Vixen::UpscalerWorkRole::Interactive;
     upscalerCapabilities.SetUpscalerPolicyRecord(upscalerPolicy);
     const auto& upscalerRecords = upscalerCapabilities.GetUpscalerCapabilityRecords();
 
@@ -9675,9 +9691,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             (upscalerRecords.qualification.status ==
                  Vixen::UpscalerQualificationStatus::UnqualifiedNoRunner ||
              upscalerRecords.qualification.status == Vixen::UpscalerQualificationStatus::Unqualified);
+        const bool allowRelaxedUnqualified = backend->id != "fsr3" && unqualifiedRelaxedPath;
         eligibility.qualified = backend->nativeFallback || passedQualification ||
-            unqualifiedRelaxedPath;
-        if (!backend->nativeFallback && unqualifiedRelaxedPath && mainLogger) {
+            allowRelaxedUnqualified;
+        if (!backend->nativeFallback && allowRelaxedUnqualified && mainLogger) {
             mainLogger->Warning("[BuildRenderGraph] Upscaler provider '" +
                                 std::string(backend->id) +
                                 "' is unqualified for native parity; using it only for the "
@@ -9723,6 +9740,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                 "using the native render path");
         }
     }
+#if defined(VIXEN_CAPTURE_TEST_HOOKS)
+    if (fsr3QualificationCapture) {
+        const auto candidate = std::find_if(upscalerCandidates.begin(), upscalerCandidates.end(),
+            [](const auto& value) { return value.id == "fsr3"; });
+        if (candidate != upscalerCandidates.end() && candidate->eligibility.compiled &&
+            candidate->eligibility.permittedByPass &&
+            candidate->eligibility.runtimeSupported &&
+            candidate->eligibility.inputCompatible &&
+            candidate->eligibility.initialized &&
+            candidate->eligibility.admittedByBudget && !candidate->eligibility.qualified) {
+            selectedUpscalerBackend = FindUpscalerBackend("fsr3");
+            if (mainLogger) {
+                mainLogger->Warning(
+                    "[BuildRenderGraph] Qualification capture is exercising unqualified FSR 3.1.4; "
+                    "ordinary upscaler selection remains fail-closed");
+            }
+        } else if (mainLogger) {
+            mainLogger->Warning(
+                "[BuildRenderGraph] FSR 3.1.4 qualification capture could not bypass any gate "
+                "other than qualification");
+        }
+    }
+#endif
 
     if (selectedUpscalerBackend && !selectedUpscalerBackend->nativeFallback) {
         UpscalerModuleBuildContext params;
@@ -9734,6 +9774,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.presentationExtent = {static_cast<uint32_t>(width),
                                      static_cast<uint32_t>(height)};
         params.renderScale = renderScale;
+        if (const auto* camera = static_cast<const CameraNode*>(renderGraph->GetInstance(cameraNode))) {
+            params.cameraNearPlane = camera->GetNearPlane();
+            params.cameraFarPlane = camera->GetFarPlane();
+        }
         params.makeShaderFamily = [&makeLightingFamily](const std::string& sourceFile,
                                                         const std::string& familyName) {
             return makeLightingFamily(sourceFile, familyName);
@@ -9759,6 +9803,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
         } else {
             renderGraph->Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                                  *upscalerModule, UpscalerModulePorts::PRESENTATION_TARGET);
+        }
+        if (selectedUpscalerBackend->id == "fsr3") {
+            if (!reconstructionMotionModule || !reconstructionDepthModule ||
+                !reconstructionHistoryModule || !reconstructionExposureModule) {
+                throw std::logic_error("FSR 3.1.4 selection requires all shared temporal inputs");
+            }
+            renderGraph->Connect(*reconstructionDepthModule,
+                                 ReconstructionDepthPorts::NORMALIZED_DEPTH,
+                                 *upscalerModule, UpscalerModulePorts::DEPTH_TARGET);
+            renderGraph->Connect(*reconstructionMotionModule,
+                                 ReconstructionMotionPorts::MOTION,
+                                 *upscalerModule, UpscalerModulePorts::MOTION_TARGET);
+            renderGraph->Connect(*reconstructionExposureModule,
+                                 ReconstructionExposurePorts::EXPOSURE,
+                                 *upscalerModule, UpscalerModulePorts::EXPOSURE_TARGET);
+            renderGraph->Connect(*reconstructionHistoryModule,
+                                 ReconstructionHistoryPorts::JITTER,
+                                 *upscalerModule, UpscalerModulePorts::JITTER);
+            renderGraph->Connect(*reconstructionHistoryModule,
+                                 ReconstructionHistoryPorts::RESET,
+                                 *upscalerModule, UpscalerModulePorts::HISTORY_RESET);
+            renderGraph->Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                                 *upscalerModule, UpscalerModulePorts::CAMERA_DATA);
         }
     }
 

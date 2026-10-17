@@ -59,6 +59,10 @@ public:
     /// ExecuteImpl runs (mirrors every other node's pre-Compile state).
     const CameraData& GetCurrentCameraData() const { return currentCameraData; }
 
+    /// Clip planes used to build the camera projection, also needed by temporal upscalers.
+    float GetNearPlane() const { return nearPlane; }
+    float GetFarPlane() const { return farPlane; }
+
     /// Recipe-Live-App-Bucketed-Dispatch Inc4 M3: BY-VALUE accessor for the live view-proj
     /// matrix, for a caller OUTSIDE the render graph's connection system (e.g. PreTick feeding
     /// a ConstantNode each frame) that needs a plain glm::mat4 -- CURRENT_VIEW_PROJ's own graph

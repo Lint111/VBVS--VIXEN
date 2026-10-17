@@ -1739,6 +1739,8 @@ int main(int argc, char** argv) {
             gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::Linear;
         } else if (argument == "--upscaler=fsr1") {
             gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::Fsr1;
+        } else if (argument == "--upscaler=fsr3") {
+            gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::Fsr3;
         } else {
             argv[forwardedArgc++] = argv[index];
         }
