@@ -460,7 +460,7 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     set(_ui_shader_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/Ui/shaders")
     add_custom_target(ui_shader_spirv_regen
-        COMMAND "${Python3_EXECUTABLE}" "${_ui_shader_dir}/regenerate-ui-shader-header.py"
+        COMMAND "${Python3_EXECUTABLE}" "${_ui_shader_dir}/regenerate-ui-shader-header.py" --ui-only
         DEPENDS "${_ui_shader_dir}/regenerate-ui-shader-header.py"
             "${_ui_shader_dir}/ui.vert" "${_ui_shader_dir}/ui.frag"
         BYPRODUCTS "${CMAKE_CURRENT_SOURCE_DIR}/include/Ui/UiShaderSpirv.g.h"
@@ -521,6 +521,10 @@ add_library(RenderGraphCore STATIC
 # OBJECT lib the same way every node target does.
 # ----------------------------------------------------------------------------
 add_library(RenderGraphUiSupport OBJECT ${RENDERGRAPH_UI_SOURCES})
+add_dependencies(RenderGraphUiSupport vixen_text_shader_headers)
+if(TARGET ui_shader_spirv_regen)
+    add_dependencies(RenderGraphUiSupport ui_shader_spirv_regen)
+endif()
 target_include_directories(RenderGraphUiSupport
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

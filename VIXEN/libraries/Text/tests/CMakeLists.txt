@@ -30,5 +30,23 @@ if(TARGET GTest::gtest_main)
     endif()
     set_target_properties(test_text_shaping PROPERTIES FOLDER "Tests/Text")
     vixen_gtest_discover_tests(Text test_text_shaping)
+
+    add_executable(test_text_shader_layout
+        test_text_shader_layout.cpp
+    )
+    target_link_libraries(test_text_shader_layout PRIVATE
+        GTest::gtest_main
+        Text
+    )
+    target_compile_definitions(test_text_shader_layout PRIVATE
+        TEXT_SHADER_GLSL_PATH="${TEXT_SHADER_GLSL_INTERFACE}"
+    )
+    if(MSVC)
+        target_compile_options(test_text_shader_layout PRIVATE /W4 /WX)
+    else()
+        target_compile_options(test_text_shader_layout PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    set_target_properties(test_text_shader_layout PROPERTIES FOLDER "Tests/Text")
+    vixen_gtest_discover_tests(Text test_text_shader_layout)
 endif()
 vixen_schedule_runtime_dlls_for_current_directory()

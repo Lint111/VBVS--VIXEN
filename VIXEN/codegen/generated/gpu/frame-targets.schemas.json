@@ -2082,13 +2082,20 @@
     { "name": "category", "required": false, "detail": "tag category", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "display", "required": false, "detail": "display name", "value": { "kind": "scalar", "scalar": "text" } }
   ] },
+  "text_animation": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "kind", "required": true, "detail": "typewriter | wave | shake | fade | pulse", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextAnimationKind", "options": ["typewriter", "wave", "shake", "fade", "pulse"] } },
+    { "name": "duration_s", "required": true, "detail": "animation duration in seconds", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "amplitude", "required": true, "detail": "animation strength in pixels or alpha", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "frequency", "required": true, "detail": "animation frequency in hertz", "value": { "kind": "scalar", "scalar": "float" } }
+  ] },
   "text_tag": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "class", "required": true, "detail": "convention | authored | hook", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagClass", "options": ["convention", "authored", "hook"] } },
     { "name": "arguments", "required": false, "detail": "typed payload: { name, scalar | kind }", "value": { "kind": "scalar", "scalar": "id", "refKind": "text_tag_arg", "kindRefCatalog": "text-tag-arg-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.TextTagArgRef", "kindRefList": true }, "authoringValue": { "kind": "objectList", "element": "TextTagArg", "key": "name", "fields": [
       { "name": "name", "required": true, "detail": "argument name", "value": { "kind": "scalar", "scalar": "text" } },
       { "name": "scalar", "required": true, "detail": "text | number | id | bool | kind_ref", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentScalar", "options": ["text", "number", "id", "bool", "kind_ref"] } },
-      { "name": "kind", "required": false, "detail": "target kind for kind_ref arguments", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentKind", "options": ["language_preset"] } }
+      { "name": "kind", "required": false, "detail": "target kind for kind_ref arguments", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentKind", "options": ["language_preset", "text_animation"] } }
     ] } },
     { "name": "handler", "required": false, "detail": "effect catalog entry", "value": { "kind": "scalar", "scalar": "id", "refKind": "effect", "kindRefTarget": "$content", "inlineFamily": "effect" } },
     { "name": "participants", "required": false, "detail": "effect participant → unit role", "value": { "kind": "map", "vocab": [], "bucket": 8, "entry": { "kind": "scalar", "scalar": "text" } } }
@@ -2097,7 +2104,7 @@
     { "name": "id", "required": true, "detail": "owner + argument name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "name", "required": true, "detail": "argument name", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "scalar", "required": true, "detail": "text | number | id | bool | kind_ref", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentScalar", "options": ["text", "number", "id", "bool", "kind_ref"] } },
-    { "name": "kind", "required": false, "detail": "target kind for kind_ref arguments", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentKind", "options": ["language_preset"] } }
+    { "name": "kind", "required": false, "detail": "target kind for kind_ref arguments", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.TextTagArgumentKind", "options": ["language_preset", "text_animation"] } }
   ] },
   "timeline": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },

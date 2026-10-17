@@ -14,7 +14,7 @@ usage() {
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
-native_root=/mnt/c/vixen-native/vixendll
+native_root=/mnt/c/vixen-native/nativerunner-textshader
 queue=/home/liory/.local/bin/with-test-lock.sh
 powershell_exe=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 mode=state
