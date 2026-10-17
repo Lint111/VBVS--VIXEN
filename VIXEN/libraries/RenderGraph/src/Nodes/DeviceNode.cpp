@@ -728,7 +728,7 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
     // Sprint 6.3 Phase 0: Create GPUQueryManager for coordinated GPU timestamp queries
     // This prevents query slot conflicts between ProfilerSystem, TimelineCapacityTracker, and nodes
     constexpr uint32_t framesInFlight = 4;  // Match FrameSyncNode (MAX_FRAMES_IN_FLIGHT)
-    constexpr uint32_t maxQueryConsumers = 16;  // Allow up to 16 consumers (nodes, profiler, tracker, etc.)
+    constexpr uint32_t maxQueryConsumers = 32;  // Allow up to 32 consumers (nodes, profiler, tracker, etc.)
 
     auto queryManager = std::make_shared<GPUQueryManager>(vulkanDevice.get(), framesInFlight, maxQueryConsumers);
 
