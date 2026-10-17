@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: BodyInstanceRayMarch
-// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_B2_PROXY_PREPASS VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RTQUERY_TRAVERSAL
+// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_B2_PROXY_PREPASS VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RECONSTRUCTION_INPUTS VIXEN_RTQUERY_TRAVERSAL
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -873,17 +873,17 @@ struct RtQueryProxyAabbBuffer {
  * @brief BodyInstanceTransformBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ * Layout VixenHash: 0xbac39dd1644f8ebf (for runtime discovery)
  */
 struct BodyInstanceTransformBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xbac39dd1644f8ebfULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstanceTransform";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 96;
+        static constexpr uint32_t SIZE = 176;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1303,6 +1303,38 @@ namespace Set0 {
         using DataType = BodyInstanceTransformBuffer;
     };
 
+    /**
+     * @brief motionVectorImage
+     * Type: STORAGE_IMAGE
+     * Requires: VIXEN_RECONSTRUCTION_INPUTS
+     */
+    struct Binding48 {
+        static constexpr const char* NAME = "motionVectorImage";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 48;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECONSTRUCTION_INPUTS"};
+    };
+
+    /**
+     * @brief motionValidityImage
+     * Type: STORAGE_IMAGE
+     * Requires: VIXEN_RECONSTRUCTION_INPUTS
+     */
+    struct Binding49 {
+        static constexpr const char* NAME = "motionValidityImage";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 49;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECONSTRUCTION_INPUTS"};
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -1334,6 +1366,8 @@ using PolicyStencilTileBuffer = Set0::Binding41;
 using ProxyIntervalBuffer = Set0::Binding42;
 using RtQueryProxyAabbBuffer = Set0::Binding43;
 using BodyInstanceTransformBuffer = Set0::Binding47;
+using motionVectorImage = Set0::Binding48;
+using motionValidityImage = Set0::Binding49;
 } // namespace Bind
 
 namespace Push {
@@ -1524,6 +1558,8 @@ inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_
 inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
 inline constexpr const char* const kFeatures_Set0_Binding42[] = {"VIXEN_B2_PROXY_PREPASS"};
 inline constexpr const char* const kFeatures_Set0_Binding43[] = {"VIXEN_RTQUERY_TRAVERSAL"};
+inline constexpr const char* const kFeatures_Set0_Binding48[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
+inline constexpr const char* const kFeatures_Set0_Binding49[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
 inline constexpr const char* const kFeatures_Push_proxyAabbCount[] = {"VIXEN_B2_PROXY_PREPASS"};
 
 inline constexpr MemberInfo MEMBERS[] = {
@@ -1554,6 +1590,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ProxyIntervalBuffer", false, 0, 42, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding42},
     {"RtQueryProxyAabbBuffer", false, 0, 43, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding43},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
+    {"motionVectorImage", false, 0, 48, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding48},
+    {"motionValidityImage", false, 0, 49, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding49},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1590,8 +1628,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 42;
-    static constexpr uint32_t NUM_FEATURES = 6;
+    static constexpr uint32_t NUM_MEMBERS = 44;
+    static constexpr uint32_t NUM_FEATURES = 7;
 };
 
 } // namespace BodyInstanceRayMarch

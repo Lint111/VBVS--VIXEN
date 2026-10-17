@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 22;  // +B2 BUFFER_READ_ARRAY/ORDERING_WAIT_BUFFER appended at 20/21
+    static constexpr size_t INPUTS = 23;  // +B2 BUFFER_READ_ARRAY/ORDERING_WAIT_BUFFER appended at 20/21
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -334,6 +334,11 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Primary visibility can produce several internal-resolution guide images.
+    INPUT_SLOT_SYNC(IMAGE_WRITE_ARRAY, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>, 22,
+        SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadWrite,
+        SlotScope::NodeLevel, ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -434,6 +439,9 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         INIT_INPUT_DESC(BUFFER_WRITE_ARRAY, "buffer_write_array", ResourceLifetime::Transient, bufferWriteArrayDesc);
         INIT_INPUT_DESC(BUFFER_READ_ARRAY, "buffer_read_array", ResourceLifetime::Transient, bufferWriteArrayDesc);
         INIT_INPUT_DESC(ORDERING_WAIT_BUFFER, "ordering_wait_buffer", ResourceLifetime::Transient, bufferWriteDesc);
+
+        HandleDescriptor imageWriteArrayDesc{"std::vector<IRenderTarget*>"};
+        INIT_INPUT_DESC(IMAGE_WRITE_ARRAY, "image_write_array", ResourceLifetime::Transient, imageWriteArrayDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

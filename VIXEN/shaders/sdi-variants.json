@@ -9,12 +9,16 @@
     {
       "name": "ReconstructionExposure",
       "source": "ReconstructionExposure.comp",
-      "variants": [[]]
+      "variants": [
+        []
+      ]
     },
     {
       "name": "ReconstructionDepth",
       "source": "ReconstructionDepth.comp",
-      "variants": [[]]
+      "variants": [
+        []
+      ]
     },
     {
       "name": "BodyInstanceRayMarch",
@@ -53,6 +57,51 @@
         [
           "VIXEN_POLICY_STENCIL",
           "VIXEN_POLICY_STENCIL_TILES"
+        ],
+        [
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_B2_PROXY_PREPASS",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_B2_PROXY_PREPASS",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_B2_PROXY_PREPASS",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_B2_PROXY_PREPASS",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_RTQUERY_TRAVERSAL",
+          "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_POLICY_STENCIL",
+          "VIXEN_POLICY_STENCIL_TILES",
+          "VIXEN_RECONSTRUCTION_INPUTS"
         ]
       ]
     },

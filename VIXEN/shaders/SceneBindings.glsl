@@ -1100,11 +1100,13 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
 
-// HOT INSTANCE TRANSFORM STREAM (binding 47, std430, 96 B / element).
+// HOT INSTANCE TRANSFORM STREAM (binding 47, std430, 176 B / element).
+#include "Generated/BodyInstanceMotion.glsl"
 // Each matrix is three row-major vec4 values with an implicit (0,0,0,1) row.
 struct BodyInstanceTransform {
     vec4 localToWorldRows[3];
     vec4 worldToLocalRows[3];
+    BodyInstanceMotion motion;
 };
 layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
     BodyInstanceTransform bodyInstanceTransforms[];

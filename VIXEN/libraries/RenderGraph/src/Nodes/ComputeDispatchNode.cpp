@@ -620,6 +620,13 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         const VkImageLayout prior = DecideRenderTargetPriorLayoutAndUpdate(*swapchainInfo, imageIndex, VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage, prior);
     }
+    for (auto* target : ctx.In(ComputeDispatchNodeConfig::IMAGE_WRITE_ARRAY)) {
+        if (!target) continue;
+        const auto prior = DecideRenderTargetPriorLayoutAndUpdate(
+            *target, target->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer,
+            target->GetCurrentImage(), prior);
+    }
     // Additionally replay any scheduler-baked INTER-PASS entry barriers for this group
     // (no-op on the single-pass voxel path; active for future multi-pass chains).
     const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();

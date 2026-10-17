@@ -45,6 +45,7 @@ add_executable(test_rendergraph_core
     test_lightingconfig_parity.cpp
     Nodes/test_camera_history.cpp
     Nodes/test_reconstruction_depth.cpp
+    Nodes/test_instance_motion_history.cpp
     Nodes/test_reconstruction_jitter.cpp
     Nodes/test_reconstruction_history.cpp
 )

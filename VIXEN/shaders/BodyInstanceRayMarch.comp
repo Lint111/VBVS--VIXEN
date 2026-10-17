@@ -210,6 +210,12 @@ layout(std430, binding = 22) readonly buffer PrevCameraConfigSSBO {
     PrevCameraConfig prevCameraConfig;
 };
 
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+layout(rg32f, binding = 48) uniform writeonly image2D motionVectorImage;
+layout(r32f, binding = 49) uniform writeonly image2D motionValidityImage;
+#include "ReconstructionMotion.glsl"
+#endif
+
 // ============================================================================
 // MAIN (Sampled Lighting Inc3 M1, KI-018: TRAVERSAL ONLY)
 // ============================================================================
@@ -542,6 +548,10 @@ void main() {
 #ifdef VIXEN_B1_OCCLUSION_CULL
     imageStore(depthDistanceImage, pixelCoords,
                vec4(anyHitRT ? recReadback.hitT : 1.0e30, 0.0, 0.0, 0.0));
+#endif
+
+#ifdef VIXEN_RECONSTRUCTION_INPUTS
+    writeReconstructionMotion(pixelCoords, anyHitRT, worldHit, recReadback.worldPos);
 #endif
 
     // Metrics

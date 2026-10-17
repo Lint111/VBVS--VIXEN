@@ -291,6 +291,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/AccumulationConfig.glsl" _out_accumulationconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h" _out_prevcameraconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/BodyInstanceMotion.glsl" _out_bodyinstancemotion_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/BodyInstanceMotion.g.h" _out_bodyinstancemotion_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h" _out_reservoirconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirConfig.glsl" _out_reservoirconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h" _out_probegridconfig_cpp_run)
@@ -392,6 +394,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_accumulationconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/AccumulationConfig.glsl")
         set(_out_prevcameraconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h")
         set(_out_prevcameraconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/PrevCameraConfig.glsl")
+        set(_out_bodyinstancemotion_glsl_run "${VIXEN_ROOT}/shaders/Generated/BodyInstanceMotion.glsl")
+        set(_out_bodyinstancemotion_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/BodyInstanceMotion.g.h")
         set(_out_reservoirconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h")
         set(_out_reservoirconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirConfig.glsl")
         set(_out_probegridconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h")
@@ -894,6 +898,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate PrevCameraConfig.g.h/.glsl (Yeroket tool)"
         JOB_POOL msbuild
         VERBATIM)
+
+    # R494 instance correspondence shares the pinned GPU POD declaration route.
+    set(_bim_args "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct BodyInstanceMotion
+        --out-cpp "${_out_bodyinstancemotion_cpp_run}"
+        --out-glsl "${_out_bodyinstancemotion_glsl_run}")
+    vixen_add_codegen_check(bodyinstancemotion_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_bim_args} --check
+        COMMENT "[codegen] golden check: BodyInstanceMotion shared layout"
+        VERBATIM)
+    add_custom_target(bodyinstancemotion_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_bim_args}
+        JOB_POOL msbuild VERBATIM)
 
     # --- ReservoirConfig via the same Yeroket tool (Sampled Lighting Inc3 M3: ReSTIR
     # reservoir-sampling compute budget as drift-guarded data). Generated header lives

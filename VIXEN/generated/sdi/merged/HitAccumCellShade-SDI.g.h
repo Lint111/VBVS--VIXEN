@@ -813,17 +813,17 @@ struct InstanceSkipMaskBuffer {
  * @brief BodyInstanceTransformBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ * Layout VixenHash: 0xbac39dd1644f8ebf (for runtime discovery)
  */
 struct BodyInstanceTransformBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xbac39dd1644f8ebfULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstanceTransform";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 96;
+        static constexpr uint32_t SIZE = 176;
         static constexpr uint32_t BINDING = 0;
     };
 

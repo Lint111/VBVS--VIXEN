@@ -29,6 +29,7 @@
 #include "graph/CornellBoxSceneDefinition.h"
 #include "graph/UpscalerModules.h"
 #include "graph/ReconstructionDepth.h"
+#include "graph/ReconstructionMotion.h"
 #include "graph/ReconstructionExposure.h"
 #include "graph/ReconstructionHistory.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
@@ -480,6 +481,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
+    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH");
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
@@ -2154,6 +2156,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the single end-to-end trace-recording toggle: CPU readback + GPU
     // writes; audit D1 Task 2.1).
     std::vector<std::string> marchShaderFeatures;
+    if (reconstructionInputsEnabled) marchShaderFeatures.push_back(kFeatureReconstructionInputs.define);
     if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
@@ -8975,6 +8978,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // gates only the FEATURE + provider; the Connect itself is derived from
     // the member table (the epoch's original promise for this exact site).
     SdiFeatureSet marchFeatures;
+    if (reconstructionInputsEnabled) {
+        const auto motion = renderGraph->Instantiate<ReconstructionMotionModule>(
+            "render_path/reconstruction_motion", ReconstructionMotionParams{
+                &batch, deviceNode, renderTargetNode, computeDispatch});
+        sceneProviders.ProvideSubGraphOutput("motionVectorImage", motion,
+            ReconstructionMotionPorts::MOTION_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("motionValidityImage", motion,
+            ReconstructionMotionPorts::VALIDITY_VIEW.index, SlotRole::Execute);
+        marchFeatures.Enable(kFeatureReconstructionInputs);
+    }
+
     if (b1OcclusionCullEnabled) {
         marchFeatures.Enable(kFeatureB1OcclusionCull);
         sceneProviders.Provide("depthDistanceImage", b1DepthTarget,
@@ -9449,7 +9463,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
         });
     };
 
-    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH");
     if (reconstructionInputsEnabled) {
         ReconstructionDepthParams params;
         params.batch = &batch;

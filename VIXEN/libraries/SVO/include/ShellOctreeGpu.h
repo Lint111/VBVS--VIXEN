@@ -75,6 +75,7 @@
 #include "EntityBrickView.h"  // Baked-Perf M7 Task 7.2: getEntityFast bulk brick lookup
 #include "VoxelComponents.h"  // Material, Density
 #include "VoxelChannelFormat.h"  // ChannelDesc, kMaxChannels, SemanticId, FieldKind (Inc3 M1)
+#include "Generated/BodyInstanceMotion.g.h"
 #include "TierRef.h"          // TierRef (Tiered-ESVO Inc2 M1 Task 1)
 
 #include <glm/glm.hpp>
@@ -512,9 +513,10 @@ static_assert(alignof(Affine3x4Gpu) == 16);
 struct alignas(16) BodyInstanceTransformGpu {
     Affine3x4Gpu localToWorld{};
     Affine3x4Gpu worldToLocal{};
+    Vixen::Gpu::BodyInstanceMotion motion{};
 };
-static_assert(sizeof(BodyInstanceTransformGpu) == 96,
-              "the hot instance transform record is two packed 3x4 matrices");
+static_assert(sizeof(BodyInstanceTransformGpu) == 176,
+              "current affine pair and declared previous-frame correspondence");
 
 /** Material, provider and recipe values. This is the cold std430 record. */
 struct alignas(16) BodyInstanceMaterialGpu {
@@ -531,13 +533,13 @@ static_assert(offsetof(BodyInstanceMaterialGpu, recipeParams) == 24);
 
 /**
  * Host-side submission row. BodyOctreeSceneNode splits it into the hot transform
- * and cold material streams before upload; the 144-byte row itself is never bound.
+ * and cold material streams before upload; the 224-byte row itself is never bound.
  */
 struct alignas(16) BodyInstanceGpu {
     BodyInstanceTransformGpu transform{};
     BodyInstanceMaterialGpu material{};
 };
-static_assert(sizeof(BodyInstanceGpu) == 144);
+static_assert(sizeof(BodyInstanceGpu) == 224);
 static_assert(offsetof(BodyInstanceGpu, material) == sizeof(BodyInstanceTransformGpu));
 
 inline glm::mat4 ToMat4(const Affine3x4Gpu& affine) {
