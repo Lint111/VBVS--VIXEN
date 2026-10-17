@@ -173,3 +173,99 @@ Run 4 resolved two proposals filed in `.spt-proposals/fsr3.jsonl` in run 3: "Per
 - GPU query pool size is a hard-coded constant with a silent early return at `GPUPerformanceLogger::CollectResults` when a slot is missing: a pass that fails to get a slot reports 0 instead of absent, which is what hid T-4637 (tier:luna, effort:S). Not filed.
 - `.tmp/fetch` is shared by WSL and Windows builds, and a Windows-path configure breaks the WSL one (tier:haiku, effort:S). Not filed.
 - Open from earlier runs: native pick trace dominates the FSR3 whole frame (tier:sol, effort:L); Prepare fallback retry not idempotent for recipes (tier:luna, effort:M); APU timing runs are contaminated by concurrent host builds (tier:luna, effort:M); 22 older proposals in the inbox.
+
+# FSR 3 run 5 (sn-pickvote): jittered picking through a weighted vote, fallback from clean, mid-run demotion
+
+Lane `fsr3`, branch `lane-fsr3`, started at `813180d0`. Nothing pushed. Raw logs: `/home/liory/codeman-cases/undertow/reports/sn-pickvote-evidence/` (not committed).
+
+## What changed (T-4633 / R612)
+
+- Second pick trace deleted: `BodyInstanceRayMarch.comp` (`writeNativePick`, both call sites, `hasReconstructionJitter`), the `native_pick_extent` and `native_pick_ray_size_coef` graph nodes (`BuildRenderGraph.cpp`), `PrevCameraConfigNodeConfig.h` (`NATIVE_PICK_RAY_SIZE_COEF`), `ReconstructionSampling.h` (`NATIVE_PICKING`). Picks now read the primary hit record the frame's own trace writes, one frame late.
+- Vote: `libraries/RenderGraph/include/Selection/PickVote.h`. Sample = `{address, instance, jitter}` (address `(brickIndex<<10)|(voxelIdx&0x3FF)`, instance index, `0xFFFFFFFF` on miss). Weight `PickVoteWeight` (`PickVote.h:28`) is a Gaussian of the ray's distance from the pixel centre, sigma 0.5 px: the jitter spans +-0.5 px per axis, so a ray through the centre counts 1.0, a ray at the edge midpoint 0.61, a corner ray 0.37. A hard cut-off would discard the 4 corner samples of a 16-cycle and a flat weight would let an edge ray outvote a centred one. History is the last `kReconstructionJitterCycle` = 16 samples (`PickVoteHistory`, `PickVote.h:59`); the largest summed weight wins, ties go to the more recent ID.
+- Reset (`ClassifyPickMotion`, `PickVote.h:41`): a hit whose motion vector is beyond 0.05 render texels resets the history to the current sample. Validity 0 with a still vector is "no evidence" and keeps it (see STOPs); a miss is also no evidence.
+- Where it runs: on the CPU, in `VoxelSelectionProviderNode::RetireReadbacks` (`VoxelSelectionProviderNode.cpp:340`), for the two tracked texels only (crosshair every frame, clicked texel one-shot). Cost is one 20-byte texel copy per tracked texel per frame (pick@0, motion@8, validity@16) plus 16 weight sums on the CPU; a GPU resolve pass would add a dispatch and a barrier to get the same answer for two pixels. Without jitter (native, FSR1) the history is cleared before each push, so the vote is the single current hit.
+- Readback path reused, no second mechanism: the existing non-blocking staging-ring path (8 slots, fences, one frame late). KI-012 devices (Dozen, `minImageTransferGranularity` (0,0,0)) copy the three whole images and index the texel on the CPU (`SubmitTrackingReadback`, `VoxelSelectionProviderNode.cpp:379`).
+- `test_lookdev_capture.cpp` asserts on `provider->CrosshairVote()` and writes `pick_vote` into `.sampling.json`; `VIXEN_LOOKDEV_PICK_TRACE`, `VIXEN_LOOKDEV_CAPTURE_YAW_OFFSET_DEGREES` and `VIXEN_LOOKDEV_CAPTURE_LOOK_SHIFT` (existing `PARAM_LOOK_TARGET_*`) are harness-only knobs for the stability probe.
+
+## T-4634 / T-4638 (R613)
+
+- `RecipeRegistry::Clear()` (`RecipeRegistry.h:229`) is called on engine reset, so `Prepare()`'s fallback retry no longer fails with `DuplicateId`. Unit test in `test_recipe_registry.cpp`.
+- `VulkanGraphApplication::Render` demotes a latched provider fault to the next provider on the next frame through the `Prepare()` fallback path (`VulkanGraphApplication.cpp:429`); the failed frame presents the last good frame's output, one warning logged. Test: `test_fsr3_record_status` `ReportsRecordFailureToTheHostSoItCanDemoteTheProvider`.
+- Manual native checks (no committed e2e injection point exists, adding one would be a new mechanism). Method: temporary clone-only patch in `Fsr3Upscaler.cpp` (env-gated forced `InitializeContext` failure; forced `Record` failure on call 7), 500x500 @ 2/3, 24 frames, restored afterwards (`git status` of the clone shows only the two pre-existing `.g.h` changes). MEASURED:
+  - init failure: `Prepare` logs `'fsr3' failed context initialization ... trying the next provider`, graph rebuilt with FSR1 (`upscaler/rcas` compiled), 0 `DuplicateId`, test PASSED (`native-forced-init.run.log`).
+  - mid-run record failure: `ReportGpuFault ... forced record failure`, one `Upscaler provider 'fsr3' faulted: ... this frame is dropped and the next provider is used from the next frame`, `Demoting upscaler provider 'fsr3' and rebuilding the graph`, FSR1 graph rebuilt, run continues to PASSED (`native-forced-record.run.log`). That the displayed image equals the last good frame is not verified by pixels; INFERRED from the present path.
+
+## Tests (WSL, Dozen for GPU sets)
+
+- `test_rendergraph_core`: 40 tests, 40 passed; of these 12 are new `PickVote.*` and 2 existing `ReconstructionJitter*`.
+- `test_upscaler_selection` 7/7; `test_fsr3_record_status` 2/2 (one new); `test_recipe_registry` 18/18 (one new).
+- ctest `-R 'ViewBlobEquiv|Application.UpscalerSelection|AppRunTick|HudView|VulkanResources_CapabilityGraph|Fsr3RecordStatus'`: 29 selected, 0 failed, 1 skipped (`ConfiguredDeviceIdentityRejectsChangedDeviceOrDriver`). Run 4's selection was 26; the 3 extra are new tests matched by the same pattern.
+- GPU (`--resource gpu`, Dozen): `ShadowCorrectnessTest.*`, `Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically` and `Application.ReconstructionInputs.*` (Depth.native, Depth.reduced-odd, Depth.fixed-exposure, TemporalLifecycle, Jitter.1.0, Jitter.0.5): 12 selected, 12 passed.
+- Warnings: 0 new (`DeviceNode.cpp:684` deprecation predates). `frame_targets_schema_check` fails in the codegen golden check (undertow source vs tool mismatch, `unsupported schema field fluent call 'Rate'`), unrelated to these changes; builds use `-- -k 0`.
+
+## Pick stability witness (crosshair on an ID edge, 64 jittered frames)
+
+Scene: the lookdev scene has only 12 IDs, and no angle puts an edge under the crosshair, so `VIXEN_LOOKDEV_CAPTURE_LOOK_SHIFT` moves the look target until an instance edge sits under the centre texel. Counts are ID changes in the per-frame `pick_trace.csv`; "raw" is the centre texel of each frame's own jittered trace (what a single jittered read would give), "voted" is `CrosshairVote()`.
+
+Before = the first version of this change (history reset by validity 0), 501x333, Dozen, JITTER_PROBE, 64 frames: shift 2.015: raw 63 / voted 31; 2.025: 31 / 22; 2.035: 8 / 8 (voted history never exceeded 2 samples, found by this probe).
+After (`af7caa3f`), same scene:
+
+| look shift | raw changes | voted changes |
+|---|---|---|
+| 2.005 | 24 | 1 |
+| 2.015 | 63 | 0 |
+| 2.025 | 31 | 0 |
+| 2.035 | 8 | 0 |
+
+Native AMD 8060S, FSR3 (qualification capture), 500x500 @ 2/3, 64 frames, `max_samples` 16: shift 1.9: raw 0 / voted 1; **shift 2.0: raw 48 / voted 1**; shift 2.05: 0 / 0. The one voted change is the warm-up from "no samples" (miss) to the first hit at frame 2. The old behaviour (second unjittered trace) was stable by construction, so its change count is 0, but it cost about +130 ms at 1080p @ 2/3 (run 3). Stability is MEASURED; that the voted ID equals the unjittered ID at a 50/50 edge is not claimed.
+
+## Whole-frame A/B/A (native Windows, AMD 8060S, commit `27fb0fc9`; the later fix does not change the readback or GPU work)
+
+Medians over frames 4-64, `whole_frame_gpu_span_ms` / `cpu_frame_time_ms`; native A runs are the two bracketing runs, ratio uses their mean.
+
+| config | native A1 | FSR3 | native A2 | FSR3 vs native (GPU span / CPU) | FSR3 GPU median / max |
+|---|---|---|---|---|---|
+| 1080p @ 2/3 | 140.8 / 152.8 | 127.3 / 130.3 | 125.5 / 135.6 | 0.96 / 0.90 | 1.757 / 3.274 ms |
+| 1080p @ 1/2 | 89.7 / 97.7 | 116.8 / 118.5 | 76.0 / 86.7 | 1.41 / 1.29 | 2.295 / 2.898 ms |
+| 500x500 @ 2/3 | 32.6 / 36.8 | 34.5 / 37.5 | 31.8 / 36.0 | 1.07 / 1.03 | 0.454 / 0.532 ms |
+
+Bar "FSR3 no slower than native" is met at 1080p @ 2/3 only. The 1080p @ 1/2 and 500x500 @ 2/3 gaps are INFERRED to be reconstruction-input cost (motion, validity, depth, exposure targets), not picking; the per-pick work is two 20-byte copies. The A runs differ by up to 12% at 1080p (host contention), so only the paired ratio means anything. FSR3 GPU median is under 2.0 ms except 1080p @ 1/2 (2.295 ms); the max is over 2.0 ms at both 1080p configs.
+
+## R412 canonical-shape check on added lines
+
+`813180d0..HEAD`: no `throw`, `catch`, attribute, `__declspec` or `__attribute__` in added lines (the only `#pragma` is `#pragma once` in the new header `PickVote.h`). 0 new warnings.
+
+## LANDABLE NOW
+
+Repo VBVS--VIXEN, branch `lane-fsr3`:
+
+- `ab2a73cc` fix: clear recipe registry on engine reset and demote a faulting FSR3 provider mid-run (T-4634, T-4638)
+- `27fb0fc9` feat: vote jittered picks over the last jitter cycle and drop the second pick trace (T-4633)
+- `af7caa3f` fix: let an uncorroborated hit keep the pick vote history and add edge-stability probes (T-4633)
+- the commit carrying this report (branch tip)
+
+## STOPs
+
+- The brief's "crosshair ring readback" did not exist in the code: the crosshair texel was never read back per frame. I added the tracked-texel readback on the existing staging-ring path rather than a second mechanism; this is the largest part of the diff.
+- The old click path read a stale, compile-time-cached ID slot (it did not follow the frame's pick image ring); it now resolves from the cursor vote or the one-shot `ReadPixelAt` fallback.
+- **Validity is 0 on every hit today.** Nothing outside tests calls `InstanceMotionHistory::ResolveFrame`, so `BodyInstanceMotion.valid` is never 1. The first version of the vote treated validity 0 as "moved" and never held more than 2 samples (found by the stability probe, fixed in `af7caa3f`). Consequence: the vote resets on camera motion (motion vector) but cannot detect an instance that moved while the camera stood still; after such a move the crosshair vote is mixed for up to 16 frames. Fixing it means wiring `InstanceMotionHistory` into the instance producer, which is bigger than this task.
+- No committed e2e test for T-4634 / T-4638: no injection point exists without a new mechanism. Manual native checks above.
+- KI-012 devices (Dozen) copy three whole images per tracked frame: host staging up to 20*w*h bytes per slot, 8 slots. Correctness-only devices; normal devices copy 1x1 texels.
+- No-jitter lookdev "vote" is the raw centre texel (single hit), so the lookdev assertion is only meaningful under jitter. The jittered assertion is weak by design (valid vote; if unanimous with >1 sample it must equal the pick-image centre).
+- `RenderTargetExtentNode` is still registered but no longer instantiated; `reconstructionSamplingZ` is unused in the Float3 schema. Left alone.
+- Pre-existing codegen golden check failure (`frame_targets_schema_check`, 'Rate'), see Tests.
+- **Whole-frame bar not met at 1080p @ 1/2 (1.41x GPU span, 1.29x CPU) and 500x500 @ 2/3 (1.07x / 1.03x); FSR3 GPU max over 2.0 ms at both 1080p configs and median 2.295 ms at 1080p @ 1/2.** Contended host; not diagnosed beyond the inference above.
+- FSR3 ran under the qualification capture (still unqualified; ordinary selection remains fail-closed).
+
+## SPT DISPOSITION
+
+- T-4633: PARTIAL. Done and measured: second trace deleted, vote implemented, stability 63 -> 0 changes (WSL) and 48 -> 1 (native FSR3), unit tests 12. Not closed because the whole-frame bar is met at 1080p @ 2/3 only and instance motion under a still camera is not detected (validity is never produced).
+- T-4634: CLOSE. Fix in `ab2a73cc`, unit test, manual native check (`DuplicateId` count 0, fallback to FSR1).
+- T-4638: CLOSE for the logic and the manual native check; PARTIAL on the pixel claim (last good frame presented is INFERRED). No e2e test.
+
+## CONSOLIDATION ISSUES
+
+- Wire `InstanceMotionHistory::ResolveFrame` into the instance producer so `BodyInstanceMotion.valid` is real; today every consumer of motion validity sees 0 (tier:sol, effort:M). Not filed.
+- FSR3 whole frame still 1.4x native at 1080p @ 1/2 on the APU; diagnose the reconstruction-input passes (tier:sol, effort:M). Not filed.
+- Codegen golden check `frame_targets_schema_check` fails against the current undertow tool ('Rate'); every full build needs `-k 0` (tier:luna, effort:S). Not filed.
+- Fallback / demotion paths have no committed injection point, so T-4634 and T-4638 stay manual end to end (tier:luna, effort:M). Not filed.
