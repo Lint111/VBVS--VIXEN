@@ -234,7 +234,9 @@ bool envFlagIsSet(const char* name, bool& value) {
     return false;
 }
 
-bool IsSelectedDeviceCapabilityAvailable(VkInstance instance, const char* capabilityName) {
+bool PopulateSelectedDeviceCapabilities(VkInstance instance,
+                                       Vixen::CapabilityGraph& capabilities) {
+    capabilities.BuildStandardCapabilities();
     uint32_t deviceCount = 0;
     if (instance == VK_NULL_HANDLE ||
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr) != VK_SUCCESS ||
@@ -251,11 +253,8 @@ bool IsSelectedDeviceCapabilityAvailable(VkInstance instance, const char* capabi
     // the render graph will create a logical device for.
     const uint32_t selectedIndex = DeviceNode::SelectPhysicalDeviceIndex(
         physicalDevices, DeviceNodeConfig::GPU_INDEX_AUTO);
-    Vixen::CapabilityGraph capabilities;
-    capabilities.BuildStandardCapabilities();
     capabilities.ObservePhysicalDevice(physicalDevices[selectedIndex]);
-    return capabilities.ResolveOptionalPath(capabilityName, true) ==
-           Vixen::CapabilityPath::CapabilityEnabled;
+    return true;
 }
 
 bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
@@ -9462,6 +9461,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     const std::array<UpscalerFrameInput, 1> availableUpscalerInputs{
         UpscalerFrameInput::Color};
+
+    // Provider choice happens while assembling the graph, before DeviceNode creates its live
+    // VulkanDevice. Observe the same selected physical adapter into a temporary CapabilityGraph
+    // so selection can consume the read-only record query without depending on a created device.
+    Vixen::CapabilityGraph upscalerCapabilities;
+    PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
+    auto upscalerPolicy = upscalerCapabilities.GetUpscalerCapabilityRecords().policy;
+    upscalerPolicy.viewMode = renderPathConfig.upscaler == UpscalerKind::None
+        ? Vixen::UpscalerViewMode::Canonical
+        : Vixen::UpscalerViewMode::Relaxed;
+    upscalerPolicy.outputExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+    upscalerPolicy.role = offscreenPresentation
+        ? Vixen::UpscalerWorkRole::HeadlessCapture
+        : Vixen::UpscalerWorkRole::Interactive;
+    upscalerCapabilities.SetUpscalerPolicyRecord(upscalerPolicy);
+    const auto& upscalerRecords = upscalerCapabilities.GetUpscalerCapabilityRecords();
+
     const UpscalerFrameDescription upscalerFrame{
         {renderExtent.width, renderExtent.height},
         {static_cast<uint32_t>(width), static_cast<uint32_t>(height)},
@@ -9481,21 +9497,52 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
 
         UpscalerEligibility eligibility;
-        eligibility.compiled = backend->compiled;
+        const std::string_view compiledAdapter = backend->nativeFallback
+            ? std::string_view{"Upscaler.Native"}
+            : backend->moduleTypeName;
+        eligibility.compiled = backend->compiled && !compiledAdapter.empty() &&
+            std::find(upscalerRecords.build.compiledAdapters.begin(),
+                      upscalerRecords.build.compiledAdapters.end(), compiledAdapter) !=
+                upscalerRecords.build.compiledAdapters.end();
         // Entries in this ordered list are the providers the render pass permits, followed by
         // the required native fallback.
-        eligibility.permittedByPass = true;
+        eligibility.permittedByPass = backend->nativeFallback ||
+            upscalerRecords.policy.viewMode == Vixen::UpscalerViewMode::Relaxed;
         eligibility.runtimeSupported = backend->runtimeCapability.empty() ||
-            IsSelectedDeviceCapabilityAvailable(instanceObj.instance,
-                                                std::string(backend->runtimeCapability).c_str());
-        eligibility.inputCompatible = SupportsUpscalerFrame(*backend->contract, upscalerFrame);
+            upscalerCapabilities.ResolveOptionalPath(
+                std::string(backend->runtimeCapability), true) ==
+                Vixen::CapabilityPath::CapabilityEnabled;
+        const bool policyExtentMatches =
+            (upscalerRecords.policy.outputExtent.width == 0 ||
+             upscalerRecords.policy.outputExtent.width == upscalerFrame.outputExtent.width) &&
+            (upscalerRecords.policy.outputExtent.height == 0 ||
+             upscalerRecords.policy.outputExtent.height == upscalerFrame.outputExtent.height);
+        const bool historyPolicySupported = upscalerRecords.policy.historyCount == 0 ||
+            backend->contract->retainsHistory;
+        eligibility.inputCompatible = policyExtentMatches && historyPolicySupported &&
+            SupportsUpscalerFrame(*backend->contract, upscalerFrame);
         eligibility.initialized = backend->nativeFallback || backend->id == "linear" ||
             lightingCommon.device.IsValid();
-        // Qualification and admission are explicit predicate inputs. The built-in paths remain
-        // opt-in and available as in stage 1 while per-profile qualification and budget records
-        // are being added through CapabilityGraph.
-        eligibility.qualified = true;
-        eligibility.admittedByBudget = true;
+        const bool passedQualification =
+            upscalerRecords.qualification.status == Vixen::UpscalerQualificationStatus::Qualified &&
+            upscalerRecords.qualification.parity == Vixen::UpscalerParityResult::Passed;
+        const bool unqualifiedRelaxedPath =
+            upscalerRecords.policy.viewMode == Vixen::UpscalerViewMode::Relaxed &&
+            (upscalerRecords.qualification.status ==
+                 Vixen::UpscalerQualificationStatus::UnqualifiedNoRunner ||
+             upscalerRecords.qualification.status == Vixen::UpscalerQualificationStatus::Unqualified);
+        eligibility.qualified = backend->nativeFallback || passedQualification ||
+            unqualifiedRelaxedPath;
+        if (!backend->nativeFallback && unqualifiedRelaxedPath && mainLogger) {
+            mainLogger->Warning("[BuildRenderGraph] Upscaler provider '" +
+                                std::string(backend->id) +
+                                "' is unqualified for native parity; using it only for the "
+                                "requested relaxed view.");
+        }
+        // Zero means no declared memory ceiling. A finite allowance cannot admit an optional
+        // provider until its allocation requirements are available to this predicate.
+        eligibility.admittedByBudget = backend->nativeFallback ||
+            upscalerRecords.policy.memoryAllowanceBytes == 0;
 
         upscalerCandidates.push_back({backend->id, eligibility, backend->nativeFallback});
         orderedUpscalerBackends.push_back(backend);

@@ -93,7 +93,79 @@ std::vector<std::string> EnumerateAvailableInstanceLayers() {
     return names;
 }
 
+constexpr std::array<VkFormat, 8> kUpscalerCandidateFormats{
+    VK_FORMAT_R8G8B8A8_UNORM,
+    VK_FORMAT_B8G8R8A8_UNORM,
+    VK_FORMAT_R16G16B16A16_SFLOAT,
+    VK_FORMAT_R16G16_SFLOAT,
+    VK_FORMAT_R32G32_SFLOAT,
+    VK_FORMAT_R32_SFLOAT,
+    VK_FORMAT_R16_SFLOAT,
+    VK_FORMAT_R8_UNORM,
+};
+
 } // namespace
+
+const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles() {
+    static const std::vector<UpscalerMachineProfile> profiles{
+        {
+            "amd-8060s-windows", "AMD Radeon 8060S", "Windows", "x86_64", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+        },
+        {
+            "amd-8060s-linux", "AMD Radeon 8060S", "Linux", "x86_64", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+        },
+        {
+            "nvidia-rtx-3060-windows", "NVIDIA GeForce RTX 3060", "Windows", "x86_64", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4",
+             "Upscaler.DlssSr"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+        },
+        {
+            "nvidia-rtx-3060-linux", "NVIDIA GeForce RTX 3060", "Linux", "x86_64", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4",
+             "Upscaler.DlssSr"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+        },
+        {
+            "amd-laptop", "Unidentified AMD laptop", "unspecified", "unspecified", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
+        },
+        {
+            "wsl2-dozen", "WSL2 developer machine", "WSL2", "x86_64", "Dozen",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Development},
+        },
+        {
+            "build-worker", "CPU/RAM-rich build worker", "host", "host", "none",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Build},
+        },
+        {
+            "headless-native-runner", "Headless native test/capture runner", "native", "host", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::HeadlessCapture},
+        },
+        {
+            "intel-arc-native", "Intel Arc", "native", "x86_64", "native",
+            {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.XeSsSr"},
+            {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Qualification},
+        },
+    };
+    return profiles;
+}
+
+const UpscalerMachineProfile* FindUpscalerMachineProfile(std::string_view profileId) noexcept {
+    const auto& profiles = GetUpscalerMachineProfiles();
+    const auto found = std::find_if(profiles.begin(), profiles.end(), [profileId](const auto& profile) {
+        return profile.profileId == profileId;
+    });
+    return found == profiles.end() ? nullptr : &*found;
+}
 
 std::optional<CapabilityVersionValue> CapabilityVersionValue::Parse(const std::string& value) {
     CapabilityVersionValue parsed{};
@@ -190,6 +262,25 @@ void CapabilityGraph::RegisterCapability(std::shared_ptr<CapabilityNode> capabil
 void CapabilityGraph::RegisterBuildFact(const std::string& name, CapabilityBuildFact value,
                                         CapabilityBindingTime bindingTime) {
     RegisterCapability(std::make_shared<BuildFactCapability>(name, std::move(value), bindingTime));
+}
+
+void CapabilityGraph::SetUpscalerRuntimeFacts(UpscalerRuntimeFacts facts) {
+    upscalerCapabilityRecords_.runtime = std::move(facts);
+}
+
+void CapabilityGraph::SetUpscalerEnabledFeatures(std::vector<std::string> features) {
+    std::sort(features.begin(), features.end());
+    features.erase(std::unique(features.begin(), features.end()), features.end());
+    upscalerCapabilityRecords_.runtime.enabledFeatures = std::move(features);
+}
+
+void CapabilityGraph::SetUpscalerQualificationRecord(
+    UpscalerQualificationRecord qualification) {
+    upscalerCapabilityRecords_.qualification = std::move(qualification);
+}
+
+void CapabilityGraph::SetUpscalerPolicyRecord(UpscalerPolicyRecord policy) noexcept {
+    upscalerCapabilityRecords_.policy = policy;
 }
 
 void CapabilityGraph::SetAllBindingTimes(CapabilityBindingTime bindingTime) noexcept {
@@ -315,6 +406,21 @@ void CapabilityGraph::ObservePhysicalDevice(VkPhysicalDevice physicalDevice) {
               identity.deviceUuid.begin());
     std::copy(std::begin(idProperties.driverUUID), std::end(idProperties.driverUUID),
               identity.driverUuid.begin());
+    auto& runtimeFacts = upscalerCapabilityRecords_.runtime;
+    runtimeFacts.physicalDevice = identity.deviceName;
+    runtimeFacts.icdOrTranslationLayer = identity.driverName;
+    runtimeFacts.deviceDriver = identity;
+    runtimeFacts.enabledFeatures.clear();
+    runtimeFacts.formats.clear();
+    runtimeFacts.formats.reserve(kUpscalerCandidateFormats.size());
+    for (const auto format : kUpscalerCandidateFormats) {
+        VkFormatProperties formatProperties{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProperties);
+        runtimeFacts.formats.push_back({format,
+                                        formatProperties.linearTilingFeatures,
+                                        formatProperties.optimalTilingFeatures,
+                                        formatProperties.bufferFeatures});
+    }
     RegisterBuildFact("BuildFact:ObservedDeviceDriverIdentity", std::move(identity));
 
     uint32_t queueCount = 0;
@@ -561,6 +667,7 @@ void CapabilityGraph::SetAvailableDeviceExtensions(std::vector<std::string> exte
 
 void CapabilityGraph::SetAvailableDeviceFeatures(std::vector<std::string> features) {
     availableDeviceFeatures_ = std::move(features);
+    upscalerCapabilityRecords_.runtime.supportedFeatures = availableDeviceFeatures_;
     InvalidateAll();
 }
 
@@ -959,6 +1066,27 @@ void CapabilityGraph::BuildStandardCapabilities() {
     RegisterCapability(std::make_shared<BackgroundGpuCapability>());
 
 #ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
+    auto& upscalerBuild = upscalerCapabilityRecords_.build;
+    upscalerBuild.targetOS = BuildCapabilities::kPlatform;
+    upscalerBuild.targetABI = BuildCapabilities::kArchitecture;
+    upscalerBuild.compilerId = BuildCapabilities::kCompilerId;
+    upscalerBuild.compilerVersion = BuildCapabilities::kCompilerVersion;
+    upscalerBuild.spirvCompilerId = "glslang";
+    upscalerBuild.spirvCompilerVersion = VIXEN_CONFIGURED_GLSLANG_VERSION;
+    upscalerBuild.spirvTargetVersion = VIXEN_CONFIGURED_SPIRV_TARGET_VERSION;
+    upscalerBuild.compiledAdapters = {
+        "Upscaler.Native",
+        "Upscaler.Linear",
+        "Upscaler.Fsr1",
+    };
+    upscalerBuild.sdkPackageRevisions = {
+        {"Vulkan SDK", VIXEN_CONFIGURED_VULKAN_SDK_VERSION},
+        {"glslang", VIXEN_CONFIGURED_GLSLANG_VERSION},
+        {"SPIR-V target", VIXEN_CONFIGURED_SPIRV_TARGET_VERSION},
+        {"AMD FidelityFX FSR 1", "a21ffb8f6c13233ba336352bdff293894c706575"},
+    };
+    upscalerBuild.nativeFallbackRetained = true;
+
     RegisterBuildFact("BuildFact:ConfiguredPlatform",
         PlatformBuildFact{std::string(BuildCapabilities::kPlatform),
                           std::string(BuildCapabilities::kArchitecture),
