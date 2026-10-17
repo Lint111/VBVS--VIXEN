@@ -12,10 +12,12 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 namespace {
@@ -49,6 +51,7 @@ public:
         if (!initialized_ || !device_) {
             throw std::runtime_error("FSR 3.1.4 dispatch requested before context initialization");
         }
+        const auto recordStart = std::chrono::steady_clock::now();
         auto* output = context.In(ComputeStageNodeConfig::IMAGE_WRITE);
         const auto inputs = context.In(ComputeStageNodeConfig::IMAGE_READ_ARRAY);
         if (!output || inputs.size() != 4 ||
@@ -116,13 +119,20 @@ public:
         } else if (timingEnabled_) {
             timingOverflow_ = true;
         }
+        const auto dispatchStart = std::chrono::steady_clock::now();
         CheckFfx(ffxFsr3UpscalerContextDispatch(&context_, &dispatch),
                  "ffxFsr3UpscalerContextDispatch");
+        const auto dispatchEnd = std::chrono::steady_clock::now();
         if (recordGpuTiming) {
             vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                 timingPool_, timingSample * 2 + 1);
         }
         output->SetImageLayout(output->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
+        if (timingEnabled_ && cpuRecordMs_.size() < kMaxGpuTimingSamples) {
+            using Millis = std::chrono::duration<double, std::milli>;
+            cpuRecordMs_.push_back(Millis(std::chrono::steady_clock::now() - recordStart).count());
+            cpuDispatchMs_.push_back(Millis(dispatchEnd - dispatchStart).count());
+        }
     }
 
     void Cleanup() noexcept {
@@ -228,7 +238,20 @@ private:
         timingEnabled_ = true;
     }
 
+    static void ReportCpuTiming(const char* name, std::vector<double>& samples) noexcept {
+        if (samples.empty()) return;
+        std::sort(samples.begin(), samples.end());
+        const size_t middle = samples.size() / 2;
+        const double median = samples.size() % 2 != 0
+            ? samples[middle]
+            : (samples[middle - 1] + samples[middle]) * 0.5;
+        std::fprintf(stderr, "[FSR3_CPU_TIMING] %s samples=%zu median_ms=%.6f max_ms=%.6f\n",
+                     name, samples.size(), median, samples.back());
+    }
+
     void CollectGpuTimings() noexcept {
+        ReportCpuTiming("record", cpuRecordMs_);
+        ReportCpuTiming("context_dispatch", cpuDispatchMs_);
         if (!timingEnabled_ || timingPool_ == VK_NULL_HANDLE || timingSampleCount_ == 0) return;
         std::vector<double> elapsedMs;
         elapsedMs.reserve(timingSampleCount_);
@@ -411,6 +434,8 @@ private:
     float timestampPeriodNs_ = 0.0f;
     bool timingEnabled_ = false;
     bool timingOverflow_ = false;
+    std::vector<double> cpuRecordMs_;
+    std::vector<double> cpuDispatchMs_;
     bool initialized_ = false;
 };
 
