@@ -1,4 +1,5 @@
 #include "graph/Fsr3Upscaler.h"
+#include "graph/UpscalerContract.h"
 
 #include "IRenderTarget.h"
 #include "Nodes/Common/SwapchainBarriers.h"
@@ -30,46 +31,17 @@ public:
     ~Fsr3ContextState() { Cleanup(); }
 
     void Initialize(VulkanDevice* device) {
-        if (!device || device->device == VK_NULL_HANDLE || !device->gpu ||
-            *device->gpu == VK_NULL_HANDLE) {
-            throw std::runtime_error("FSR 3.1.4 cannot initialize without a live Vulkan device");
+        try {
+            InitializeContext(device);
+        } catch (const std::exception& error) {
+            Cleanup();
+            throw UpscalerProviderInitializationError(
+                "fsr3", std::string("FSR 3.1.4 context initialization failed: ") + error.what());
+        } catch (...) {
+            Cleanup();
+            throw UpscalerProviderInitializationError(
+                "fsr3", "FSR 3.1.4 context initialization failed with an unknown error");
         }
-        if (depthConvention_ != ReconstructionDepthConvention::ForwardZeroToOne &&
-            depthConvention_ != ReconstructionDepthConvention::ReversedZeroToOne) {
-            throw std::runtime_error("FSR 3.1.4 requires a zero-to-one depth convention");
-        }
-        if (renderExtent_.width == 0 || renderExtent_.height == 0 ||
-            outputExtent_.width == 0 || outputExtent_.height == 0 ||
-            nearPlane_ <= 0.0f || farPlane_ <= nearPlane_) {
-            throw std::runtime_error("FSR 3.1.4 context dimensions or clip planes are invalid");
-        }
-        device_ = device;
-        const size_t scratchSize = ffxGetScratchMemorySizeVK(*device_->gpu, 1);
-        scratch_.reset(static_cast<uint8_t*>(std::calloc(1, scratchSize)));
-        if (!scratch_) {
-            throw std::bad_alloc();
-        }
-        VkDeviceContext vkContext{};
-        vkContext.vkDevice = device_->device;
-        vkContext.vkPhysicalDevice = *device_->gpu;
-        vkContext.vkDeviceProcAddr = vkGetDeviceProcAddr;
-        const FfxDevice ffxDevice = ffxGetDeviceVK(&vkContext);
-        const FfxErrorCode interfaceResult = ffxGetInterfaceVK(
-            &backendInterface_, ffxDevice, scratch_.get(), scratchSize, 1);
-        CheckFfx(interfaceResult, "ffxGetInterfaceVK");
-
-        FfxFsr3UpscalerContextDescription description{};
-        if (depthConvention_ == ReconstructionDepthConvention::ReversedZeroToOne) {
-            description.flags |= FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED;
-        }
-        description.maxRenderSize = {renderExtent_.width, renderExtent_.height};
-        description.maxUpscaleSize = {outputExtent_.width, outputExtent_.height};
-        description.backendInterface = backendInterface_;
-        CheckFfx(ffxFsr3UpscalerContextCreate(&context_, &description),
-                 "ffxFsr3UpscalerContextCreate");
-        initialized_ = true;
-        CreateTimingPool();
-        CreateSharedResources();
     }
 
     void Record(ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
@@ -178,6 +150,49 @@ public:
     }
 
 private:
+    void InitializeContext(VulkanDevice* device) {
+        if (!device || device->device == VK_NULL_HANDLE || !device->gpu ||
+            *device->gpu == VK_NULL_HANDLE) {
+            throw std::runtime_error("FSR 3.1.4 cannot initialize without a live Vulkan device");
+        }
+        if (depthConvention_ != ReconstructionDepthConvention::ForwardZeroToOne &&
+            depthConvention_ != ReconstructionDepthConvention::ReversedZeroToOne) {
+            throw std::runtime_error("FSR 3.1.4 requires a zero-to-one depth convention");
+        }
+        if (renderExtent_.width == 0 || renderExtent_.height == 0 ||
+            outputExtent_.width == 0 || outputExtent_.height == 0 ||
+            nearPlane_ <= 0.0f || farPlane_ <= nearPlane_) {
+            throw std::runtime_error("FSR 3.1.4 context dimensions or clip planes are invalid");
+        }
+        device_ = device;
+        const size_t scratchSize = ffxGetScratchMemorySizeVK(*device_->gpu, 1);
+        scratch_.reset(static_cast<uint8_t*>(std::calloc(1, scratchSize)));
+        if (!scratch_) {
+            throw std::bad_alloc();
+        }
+        VkDeviceContext vkContext{};
+        vkContext.vkDevice = device_->device;
+        vkContext.vkPhysicalDevice = *device_->gpu;
+        vkContext.vkDeviceProcAddr = vkGetDeviceProcAddr;
+        const FfxDevice ffxDevice = ffxGetDeviceVK(&vkContext);
+        const FfxErrorCode interfaceResult = ffxGetInterfaceVK(
+            &backendInterface_, ffxDevice, scratch_.get(), scratchSize, 1);
+        CheckFfx(interfaceResult, "ffxGetInterfaceVK");
+
+        FfxFsr3UpscalerContextDescription description{};
+        if (depthConvention_ == ReconstructionDepthConvention::ReversedZeroToOne) {
+            description.flags |= FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED;
+        }
+        description.maxRenderSize = {renderExtent_.width, renderExtent_.height};
+        description.maxUpscaleSize = {outputExtent_.width, outputExtent_.height};
+        description.backendInterface = backendInterface_;
+        CheckFfx(ffxFsr3UpscalerContextCreate(&context_, &description),
+                 "ffxFsr3UpscalerContextCreate");
+        initialized_ = true;
+        CreateTimingPool();
+        CreateSharedResources();
+    }
+
     static constexpr size_t kFramesInFlight = 4;
     static constexpr uint32_t kMaxGpuTimingSamples = 256;
 

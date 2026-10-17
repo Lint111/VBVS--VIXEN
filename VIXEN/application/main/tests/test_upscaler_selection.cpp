@@ -125,6 +125,45 @@ TEST(UpscalerSelectionTest, Fsr3FallsBackToFsr1ThenNativeWhenUnqualifiedOrUnsupp
     ASSERT_EQ(nativeResult.rejected.size(), 2u);
 }
 
+TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative) {
+    auto fsr3 = Eligible();
+    fsr3.initialized = false;
+    auto fsr1 = Eligible();
+    fsr1.initialized = false;
+    std::array candidates{
+        UpscalerProviderCandidate{"fsr3", fsr3, false},
+        UpscalerProviderCandidate{"fsr1", fsr1, false},
+        UpscalerProviderCandidate{"native", Eligible(), true}
+    };
+
+    // First graph compile attempt selects FSR3 provisionally; the FFX context callback then
+    // fails and records that provider as unavailable for this graph build.
+    auto result = SelectUpscalerProviderForInitialization(candidates);
+    ASSERT_NE(result.selected, nullptr);
+    EXPECT_EQ(result.selected->id, "fsr3");
+    EXPECT_FALSE(result.selected->eligibility.initialized);
+    candidates[0].initializationFailed = true;
+
+    result = SelectUpscalerProviderForInitialization(candidates);
+    ASSERT_NE(result.selected, nullptr);
+    EXPECT_EQ(result.selected->id, "fsr1");
+    ASSERT_EQ(result.rejected.size(), 1u);
+    EXPECT_EQ(result.rejected.front().reason,
+              UpscalerSelectionFailureReason::NotInitialized);
+
+    // If the next optional provider also cannot initialize, the required native candidate wins.
+    candidates[1].initializationFailed = true;
+    result = SelectUpscalerProviderForInitialization(candidates);
+    ASSERT_NE(result.selected, nullptr);
+    EXPECT_EQ(result.selected->id, "native");
+    EXPECT_TRUE(result.selected->nativeFallback);
+    ASSERT_EQ(result.rejected.size(), 2u);
+    EXPECT_EQ(result.rejected[0].reason,
+              UpscalerSelectionFailureReason::NotInitialized);
+    EXPECT_EQ(result.rejected[1].reason,
+              UpscalerSelectionFailureReason::NotInitialized);
+}
+
 TEST(UpscalerContractTest, RequiresDeclaredInputsAndSupportedExtentsAndFormats) {
     constexpr std::array formats{UpscalerImageFormat::Rgba8Unorm};
     constexpr std::array required{UpscalerFrameInput::Color,

@@ -9681,8 +9681,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             backend->contract->retainsHistory;
         eligibility.inputCompatible = policyExtentMatches && historyPolicySupported &&
             SupportsUpscalerFrame(*backend->contract, upscalerFrame);
-        eligibility.initialized = backend->nativeFallback || backend->id == "linear" ||
-            lightingCommon.device.IsValid();
+        // Optional modules are provisional until their graph compile has created their
+        // provider context. The native path has no external context to initialize.
+        eligibility.initialized = backend->nativeFallback;
         const bool passedQualification =
             upscalerRecords.qualification.status == Vixen::UpscalerQualificationStatus::Qualified &&
             upscalerRecords.qualification.parity == Vixen::UpscalerParityResult::Passed;
@@ -9705,12 +9706,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         eligibility.admittedByBudget = backend->nativeFallback ||
             upscalerRecords.policy.memoryAllowanceBytes == 0;
 
-        upscalerCandidates.push_back({backend->id, eligibility, backend->nativeFallback});
+        const bool initializationFailed = std::find(
+            upscalerInitializationFailures_.begin(), upscalerInitializationFailures_.end(),
+            backend->id) != upscalerInitializationFailures_.end();
+        upscalerCandidates.push_back(
+            {backend->id, eligibility, backend->nativeFallback, initializationFailed});
         orderedUpscalerBackends.push_back(backend);
     }
 
     const UpscalerSelectionResult upscalerSelection =
-        SelectUpscalerProvider(upscalerCandidates);
+        SelectUpscalerProviderForInitialization(upscalerCandidates);
     for (const auto& rejected : upscalerSelection.rejected) {
         const UpscalerBackendDescriptor* backend = FindUpscalerBackend(rejected.id);
         const std::string variantSuggestion =
@@ -9748,9 +9753,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             candidate->eligibility.permittedByPass &&
             candidate->eligibility.runtimeSupported &&
             candidate->eligibility.inputCompatible &&
-            candidate->eligibility.initialized &&
+            !candidate->initializationFailed &&
             candidate->eligibility.admittedByBudget && !candidate->eligibility.qualified) {
             selectedUpscalerBackend = FindUpscalerBackend("fsr3");
+            candidate->eligibility.qualified = true; // explicit qualification-capture gate bypass
             if (mainLogger) {
                 mainLogger->Warning(
                     "[BuildRenderGraph] Qualification capture is exercising unqualified FSR 3.1.4; "
@@ -9763,6 +9769,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
     }
 #endif
+
+    upscalerCandidatesForCompile_ = upscalerCandidates;
+    selectedUpscalerProviderId_ = selectedUpscalerBackend
+        ? std::string(selectedUpscalerBackend->id) : std::string("native");
+    selectedUpscalerHasRealContext_ = selectedUpscalerBackend &&
+        selectedUpscalerBackend->nativeFallback;
 
     if (selectedUpscalerBackend && !selectedUpscalerBackend->nativeFallback) {
         UpscalerModuleBuildContext params;
@@ -9785,6 +9797,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.registerShaderFamily = registerModuleShaderFamily;
         params.recordExecution = [this](std::string columnName, NodeHandle node) {
             upscalerPerfPasses_.push_back({std::move(columnName), node});
+        };
+        params.providerContextInitialized = [this] {
+            selectedUpscalerHasRealContext_ = true;
         };
         upscalerModule = renderGraph->InstantiateRegistered(
             std::string(selectedUpscalerBackend->moduleTypeName), "render_path/upscaler",

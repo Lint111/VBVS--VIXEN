@@ -5,7 +5,10 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -208,6 +211,9 @@ struct UpscalerProviderCandidate {
     std::string_view id;
     UpscalerEligibility eligibility{};
     bool nativeFallback = false;
+    // False before an optional module has been compiled; true when a prior graph compile
+    // attempt proved that its provider context could not be initialized.
+    bool initializationFailed = false;
 };
 
 struct UpscalerRejectedProvider {
@@ -233,5 +239,47 @@ inline UpscalerSelectionResult SelectUpscalerProvider(
     }
     return result;
 }
+
+// Graph construction precedes provider context creation. This provisional selector applies
+// every static gate and chooses the next module to compile while leaving eligibility.initialized
+// false until that provider has created its real context. A failed compile attempt is retried with
+// initializationFailed set on that provider; native remains the terminal candidate.
+constexpr UpscalerSelectionFailureReason EvaluateUpscalerEligibilityBeforeInitialization(
+    const UpscalerEligibility& eligibility) noexcept {
+    if (!eligibility.compiled) return UpscalerSelectionFailureReason::NotCompiled;
+    if (!eligibility.permittedByPass) return UpscalerSelectionFailureReason::NotPermittedByPass;
+    if (!eligibility.runtimeSupported) return UpscalerSelectionFailureReason::RuntimeUnsupported;
+    if (!eligibility.inputCompatible) return UpscalerSelectionFailureReason::InputIncompatible;
+    if (!eligibility.qualified) return UpscalerSelectionFailureReason::Unqualified;
+    if (!eligibility.admittedByBudget) return UpscalerSelectionFailureReason::OverBudget;
+    return UpscalerSelectionFailureReason::None;
+}
+
+inline UpscalerSelectionResult SelectUpscalerProviderForInitialization(
+    std::span<const UpscalerProviderCandidate> candidates) {
+    UpscalerSelectionResult result;
+    for (const auto& candidate : candidates) {
+        const auto reason = candidate.initializationFailed
+            ? UpscalerSelectionFailureReason::NotInitialized
+            : EvaluateUpscalerEligibilityBeforeInitialization(candidate.eligibility);
+        if (reason == UpscalerSelectionFailureReason::None) {
+            result.selected = &candidate;
+            return result;
+        }
+        result.rejected.push_back({candidate.id, reason});
+    }
+    return result;
+}
+
+class UpscalerProviderInitializationError final : public std::runtime_error {
+public:
+    UpscalerProviderInitializationError(std::string providerId, std::string message)
+        : std::runtime_error(std::move(message)), providerId_(std::move(providerId)) {}
+
+    [[nodiscard]] const std::string& ProviderId() const noexcept { return providerId_; }
+
+private:
+    std::string providerId_;
+};
 
 } // namespace Vixen::RenderGraph

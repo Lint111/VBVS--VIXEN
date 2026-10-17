@@ -58,6 +58,7 @@
 #include "Nodes/PhotonCellParamsConfigNode.h" // C0/C1: node-owned photon params/generation
 #include "Nodes/PhotonCellTableNode.h"         // C0/C1: node-owned photon table/readback
 #include "Nodes/FrameSyncNode.h"              // B2 (batch-23): GetCurrentFrameIndex() for the params ring's PreTick write
+#include "graph/UpscalerModules.h"
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
@@ -203,16 +204,17 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Instance exported globally");
     mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
-    // AR#7: stand up the engine subsystems via an instantiable EngineContext (was four separate
-    // members + the manual create-order here). The context owns registry/bus/graph + the autonomous
-    // CalibrationStore and wires MainCacher; the app keeps non-owning views for existing call sites.
+    CreateEngineContext();
+    mainLogger->Debug("VulkanGraphApplication::Initialize() - COMPLETE");
+}
+
+void VulkanGraphApplication::CreateEngineContext() {
+    // AR#7: the context owns registry/bus/graph + the autonomous CalibrationStore and wires
+    // MainCacher. The same setup is used when a provider context failure requires a fresh graph.
     mainLogger->Debug("Creating EngineContext (registry + bus + graph + calibration)");
     Vixen::RenderGraph::EngineConfig engineCfg;
     engineCfg.logger = mainLogger.get();
     engineCfg.calibrationDir = Vixen::RuntimeCacheDirectory() / "calibration";
-    // M3: nodes self-register into a global manifest (RenderGraphNodes is whole-archived);
-    // RegisterAllNodes replays the manifest into this EngineContext's fresh registry. No
-    // hand-maintained list — adding a node needs only its own VIXEN_REGISTER_NODE line.
     engineCfg.registerNodeTypes = [this](NodeTypeRegistry& reg) {
         Vixen::RenderGraph::RegisterAllNodes(reg);
         mainLogger->Info("Registered " + std::to_string(reg.GetNodeTypeCount()) +
@@ -220,81 +222,37 @@ void VulkanGraphApplication::Initialize() {
     };
     engine_ = std::make_unique<Vixen::RenderGraph::EngineContext>(engineCfg);
     nodeRegistry = &engine_->Registry();
-    messageBus   = &engine_->Bus();
-    renderGraph  = &engine_->Graph();
+    messageBus = &engine_->Bus();
+    renderGraph = &engine_->Graph();
     mainLogger->Info("EngineContext created (MainCacher initialized, autonomous CalibrationStore active)");
 
-    mainLogger->Debug("Subscribing to WindowCloseEvent");
-    // Subscribe to shutdown events
     messageBus->Subscribe(
         Vixen::EventBus::WindowCloseEvent::TYPE,
-        [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
+        [this](const Vixen::EventBus::BaseEventMessage&) -> bool {
             HandleShutdownRequest();
             return true;
-        }
-    );
-    mainLogger->Debug("WindowCloseEvent subscription complete");
-
-    mainLogger->Debug("Subscribing to ShutdownAckEvent");
+        });
     messageBus->Subscribe(
         Vixen::EventBus::ShutdownAckEvent::TYPE,
         [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
             try {
                 const auto* ackMsg = dynamic_cast<const Vixen::EventBus::ShutdownAckEvent*>(&msg);
-                if (ackMsg && shutdownRequested) {
-                    // Copy string immediately to avoid any lifetime issues
-                    std::string systemName = ackMsg->systemName;
-                    HandleShutdownAck(systemName);
-                }
+                if (ackMsg && shutdownRequested) HandleShutdownAck(ackMsg->systemName);
             } catch (...) {
-                // Ignore any errors during shutdown handling
+                // Shutdown acknowledgements must not escape through the application event loop.
             }
             return true;
-        }
-    );
-    mainLogger->Debug("ShutdownAckEvent subscription complete");
+        });
 
-    if (mainLogger) {
-        mainLogger->Info("RenderGraph created successfully");
-    }
-
-    // (CalibrationStore — autonomous, event-driven: load on DeviceMetadataEvent, save on
-    // ApplicationShuttingDownEvent — is now created inside EngineContext above.)
-
-    mainLogger->Debug("Registering physics loop");
-    // Phase 0.4: Register loops with the graph
-    // Recurring domains: physics is due every render frame at the current 60Hz base; simulation
-    // below is due every second render frame (30Hz). Both consume immutable snapshots when they
-    // opt into FramePipeline, and both retain deterministic fixed-step publication.
     constexpr Vixen::KernelDispatch::LoopDomainMetadata kPhysicsDomain{
         0x5048595349435331ULL, 1, 0, Vixen::KernelDispatch::TaskLane::FrameCompute, true, true};
     physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
-        1.0 / 60.0,  // 60Hz timestep
-        "PhysicsLoop",
-        LoopCatchupMode::MultipleSteps,
-        0.25, // Max 250ms catchup
-        kPhysicsDomain
-    });
-    mainLogger->Debug("Physics loop registered with ID: " + std::to_string(physicsLoopID));
-    mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
-
-    // Register sim logic loop at 30Hz (decoupled from render fps; drives the embedded sim)
+        1.0 / 60.0, "PhysicsLoop", LoopCatchupMode::MultipleSteps, 0.25, kPhysicsDomain});
     constexpr Vixen::KernelDispatch::LoopDomainMetadata kSimulationDomain{
         0x53494D4C4F4F5031ULL, 2, 0, Vixen::KernelDispatch::TaskLane::FrameCompute, true, true};
     simLoopID = renderGraph->RegisterLoop(LoopConfig{
-        1.0 / 30.0,                                  // 30Hz logic cadence
-        "SimLoop",
-        LoopCatchupMode::MultipleSteps,
-        0.25, // Max 250ms catchup
-        kSimulationDomain
-    });
-    mainLogger->Debug("Sim loop registered with ID: " + std::to_string(simLoopID));
-    mainLogger->Info("Registered SimLoop (30Hz) with ID: " + std::to_string(simLoopID));
-
-    if (mainLogger) {
-        mainLogger->Info("VulkanGraphApplication initialized successfully");
-    }
-    mainLogger->Debug("VulkanGraphApplication::Initialize() - COMPLETE");
+        1.0 / 30.0, "SimLoop", LoopCatchupMode::MultipleSteps, 0.25, kSimulationDomain});
+    mainLogger->Info("RenderGraph created and recurring loops registered");
 }
 
 void VulkanGraphApplication::Prepare() {
@@ -302,25 +260,91 @@ void VulkanGraphApplication::Prepare() {
         mainLogger->Info("[VulkanGraphApplication::Prepare] START");
     }
     isPrepared = false;
+    graphCompiled = false;
+    upscalerInitializationFailures_.clear();
+    upscalerCandidatesForCompile_.clear();
+    selectedUpscalerProviderId_.clear();
+    selectedUpscalerHasRealContext_ = false;
 
     try {
-        // PHASE 1: Nodes manage their own resources
-        // Build the render graph - nodes allocate their own resources
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
-        }
-        BuildRenderGraph();
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
-        }
+        for (;;) {
+            try {
+                // PHASE 1: Nodes manage their own resources. Provider selection is provisional
+                // until CompileRenderGraph has initialized the selected provider's real context.
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
+                }
+                BuildRenderGraph();
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
+                }
 
-        // Compile the render graph - nodes set up their pipelines
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
-        }
-        CompileRenderGraph();
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
+                }
+                CompileRenderGraph();
+                if (!selectedUpscalerHasRealContext_ &&
+                    selectedUpscalerProviderId_ != "fsr3") {
+                    // FSR 1 and linear own graph-compiled pipelines rather than an external
+                    // SDK context; successful graph compilation is their initialization proof.
+                    selectedUpscalerHasRealContext_ = true;
+                }
+                const auto selectedCandidate = std::find_if(
+                    upscalerCandidatesForCompile_.begin(), upscalerCandidatesForCompile_.end(),
+                    [this](const auto& candidate) {
+                        return candidate.id == selectedUpscalerProviderId_;
+                    });
+                if (selectedCandidate == upscalerCandidatesForCompile_.end()) {
+                    throw std::logic_error("Compiled upscaler provider is absent from its candidate set");
+                }
+                if (!selectedUpscalerHasRealContext_) {
+                    throw UpscalerProviderInitializationError(
+                        selectedUpscalerProviderId_,
+                        "provider compile completed without reporting an initialized context");
+                }
+                selectedCandidate->eligibility.initialized = true;
+                const auto initializedSelection =
+                    SelectUpscalerProvider(upscalerCandidatesForCompile_);
+                if (!initializedSelection.selected ||
+                    initializedSelection.selected->id != selectedUpscalerProviderId_) {
+                    throw std::logic_error(
+                        "Compiled upscaler provider failed its final initialized eligibility check");
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+                }
+                break;
+            } catch (const UpscalerProviderInitializationError& error) {
+                if (upscalerInitializationFailures_.size() >= 3 ||
+                    std::find(upscalerInitializationFailures_.begin(),
+                              upscalerInitializationFailures_.end(), error.ProviderId()) !=
+                        upscalerInitializationFailures_.end()) {
+                    throw;
+                }
+                upscalerInitializationFailures_.push_back(error.ProviderId());
+                const auto* failedBackend = FindUpscalerBackend(error.ProviderId());
+                const std::string variantCapability =
+                    failedBackend && !failedBackend->runtimeCapability.empty()
+                        ? std::string(failedBackend->runtimeCapability)
+                        : error.ProviderId();
+                if (mainLogger) {
+                    mainLogger->Warning(
+                        "[VulkanGraphApplication::Prepare] Upscaler provider '" +
+                        error.ProviderId() + "' failed context initialization: " + error.what() +
+                        "; trying the next provider; suggest a device variant that includes '" +
+                        variantCapability + "'");
+                }
+
+                // Compile has already created the graph device and may have compiled dependent
+                // nodes. Destroy that EngineContext as a unit so the retry starts with fresh
+                // Vulkan resources and a new graph topology.
+                engine_.reset();
+                nodeRegistry = nullptr;
+                messageBus = nullptr;
+                renderGraph = nullptr;
+                graphCompiled = false;
+                CreateEngineContext();
+            }
         }
 
         // The application does NOT own or cache the GLFW window. WindowNode owns it entirely (created

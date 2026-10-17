@@ -2,6 +2,7 @@
 
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
+#include "graph/UpscalerContract.h"
 #include "Data/ReconstructionJitter.h"
 #include "Core/EngineContext.h"  // AR#7: instantiable engine aggregate
 #include "RuntimeCachePaths.h"
@@ -255,6 +256,8 @@ protected:
     void UpdateBodySceneResidency();
 
 private:
+    void CreateEngineContext();
+
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: per-frame orchestration for the opt-in
     // bucketed-dispatch path, called from PreTick() only when recipeBucketedDispatchEnabled_
     // is true. See its own definition (VulkanGraphApplication.cpp) for the full account.
@@ -274,6 +277,12 @@ private:
     NodeTypeRegistry* nodeRegistry = nullptr;             // view: &engine_->Registry()
     RenderGraph* renderGraph = nullptr;                   // view: &engine_->Graph()
     Vixen::EventBus::MessageBus* messageBus = nullptr;    // view: &engine_->Bus()
+    // Providers that failed their real context initialization during this Prepare() are skipped
+    // when the graph is rebuilt for the next candidate.
+    std::vector<std::string> upscalerInitializationFailures_;
+    std::vector<UpscalerProviderCandidate> upscalerCandidatesForCompile_;
+    std::string selectedUpscalerProviderId_;
+    bool selectedUpscalerHasRealContext_ = false;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index

@@ -262,7 +262,14 @@ public:
             params.renderExtent, params.presentationExtent,
             kFsr3DepthConventions[0].convention,
             params.cameraNearPlane, params.cameraFarPlane);
-        compute->SetExternalCommandRecorder(hooks.record, hooks.initialize, hooks.cleanup);
+        compute->SetExternalCommandRecorder(
+            hooks.record,
+            [initialize = hooks.initialize,
+             initialized = params.providerContextInitialized](VulkanDevice* device) {
+                initialize(device);
+                if (initialized) initialized();
+            },
+            hooks.cleanup);
 
         batch.Connect(inputRead, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       stage, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
