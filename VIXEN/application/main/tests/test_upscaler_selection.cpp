@@ -2,6 +2,8 @@
 
 #include <array>
 #include <gtest/gtest.h>
+#include <string>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 namespace {
@@ -19,18 +21,20 @@ UpscalerEligibility Eligible() {
 }
 
 TEST(UpscalerSelectionTest, ReportsEveryEligibilityFailureSeparately) {
-    std::array<UpscalerEligibility, 7> failures{};
+    std::array<UpscalerEligibility, 8> failures{};
     failures.fill(Eligible());
     failures[0].compiled = false;
-    failures[1].permittedByPass = false;
-    failures[2].runtimeSupported = false;
-    failures[3].inputCompatible = false;
-    failures[4].initialized = false;
-    failures[5].qualified = false;
-    failures[6].admittedByBudget = false;
+    failures[1].permittedByRuntimeProfile = false;
+    failures[2].permittedByPass = false;
+    failures[3].runtimeSupported = false;
+    failures[4].inputCompatible = false;
+    failures[5].initialized = false;
+    failures[6].qualified = false;
+    failures[7].admittedByBudget = false;
 
     constexpr std::array expected{
         UpscalerSelectionFailureReason::NotCompiled,
+        UpscalerSelectionFailureReason::NotInRuntimeProfile,
         UpscalerSelectionFailureReason::NotPermittedByPass,
         UpscalerSelectionFailureReason::RuntimeUnsupported,
         UpscalerSelectionFailureReason::InputIncompatible,
@@ -55,6 +59,8 @@ TEST(UpscalerSelectionTest, ReportsEveryEligibilityFailureSeparately) {
               UpscalerSelectionFailureText(expected[5]));
     EXPECT_NE(UpscalerSelectionFailureText(expected[5]),
               UpscalerSelectionFailureText(expected[6]));
+    EXPECT_NE(UpscalerSelectionFailureText(expected[6]),
+              UpscalerSelectionFailureText(expected[7]));
 }
 
 TEST(UpscalerSelectionTest, SkipsRejectedBackendAndSelectsNextPermittedBackend) {
@@ -135,14 +141,24 @@ TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative
         UpscalerProviderCandidate{"fsr1", fsr1, false},
         UpscalerProviderCandidate{"native", Eligible(), true}
     };
+    std::vector<std::string> failedProviders;
 
-    // First graph compile attempt selects FSR3 provisionally; the FFX context callback then
-    // fails and records that provider as unavailable for this graph build.
+    // First graph compile attempt selects FSR3 provisionally. Inject the same typed error emitted
+    // when FFX context creation fails, and record it through Prepare's failure-recording helper.
     auto result = SelectUpscalerProviderForInitialization(candidates);
     ASSERT_NE(result.selected, nullptr);
     EXPECT_EQ(result.selected->id, "fsr3");
     EXPECT_FALSE(result.selected->eligibility.initialized);
-    candidates[0].initializationFailed = true;
+    try {
+        throw UpscalerProviderInitializationError("fsr3", "forced FFX context creation failure");
+    } catch (const UpscalerProviderInitializationError& error) {
+        EXPECT_EQ(error.ProviderId(), "fsr3");
+        ASSERT_TRUE(RecordUpscalerProviderInitializationFailure(
+            failedProviders, error.ProviderId()));
+    }
+    candidates[0].initializationFailed =
+        std::find(failedProviders.begin(), failedProviders.end(), candidates[0].id) !=
+        failedProviders.end();
 
     result = SelectUpscalerProviderForInitialization(candidates);
     ASSERT_NE(result.selected, nullptr);
@@ -151,8 +167,8 @@ TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative
     EXPECT_EQ(result.rejected.front().reason,
               UpscalerSelectionFailureReason::NotInitialized);
 
-    // If the next optional provider also cannot initialize, the required native candidate wins.
-    candidates[1].initializationFailed = true;
+    // If FSR1 is unavailable on this device, the required native candidate is next.
+    candidates[1].eligibility.runtimeSupported = false;
     result = SelectUpscalerProviderForInitialization(candidates);
     ASSERT_NE(result.selected, nullptr);
     EXPECT_EQ(result.selected->id, "native");
@@ -161,7 +177,24 @@ TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative
     EXPECT_EQ(result.rejected[0].reason,
               UpscalerSelectionFailureReason::NotInitialized);
     EXPECT_EQ(result.rejected[1].reason,
-              UpscalerSelectionFailureReason::NotInitialized);
+              UpscalerSelectionFailureReason::RuntimeUnsupported);
+}
+
+TEST(UpscalerSelectionTest, RuntimeProfileCompileSetGatesOptionalProviders) {
+    auto fsr3 = Eligible();
+    fsr3.permittedByRuntimeProfile = false;
+    const std::array candidates{
+        UpscalerProviderCandidate{"fsr3", fsr3, false},
+        UpscalerProviderCandidate{"fsr1", Eligible(), false},
+        UpscalerProviderCandidate{"native", Eligible(), true}
+    };
+
+    const auto result = SelectUpscalerProvider(candidates);
+    ASSERT_NE(result.selected, nullptr);
+    EXPECT_EQ(result.selected->id, "fsr1");
+    ASSERT_EQ(result.rejected.size(), 1u);
+    EXPECT_EQ(result.rejected.front().reason,
+              UpscalerSelectionFailureReason::NotInRuntimeProfile);
 }
 
 TEST(UpscalerContractTest, RequiresDeclaredInputsAndSupportedExtentsAndFormats) {

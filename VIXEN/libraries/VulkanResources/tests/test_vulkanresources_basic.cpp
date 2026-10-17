@@ -235,6 +235,60 @@ TEST(VulkanResources_CapabilityGraph, UpscalerMachineProfilesDeclareRequiredProv
     EXPECT_TRUE(hasProvider(*intelArc, "Upscaler.XeSsSr"));
 }
 
+TEST(VulkanResources_CapabilityGraph, ResolvesUpscalerMachineProfileFromRuntimeAdapter) {
+    using namespace Vixen;
+    const auto expectProfile = [](const UpscalerRuntimeFacts& facts,
+                                  std::string_view runtimeOS,
+                                  std::string_view expectedId) {
+        const auto* profile = ResolveUpscalerMachineProfile(facts, runtimeOS);
+        ASSERT_NE(profile, nullptr);
+        EXPECT_EQ(profile->profileId, expectedId);
+    };
+    UpscalerRuntimeFacts runtime;
+    runtime.physicalDevice = "AMD Radeon(TM) 8060S Graphics";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0x1002;
+    runtime.icdOrTranslationLayer = "AMD Vulkan driver";
+    runtime.deviceDriver.driverName = runtime.icdOrTranslationLayer;
+    expectProfile(runtime, "Windows", "amd-8060s-windows");
+    expectProfile(runtime, "Linux", "amd-8060s-linux");
+
+    runtime.icdOrTranslationLayer = "Dozen";
+    runtime.deviceDriver.driverName = "Dozen";
+    expectProfile(runtime, "Linux", "wsl2-dozen");
+    expectProfile(runtime, "Windows", "amd-8060s-windows");
+
+    runtime.physicalDevice = "NVIDIA GeForce RTX 3060";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0x10DE;
+    runtime.icdOrTranslationLayer = "NVIDIA Vulkan driver";
+    runtime.deviceDriver.driverName = runtime.icdOrTranslationLayer;
+    expectProfile(runtime, "Windows", "nvidia-rtx-3060-windows");
+    expectProfile(runtime, "Linux", "nvidia-rtx-3060-linux");
+
+    runtime.physicalDevice = "AMD Radeon 780M";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0x1002;
+    runtime.icdOrTranslationLayer = "AMD Vulkan driver";
+    runtime.deviceDriver.driverName = runtime.icdOrTranslationLayer;
+    expectProfile(runtime, "Windows", "amd-laptop");
+
+    runtime.physicalDevice = "Unknown GPU";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0x1234;
+    EXPECT_EQ(ResolveUpscalerMachineProfile(runtime, "Windows"), nullptr);
+
+    runtime.physicalDevice = "Intel Arc A770";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0x8086;
+    expectProfile(runtime, "Linux", "intel-arc-native");
+
+    runtime.physicalDevice = "llvmpipe (LLVM 20.1.0)";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.vendorId = 0;
+    expectProfile(runtime, "Linux", "headless-native-runner");
+}
+
 TEST(VulkanResources_CapabilityGraph, ConfiguredOptionalPathUsesBuildModeBinding) {
     using namespace Vixen;
     CapabilityGraph graph;

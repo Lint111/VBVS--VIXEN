@@ -287,4 +287,15 @@ private:
     std::string providerId_;
 };
 
+inline bool RecordUpscalerProviderInitializationFailure(
+    std::vector<std::string>& failedProviderIds, std::string_view providerId) {
+    if (providerId.empty() ||
+        std::find(failedProviderIds.begin(), failedProviderIds.end(), providerId) !=
+            failedProviderIds.end()) {
+        return false;
+    }
+    failedProviderIds.emplace_back(providerId);
+    return true;
+}
+
 } // namespace Vixen::RenderGraph

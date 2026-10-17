@@ -316,12 +316,10 @@ void VulkanGraphApplication::Prepare() {
                 break;
             } catch (const UpscalerProviderInitializationError& error) {
                 if (upscalerInitializationFailures_.size() >= 3 ||
-                    std::find(upscalerInitializationFailures_.begin(),
-                              upscalerInitializationFailures_.end(), error.ProviderId()) !=
-                        upscalerInitializationFailures_.end()) {
+                    !RecordUpscalerProviderInitializationFailure(
+                        upscalerInitializationFailures_, error.ProviderId())) {
                     throw;
                 }
-                upscalerInitializationFailures_.push_back(error.ProviderId());
                 const auto* failedBackend = FindUpscalerBackend(error.ProviderId());
                 const std::string variantCapability =
                     failedBackend && !failedBackend->runtimeCapability.empty()
