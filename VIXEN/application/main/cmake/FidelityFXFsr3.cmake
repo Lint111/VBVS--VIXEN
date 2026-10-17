@@ -97,6 +97,7 @@ add_library(FidelityFXFsr3VK STATIC
 add_dependencies(FidelityFXFsr3VK FidelityFXFsr3ShaderBlobs)
 target_compile_features(FidelityFXFsr3VK PUBLIC cxx_std_17)
 target_compile_definitions(FidelityFXFsr3VK PUBLIC FFX_SDK_DEFAULT_CONTEXT_SIZE=1048576)
+target_compile_definitions(FidelityFXFsr3VK PRIVATE FFX_FSR3UPSCALER)
 if(NOT WIN32)
     target_compile_options(FidelityFXFsr3VK PRIVATE
         "-include" "${CMAKE_CURRENT_LIST_DIR}/FidelityFXFsr3LinuxCompat.h")

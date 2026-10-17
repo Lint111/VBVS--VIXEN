@@ -286,9 +286,10 @@ FFX_API size_t ffxGetScratchMemorySizeVK(VkPhysicalDevice physicalDevice, size_t
     uint32_t pipelineArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_PASS_COUNT * sizeof(BackendContext_VK::PipelineLayout), sizeof(uint32_t));
     uint32_t resourceArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_RESOURCE_COUNT * sizeof(BackendContext_VK::Resource), sizeof(uint32_t));
     uint32_t contextArraySize = FFX_ALIGN_UP(maxContexts * sizeof(BackendContext_VK::EffectContext), sizeof(uint32_t));
+    const uint32_t contextAlignmentPadding = alignof(BackendContext_VK::EffectContext) - 1;
     
     return FFX_ALIGN_UP(sizeof(BackendContext_VK) + extensionPropArraySize + gpuJobDescArraySize + resourceViewArraySize + stagingRingBufferArraySize +
-                            pipelineArraySize + resourceArraySize + contextArraySize,
+                            pipelineArraySize + resourceArraySize + contextAlignmentPadding + contextArraySize,
                         sizeof(uint64_t));
 }
 
@@ -1440,6 +1441,12 @@ FfxErrorCode CreateBackendContextVK(FfxInterface* backendInterface, FfxEffect ef
             backendContext->pResources[i].uavViewIndex = backendContext->pResources[i].srvViewIndex = -1;
         }
 
+        // EffectContext requires stronger alignment than the uint32_t-rounded arrays before it.
+        const uintptr_t contextAddress = reinterpret_cast<uintptr_t>(pMem);
+        const uintptr_t contextAlignment = alignof(BackendContext_VK::EffectContext);
+        pMem = reinterpret_cast<uint8_t*>(
+            (contextAddress + contextAlignment - 1) & ~(contextAlignment - 1));
+
         // Map context array
         backendContext->pEffectContexts = (BackendContext_VK::EffectContext*)pMem;
         memset(backendContext->pEffectContexts, 0, contextArraySize);
@@ -1643,7 +1650,8 @@ FfxErrorCode CreateBackendContextVK(FfxInterface* backendInterface, FfxEffect ef
 
             uint32_t memoryTypeBits = 0;
             /// Enable usage of dedicated memory for Breadcrumbs buffers only when is required by the implementation
-            if (devCaps.dedicatedAllocationSupported)
+            if (devCaps.dedicatedAllocationSupported &&
+                backendContext->vkFunctionTable.vkGetBufferMemoryRequirements2KHR)
             {
                 // Decide whether use dedicated memory or not
                 VkBufferMemoryRequirementsInfo2 bufferReq = {};

@@ -7,7 +7,10 @@
 #include <FidelityFX/host/backends/vk/ffx_vk.h>
 #include <FidelityFX/host/ffx_fsr3upscaler.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <stdexcept>
@@ -65,10 +68,12 @@ public:
         CheckFfx(ffxFsr3UpscalerContextCreate(&context_, &description),
                  "ffxFsr3UpscalerContextCreate");
         initialized_ = true;
+        CreateTimingPool();
+        CreateSharedResources();
     }
 
     void Record(ComputeStageNode::Context& context, VkCommandBuffer commandBuffer,
-                uint32_t, uint32_t) {
+                uint32_t, uint32_t frameIndex) {
         if (!initialized_ || !device_) {
             throw std::runtime_error("FSR 3.1.4 dispatch requested before context initialization");
         }
@@ -108,6 +113,10 @@ public:
                                            FFX_RESOURCE_STATE_COMPUTE_READ, L"vixen_fsr3_motion");
         dispatch.exposure = WrapImage(*exposure, FFX_RESOURCE_USAGE_READ_ONLY,
                                       FFX_RESOURCE_STATE_COMPUTE_READ, L"vixen_fsr3_exposure");
+        const SharedFrameResources& shared = sharedResources_[frameIndex % sharedResources_.size()];
+        dispatch.dilatedDepth = shared.dilatedDepth.resource;
+        dispatch.dilatedMotionVectors = shared.dilatedMotionVectors.resource;
+        dispatch.reconstructedPrevNearestDepth = shared.reconstructedPrevNearestDepth.resource;
         dispatch.output = WrapImage(*output, FFX_RESOURCE_USAGE_UAV,
                                     FFX_RESOURCE_STATE_UNORDERED_ACCESS, L"vixen_fsr3_output");
         // The engine stores jitter in input-pixel units, positive right/down. FidelityFX's
@@ -126,24 +135,195 @@ public:
         dispatch.cameraFar = farPlane_;
         dispatch.cameraFovAngleVertical = glm::radians(camera.fov);
         dispatch.viewSpaceToMetersFactor = 1.0f;
+        const bool recordGpuTiming = timingEnabled_ && timingSampleCount_ < kMaxGpuTimingSamples;
+        const uint32_t timingSample = recordGpuTiming ? timingSampleCount_++ : 0;
+        if (recordGpuTiming) {
+            vkCmdResetQueryPool(commandBuffer, timingPool_, timingSample * 2, 2);
+            vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                timingPool_, timingSample * 2);
+        } else if (timingEnabled_) {
+            timingOverflow_ = true;
+        }
         CheckFfx(ffxFsr3UpscalerContextDispatch(&context_, &dispatch),
                  "ffxFsr3UpscalerContextDispatch");
+        if (recordGpuTiming) {
+            vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                timingPool_, timingSample * 2 + 1);
+        }
         output->SetImageLayout(output->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
     }
 
     void Cleanup() noexcept {
+        if (device_ && device_->device != VK_NULL_HANDLE) {
+            vkDeviceWaitIdle(device_->device);
+            CollectGpuTimings();
+        }
         if (initialized_) {
-            if (device_ && device_->device != VK_NULL_HANDLE) {
-                vkDeviceWaitIdle(device_->device);
-            }
             ffxFsr3UpscalerContextDestroy(&context_);
             initialized_ = false;
+        }
+        if (device_ && device_->device != VK_NULL_HANDLE) {
+            for (SharedFrameResources& frame : sharedResources_) {
+                DestroySharedImage(frame.reconstructedPrevNearestDepth);
+                DestroySharedImage(frame.dilatedMotionVectors);
+                DestroySharedImage(frame.dilatedDepth);
+            }
+            if (timingPool_ != VK_NULL_HANDLE) {
+                vkDestroyQueryPool(device_->device, timingPool_, nullptr);
+                timingPool_ = VK_NULL_HANDLE;
+            }
         }
         scratch_.reset();
         device_ = nullptr;
     }
 
 private:
+    static constexpr size_t kFramesInFlight = 4;
+    static constexpr uint32_t kMaxGpuTimingSamples = 256;
+
+    struct SharedImage {
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        FfxResource resource{};
+    };
+
+    struct SharedFrameResources {
+        SharedImage reconstructedPrevNearestDepth;
+        SharedImage dilatedMotionVectors;
+        SharedImage dilatedDepth;
+    };
+
+    void CreateTimingPool() {
+        if (!std::getenv("VIXEN_FSR3_GPU_TIMING")) return;
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(*device_->gpu, &properties);
+        if (!properties.limits.timestampComputeAndGraphics ||
+            properties.limits.timestampPeriod <= 0.0f) {
+            std::fprintf(stderr, "[FSR3_GPU_TIMING] unavailable: device has no compute timestamp support\n");
+            return;
+        }
+        timestampPeriodNs_ = properties.limits.timestampPeriod;
+        VkQueryPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        poolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        poolInfo.queryCount = kMaxGpuTimingSamples * 2;
+        if (vkCreateQueryPool(device_->device, &poolInfo, nullptr, &timingPool_) != VK_SUCCESS) {
+            std::fprintf(stderr, "[FSR3_GPU_TIMING] unavailable: timestamp query pool creation failed\n");
+            return;
+        }
+        timingEnabled_ = true;
+    }
+
+    void CollectGpuTimings() noexcept {
+        if (!timingEnabled_ || timingPool_ == VK_NULL_HANDLE || timingSampleCount_ == 0) return;
+        std::vector<double> elapsedMs;
+        elapsedMs.reserve(timingSampleCount_);
+        for (uint32_t sample = 0; sample < timingSampleCount_; ++sample) {
+            std::array<uint64_t, 2> ticks{};
+            const VkResult result = vkGetQueryPoolResults(
+                device_->device, timingPool_, sample * 2, 2, sizeof(ticks), ticks.data(),
+                sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            if (result != VK_SUCCESS || ticks[1] < ticks[0]) continue;
+            const double ms = static_cast<double>(ticks[1] - ticks[0]) *
+                              static_cast<double>(timestampPeriodNs_) / 1'000'000.0;
+            elapsedMs.push_back(ms);
+            std::fprintf(stderr, "[FSR3_GPU_TIMING] sample=%u gpu_ms=%.6f\n", sample, ms);
+        }
+        std::sort(elapsedMs.begin(), elapsedMs.end());
+        if (!elapsedMs.empty()) {
+            const double median = elapsedMs[elapsedMs.size() / 2];
+            std::fprintf(stderr,
+                         "[FSR3_GPU_TIMING] summary samples=%zu median_ms=%.6f max_ms=%.6f budget_ms=2.000000\n",
+                         elapsedMs.size(), median, elapsedMs.back());
+        }
+        if (timingOverflow_) {
+            std::fprintf(stderr, "[FSR3_GPU_TIMING] sample limit reached (%u)\n", kMaxGpuTimingSamples);
+        }
+    }
+
+    static VkFormat ToVkFormat(FfxSurfaceFormat format) {
+        switch (format) {
+        case FFX_SURFACE_FORMAT_R32_FLOAT: return VK_FORMAT_R32_SFLOAT;
+        case FFX_SURFACE_FORMAT_R16G16_FLOAT: return VK_FORMAT_R16G16_SFLOAT;
+        case FFX_SURFACE_FORMAT_R32_UINT: return VK_FORMAT_R32_UINT;
+        default:
+            throw std::runtime_error("FSR 3.1.4 requested an unsupported shared-resource format");
+        }
+    }
+
+    uint32_t FindMemoryType(uint32_t memoryTypeBits) const {
+        VkPhysicalDeviceMemoryProperties properties{};
+        vkGetPhysicalDeviceMemoryProperties(*device_->gpu, &properties);
+        for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
+            if ((memoryTypeBits & (1u << i)) != 0 &&
+                (properties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0) {
+                return i;
+            }
+        }
+        for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
+            if ((memoryTypeBits & (1u << i)) != 0) return i;
+        }
+        throw std::runtime_error("FSR 3.1.4 shared image has no compatible Vulkan memory type");
+    }
+
+    void CreateSharedImage(const FfxCreateResourceDescription& description, SharedImage& shared) {
+        const FfxResourceDescription& resourceDescription = description.resourceDescription;
+        VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = ToVkFormat(static_cast<FfxSurfaceFormat>(resourceDescription.format));
+        imageInfo.extent = {resourceDescription.width, resourceDescription.height, 1};
+        imageInfo.mipLevels = resourceDescription.mipCount;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                          VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (vkCreateImage(device_->device, &imageInfo, nullptr, &shared.image) != VK_SUCCESS) {
+            throw std::runtime_error("FSR 3.1.4 shared Vulkan image creation failed");
+        }
+
+        VkMemoryRequirements requirements{};
+        vkGetImageMemoryRequirements(device_->device, shared.image, &requirements);
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocation.allocationSize = requirements.size;
+        allocation.memoryTypeIndex = FindMemoryType(requirements.memoryTypeBits);
+        if (vkAllocateMemory(device_->device, &allocation, nullptr, &shared.memory) != VK_SUCCESS) {
+            throw std::runtime_error("FSR 3.1.4 shared Vulkan image memory allocation failed");
+        }
+        if (vkBindImageMemory(device_->device, shared.image, shared.memory, 0) != VK_SUCCESS) {
+            throw std::runtime_error("FSR 3.1.4 shared Vulkan image memory binding failed");
+        }
+
+        const FfxResourceDescription ffxDescription = ffxGetImageResourceDescriptionVK(
+            shared.image, imageInfo, resourceDescription.usage);
+        shared.resource = ffxGetResourceVK(reinterpret_cast<void*>(shared.image), ffxDescription,
+                                           description.name, FFX_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+
+    void CreateSharedResources() {
+        FfxFsr3UpscalerSharedResourceDescriptions descriptions{};
+        CheckFfx(ffxFsr3UpscalerGetSharedResourceDescriptions(&context_, &descriptions),
+                 "ffxFsr3UpscalerGetSharedResourceDescriptions");
+        for (SharedFrameResources& frame : sharedResources_) {
+            CreateSharedImage(descriptions.reconstructedPrevNearestDepth, frame.reconstructedPrevNearestDepth);
+            CreateSharedImage(descriptions.dilatedMotionVectors, frame.dilatedMotionVectors);
+            CreateSharedImage(descriptions.dilatedDepth, frame.dilatedDepth);
+        }
+    }
+
+    void DestroySharedImage(SharedImage& shared) noexcept {
+        if (shared.image != VK_NULL_HANDLE) {
+            vkDestroyImage(device_->device, shared.image, nullptr);
+            shared.image = VK_NULL_HANDLE;
+        }
+        if (shared.memory != VK_NULL_HANDLE) {
+            vkFreeMemory(device_->device, shared.memory, nullptr);
+            shared.memory = VK_NULL_HANDLE;
+        }
+        shared.resource = {};
+    }
+
     static void CheckFfx(FfxErrorCode result, const char* operation) {
         if (result != FFX_OK) {
             throw std::runtime_error(std::string(operation) + " failed with FidelityFX error " +
@@ -207,6 +387,12 @@ private:
     std::unique_ptr<uint8_t, decltype(&std::free)> scratch_{nullptr, &std::free};
     FfxInterface backendInterface_{};
     FfxFsr3UpscalerContext context_{};
+    std::array<SharedFrameResources, kFramesInFlight> sharedResources_{};
+    VkQueryPool timingPool_ = VK_NULL_HANDLE;
+    uint32_t timingSampleCount_ = 0;
+    float timestampPeriodNs_ = 0.0f;
+    bool timingEnabled_ = false;
+    bool timingOverflow_ = false;
     bool initialized_ = false;
 };
 
