@@ -1,7 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "CapabilityGraph.h"
 #include "ConfiguredOptionalPath.h"
+#include "VulkanCapabilityConfig.h"
 
 TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureSet) {
     Vixen::CapabilityGraph graph;
@@ -32,6 +41,186 @@ TEST(VulkanResources_CapabilityGraph, BindingTimeAndTypedBuildFactsAreStoredOnGr
     ASSERT_NE(factNode, nullptr);
     ASSERT_TRUE(std::holds_alternative<PlatformBuildFact>(factNode->GetValue()));
     EXPECT_EQ(factNode->GetBindingTime(), CapabilityBindingTime::BuildTime);
+}
+
+TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClosedDefaults) {
+    using namespace Vixen;
+    static_assert(std::is_same_v<
+        decltype(std::declval<const CapabilityGraph&>().GetUpscalerCapabilityRecords()),
+        const UpscalerCapabilityRecords&>);
+
+    CapabilityGraph graph;
+    graph.BuildStandardCapabilities();
+    const auto& records = graph.GetUpscalerCapabilityRecords();
+
+    EXPECT_EQ(records.build.targetOS, BuildCapabilities::kPlatform);
+    EXPECT_EQ(records.build.targetABI, BuildCapabilities::kArchitecture);
+    EXPECT_EQ(records.build.compilerId, BuildCapabilities::kCompilerId);
+    EXPECT_EQ(records.build.compilerVersion, BuildCapabilities::kCompilerVersion);
+    EXPECT_EQ(records.build.spirvCompilerId, "glslang");
+    EXPECT_EQ(records.build.spirvCompilerVersion, VIXEN_CONFIGURED_GLSLANG_VERSION);
+    EXPECT_EQ(records.build.spirvTargetVersion, VIXEN_CONFIGURED_SPIRV_TARGET_VERSION);
+    EXPECT_TRUE(records.build.nativeFallbackRetained);
+    EXPECT_EQ(records.build.compiledAdapters,
+              (std::vector<std::string>{"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}));
+
+    const auto vulkanPackage = std::find_if(
+        records.build.sdkPackageRevisions.begin(), records.build.sdkPackageRevisions.end(),
+        [](const auto& package) { return package.packageId == "Vulkan SDK"; });
+    ASSERT_NE(vulkanPackage, records.build.sdkPackageRevisions.end());
+    EXPECT_EQ(vulkanPackage->revision, VIXEN_CONFIGURED_VULKAN_SDK_VERSION);
+    const auto fsr1Package = std::find_if(
+        records.build.sdkPackageRevisions.begin(), records.build.sdkPackageRevisions.end(),
+        [](const auto& package) { return package.packageId == "AMD FidelityFX FSR 1"; });
+    ASSERT_NE(fsr1Package, records.build.sdkPackageRevisions.end());
+    EXPECT_EQ(fsr1Package->revision, "a21ffb8f6c13233ba336352bdff293894c706575");
+    EXPECT_EQ(records.qualification.status, UpscalerQualificationStatus::UnqualifiedNoRunner);
+    EXPECT_EQ(records.qualification.parity, UpscalerParityResult::NotRun);
+    EXPECT_EQ(records.policy.viewMode, UpscalerViewMode::Canonical);
+}
+
+TEST(VulkanResources_CapabilityGraph, UpscalerRuntimeQualificationAndPolicyRecordsRoundTrip) {
+    using namespace Vixen;
+    CapabilityGraph graph;
+
+    UpscalerRuntimeFacts runtime{};
+    runtime.physicalDevice = "AMD Radeon 8060S Graphics";
+    runtime.icdOrTranslationLayer = "Dozen";
+    runtime.deviceDriver.deviceName = runtime.physicalDevice;
+    runtime.deviceDriver.driverName = "Dozen";
+    runtime.deviceDriver.deviceUuid[0] = 0xA5;
+    runtime.deviceDriver.driverUuid[0] = 0x5A;
+    runtime.supportedFeatures = {"timelineSemaphore", "synchronization2"};
+    runtime.formats.push_back({VK_FORMAT_R16G16B16A16_SFLOAT,
+                               0,
+                               VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT,
+                               0});
+    graph.SetUpscalerRuntimeFacts(runtime);
+    graph.SetUpscalerEnabledFeatures({"synchronization2", "timelineSemaphore", "synchronization2"});
+
+    UpscalerQualificationRecord qualification{};
+    qualification.status = UpscalerQualificationStatus::Qualified;
+    qualification.artifactKey = "vixen-release-a1b2c3d4";
+    qualification.deviceKey = "device-8060s-uuid";
+    qualification.driverKey = "driver-dozen-uuid";
+    qualification.platformKey = "wsl2-x86_64";
+    qualification.parity = UpscalerParityResult::Passed;
+    qualification.parityCorpusKey = "lookdev-32-png-sha256";
+    qualification.timings.push_back({"lookdev-1080p", {1920, 1080}, 128, 2.4, 3.7});
+    graph.SetUpscalerQualificationRecord(qualification);
+
+    const UpscalerPolicyRecord policy{
+        UpscalerViewMode::Relaxed, {1920, 1080}, 2, 1ull << 30,
+        UpscalerWorkRole::Interactive};
+    graph.SetUpscalerPolicyRecord(policy);
+
+    const auto& records = graph.GetUpscalerCapabilityRecords();
+    EXPECT_EQ(records.runtime.physicalDevice, "AMD Radeon 8060S Graphics");
+    EXPECT_EQ(records.runtime.icdOrTranslationLayer, "Dozen");
+    EXPECT_EQ(records.runtime.deviceDriver.driverName, "Dozen");
+    EXPECT_EQ(records.runtime.deviceDriver.deviceUuid[0], 0xA5);
+    EXPECT_EQ(records.runtime.deviceDriver.driverUuid[0], 0x5A);
+    EXPECT_EQ(records.runtime.supportedFeatures,
+              (std::vector<std::string>{"timelineSemaphore", "synchronization2"}));
+    EXPECT_EQ(records.runtime.enabledFeatures,
+              (std::vector<std::string>{"synchronization2", "timelineSemaphore"}));
+    ASSERT_EQ(records.runtime.formats.size(), 1u);
+    EXPECT_EQ(records.runtime.formats.front().format, VK_FORMAT_R16G16B16A16_SFLOAT);
+    EXPECT_EQ(records.qualification.status, UpscalerQualificationStatus::Qualified);
+    EXPECT_EQ(records.qualification.parity, UpscalerParityResult::Passed);
+    EXPECT_EQ(records.qualification.artifactKey, "vixen-release-a1b2c3d4");
+    EXPECT_EQ(records.qualification.deviceKey, "device-8060s-uuid");
+    EXPECT_EQ(records.qualification.driverKey, "driver-dozen-uuid");
+    EXPECT_EQ(records.qualification.platformKey, "wsl2-x86_64");
+    EXPECT_EQ(records.qualification.parityCorpusKey, "lookdev-32-png-sha256");
+    ASSERT_EQ(records.qualification.timings.size(), 1u);
+    EXPECT_EQ(records.qualification.timings.front().outputExtent.width, 1920u);
+    EXPECT_DOUBLE_EQ(records.qualification.timings.front().p95Milliseconds, 3.7);
+    EXPECT_EQ(records.policy.viewMode, UpscalerViewMode::Relaxed);
+    EXPECT_EQ(records.policy.outputExtent.height, 1080u);
+    EXPECT_EQ(records.policy.historyCount, 2u);
+    EXPECT_EQ(records.policy.memoryAllowanceBytes, 1ull << 30);
+    EXPECT_EQ(records.policy.role, UpscalerWorkRole::Interactive);
+}
+
+TEST(VulkanResources_CapabilityGraph, UpscalerMachineProfilesDeclareRequiredProviderSets) {
+    using namespace Vixen;
+    static_assert(std::is_same_v<decltype(GetUpscalerMachineProfiles()),
+                                 const std::vector<UpscalerMachineProfile>&>);
+
+    const auto& profiles = GetUpscalerMachineProfiles();
+    ASSERT_EQ(profiles.size(), 9u);
+    struct ExpectedProfile {
+        std::string_view id;
+        std::vector<std::string> providers;
+    };
+    const std::array expectedProfiles{
+        ExpectedProfile{"amd-8060s-windows",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.Fsr3.1.4"}},
+        ExpectedProfile{"amd-8060s-linux",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.Fsr3.1.4"}},
+        ExpectedProfile{"nvidia-rtx-3060-windows",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.Fsr3.1.4", "Upscaler.DlssSr"}},
+        ExpectedProfile{"nvidia-rtx-3060-linux",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.Fsr3.1.4", "Upscaler.DlssSr"}},
+        ExpectedProfile{"amd-laptop",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
+        ExpectedProfile{"wsl2-dozen",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
+        ExpectedProfile{"build-worker",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
+        ExpectedProfile{"headless-native-runner",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"}},
+        ExpectedProfile{"intel-arc-native",
+                        {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1",
+                         "Upscaler.XeSsSr"}},
+    };
+    const auto hasProvider = [](const UpscalerMachineProfile& profile,
+                                std::string_view provider) {
+        return std::find(profile.providerCompileSet.begin(), profile.providerCompileSet.end(),
+                         provider) != profile.providerCompileSet.end();
+    };
+    for (const auto& expected : expectedProfiles) {
+        const auto* profile = FindUpscalerMachineProfile(expected.id);
+        ASSERT_NE(profile, nullptr) << expected.id;
+        EXPECT_EQ(profile->providerCompileSet, expected.providers) << expected.id;
+        EXPECT_TRUE(hasProvider(*profile, "Upscaler.Native")) << expected.id;
+        EXPECT_EQ(profile->policy.viewMode, UpscalerViewMode::Canonical) << expected.id;
+    }
+    EXPECT_EQ(FindUpscalerMachineProfile("missing-profile"), nullptr);
+
+    const auto* windows8060s = FindUpscalerMachineProfile("amd-8060s-windows");
+    const auto* linux8060s = FindUpscalerMachineProfile("amd-8060s-linux");
+    ASSERT_NE(windows8060s, nullptr);
+    ASSERT_NE(linux8060s, nullptr);
+    EXPECT_EQ(windows8060s->targetOS, "Windows");
+    EXPECT_EQ(linux8060s->targetOS, "Linux");
+    EXPECT_TRUE(hasProvider(*windows8060s, "Upscaler.Fsr1"));
+    EXPECT_TRUE(hasProvider(*linux8060s, "Upscaler.Fsr3.1.4"));
+
+    const auto* windows3060 = FindUpscalerMachineProfile("nvidia-rtx-3060-windows");
+    const auto* linux3060 = FindUpscalerMachineProfile("nvidia-rtx-3060-linux");
+    ASSERT_NE(windows3060, nullptr);
+    ASSERT_NE(linux3060, nullptr);
+    EXPECT_TRUE(hasProvider(*windows3060, "Upscaler.DlssSr"));
+    EXPECT_TRUE(hasProvider(*linux3060, "Upscaler.DlssSr"));
+
+    const auto* dozen = FindUpscalerMachineProfile("wsl2-dozen");
+    const auto* buildWorker = FindUpscalerMachineProfile("build-worker");
+    const auto* headless = FindUpscalerMachineProfile("headless-native-runner");
+    const auto* intelArc = FindUpscalerMachineProfile("intel-arc-native");
+    ASSERT_NE(dozen, nullptr);
+    ASSERT_NE(buildWorker, nullptr);
+    ASSERT_NE(headless, nullptr);
+    ASSERT_NE(intelArc, nullptr);
+    EXPECT_EQ(dozen->runtimeLabel, "Dozen");
+    EXPECT_EQ(buildWorker->policy.role, UpscalerWorkRole::Build);
+    EXPECT_EQ(headless->policy.role, UpscalerWorkRole::HeadlessCapture);
+    EXPECT_TRUE(hasProvider(*intelArc, "Upscaler.XeSsSr"));
 }
 
 TEST(VulkanResources_CapabilityGraph, ConfiguredOptionalPathUsesBuildModeBinding) {

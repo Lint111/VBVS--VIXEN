@@ -23,6 +23,8 @@ VulkanDevice::~VulkanDevice() {
 VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
                                          std::vector<const char*>& extensions) {
 
+    std::vector<std::string> upscalerEnabledFeatures;
+
     layerExtension.appRequestedLayerNames = layers;
     layerExtension.appRequestedExtensionNames = extensions;
 
@@ -114,23 +116,29 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT) {
             VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT* swapchainFeatures = reinterpret_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT*>(featureStruct.get());
             swapchainFeatures->swapchainMaintenance1 = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("swapchainMaintenance1");
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR) {
             VkPhysicalDeviceMaintenance6FeaturesKHR* maintenance6Features = reinterpret_cast<VkPhysicalDeviceMaintenance6FeaturesKHR*>(featureStruct.get());
             maintenance6Features->maintenance6 = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("maintenance6");
         }
         // RTX feature enabling (Phase K)
         else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR) {
             VkPhysicalDeviceAccelerationStructureFeaturesKHR* asFeatures = reinterpret_cast<VkPhysicalDeviceAccelerationStructureFeaturesKHR*>(featureStruct.get());
             asFeatures->accelerationStructure = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("accelerationStructure");
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR) {
             VkPhysicalDeviceRayTracingPipelineFeaturesKHR* rtFeatures = reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(featureStruct.get());
             rtFeatures->rayTracingPipeline = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("rayTracingPipeline");
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR) {
             VkPhysicalDeviceRayQueryFeaturesKHR* rqFeatures = reinterpret_cast<VkPhysicalDeviceRayQueryFeaturesKHR*>(featureStruct.get());
             rqFeatures->rayQuery = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("rayQuery");
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR) {
             VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR* pipeStatsFeatures = reinterpret_cast<VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR*>(featureStruct.get());
             pipeStatsFeatures->pipelineExecutableInfo = VK_TRUE;
+            upscalerEnabledFeatures.emplace_back("pipelineExecutableInfo");
         }
 
         // Append to pNext chain
@@ -152,6 +160,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:timelineSemaphore")) {
         vulkan12Features.timelineSemaphore = VK_TRUE;
         needVulkan12Features = true;
+        upscalerEnabledFeatures.emplace_back("timelineSemaphore");
     } else {
         std::cerr << "[VulkanDevice] WARNING: timelineSemaphore not supported by this GPU - "
                      "uploads will use the non-timeline synchronization fallback" << std::endl;
@@ -162,6 +171,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     if (HasExtension(extensions, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)) {
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
         needVulkan12Features = true;
+        upscalerEnabledFeatures.emplace_back("bufferDeviceAddress");
     }
     // hostQueryReset (Vulkan 1.2 core): lets the CPU reset a query pool via vkResetQueryPool without
     // a command buffer. GPUTimestampQuery resets its per-frame timestamp pools on the host at
@@ -173,6 +183,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     if (capabilityGraph_.IsCapabilityAvailable("DeviceFeature:hostQueryReset")) {
         vulkan12Features.hostQueryReset = VK_TRUE;
         needVulkan12Features = true;
+        upscalerEnabledFeatures.emplace_back("hostQueryReset");
     }
     if (needVulkan12Features) {
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &vulkan12Features));
@@ -198,6 +209,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         synchronization2Features.synchronization2 = VK_TRUE;
         pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, &synchronization2Features));
     }
+    upscalerEnabledFeatures.emplace_back("synchronization2");
 
     if (physicalDeviceApiVersion < VK_API_VERSION_1_3 &&
         capabilityGraph_.IsDeviceExtensionAvailable(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) &&
@@ -214,6 +226,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     if (capabilityGraph_.IsCapabilityAvailable(
             "DeviceFeature:fragmentStoresAndAtomics")) {
         deviceFeatures2.features.fragmentStoresAndAtomics = VK_TRUE;
+        upscalerEnabledFeatures.emplace_back("fragmentStoresAndAtomics");
     }
 
     // Validate and enable device features
@@ -225,10 +238,12 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
             "This feature is unavailable on older integrated GPUs (Intel HD 4000-5000 era).");
     }
     deviceFeatures2.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+    upscalerEnabledFeatures.emplace_back("shaderStorageImageWriteWithoutFormat");
 
     // OPTIONAL: samplerAnisotropy - enable if supported, warn if not
     if (deviceFeatures.samplerAnisotropy) {
         deviceFeatures2.features.samplerAnisotropy = VK_TRUE;
+        upscalerEnabledFeatures.emplace_back("samplerAnisotropy");
     } else {
         // Log warning but continue - anisotropic filtering is optional
         // This may occur on very old hardware or emulated/virtualized GPUs
@@ -250,6 +265,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.pEnabledFeatures = nullptr;  // Must be NULL when using VkPhysicalDeviceFeatures2
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
+    capabilityGraph_.SetUpscalerEnabledFeatures(std::move(upscalerEnabledFeatures));
 
     // Resolve the promoted synchronization2 entry points for this device. On 1.2 the KHR extension
     // must be enabled and its names are used; on 1.3+ use the core names, with KHR aliases as a

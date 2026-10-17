@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -124,6 +125,128 @@ struct DeviceDriverIdentityBuildFact {
     std::array<uint8_t, VK_UUID_SIZE> deviceUuid{};
     std::array<uint8_t, VK_UUID_SIZE> driverUuid{};
 };
+
+/// Version or source revision for a package shipped in an upscaler build.
+struct UpscalerPackageRevision {
+    std::string packageId;
+    std::string revision;
+};
+
+/// Facts about the artifact that was actually built. Profile compile sets below describe intent;
+/// this record remains authoritative for the adapters and packages present in this binary.
+struct UpscalerBuildFacts {
+    std::string machineProfileId;
+    std::string targetOS;
+    std::string targetABI;
+    std::string compilerId;
+    std::string compilerVersion;
+    std::string spirvCompilerId;
+    std::string spirvCompilerVersion;
+    std::string spirvTargetVersion;
+    std::vector<std::string> compiledAdapters;
+    std::vector<UpscalerPackageRevision> sdkPackageRevisions;
+    bool nativeFallbackRetained = true;
+};
+
+/// Vulkan format properties for a format used by the engine's upscaler inputs or outputs.
+struct UpscalerFormatFact {
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkFormatFeatureFlags linearTilingFeatures = 0;
+    VkFormatFeatureFlags optimalTilingFeatures = 0;
+    VkFormatFeatureFlags bufferFeatures = 0;
+};
+
+/// Facts observed from the selected physical adapter and logical device.
+struct UpscalerRuntimeFacts {
+    std::string physicalDevice;
+    std::string icdOrTranslationLayer;
+    DeviceDriverIdentityBuildFact deviceDriver;
+    std::vector<std::string> supportedFeatures;
+    std::vector<std::string> enabledFeatures;
+    std::vector<UpscalerFormatFact> formats;
+    std::vector<UpscalerPackageRevision> runtimePackageVersions;
+};
+
+enum class UpscalerQualificationStatus : uint8_t {
+    UnqualifiedNoRunner,
+    Unqualified,
+    Qualified,
+    Rejected,
+};
+
+enum class UpscalerParityResult : uint8_t {
+    NotRun,
+    Passed,
+    Failed,
+};
+
+struct UpscalerTimingResult {
+    std::string workload;
+    VkExtent2D outputExtent{};
+    uint64_t sampleCount = 0;
+    double p50Milliseconds = 0.0;
+    double p95Milliseconds = 0.0;
+};
+
+/// Qualification is keyed to the exact artifact, adapter, driver and platform combination.
+struct UpscalerQualificationRecord {
+    UpscalerQualificationStatus status = UpscalerQualificationStatus::UnqualifiedNoRunner;
+    std::string artifactKey;
+    std::string deviceKey;
+    std::string driverKey;
+    std::string platformKey;
+    UpscalerParityResult parity = UpscalerParityResult::NotRun;
+    std::string parityCorpusKey;
+    std::vector<UpscalerTimingResult> timings;
+};
+
+enum class UpscalerViewMode : uint8_t {
+    Canonical,
+    Relaxed,
+};
+
+enum class UpscalerWorkRole : uint8_t {
+    Interactive,
+    Background,
+    Qualification,
+    Development,
+    Build,
+    HeadlessCapture,
+};
+
+/// Runtime policy applied to an upscaler request. Empty extents and zero budgets mean unspecified.
+struct UpscalerPolicyRecord {
+    UpscalerViewMode viewMode = UpscalerViewMode::Canonical;
+    VkExtent2D outputExtent{};
+    uint32_t historyCount = 0;
+    uint64_t memoryAllowanceBytes = 0;
+    UpscalerWorkRole role = UpscalerWorkRole::Interactive;
+};
+
+/// Read-only aggregate returned to the upscaler selection predicate.
+struct UpscalerCapabilityRecords {
+    UpscalerBuildFacts build;
+    UpscalerRuntimeFacts runtime;
+    UpscalerQualificationRecord qualification;
+    UpscalerPolicyRecord policy;
+};
+
+/// Declarative machine profile. providerCompileSet is profile intent; build.compiledAdapters
+/// reports the adapters actually compiled into the current artifact.
+struct UpscalerMachineProfile {
+    std::string profileId;
+    std::string hardware;
+    std::string targetOS;
+    std::string targetABI;
+    std::string runtimeLabel;
+    std::vector<std::string> providerCompileSet;
+    UpscalerPolicyRecord policy;
+};
+
+/// Stable, read-only table of machine profiles used by build and selection tooling.
+[[nodiscard]] const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles();
+[[nodiscard]] const UpscalerMachineProfile* FindUpscalerMachineProfile(
+    std::string_view profileId) noexcept;
 
 using CapabilityBuildFact = std::variant<PlatformBuildFact,
                                          ProductVariantBuildFact,
@@ -403,6 +526,15 @@ public:
                            CapabilityBindingTime bindingTime = CapabilityBindingTime::BuildTime);
     void SetAllBindingTimes(CapabilityBindingTime bindingTime) noexcept;
 
+    /// Read-only snapshot of build, runtime, qualification and policy data for provider selection.
+    [[nodiscard]] const UpscalerCapabilityRecords& GetUpscalerCapabilityRecords() const noexcept {
+        return upscalerCapabilityRecords_;
+    }
+    void SetUpscalerRuntimeFacts(UpscalerRuntimeFacts facts);
+    void SetUpscalerEnabledFeatures(std::vector<std::string> features);
+    void SetUpscalerQualificationRecord(UpscalerQualificationRecord qualification);
+    void SetUpscalerPolicyRecord(UpscalerPolicyRecord policy) noexcept;
+
     /// Emit the constexpr configuration from the graph's current binding and availability values.
     void GenerateBuildConfigHeader(const std::string& path, bool personalized) const;
 
@@ -468,6 +600,7 @@ private:
 
     std::vector<PhysicalDeviceInfo> physicalDevices_;
     std::optional<BackgroundGpuSelection> backgroundGpuSelection_;
+    UpscalerCapabilityRecords upscalerCapabilityRecords_;
 
     // Helper to create and register capabilities
     template<typename T, typename... Args>
