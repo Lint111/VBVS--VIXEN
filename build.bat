@@ -65,6 +65,21 @@ set "TARGET=%~3"
 REM --- repo root = this script's directory (VIXEN/ is the CMake source dir) ---
 set "REPO_ROOT=%~dp0"
 if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
+
+REM A worktree reached by a WSL UNC path (\\wsl.localhost\...) cannot be a working directory: cmd.exe
+REM falls back to the Windows directory ("UNC paths are not supported"), which breaks CMake's
+REM compiler probe link step. Re-run this script from a pushd-mapped drive letter instead; the guard
+REM variable stops the re-run from mapping again.
+if "%REPO_ROOT:~0,2%"=="\\" if not defined VIXEN_BUILD_MAPPED (
+    pushd "%REPO_ROOT%"
+    if errorlevel 1 (echo [build] ERROR: could not map "%REPO_ROOT%" to a drive letter. & exit /b 1)
+    set "VIXEN_BUILD_MAPPED=1"
+    echo [build] mapped   : %REPO_ROOT% -^> !CD!
+    call "!CD!\build.bat" %*
+    set "MAPPED_RC=!errorlevel!"
+    popd
+    exit /b !MAPPED_RC!
+)
 set "SRC_DIR=%REPO_ROOT%\VIXEN"
 if not exist "%SRC_DIR%\CMakePresets.json" (
     echo [build] ERROR: CMakePresets.json not found under "%SRC_DIR%".
@@ -100,6 +115,25 @@ set "BUILD_DIR="
 if /i "%PRESET%"=="vixen-ninja" set "BUILD_DIR=%SRC_DIR%\..\build\ninja"
 if /i "%PRESET%"=="vixen-wsl" set "BUILD_DIR=%SRC_DIR%\..\build\wsl"
 if /i "%PRESET%"=="vixen-wsl-debug" set "BUILD_DIR=%SRC_DIR%\..\build\wsl-debug"
+
+REM CMake binds a build tree to the source path that configured it. A tree left by an earlier run
+REM through the UNC path or under another mapped drive letter would be rejected, so move it aside
+REM (never delete it) and let this run configure a fresh one under the current path.
+if defined BUILD_DIR for %%I in ("%BUILD_DIR%") do set "BUILD_DIR=%%~fI"
+if defined BUILD_DIR if exist "%BUILD_DIR%\CMakeCache.txt" (
+    set "CACHED_SRC="
+    for /f "tokens=1* delims==" %%A in ('findstr /b /c:"CMAKE_HOME_DIRECTORY:INTERNAL=" "%BUILD_DIR%\CMakeCache.txt"') do set "CACHED_SRC=%%B"
+    set "WANTED_SRC=%SRC_DIR:\=/%"
+    if defined CACHED_SRC if /i not "!CACHED_SRC!"=="!WANTED_SRC!" (
+        set "STALE_DIR="
+        for /l %%N in (1,1,99) do if not defined STALE_DIR if not exist "%BUILD_DIR%.stale-%%N" set "STALE_DIR=%BUILD_DIR%.stale-%%N"
+        if not defined STALE_DIR (echo [build] ERROR: no free "%BUILD_DIR%.stale-N" name; remove old ones. & exit /b 1)
+        echo [build] build tree at "%BUILD_DIR%" was configured for "!CACHED_SRC!", not "!WANTED_SRC!".
+        echo [build] moving it aside to "!STALE_DIR!"; delete it once it is no longer needed.
+        move "%BUILD_DIR%" "!STALE_DIR!" >nul
+        if errorlevel 1 (echo [build] ERROR: could not move the stale build tree aside. & exit /b 1)
+    )
+)
 
 REM --- discover vcvars64.bat via vswhere ---
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
