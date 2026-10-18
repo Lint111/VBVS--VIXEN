@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // A small, fixed-capacity set of additive mining beams. The schema is the
 // shared C++/GLSL contract for both the list header and each beam record.
 public static class MiningBeamBufferLimits

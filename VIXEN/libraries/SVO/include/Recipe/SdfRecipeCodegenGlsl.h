@@ -61,7 +61,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     uint32_t recipeId,
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
-    std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {})
+    std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {})
 {
     std::vector<std::string> stk;
     std::string body;
@@ -86,7 +86,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
             const auto& glyph = glyphInstances[glyphIndex];
             const std::string row = "glyphOutlineInstances[" + std::to_string(glyphIndex) + "]";
             const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                glyph.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
+                glyph.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
             body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
             body += "  " + row + ".BoundsMin.X = " + f(glyph.BoundsMin.X) + ";\n";
             body += "  " + row + ".BoundsMin.Y = " + f(glyph.BoundsMin.Y) + ";\n";

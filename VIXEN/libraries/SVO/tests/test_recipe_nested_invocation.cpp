@@ -154,7 +154,7 @@ TEST(RecipeNestedInvocation, CpuInterpreterMatchesCpuComposedReference) {
             progB.data(), static_cast<uint32_t>(progB.size()), p);
         float boxValue = Vixen::SVO::Recipe::evalRecipe(
             std::vector<SdfInstruction>{ boxOp(kBoxHalfExtents) }.data(), 1, p);
-        float expected = Yeroket::Sdf::Generated::SdfCore_SmoothUnion(bValue, boxValue, kSmoothK);
+        float expected = Yeroket::Sdf::Kernels::SdfCore_SmoothUnion(bValue, boxValue, kSmoothK);
 
         EXPECT_NEAR(actual, expected, 1e-5f)
             << "Mismatch at (" << p.x << ", " << p.y << ", " << p.z << ")";

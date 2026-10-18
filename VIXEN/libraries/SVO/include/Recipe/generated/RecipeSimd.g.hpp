@@ -138,6 +138,7 @@ inline f64 select(f64 whenFalse, f64 whenTrue, mask condition) { f64 r; for (int
 inline std::uint32_t runtime_ftz_daz_fingerprint() { return 0u; }
 #endif
 
+inline mask broadcast_mask(bool value) { return mask_from_bools(value, value, value, value); }
 inline f32& operator+=(f32& a, f32 b) { a = a + b; return a; }
 inline f32& operator-=(f32& a, f32 b) { a = a - b; return a; }
 inline f32& operator*=(f32& a, f32 b) { a = a * b; return a; }
@@ -306,6 +307,7 @@ inline dual2 operator/(dual2 a,dual2 b){return {a.x/b.x,a.y/b.y};} inline dual2 
 inline dual3 operator+(dual3 a,dual3 b){return {a.x+b.x,a.y+b.y,a.z+b.z};} inline dual3 operator-(dual3 a,dual3 b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
 inline dual3 operator*(dual3 a,dual3 b){return {a.x*b.x,a.y*b.y,a.z*b.z};} inline dual3 operator*(dual3 a,dual b){return {a.x*b,a.y*b,a.z*b};} inline dual3 operator*(dual a,dual3 b){return b*a;} inline dual3 operator-(dual3 a){return {-a.x,-a.y,-a.z};}
 inline dual3 operator/(dual3 a,dual3 b){return {a.x/b.x,a.y/b.y,a.z/b.z};} inline dual3 operator/(dual3 a,dual b){return {a.x/b,a.y/b,a.z/b};}
+inline dual3 lerp(dual3 a,dual3 b,dual t){return a*(dual(1.0f)-t)+b*t;}
 inline dual2 mod(dual2 a,dual2 b){return {mod(a.x,b.x),mod(a.y,b.y)};} inline dual3 mod(dual3 a,dual3 b){return {mod(a.x,b.x),mod(a.y,b.y),mod(a.z,b.z)};}
 inline dual2 round_lanes(dual2 a){return {round_lanes(a.x),round_lanes(a.y)};} inline dual3 round_lanes(dual3 a){return {round_lanes(a.x),round_lanes(a.y),round_lanes(a.z)};}
 inline dual2 min(dual2 a,dual2 b){return {min(a.x,b.x),min(a.y,b.y)};} inline dual2 min(dual2 a,dual b){return {min(a.x,b),min(a.y,b)};} inline dual2 min(dual a,dual2 b){return {min(a,b.x),min(a,b.y)};} inline dual2 min(dual2 a,float b){return min(a,dual(b));} inline dual2 min(float a,dual2 b){return min(dual(a),b);}
@@ -494,6 +496,114 @@ struct LaneSpanF64x3 {
 #endif // YK_SIMD4_RUNTIME_V2
 
 namespace Yeroket::Sdf::Generated {
+using Yeroket::Sdf::Kernels::SdfCore_Bend;
+using Yeroket::Sdf::Kernels::SdfCore_Box;
+using Yeroket::Sdf::Kernels::SdfCore_BoxRounded;
+using Yeroket::Sdf::Kernels::SdfCore_CappedTorus;
+using Yeroket::Sdf::Kernels::SdfCore_Capsule;
+using Yeroket::Sdf::Kernels::SdfCore_Cone;
+using Yeroket::Sdf::Kernels::SdfCore_Cylinder;
+using Yeroket::Sdf::Kernels::SdfCore_Displacement;
+using Yeroket::Sdf::Kernels::SdfCore_Ellipsoid;
+using Yeroket::Sdf::Kernels::SdfCore_Elongate;
+using Yeroket::Sdf::Kernels::SdfCore_FakeRoundCone;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Add;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Dot;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Max;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Min;
+using Yeroket::Sdf::Kernels::SdfCore_Float3MulComponentWise;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Normalize;
+using Yeroket::Sdf::Kernels::SdfCore_Float3ScalarMul;
+using Yeroket::Sdf::Kernels::SdfCore_Float3Sub;
+using Yeroket::Sdf::Kernels::SdfCore_FloatToQ16;
+using Yeroket::Sdf::Kernels::SdfCore_GlyphOutline;
+using Yeroket::Sdf::Kernels::SdfCore_Hash32;
+using Yeroket::Sdf::Kernels::SdfCore_Hash32Combine;
+using Yeroket::Sdf::Kernels::SdfCore_HexPrism;
+using Yeroket::Sdf::Kernels::SdfCore_HollowCylinder;
+using Yeroket::Sdf::Kernels::SdfCore_Intersect;
+using Yeroket::Sdf::Kernels::SdfCore_Link;
+using Yeroket::Sdf::Kernels::SdfCore_MathAbs;
+using Yeroket::Sdf::Kernels::SdfCore_MathAdd;
+using Yeroket::Sdf::Kernels::SdfCore_MathClamp;
+using Yeroket::Sdf::Kernels::SdfCore_MathCos;
+using Yeroket::Sdf::Kernels::SdfCore_MathDiv;
+using Yeroket::Sdf::Kernels::SdfCore_MathExp;
+using Yeroket::Sdf::Kernels::SdfCore_MathFrac;
+using Yeroket::Sdf::Kernels::SdfCore_MathLerp;
+using Yeroket::Sdf::Kernels::SdfCore_MathLog;
+using Yeroket::Sdf::Kernels::SdfCore_MathLog2;
+using Yeroket::Sdf::Kernels::SdfCore_MathMax;
+using Yeroket::Sdf::Kernels::SdfCore_MathMin;
+using Yeroket::Sdf::Kernels::SdfCore_MathMul;
+using Yeroket::Sdf::Kernels::SdfCore_MathNegate;
+using Yeroket::Sdf::Kernels::SdfCore_MathPow;
+using Yeroket::Sdf::Kernels::SdfCore_MathRemap;
+using Yeroket::Sdf::Kernels::SdfCore_MathSaturate;
+using Yeroket::Sdf::Kernels::SdfCore_MathSign;
+using Yeroket::Sdf::Kernels::SdfCore_MathSin;
+using Yeroket::Sdf::Kernels::SdfCore_MathSmoothstep;
+using Yeroket::Sdf::Kernels::SdfCore_MathSqrt;
+using Yeroket::Sdf::Kernels::SdfCore_MathStep;
+using Yeroket::Sdf::Kernels::SdfCore_MathSub;
+using Yeroket::Sdf::Kernels::SdfCore_MirrorX;
+using Yeroket::Sdf::Kernels::SdfCore_MirrorY;
+using Yeroket::Sdf::Kernels::SdfCore_MirrorZ;
+using Yeroket::Sdf::Kernels::SdfCore_Onion;
+using Yeroket::Sdf::Kernels::SdfCore_PathDistance;
+using Yeroket::Sdf::Kernels::SdfCore_Plane;
+using Yeroket::Sdf::Kernels::SdfCore_Pyramid;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Add;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Equal;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Greater;
+using Yeroket::Sdf::Kernels::SdfCore_Q16GreaterEqual;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Less;
+using Yeroket::Sdf::Kernels::SdfCore_Q16LessEqual;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Max;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Min;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Mul;
+using Yeroket::Sdf::Kernels::SdfCore_Q16NotEqual;
+using Yeroket::Sdf::Kernels::SdfCore_Q16Sub;
+using Yeroket::Sdf::Kernels::SdfCore_Q16ToFloat;
+using Yeroket::Sdf::Kernels::SdfCore_Q16ToU32;
+using Yeroket::Sdf::Kernels::SdfCore_RepeatInfinite;
+using Yeroket::Sdf::Kernels::SdfCore_RepeatLimited;
+using Yeroket::Sdf::Kernels::SdfCore_Revolution;
+using Yeroket::Sdf::Kernels::SdfCore_Round;
+using Yeroket::Sdf::Kernels::SdfCore_RoundCone;
+using Yeroket::Sdf::Kernels::SdfCore_Segment;
+using Yeroket::Sdf::Kernels::SdfCore_Select;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothIntersect;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothIntersectCubic;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothMax;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothSubtract;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothSubtractCubic;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothUnion;
+using Yeroket::Sdf::Kernels::SdfCore_SmoothUnionCubic;
+using Yeroket::Sdf::Kernels::SdfCore_Sphere;
+using Yeroket::Sdf::Kernels::SdfCore_Subtract;
+using Yeroket::Sdf::Kernels::SdfCore_TaperedCylinder;
+using Yeroket::Sdf::Kernels::SdfCore_Torus;
+using Yeroket::Sdf::Kernels::SdfCore_Transform;
+using Yeroket::Sdf::Kernels::SdfCore_TriangularPrism;
+using Yeroket::Sdf::Kernels::SdfCore_Twist;
+using Yeroket::Sdf::Kernels::SdfCore_U32Add;
+using Yeroket::Sdf::Kernels::SdfCore_U32Equal;
+using Yeroket::Sdf::Kernels::SdfCore_U32Greater;
+using Yeroket::Sdf::Kernels::SdfCore_U32GreaterEqual;
+using Yeroket::Sdf::Kernels::SdfCore_U32Less;
+using Yeroket::Sdf::Kernels::SdfCore_U32LessEqual;
+using Yeroket::Sdf::Kernels::SdfCore_U32Max;
+using Yeroket::Sdf::Kernels::SdfCore_U32Min;
+using Yeroket::Sdf::Kernels::SdfCore_U32Mul;
+using Yeroket::Sdf::Kernels::SdfCore_U32NotEqual;
+using Yeroket::Sdf::Kernels::SdfCore_U32Sub;
+using Yeroket::Sdf::Kernels::SdfCore_U32ToFloat;
+using Yeroket::Sdf::Kernels::SdfCore_U32ToQ16;
+using Yeroket::Sdf::Kernels::SdfCore_Union;
+using Yeroket::Sdf::Kernels::SdfCore_Xor;
+using Yeroket::Sdf::Kernels::GlyphOutlineInstance;
+using Yeroket::Sdf::Kernels::PathInstance;
 enum class RecipeExecutionClass : std::uint8_t { Elementwise, Masked, ScalarLaneFallback, ResolvedAtLowering, LoweredAway };
 enum class RecipeControlBehavior : std::uint8_t { None, RestorePosition, DeclarePosition, InvokeRecipe };
 enum class RecipeGradientHazard : std::uint8_t { Smooth, Piecewise, Discontinuous, NonDifferentiable };
@@ -511,7 +621,7 @@ inline constexpr std::array<RecipeValueTypePolicy, 3> RecipeValueTypePolicies{{
     {RecipeValueType::Q16_16, RecipeOverflowBehavior::SaturatingCap, -2147483648ll, 2147483647ull, 16, "int"},
 }};
 struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; RecipeIntervalRule intervalRule; std::int8_t intervalData0, intervalData1; const char* name; };
-inline constexpr std::array<RecipeOpcodeMetadata, 123> RecipeOpcodeTable{{
+inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
     {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Sphere, 0, 3, "Sphere"},
     {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::AxisAlignedBox, 0, -1, "Box"},
     {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "BoxRounded"},
@@ -635,6 +745,7 @@ inline constexpr std::array<RecipeOpcodeMetadata, 123> RecipeOpcodeTable{{
     {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamU32"},
     {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamQ16"},
     {182, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "GlyphOutline"},
+    {183, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PathDistance"},
 }};
 } // namespace Yeroket::Sdf::Generated
 // BEGIN GENERATED RECIPE ANALYSIS (CPU proof, compiled consumers; R441/R442)
@@ -923,7 +1034,7 @@ inline RecipeRange RecipeTransfer_81(RecipeRange cond, RecipeRange a, RecipeRang
 
 }
 struct RecipeAnalysisCoverage { std::uint8_t opcode; bool cpu, simd, gpu, pure; const char* name; const char* reason; bool vulkanPreserve, dznPrecise, extent, occupancy; };
-inline constexpr std::array<RecipeAnalysisCoverage, 185> RecipeAnalysisCoverageTable{{
+inline constexpr std::array<RecipeAnalysisCoverage, 186> RecipeAnalysisCoverageTable{{
     {0, true, true, false, true, "Sphere", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {1, true, true, false, true, "Box", "declared extension or bound body; strict FP32 only", true, true, true, true},
     {2, false, false, false, false, "BoxRounded", "unsupported or opaque body/control/type; unknown", false, false, false, false},
@@ -1109,6 +1220,7 @@ inline constexpr std::array<RecipeAnalysisCoverage, 185> RecipeAnalysisCoverageT
     {180, false, false, false, false, "ReadParamU32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {181, false, false, false, false, "ReadParamQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
     {182, false, false, false, false, "GlyphOutline", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {183, false, false, false, false, "PathDistance", "unsupported or opaque body/control/type; unknown", false, false, false, false},
 }};
 inline const RecipeAnalysisCoverage* FindRecipeAnalysisCoverage(std::uint8_t opcode) { for(const auto& entry:RecipeAnalysisCoverageTable) if(entry.opcode==opcode) return &entry; return nullptr; }
 inline bool RecipeBackendCovered(const RecipeAnalysisCoverage& entry, RecipeProofBackend backend) { switch(backend) { case RecipeProofBackend::CpuStrict: return entry.cpu; case RecipeProofBackend::SimdStrict: return entry.simd; case RecipeProofBackend::GpuVulkanPreserve: return entry.vulkanPreserve; case RecipeProofBackend::GpuDznPrecise: return entry.dznPrecise; default: return false; } }
@@ -3018,6 +3130,16 @@ inline yk::simd4::f32 SdfCore_GlyphOutlineSimd4(yk::simd4::f32x3 p, GlyphOutline
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::f32 SdfCore_PathDistanceSimd4(yk::simd4::f32x3 p, PathInstance path) {
+    alignas(16) float p_x[4], p_y[4], p_z[4];
+    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_PathDistance(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), path);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
 } // namespace Yeroket::Sdf::Generated
 namespace Vixen::SVO::Recipe {
 using Yeroket::Sdf::Generated::RecipeOpcodeMetadata;
@@ -3796,6 +3918,7 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::ReadParamU32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamU32>;
         case Recipe::SdfOpCode::ReadParamQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamQ16>;
         case Recipe::SdfOpCode::GlyphOutline: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::GlyphOutline>;
+        case Recipe::SdfOpCode::PathDistance: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::PathDistance>;
         default: return nullptr;
     }
 }

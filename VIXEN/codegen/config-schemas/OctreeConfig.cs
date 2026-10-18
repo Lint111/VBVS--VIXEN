@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Canonical OctreeConfig — one source for C++ (Vixen::Gpu) + GLSL. 432 B std430.
 // Offsets (must match ShellOctreeGpu.h): traceBoundsMin@32, traceBoundsMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,

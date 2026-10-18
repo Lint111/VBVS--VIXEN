@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Canonical RecipeEmitterEntry — one source for C++ (Vixen::Gpu) + GLSL.
 // Count-agnostic lighting (R502.2, lightdesign §2.2): one row per EMISSIVE procedural body
 // instance, ascending instance order, with an inclusive running power CDF (cdf of the last

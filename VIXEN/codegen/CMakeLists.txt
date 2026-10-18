@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
+set(_vixen_tracked_yeroket_kernel_sha "674e8bc8d9eace9d987cbb64a3295ed090b937c7")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -316,9 +316,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe" _out_glyph_outline_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_layout_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
@@ -344,29 +344,24 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
-        # Callables sweep is wider than the appflow schema itself (row-deltas link 2/step-7B):
-        # UndertowViewCallables.cs lives in view-schemas/, not appflow-schemas/, so --callable-cpp
-        # needs the codegen root (parent of both) to pick up both [KernelCallable] sources.
-        # --schema is a single recursive dir sweep filtered by attribute name (Program.cs's
-        # --callable-cpp branch), so sweeping the wider root is safe -- config-schemas/ has no
-        # [KernelCallable] methods and contributes nothing to the emitted header.
-        _codegen_to_wsl_path("${_cg}" _schema_callables_run)
+        # Each callable namespace is emitted to its own header; --callable-cpp intentionally
+        # rejects a mixed-namespace sweep so the C# -> C++ namespace rule remains one-to-one.
+        _codegen_to_wsl_path("${_cg}" _schema_all_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow" _out_appflow_data_run)
         # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
         # (struct-qualified members). #included by IViewDataProvider.h, replacing the Inc-A hand-stub.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h" _out_view_noun_hdr_run)
-        # --callable-cpp's tool-owned output moved to AppFlowCallables.generated.g.hpp (row-deltas
-        # link 2/step-7B): UndertowViewCallables.IdentityString is `string`-typed, and
+        # --callable-cpp's tool-owned outputs are namespace-specific (row-deltas link 2/step-7B):
+        # UndertowViewCallables.IdentityString is `string`-typed, and
         # CppMappingTables has no string->C++ mapping (no bare C++ type for it, unlike
         # int/float/bool/uint), so a transpiled `inline string IdentityString(string v)` never
         # compiles -- a genuine tool gap, not fixable from the schema side alone without editing
-        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known path every
-        # UndertowHud*.typed.g.h #includes) is now a small, hand-authored, NOT-drift-checked shim
-        # (see the file itself) that #includes this tool-owned header and adds the one hand-written
-        # Rml::String overload the tool cannot express -- same "consumer defines by hand" precedent
-        # as EditorLayersView's activeLayerCountOverride hook.
+        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known umbrella path
+        # every generated view accessor includes) remains a small hand-authored shim that includes
+        # both namespace-specific headers and adds the one hand-written Rml::String overload.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp" _out_callables_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/UndertowViewCallables.generated.g.hpp" _out_view_callables_hdr_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} --cd / -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -417,9 +412,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
-        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
-        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
-        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
+        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
+        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe")
+        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
@@ -442,16 +437,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_blob_data_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
-        # See the WSL-bridge branch's comment above: --callable-cpp sweeps the codegen root so it
-        # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
-        set(_schema_callables_run "${_cg}")
+        set(_schema_all_run "${_cg}")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
         set(_out_appflow_data_run "${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow")
         # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
         set(_out_view_noun_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h")
-        # See the WSL-bridge branch's comment above: tool-owned output moved to
-        # AppFlowCallables.generated.g.hpp; AppFlowCallables.g.hpp is now a hand-authored shim.
+        # Tool-owned outputs are namespace-specific; AppFlowCallables.g.hpp is the hand-authored
+        # umbrella shim.
         set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp")
+        set(_out_view_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/UndertowViewCallables.generated.g.hpp")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -649,10 +643,12 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # generated from the same [GpuStruct] declaration as SdfCore_GlyphOutline.
     set(_glyph_outline_args
         "${_yk_dll_run}"
-        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
-        --out-cpp "${_out_glyph_outline_cpp_run}"
-        --out-glsl "${_out_glyph_outline_glsl_run}"
-        --out-layout-hash "${_out_glyph_outline_layout_run}")
+        --schema "${_glyph_outline_schema_run}"
+        --recipe-parameter-block GlyphOutlineInstance
+        --recipe-parameter-block PathInstance
+        --out-cpp-dir "${_out_glyph_outline_cpp_run}"
+        --out-glsl-dir "${_out_glyph_outline_glsl_run}"
+        --out-layout-hash-dir "${_out_glyph_outline_layout_run}")
     vixen_add_codegen_check(glyph_outline_instance_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
         COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"
@@ -1116,7 +1112,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # hand-authored data-bound markup, not composed from a generated RML fragment like hud.rml.
     set(_view_editor_layers_args
         "${_yk_dll_run}"
-        --schema "${_schema_view_run}" --view EditorLayers
+        --schema "${_schema_all_run}" --view EditorLayers
         --out-header "${_out_editor_layers_header_run}")
     vixen_add_codegen_check(view_editor_layers_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
@@ -1246,22 +1242,31 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             VERBATIM)
     endif()
 
-    # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
-    # [KernelCallable] method body in the AppFlow schema dir to neutral C++ via CppAstVisitor —
-    # domain-blind, no [SdfCoreKernel] filter. Proves the kernel transplants LOGIC, not just DATA.
-    # Same schema dir as appflow_check; the AppFlow model builder ignores AppFlowCallables.cs
-    # (no [Flow*] attrs on it) so AppFlow.g.h stays byte-identical.
-    set(_callables_args
+    # --- Kernel callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants each
+    # C# namespace to its matching C++ namespace. The kernel contract is one native namespace per
+    # invocation, so AppFlow.Reference and ViewSchemas are separate generated headers; the
+    # hand-authored AppFlowCallables.g.hpp umbrella keeps the historical include path stable.
+    set(_appflow_callables_args
         "${_yk_dll_run}"
-        --schema "${_schema_callables_run}" --callable-cpp
+        --schema "${_schema_appflow_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
-    vixen_add_codegen_check(callables_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
-        COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
+    set(_view_callables_args
+        "${_yk_dll_run}"
+        --schema "${_schema_view_run}" --callable-cpp
+        --out-header "${_out_view_callables_hdr_run}")
+    vixen_add_codegen_check(callables_appflow_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_callables_args} --check
+        COMMENT "[codegen] golden check: AppFlow callable namespace header matches canonical schema"
         VERBATIM)
+    vixen_add_codegen_check(callables_view_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_callables_args} --check
+        COMMENT "[codegen] golden check: View callable namespace header matches canonical schema"
+        VERBATIM)
+    add_custom_target(callables_check ALL DEPENDS callables_appflow_check callables_view_check)
     add_custom_target(callables_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
-        COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_callables_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_view_callables_args}
+        COMMENT "[codegen] regenerate callable namespace headers"
         JOB_POOL msbuild
         VERBATIM)
 

@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Canonical ShadowConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc1 M4: shadow-pass compute budget as drift-guarded data, not
 // magic numbers. Mirrors LightingConfig.cs's precedent exactly (see that file for

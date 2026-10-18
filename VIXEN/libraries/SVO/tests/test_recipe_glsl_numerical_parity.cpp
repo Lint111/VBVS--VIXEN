@@ -475,7 +475,7 @@ protected:
                               const std::vector<glm::vec3>& points,
                               std::vector<float>& outValues,
                               const std::array<float, 6>& params = {},
-                              std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
+                              std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {}) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed GPU target; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
@@ -515,10 +515,10 @@ protected:
             vkUnmapMemory(logicalDevice_, paramsMem);
         }
 
-        const Yeroket::Sdf::Generated::GlyphOutlineInstance emptyGlyph{};
-        const std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphRows =
+        const Yeroket::Sdf::Kernels::GlyphOutlineInstance emptyGlyph{};
+        const std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphRows =
             glyphInstances.empty()
-                ? std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&emptyGlyph, 1)
+                ? std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>(&emptyGlyph, 1)
                 : glyphInstances;
         const VkDeviceSize glyphSize = static_cast<VkDeviceSize>(glyphRows.size_bytes());
         VkBuffer glyphBuf = VK_NULL_HANDLE; VkDeviceMemory glyphMem = VK_NULL_HANDLE;
@@ -941,8 +941,8 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
 }
 
 TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
-    using GlyphInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
-    using GlyphSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
+    using GlyphInstance = Yeroket::Sdf::Kernels::GlyphOutlineInstance;
+    using GlyphSegment = Yeroket::Sdf::Kernels::GlyphOutlineSegment;
 
     auto appendContour = [](GlyphInstance& glyph, std::initializer_list<glm::vec2> vertices) {
         ASSERT_GE(vertices.size(), 3U);

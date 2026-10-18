@@ -100,7 +100,7 @@ public:
 
         // Each typed reference in bytecode indexes one complete GPU glyph instance.
         // The instance owns its fixed-width contour bucket; no separate contour pool exists.
-        std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances;
+        std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances;
     };
 
     enum class RegisterResult {

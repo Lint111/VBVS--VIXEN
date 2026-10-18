@@ -16,9 +16,9 @@
 
 namespace Vixen::Text {
 
-using GlyphOutlineInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
-using GlyphOutlineSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
-using GlyphOutlinePoint = Yeroket::Sdf::Generated::GlyphOutlinePoint;
+using GlyphOutlineInstance = Yeroket::Sdf::Kernels::GlyphOutlineInstance;
+using GlyphOutlineSegment = Yeroket::Sdf::Kernels::PathSegment;
+using GlyphOutlinePoint = Yeroket::Sdf::Kernels::PathPoint;
 class GlyphAtlas;
 
 enum class GlyphOutlineBakeDiagnosticCode : std::uint8_t {

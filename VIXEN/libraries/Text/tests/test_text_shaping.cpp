@@ -116,7 +116,7 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     EXPECT_EQ(round.FillRule, 0U);
     ASSERT_GE(round.SegmentCount, 8U);
     EXPECT_LE(round.SegmentCount,
-              static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
+              static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
     EXPECT_GE(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
                             [](const Vixen::Text::GlyphOutlineSegment& segment) {
                                 return segment.ContourStart != 0U;
@@ -131,8 +131,8 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     const float midX = (round.BoundsMin.X + round.BoundsMax.X) * 0.5f;
     const float midY = (round.BoundsMin.Y + round.BoundsMax.Y) * 0.5f;
     const float lowerRingY = round.BoundsMin.Y + (round.BoundsMax.Y - round.BoundsMin.Y) * 0.1f;
-    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, midY, 0.0f), round), 0.0f);
-    EXPECT_LT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, lowerRingY, 0.0f), round), 0.0f);
+    EXPECT_GT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(glm::vec3(midX, midY, 0.0f), round), 0.0f);
+    EXPECT_LT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(glm::vec3(midX, lowerRingY, 0.0f), round), 0.0f);
 
     Vixen::Text::GlyphOutlineInstance eight{};
     ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
