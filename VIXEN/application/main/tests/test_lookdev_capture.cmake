@@ -110,7 +110,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
         set_tests_properties("${_test}" PROPERTIES
-            LABELS "Application;native"
+            LABELS "Application"
             TIMEOUT 1200
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_VARIANT=${_variant};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_capture_dir}"
@@ -127,7 +127,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                 "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
     set_tests_properties("${_glyphsdf_rtl_pair_test}" PROPERTIES
-        LABELS "Application;GlyphSdfProofPair;native"
+        LABELS "Application;GlyphSdfProofPair"
         TIMEOUT 1800
         ENVIRONMENT
             "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_RTL_PROOF=1;VIXEN_GLYPHSDF_VARIANT=rtl-proof-pair;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_rtl_pair_dir}"
@@ -145,7 +145,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
-            LABELS "Application;GlyphSdfText${_resolution}Yaw0;native"
+            LABELS "Application;GlyphSdfText${_resolution}Yaw0"
             TIMEOUT 1800
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_compare_dir};VIXEN_PERF_CSV=${_glyphsdf_compare_dir}/native-perf.csv"
@@ -159,7 +159,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_yaw_test}" PROPERTIES
-            LABELS "Application;GlyphSdfText${_resolution}Yaw30;native"
+            LABELS "Application;GlyphSdfText${_resolution}Yaw30"
             TIMEOUT 1800
             ENVIRONMENT
                 "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_COMPARE=1;VIXEN_GLYPHSDF_VARIANT=latin-carved;VIXEN_GLYPHSDF_BAKE_RESOLUTION=${_resolution};VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_GLYPHSDF_CAPTURE_YAW_DEGREES=30;VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_yaw_dir};VIXEN_PERF_CSV=${_glyphsdf_yaw_dir}/native-perf.csv"
