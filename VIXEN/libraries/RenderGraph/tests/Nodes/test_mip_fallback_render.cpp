@@ -43,6 +43,7 @@
 #include "Recipe/RecipeBaker.h"
 #include "Recipe/SdfInstruction.h"
 #include "TestVkValidation.h"
+#include "TestVulkanDeviceShell.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 #include "Memory/BatchedUploader.h"
 #include "Memory/DeviceBudgetManager.h"
@@ -203,12 +204,7 @@ protected:
         ASSERT_TRUE(deviceConfirmed_);
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
-        deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
-        deviceShell_->device = logicalDevice_;
-        deviceShell_->queue = queue_;
-        deviceShell_->graphicsQueueIndex = queueFamily_;
-        vkGetPhysicalDeviceProperties(physicalDevice_, &deviceShell_->gpuProperties);
-        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
+        deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
 
         // Mirror DeviceNode::CreateDeviceBudgetManager (DeviceNode.cpp:436-519) so
         // deviceShell_->Upload() actually works for tests that grant residency

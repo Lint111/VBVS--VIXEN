@@ -46,6 +46,7 @@
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
+#include "TestVulkanDeviceShell.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 #include "Generated/LightingConfig.g.h"
 #include "Recipe/UberShaderSplice.h"
@@ -372,16 +373,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
 
-        deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
-        deviceShell_->device = logicalDevice_;
-        deviceShell_->queue = queue_;
-        deviceShell_->graphicsQueueIndex = queueFamily_;
-        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, nullptr);
-        deviceShell_->queueFamilyProperties.resize(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount,
-                                                  deviceShell_->queueFamilyProperties.data());
+        deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
     }
 
     void TearDown() override {
