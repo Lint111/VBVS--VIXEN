@@ -619,8 +619,11 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // first complete generation is produced and re-emitted by ExecuteImpl.
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,         shellLookupBuffer_);
-    // W-RTQUERY Slice A: compile-time placeholder — VK_NULL_HANDLE until
-    // EnsureRtQueryTlasBuilt runs (ExecuteImpl, once instances_ is known); re-emitted there.
+    // W-RTQUERY Slice A: consumers write this handle into their descriptor sets as
+    // Compile returns, like the shell handles above, so build it here from the staged
+    // instances. A null handle is an invalid descriptor (no nullDescriptor feature);
+    // it stays null only while no instances are staged. ExecuteImpl rebuilds on change.
+    EnsureRtQueryTlasBuilt(devicePtr);
     ctx.Out(BodyOctreeSceneNodeConfig::RTQUERY_TLAS,                rtQueryTlas_);
     // Raster-proxy B2 binder publishes the exact live count beside its buffer.
     ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,            proxyAabbBuffer_);
