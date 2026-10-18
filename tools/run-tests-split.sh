@@ -146,10 +146,30 @@ gpu_env=()
 witness_env=()
 (( witness )) && witness_env=(VIXEN_GPU_WITNESS_DIR="$out_dir/witness")
 
+# CPU pair-tokens (two CPUs each) the largest PROCESSORS declaration among the part's selected tests needs;
+# 0 when none declares one. The queue reserves them via --cpu-tokens, so a suite that needs concurrent
+# CPUs is not admitted with fewer.
+declared_cpu_tokens() {
+  local part="$1"
+  ctest --test-dir "$build_dir" --show-only=json-v1 -L "^${part}\$" "${select_args[@]}" | python3 -c '
+import json, sys
+tests = json.load(sys.stdin).get("tests", [])
+need = 0
+for test in tests:
+    for prop in test.get("properties", []):
+        if prop.get("name") == "PROCESSORS":
+            need = max(need, int(prop.get("value", 0)))
+print((need + 1) // 2)
+'
+}
+
 queue() {
-  local resource="$1" label="$2"; shift 2
+  local resource="$1" label="$2" cpu_tokens="$3"; shift 3
   if (( use_queue )); then
-    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
+    local token_args=()
+    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
+      ${token_args[@]+"${token_args[@]}"} -- "$@"
   else
     "$@"
   fi
@@ -157,8 +177,10 @@ queue() {
 
 run_part() {
   local part="$1" resource="$2" jobs="$3"; shift 3
-  local started=$SECONDS
-  queue "$resource" "split-$part" \
+  local started=$SECONDS cpu_tokens
+  cpu_tokens="$(declared_cpu_tokens "$part")" || cpu_tokens=0
+  (( cpu_tokens > 0 )) && echo "[run-tests-split] $part: PROCESSORS declaration needs cpu-tokens=$cpu_tokens"
+  queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
     ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
           --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \

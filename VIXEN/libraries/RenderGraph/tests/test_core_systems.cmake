@@ -99,7 +99,9 @@ target_link_libraries(test_rendergraph_coresystems_b PRIVATE
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_coresystems_b PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-vixen_gtest_discover_tests(RenderGraph test_rendergraph_coresystems_b)
+# FramePipelineTest.AdjacentFramesOverlapButCommitInSubmissionOrder asserts two frames run at once
+# while the submitting thread waits: measured to fail with maxActive=1 on 2 CPUs, pass on 4.
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_coresystems_b PROCESSORS 4)
 
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)")
 

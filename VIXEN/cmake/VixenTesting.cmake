@@ -57,7 +57,7 @@ endfunction()
 function(vixen_gtest_discover_tests suite target)
     cmake_parse_arguments(PARSE_ARGV 2 VGT
         "NO_PRETTY_TYPES;NO_PRETTY_VALUES;GPU"
-        "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;FIXTURES_REQUIRED"
+        "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;PROCESSORS;FIXTURES_REQUIRED"
         "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
 
     set(_gtest_arguments)
@@ -113,6 +113,11 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     if(VGT_TIMEOUT)
         list(APPEND _properties TIMEOUT "${VGT_TIMEOUT}")
+    endif()
+    # CPUs the suite needs to run truly concurrent work. tools/run-tests-split.sh reads it from the
+    # CTest metadata and passes it to the queue as --cpu-tokens.
+    if(VGT_PROCESSORS)
+        list(APPEND _properties PROCESSORS "${VGT_PROCESSORS}")
     endif()
     if(VGT_GPU)
         list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")
