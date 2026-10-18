@@ -36,8 +36,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 
-#include "recipe/SdfCoreKernels.g.glsl"
 #include "RecipeGlyphBindings.glsl"
+#include "recipe/SdfCoreKernels.g.glsl"
 
 // W1b (wavefront epoch): this pass NO LONGER TRACES on the default path — the
 // ShadowVisibilityWave answers every shadow question into HitRecord._pad0

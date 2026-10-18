@@ -48,8 +48,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, binding = 0) uniform readonly image2D outputImage;
 
 layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
-#include "recipe/SdfCoreKernels.g.glsl"
 #include "RecipeGlyphBindings.glsl"
+#include "recipe/SdfCoreKernels.g.glsl"
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)

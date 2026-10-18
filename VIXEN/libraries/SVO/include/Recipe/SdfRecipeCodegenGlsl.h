@@ -2,6 +2,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode — the exact opcode set this emitter must cover
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include <cassert>
 #include <algorithm>
 #include "Recipe/generated/RecipeGlslLiterals.g.h"
@@ -62,7 +63,8 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
     std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
-    uint32_t glyphInstanceBase = 0)
+    uint32_t glyphInstanceBase = 0,
+    std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {})
 {
     std::vector<std::string> stk;
     std::string body;
@@ -86,16 +88,45 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     (void)glyphInstances;
 
     const auto glyphBaseForProgram = [&](const SdfInstruction* wprog) {
-        if (!registry || wprog == prog) return glyphInstanceBase;
-        uint32_t base = 0;
-        for (uint32_t id : registry->Ids()) {
-            const auto* entry = registry->Get(id);
-            if (!entry) continue;
-            if (entry->bytecode.data() == wprog) return base;
-            base += static_cast<uint32_t>(entry->glyphInstances.size());
-        }
+        // RecipeRegistry rewrites every GlyphOutline operand to the one shared blob's
+        // global index at registration. Nested recipe walks therefore must not apply the
+        // old per-entry prefix sum. Keep the legacy base parameter for standalone emitters
+        // and tests that intentionally pass local rows without a registry.
+        if (registry) return 0U;
+        (void)wprog;
         return glyphInstanceBase;
     };
+
+    // A PathDistance instruction indexes this fixed local array the same way.
+    if (!pathInstances.empty()) {
+        body += "  PathInstance pathInstances["
+            + std::to_string(pathInstances.size()) + "];\n";
+        for (std::size_t pathIndex = 0; pathIndex < pathInstances.size(); ++pathIndex) {
+            const auto& path = pathInstances[pathIndex];
+            const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
+            const std::uint32_t segmentCount = std::min<std::uint32_t>(
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
+            body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
+            body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
+            body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
+            body += "  " + row + ".FillRule = " + std::to_string(path.FillRule) + "u;\n";
+            for (std::uint32_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+                const auto& segment = path.Segments[segmentIndex];
+                const std::string prefix = row + ".Segments[" + std::to_string(segmentIndex) + "]";
+                const auto emitPoint = [&](const char* name, const auto& point) {
+                    body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
+                    body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
+                    body += "  " + prefix + "." + name + ".Z = " + f(point.Z) + ";\n";
+                };
+                emitPoint("P0", segment.P0);
+                emitPoint("P1", segment.P1);
+                emitPoint("P2", segment.P2);
+                emitPoint("P3", segment.P3);
+                body += "  " + prefix + ".Kind = " + std::to_string(segment.Kind) + "u;\n";
+                body += "  " + prefix + ".ContourStart = " + std::to_string(segment.ContourStart) + "u;\n";
+            }
+        }
+    }
 
     // Recursive-inlining walk (Recipe-Nested-Invocation M1): a self-recursive lambda so
     // InvokeRecipe can walk a callee's bytecode into the SAME body/stk/n/curPos state as the

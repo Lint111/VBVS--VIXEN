@@ -1,19 +1,24 @@
 #pragma once
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
 #include <glm/glm.hpp>
+#include "VixenHash.h"
 #include "Recipe/LodSelection.h"
 #include "Recipe/RecipeComposition.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 
 namespace Vixen::SVO {
 
@@ -98,9 +103,12 @@ public:
         glm::vec3           occupancyGridAabbMin   = glm::vec3(0.0f);
         float               occupancyGridCellSize  = 0.f;
 
-        // Each typed reference in bytecode indexes one complete GPU glyph instance.
-        // The instance owns its fixed-width contour bucket; no separate contour pool exists.
+        // Registration-local rows used to validate and intern GlyphOutline operands. After
+        // Register(), operands point into RecipeRegistry's shared GlyphOutlineBlob(); this
+        // vector remains as CPU-side staging for existing specialized-shader call sites.
         std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances;
+        // Each PathDistance reference indexes one complete GPU path instance.
+        std::vector<Yeroket::Sdf::Generated::PathInstance> pathInstances;
     };
 
     enum class RegisterResult {
@@ -125,6 +133,7 @@ public:
         BadCompositionBlockCount,
         BadCompositionRole,
         BadCompositionShellRadius,
+        InvalidGlyphIndex,
         UnknownCalleeRecipe,   // InvokeRecipe references a recipeId not yet Register()-ed
         RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
         NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
@@ -154,6 +163,26 @@ public:
         RecipeEntry normalizedEntry = entry;
         if (normalizedEntry.lodLadder.empty())
             normalizedEntry.lodLadder = BuildImplicitLodLadder(normalizedEntry);
+
+        // R631: recipe construction may provide rows local to this entry, but the
+        // renderer owns one immutable blob for every registered glyph outline. Content
+        // hashing makes repeated (font, glyph) rows across text jobs and recipes share one
+        // upload; byte comparison in the hash bucket keeps collisions harmless. Rewrite the
+        // bytecode operands to the blob's stable global indices before publication.
+        for (const auto& instruction : normalizedEntry.bytecode) {
+            if (static_cast<Recipe::SdfOpCode>(instruction.opCode) != Recipe::SdfOpCode::GlyphOutline)
+                continue;
+            const std::uint32_t localIndex = std::bit_cast<std::uint32_t>(instruction.data[0]);
+            if (localIndex >= normalizedEntry.glyphInstances.size())
+                return RegisterResult::InvalidGlyphIndex;
+        }
+        for (auto& instruction : normalizedEntry.bytecode) {
+            if (static_cast<Recipe::SdfOpCode>(instruction.opCode) != Recipe::SdfOpCode::GlyphOutline)
+                continue;
+            const std::uint32_t localIndex = std::bit_cast<std::uint32_t>(instruction.data[0]);
+            instruction.data[0] = std::bit_cast<float>(InternGlyphOutline(
+                normalizedEntry.glyphInstances[localIndex]));
+        }
 
         switch (ValidateLodLadder(normalizedEntry.lodLadder)) {
             case LodValidationError::None: break;
@@ -228,6 +257,8 @@ public:
     // Drops every entry. The generation still advances so cached snapshots keyed on it are invalidated.
     void Clear() {
         entries_.clear();
+        glyphOutlineBlob_.clear();
+        glyphOutlineHashBuckets_.clear();
         ++generation_;
     }
 
@@ -271,20 +302,44 @@ public:
         return out;
     }
 
-    // GlyphOutline bytecode operands are local to each recipe entry. The runtime shader
-    // transport flattens all entries into one SSBO in this same Ids() order, so emitters and
-    // specialized pipelines use this deterministic prefix sum to rebase an entry's indices.
+    // The single immutable runtime glyph resource consumed by all registered recipe jobs.
+    [[nodiscard]] std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>
+    GlyphOutlineBlob() const noexcept {
+        return glyphOutlineBlob_;
+    }
+
+    [[nodiscard]] std::uint64_t GlyphOutlineBytes() const noexcept {
+        return glyphOutlineBlob_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance);
+    }
+
+    // Compatibility accessor for specialized pipeline call sites. GlyphOutline operands are
+    // global shared-blob indices after Register(), so no per-entry prefix is required.
     [[nodiscard]] uint32_t GlyphInstanceBase(uint32_t recipeId) const {
-        uint32_t base = 0;
-        for (const auto& [id, entry] : entries_) {
-            if (id == recipeId) return base;
-            base += static_cast<uint32_t>(entry.glyphInstances.size());
-        }
-        return base;
+        (void)recipeId;
+        // GlyphOutline operands are global blob indices after Register(). There is no
+        // per-recipe prefix to add; retain this accessor for source compatibility with the
+        // specialized-pipeline callers while making the old duplication impossible.
+        return 0;
     }
 
 private:
     std::uint64_t generation_ = 0;
+    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineBlob_;
+    std::map<std::uint64_t, std::vector<std::uint32_t>> glyphOutlineHashBuckets_;
+
+    [[nodiscard]] std::uint32_t InternGlyphOutline(
+        const Yeroket::Sdf::Generated::GlyphOutlineInstance& outline) {
+        const std::uint64_t hash = Vixen::Hash::ComputeHash64(&outline, sizeof(outline));
+        auto& candidates = glyphOutlineHashBuckets_[hash];
+        for (const std::uint32_t index : candidates) {
+            if (std::memcmp(&glyphOutlineBlob_[index], &outline, sizeof(outline)) == 0)
+                return index;
+        }
+        const std::uint32_t index = static_cast<std::uint32_t>(glyphOutlineBlob_.size());
+        glyphOutlineBlob_.push_back(outline);
+        candidates.push_back(index);
+        return index;
+    }
 
     static RegisterResult ValidateComposition(const RecipeEntry& entry) {
         if (entry.blocks.size() > kMaxCompositionBlocks)

@@ -5,6 +5,7 @@
 #include "Text/RmlFontEngine.h"
 #include "Text/Shaper.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"
 
 #include <gtest/gtest.h>
@@ -118,11 +119,11 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     EXPECT_LE(round.SegmentCount,
               static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
     EXPECT_GE(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
-                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                            [](const Yeroket::Sdf::Generated::PathSegment& segment) {
                                 return segment.ContourStart != 0U;
                             }), 2);
     EXPECT_GT(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
-                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                            [](const Yeroket::Sdf::Generated::PathSegment& segment) {
                                 return segment.Kind == 1U;
                             }), 0);
     EXPECT_LT(round.BoundsMin.X, round.BoundsMax.X);
@@ -138,7 +139,7 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
         latinFace, FT_Get_Char_Index(latinFace, U'8'), eight, &diagnostic));
     EXPECT_GE(std::count_if(std::begin(eight.Segments), std::begin(eight.Segments) + eight.SegmentCount,
-                            [](const Vixen::Text::GlyphOutlineSegment& segment) {
+                            [](const Yeroket::Sdf::Generated::PathSegment& segment) {
                                 return segment.ContourStart != 0U;
                             }), 3);
     const float eightMidX = (eight.BoundsMin.X + eight.BoundsMax.X) * 0.5f;
@@ -189,6 +190,8 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     ASSERT_EQ(repeated.glyphs.size(), 2U);
     EXPECT_EQ(repeated.glyphs[0].instance.get(), repeated.glyphs[1].instance.get());
     EXPECT_EQ(repeated.glyphs[0].instance.get(), latin.glyphs.front().instance.get());
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, repeated.glyphs[1].outlineIndex);
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, latin.glyphs.front().outlineIndex);
 
     const auto rightToLeft = MakePreset(Vixen::Text::TextDirection::RightToLeft,
                                         Vixen::Text::ShapingClass::Default,
@@ -201,6 +204,9 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     EXPECT_TRUE(rtl.mirrorX);
     ASSERT_EQ(rtl.glyphs.size(), 4U);
     EXPECT_TRUE(rtl.requiredScriptTableMatchesPreset);
+    ASSERT_EQ(glyphAtlas.OutlineBlob().size(), 4U);
+    EXPECT_EQ(glyphAtlas.OutlineBlobBytes(),
+              glyphAtlas.OutlineBlob().size() * sizeof(Vixen::Text::GlyphOutlineInstance));
 }
 
 TEST_F(TextShapingFixture, MsdfAtlasIsTheFinalSmallScreenTextBand) {

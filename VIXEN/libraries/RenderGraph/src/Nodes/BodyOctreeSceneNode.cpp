@@ -447,8 +447,8 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
 void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances) {
     // R631: this payload is produced by the same shader-build callback as the spliced recipe
-    // source. The emitter rebases each recipe's local GlyphOutline operand into this stable
-    // Ids()-ordered vector, so the SSBO and generated shader are always one generation pair.
+    // source. The registry owns one content-deduplicated blob and the emitted operands carry
+    // its global indices, so the SSBO and generated shader are always one generation pair.
     glyphOutlineInstances_ = std::move(glyphInstances);
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetGlyphOutlineInstances: " +
                   std::to_string(glyphOutlineInstances_.size()) + " rows staged");

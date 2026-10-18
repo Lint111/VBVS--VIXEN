@@ -44,6 +44,16 @@ std::string ReadFile(const std::string& path) {
     return ss.str();
 }
 
+std::size_t CountOccurrences(const std::string& haystack, const std::string& needle) {
+    std::size_t count = 0;
+    std::size_t position = 0;
+    while ((position = haystack.find(needle, position)) != std::string::npos) {
+        ++count;
+        position += needle.size();
+    }
+    return count;
+}
+
 SdfInstruction sphere(glm::vec3 c, float r) {
     SdfInstruction in{};
     in.opCode = (uint8_t)SdfOpCode::Sphere;
@@ -153,15 +163,17 @@ TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {
         << spliced.substr(spliced.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), 4000);
 }
 
-TEST(UberShaderSplice, GlyphRowsUseFlattenedRuntimeBuffer) {
+TEST(UberShaderSplice, SharedGlyphRowsUseOneDeduplicatedRuntimeBuffer) {
     const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
     ASSERT_FALSE(raw.empty());
 
     RecipeRegistry registry;
-    for (uint32_t recipeId = 100; recipeId < 102; ++recipeId) {
+    for (uint32_t recipeId = 100; recipeId < 103; ++recipeId) {
         RecipeRegistry::RecipeEntry entry{};
         entry.bytecode = {glyph(/*localIndex=*/0)};
         entry.glyphInstances.emplace_back();
+        if (recipeId == 102)
+            entry.glyphInstances.back().SegmentCount = 1U;
         ASSERT_EQ(registry.Register(recipeId, entry), RecipeRegistry::RegisterResult::Ok);
     }
 
@@ -171,8 +183,11 @@ TEST(UberShaderSplice, GlyphRowsUseFlattenedRuntimeBuffer) {
         raw, registry, &occupancy, &glyphRows);
 
     ASSERT_EQ(glyphRows.size(), 2u);
-    EXPECT_NE(spliced.find("glyphOutlineInstances[0]"), std::string::npos);
-    EXPECT_NE(spliced.find("glyphOutlineInstances[1]"), std::string::npos);
+    EXPECT_EQ(registry.GlyphOutlineBytes(), 2u * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance));
+    constexpr std::size_t legacyBytes = 3u * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance);
+    EXPECT_LT(registry.GlyphOutlineBytes(), legacyBytes);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 0u)"), 2u);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 1u)"), 1u);
     EXPECT_EQ(spliced.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
         << "glyph outlines must not be emitted as shader-local arrays";
 

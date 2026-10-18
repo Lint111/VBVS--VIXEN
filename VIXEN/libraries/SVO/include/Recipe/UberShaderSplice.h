@@ -31,10 +31,10 @@ namespace Vixen::SVO::Recipe {
 //      DeriveOccupancyGrid declined the program) gets gridDim=0u in its switch case and
 //      contributes nothing to the blob; the shader treats gridDim==0 as "no grid available,
 //      skip the occupancy fast-path for this instance" (never a hard error).
-//   6. (R631, only when outConcatenatedGlyphInstances != nullptr) all typed glyph rows are
-//      concatenated in the same Ids() order into one runtime SSBO payload. GlyphOutline
-//      operands in each emitted function are rebased to that payload; no outline coordinates
-//      or contour buckets are embedded in shader source.
+//   6. (R631, only when outConcatenatedGlyphInstances != nullptr) the registry's one
+//      content-deduplicated typed glyph blob is copied into the runtime SSBO payload.
+//      GlyphOutline operands already carry its global indices; no outline coordinates or
+//      contour buckets are embedded in shader source.
 //
 // The switch's default case returns a zero-radius bound-sphere miss and a zero field value —
 // unreachable in practice (a BodyInstance's recipeId is only ever set to an id the CPU side
@@ -96,7 +96,6 @@ inline std::string SpliceProceduralRecipesIntoSource(
         return false;
     };
 
-    uint32_t glyphInstanceBase = 0;
     for (uint32_t id : ids) {
         const RecipeRegistry::RecipeEntry* entry = registry.Get(id);
         // Register() already guarantees a non-null, non-empty bytecode for every id in Ids() —
@@ -108,14 +107,14 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                                usesDeclarePosition(entry),
                                                &registry,
                                                entry->glyphInstances,
-                                               glyphInstanceBase)
+                                               /*glyphInstanceBase=*/0,
+                                               entry->pathInstances)
             << "\n";
-        if (outConcatenatedGlyphInstances) {
-            outConcatenatedGlyphInstances->insert(outConcatenatedGlyphInstances->end(),
-                                                  entry->glyphInstances.begin(),
-                                                  entry->glyphInstances.end());
-        }
-        glyphInstanceBase += static_cast<uint32_t>(entry->glyphInstances.size());
+    }
+
+    if (outConcatenatedGlyphInstances) {
+        const auto blob = registry.GlyphOutlineBlob();
+        outConcatenatedGlyphInstances->assign(blob.begin(), blob.end());
     }
 
     // params (Recipe-Parameterization M2 Task 6): threaded through as a plain function

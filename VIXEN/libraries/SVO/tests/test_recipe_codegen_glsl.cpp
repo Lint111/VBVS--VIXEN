@@ -78,7 +78,7 @@ TEST(EmitProceduralFieldFunctionGlsl, GlyphOutlineUsesRuntimeBufferAndRebasedInd
         std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&glyph, 1),
         /*glyphInstanceBase=*/5);
 
-    EXPECT_NE(glsl.find("glyphOutlineInstances[7]"), std::string::npos) << glsl;
+    EXPECT_NE(glsl.find("SdfCore_GlyphOutline(p, 7u)"), std::string::npos) << glsl;
     EXPECT_EQ(glsl.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
         << "glyph rows must be runtime SSBO data, not shader literals:\n" << glsl;
 }
