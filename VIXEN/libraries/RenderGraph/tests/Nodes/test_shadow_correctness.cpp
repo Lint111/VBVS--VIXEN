@@ -51,6 +51,7 @@
 #include "Recipe/UberShaderSplice.h"
 #include <sstream>
 #include "ShaderBundleBuilder.h"  // shading and visibility-wave shaders compiled at test runtime
+#include "SPIRVReflection.h"    // descriptor layouts come from the SPIR-V itself, not hand tables
 
 #include <vulkan/vulkan.h>
 
@@ -63,6 +64,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -587,6 +589,30 @@ protected:
         return spirv;
     }
 
+    // Reflects the single descriptor set of a compute module with the production reflector, so
+    // the layout and pool counts below can never drift from the shader's declared bindings.
+    static ShaderManagement::DescriptorLayoutSpec ReflectComputeLayout(
+        const std::vector<uint32_t>& spirv) {
+        ShaderManagement::CompiledProgram program{};
+        program.stages.push_back({ShaderManagement::ShaderStage::Compute, spirv, "main"});
+        auto layout = ShaderManagement::ReflectDescriptorLayout(program);
+        EXPECT_NE(layout, nullptr) << "descriptor reflection failed";
+        return layout ? *layout : ShaderManagement::DescriptorLayoutSpec{};
+    }
+
+    // One write table serves every shader variant (plain and recipe-spliced); only the bindings
+    // the variant's SPIR-V declares can be written, so the rest are dropped here.
+    static std::vector<VkWriteDescriptorSet> WritesForDeclaredBindings(
+        const ShaderManagement::DescriptorLayoutSpec& layout,
+        const VkWriteDescriptorSet* writes, size_t count) {
+        std::set<uint32_t> declared;
+        for (const auto& b : layout.bindings) declared.insert(b.binding);
+        std::vector<VkWriteDescriptorSet> kept;
+        for (size_t i = 0; i < count; ++i)
+            if (declared.count(writes[i].dstBinding)) kept.push_back(writes[i]);
+        return kept;
+    }
+
     static std::vector<uint32_t> RecipeConsumerSpirv(
         const char* filename, const Vixen::SVO::RecipeRegistry& registry) {
         const std::filesystem::path shaderDir(VIXEN_SHADER_SOURCE_DIR);
@@ -804,123 +830,28 @@ protected:
         VkShaderModule waveModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &waveSmci, nullptr, &waveModule), VK_SUCCESS);
 
-        auto bind = [](uint32_t b, VkDescriptorType t) {
-            VkDescriptorSetLayoutBinding lb{};
-            lb.binding = b; lb.descriptorType = t; lb.descriptorCount = 1;
-            lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-            return lb;
+        // Each pass's descriptor set layout and pool counts are reflected from its own SPIR-V
+        // (the same reflector the production shader bundles use); the write tables below are
+        // checked against that reflected binding set.
+        auto createSetLayout = [&](const ShaderManagement::DescriptorLayoutSpec& spec,
+                                   VkDescriptorSetLayout& out) {
+            const std::vector<VkDescriptorSetLayoutBinding> vkBindings = spec.ToVulkanBindings();
+            VkDescriptorSetLayoutCreateInfo ci{};
+            ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            ci.bindingCount = static_cast<uint32_t>(vkBindings.size()); ci.pBindings = vkBindings.data();
+            return vkCreateDescriptorSetLayout(logicalDevice_, &ci, nullptr, &out);
         };
-
-        // March's descriptor set layout: BodyInstanceRayMarch.comp's real reflected binding set,
-        // matching test_hitrecord_readback.cpp's own layout EXACTLY (verified against the
-        // shader's own layout(std430, binding=N) declarations, not against this file's own
-        // previous (BROKEN) RenderScene binding table -- see that shader's own comments:
-        // binding 16=OccupancyGridBuffer, 17=LightingConfigSSBO, 18=HitRecordBuffer,
-        // 19=ShadowConfigSSBO. This traversal pass reads NEITHER LightingConfig nor
-        // OccupancyGrid (declared but unread, KI-018) nor ShadowConfig -- 16/17/19 are
-        // deliberately OMITTED here (test_hitrecord_readback.cpp's own comment: "was wrongly
-        // 17" -- the SAME one-slot-shift bug this file's own prior RenderScene method had,
-        // undetected because BodyInstanceRayMarch.comp stopped writing colour before this
-        // test ever exercised its downstream shading path). Binding 18 is the ONLY one of
-        // 16-19 the march's main() actually touches (hitRecords[idx] = rec).
-        const std::array<VkDescriptorSetLayoutBinding, 18> marchBindings = {
-            bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-        };
-        VkDescriptorSetLayoutCreateInfo marchDslci{};
-        marchDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        marchDslci.bindingCount = static_cast<uint32_t>(marchBindings.size()); marchDslci.pBindings = marchBindings.data();
+        const ShaderManagement::DescriptorLayoutSpec marchLayout = ReflectComputeLayout(marchSpirv);
+        const ShaderManagement::DescriptorLayoutSpec shadeLayout = ReflectComputeLayout(shadeSpirv);
+        const ShaderManagement::DescriptorLayoutSpec waveLayout = ReflectComputeLayout(waveSpirv);
+        ASSERT_TRUE(marchLayout.IsValid() && shadeLayout.IsValid() && waveLayout.IsValid());
         VkDescriptorSetLayout marchDsl = VK_NULL_HANDLE;
-        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &marchDslci, nullptr, &marchDsl), VK_SUCCESS);
+        ASSERT_EQ(createSetLayout(marchLayout, marchDsl), VK_SUCCESS);
 
-        // Shade's descriptor set layout: SpatialReuseShade.comp's real reflected binding set
-        // (BuildRenderGraph.cpp's spatialReuseGatherer wiring, see this method's own header
-        // comment). Binding 9 (idOutputImage) is march-only -- SpatialReuseShade.comp never
-        // declares it, so it's absent here, matching the "declare exactly what the shader
-        // reflects" discipline this file's own binding-36 precedent (test_shadow_correctness's
-        // sibling B1 tests) established.
-        // Binding 35 is the sky cache image in SpatialReuseShade's production variant;
-        // bindings 48/49 are its history and world-position output images.
-        const std::array<VkDescriptorSetLayoutBinding, 30> shadeBindings = {
-            bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(20, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(21, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(22, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(23, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(24, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(25, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(26, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(27, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(31, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(32, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(33, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(48, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(49, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-        };
-        VkDescriptorSetLayoutCreateInfo shadeDslci{};
-        shadeDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        shadeDslci.bindingCount = static_cast<uint32_t>(shadeBindings.size()); shadeDslci.pBindings = shadeBindings.data();
         VkDescriptorSetLayout shadeDsl = VK_NULL_HANDLE;
-        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &shadeDslci, nullptr, &shadeDsl), VK_SUCCESS);
-
-        // ShadowVisibilityWave.comp's reflected storage-buffer bindings. It reads scene/light
-        // inputs and the shadow config, and read/writes HitRecordBuffer at binding 17.
-        const std::array<VkDescriptorSetLayoutBinding, 17> waveBindings = {
-            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(48, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-        };
-        VkDescriptorSetLayoutCreateInfo waveDslci{};
-        waveDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        waveDslci.bindingCount = static_cast<uint32_t>(waveBindings.size()); waveDslci.pBindings = waveBindings.data();
+        ASSERT_EQ(createSetLayout(shadeLayout, shadeDsl), VK_SUCCESS);
         VkDescriptorSetLayout waveDsl = VK_NULL_HANDLE;
-        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &waveDslci, nullptr, &waveDsl), VK_SUCCESS);
+        ASSERT_EQ(createSetLayout(waveLayout, waveDsl), VK_SUCCESS);
 
         VkPushConstantRange pcr{};
         pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = sizeof(PushConstants);
@@ -973,21 +904,7 @@ protected:
         VkPipeline wavePipeline = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &waveCpci, nullptr, &wavePipeline), VK_SUCCESS);
 
-        // DIAG (temporary, root-causing the anyHitCount=0 regression): separate pools per set,
-        // matching the plain RenderScene's own exact single-pool-single-set shape, in case a
-        // shared pool across two differently-sized layouts confuses this non-conformant driver.
-        const auto poolSizesFor = [](const auto& bindings) {
-            std::array<VkDescriptorPoolSize, 2> sizes{{
-                {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0},
-                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0},
-            }};
-            for (const auto& binding : bindings)
-                for (auto& size : sizes)
-                    if (size.type == binding.descriptorType)
-                        size.descriptorCount += binding.descriptorCount;
-            return sizes;
-        };
-        const auto marchPoolSizes = poolSizesFor(marchBindings);
+        const auto marchPoolSizes = marchLayout.ToPoolSizes();
         VkDescriptorPoolCreateInfo marchDpci{};
         marchDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         marchDpci.maxSets = 1; marchDpci.poolSizeCount = static_cast<uint32_t>(marchPoolSizes.size()); marchDpci.pPoolSizes = marchPoolSizes.data();
@@ -1000,7 +917,7 @@ protected:
         VkDescriptorSet marchDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &marchDsai, &marchDescSet), VK_SUCCESS);
 
-        const auto shadePoolSizes = poolSizesFor(shadeBindings);
+        const auto shadePoolSizes = shadeLayout.ToPoolSizes();
         VkDescriptorPoolCreateInfo shadeDpci{};
         shadeDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         shadeDpci.maxSets = 1; shadeDpci.poolSizeCount = static_cast<uint32_t>(shadePoolSizes.size()); shadeDpci.pPoolSizes = shadePoolSizes.data();
@@ -1013,10 +930,10 @@ protected:
         VkDescriptorSet shadeDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &shadeDsai, &shadeDescSet), VK_SUCCESS);
 
-        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17};
+        const auto wavePoolSizes = waveLayout.ToPoolSizes();
         VkDescriptorPoolCreateInfo waveDpci{};
         waveDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        waveDpci.maxSets = 1; waveDpci.poolSizeCount = 1; waveDpci.pPoolSizes = &wavePoolSize;
+        waveDpci.maxSets = 1; waveDpci.poolSizeCount = static_cast<uint32_t>(wavePoolSizes.size()); waveDpci.pPoolSizes = wavePoolSizes.data();
         VkDescriptorPool waveDescPool = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &waveDpci, nullptr, &waveDescPool), VK_SUCCESS);
 
@@ -1092,12 +1009,13 @@ protected:
             wBuf(marchDescSet, 13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(marchDescSet, 14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
             wBuf(marchDescSet, 15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
-            wBuf(marchDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real slot, not 17 -- see marchBindings' own comment)
+            wBuf(marchDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real slot, not 17)
             wBuf(marchDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wBuf(marchDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
             wBuf(marchDescSet, 16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
         };
-        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(marchWrites.size()), marchWrites.data(), 0, nullptr);
+        const auto marchDeclared = WritesForDeclaredBindings(marchLayout, marchWrites.data(), marchWrites.size());
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(marchDeclared.size()), marchDeclared.data(), 0, nullptr);
 
         const std::array<VkWriteDescriptorSet, 30> shadeWrites = {
             wImg(shadeDescSet, 0, &colorInfo),
@@ -1131,7 +1049,8 @@ protected:
             wImg(shadeDescSet, 48, &historyOutputInfo),
             wImg(shadeDescSet, 49, &worldPosOutputInfo),
         };
-        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeWrites.size()), shadeWrites.data(), 0, nullptr);
+        const auto shadeDeclared = WritesForDeclaredBindings(shadeLayout, shadeWrites.data(), shadeWrites.size());
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeDeclared.size()), shadeDeclared.data(), 0, nullptr);
 
         const std::array<VkWriteDescriptorSet, 17> waveWrites = {
             wBuf(waveDescSet, 1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
@@ -1152,7 +1071,8 @@ protected:
             wBuf(waveDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
             wBuf(waveDescSet, 48, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
         };
-        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(waveWrites.size()), waveWrites.data(), 0, nullptr);
+        const auto waveDeclared = WritesForDeclaredBindings(waveLayout, waveWrites.data(), waveWrites.size());
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(waveDeclared.size()), waveDeclared.data(), 0, nullptr);
 
         VkCommandBufferAllocateInfo cbai{};
         cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
