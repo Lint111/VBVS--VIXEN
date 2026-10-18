@@ -1,5 +1,7 @@
 #include "graph/UpscalerModules.h"
+#if VIXEN_WITH_FSR3
 #include "graph/Fsr3Upscaler.h"
+#endif
 
 #include "Connection/ConnectionModifier.h"
 #include "Core/NodeRegistration.h"
@@ -26,9 +28,11 @@
 namespace Vixen::RenderGraph {
 namespace {
 
+#if VIXEN_WITH_FSR3
 constexpr UpscalerDepthConsumerConvention kFsr3DepthConventions[]{
     {"fsr3", ReconstructionDepthConvention::ForwardZeroToOne},
 };
+#endif
 
 class LinearUpscalerModuleType final : public SubGraphType<LinearUpscalerModuleType> {
 public:
@@ -191,6 +195,7 @@ public:
     }
 };
 
+#if VIXEN_WITH_FSR3
 class Fsr3UpscalerModuleType final : public SubGraphType<Fsr3UpscalerModuleType> {
 public:
     static constexpr std::string_view TYPE_NAME = kFsr3UpscalerModuleTypeName;
@@ -284,11 +289,13 @@ public:
         }
     }
 };
+#endif
 
 void ResetNoUpscalerHistory(void*, UpscalerHistoryResetCause) noexcept {}
 
 constexpr UpscalerImageFormat kRgba8Format[] = {UpscalerImageFormat::Rgba8Unorm};
 constexpr UpscalerFrameInput kColorInput[] = {UpscalerFrameInput::Color};
+#if VIXEN_WITH_FSR3
 constexpr UpscalerFrameInput kFsr3Inputs[]{
     UpscalerFrameInput::Color,
     UpscalerFrameInput::Depth,
@@ -296,6 +303,7 @@ constexpr UpscalerFrameInput kFsr3Inputs[]{
     UpscalerFrameInput::Jitter,
     UpscalerFrameInput::Exposure,
 };
+#endif
 constexpr UpscalerExternalResourceDependency kNativeDependencies[] = {
     {UpscalerExternalResource::SourceColor, true},
     {UpscalerExternalResource::PresentationTarget, true},
@@ -312,12 +320,14 @@ constexpr UpscalerExternalResourceDependency kFsr1Dependencies[] = {
     {UpscalerExternalResource::Device, true},
     {UpscalerExternalResource::ExecutionOrder, true}
 };
+#if VIXEN_WITH_FSR3
 constexpr UpscalerExternalResourceDependency kFsr3Dependencies[] = {
     {UpscalerExternalResource::SourceColor, true},
     {UpscalerExternalResource::PresentationTarget, true},
     {UpscalerExternalResource::Device, true},
     {UpscalerExternalResource::ExecutionOrder, true}
 };
+#endif
 
 const UpscalerContract kNativeContract{
     .inputFormats = kRgba8Format,
@@ -350,6 +360,7 @@ const UpscalerContract kFsr1Contract{
     .externalResourceDependencies = kFsr1Dependencies
 };
 
+#if VIXEN_WITH_FSR3
 const UpscalerContract kFsr3Contract{
     .inputFormats = kRgba8Format,
     .outputFormats = kRgba8Format,
@@ -360,19 +371,22 @@ const UpscalerContract kFsr3Contract{
     .executionRecording = UpscalerExecutionRecording::ExternalCommandBuffer,
     .externalResourceDependencies = kFsr3Dependencies
 };
+#endif
 
+#if VIXEN_WITH_FSR3
 const std::array<UpscalerBackendDescriptor, 4> kUpscalerBackends{{
     {"native", "", "", &kNativeContract, true, true},
     {"linear", kLinearUpscalerModuleTypeName, "", &kLinearContract, true, false},
     {"fsr1", kFsr1UpscalerModuleTypeName, "Upscaler:Fsr1", &kFsr1Contract, true, false},
-    {"fsr3", kFsr3UpscalerModuleTypeName, "Upscaler:Fsr3.1.4", &kFsr3Contract,
-#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
-     true,
-#else
-     false,
-#endif
-     false}
+    {"fsr3", kFsr3UpscalerModuleTypeName, "Upscaler:Fsr3.1.4", &kFsr3Contract, true, false}
 }};
+#else
+const std::array<UpscalerBackendDescriptor, 3> kUpscalerBackends{{
+    {"native", "", "", &kNativeContract, true, true},
+    {"linear", kLinearUpscalerModuleTypeName, "", &kLinearContract, true, false},
+    {"fsr1", kFsr1UpscalerModuleTypeName, "Upscaler:Fsr1", &kFsr1Contract, true, false}
+}};
+#endif
 
 } // namespace
 
@@ -388,6 +402,8 @@ const UpscalerBackendDescriptor* FindUpscalerBackend(std::string_view id) noexce
 
 VIXEN_REGISTER_NODE(LinearUpscalerModuleType);
 VIXEN_REGISTER_NODE(Fsr1UpscalerModuleType);
+#if VIXEN_WITH_FSR3
 VIXEN_REGISTER_NODE(Fsr3UpscalerModuleType);
+#endif
 
 } // namespace Vixen::RenderGraph

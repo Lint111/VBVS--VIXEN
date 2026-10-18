@@ -10,6 +10,7 @@
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 #include <cstring>     // std::memcpy for M5's shadeM5IndirectLumaBits float reinterpretation
 #include <iostream>    // E11-T1: std::cout for the [PolicyStencilTiles] teardown readback print
+#include <string_view>
 #include <unordered_map>  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES groupId->name lookup
 #include "Core/FrameSyncSchedule.h"  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES
 #include "RuntimeCachePaths.h"
@@ -160,6 +161,24 @@ VulkanGraphApplication::VulkanGraphApplication()
     if (const char* env = std::getenv("VIXEN_WINDOW_HEIGHT")) {
         const int v = std::atoi(env);
         if (v > 0) height = v;
+    }
+
+    // The generic renderer host transports its one upscaler setting through this existing
+    // process-configuration seam; provider eligibility remains owned by the render graph.
+    if (const char* env = std::getenv("VIXEN_UPSCALER")) {
+        const std::string_view requested(env);
+        if (requested == "none" || requested == "native") {
+            renderPathConfig_.upscaler = UpscalerKind::None;
+        } else if (requested == "linear") {
+            renderPathConfig_.upscaler = UpscalerKind::Linear;
+        } else if (requested == "fsr1") {
+            renderPathConfig_.upscaler = UpscalerKind::Fsr1;
+        } else if (requested == "fsr3") {
+            renderPathConfig_.upscaler = UpscalerKind::Fsr3;
+        } else if (mainLogger) {
+            mainLogger->Warning("Unknown VIXEN_UPSCALER='" + std::string(requested) +
+                                "'; using the native render path");
+        }
     }
 
     // Enable main logger for application-level logging

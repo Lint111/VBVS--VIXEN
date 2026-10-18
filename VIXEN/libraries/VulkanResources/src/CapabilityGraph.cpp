@@ -1056,9 +1056,11 @@ void CapabilityGraph::BuildStandardCapabilities() {
     fsr1Upscaler->AddDependency(storageImageWriteWithoutFormat);
     RegisterCapability(fsr1Upscaler);
 
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
     auto fsr3Upscaler = std::make_shared<CompositeCapability>("Upscaler:Fsr3.1.4");
     fsr3Upscaler->AddDependency(storageImageWriteWithoutFormat);
     RegisterCapability(fsr3Upscaler);
+#endif
 
     // SwapchainMaintenance1 - the VK_EXT_swapchain_maintenance1 extension for present fences
     // Note: This is VK_EXT_swapchain_maintenance1, NOT VK_KHR_maintenance1
@@ -1129,7 +1131,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
         "Upscaler.Linear",
         "Upscaler.Fsr1",
     };
-#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
     upscalerBuild.compiledAdapters.push_back("Upscaler.Fsr3.1.4");
 #endif
     upscalerBuild.sdkPackageRevisions = {
@@ -1138,7 +1140,7 @@ void CapabilityGraph::BuildStandardCapabilities() {
         {"SPIR-V target", VIXEN_CONFIGURED_SPIRV_TARGET_VERSION},
         {"AMD FidelityFX FSR 1", "a21ffb8f6c13233ba336352bdff293894c706575"},
     };
-#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
     upscalerBuild.sdkPackageRevisions.push_back(
         {"AMD FidelityFX FSR 3.1.4", "c6efa6bf7f2027b3ec94f28578bb5965eabb9e55"});
 #endif

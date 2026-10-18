@@ -52,6 +52,11 @@ TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClos
     CapabilityGraph graph;
     graph.BuildStandardCapabilities();
     const auto& records = graph.GetUpscalerCapabilityRecords();
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
+    EXPECT_NE(graph.GetCapability("Upscaler:Fsr3.1.4"), nullptr);
+#else
+    EXPECT_EQ(graph.GetCapability("Upscaler:Fsr3.1.4"), nullptr);
+#endif
 
     EXPECT_EQ(records.build.targetOS, BuildCapabilities::kPlatform);
     EXPECT_EQ(records.build.targetABI, BuildCapabilities::kArchitecture);
@@ -63,7 +68,7 @@ TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClos
     EXPECT_TRUE(records.build.nativeFallbackRetained);
     std::vector<std::string> expectedCompiledAdapters{
         "Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1"};
-#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
     expectedCompiledAdapters.push_back("Upscaler.Fsr3.1.4");
 #endif
     EXPECT_EQ(records.build.compiledAdapters, expectedCompiledAdapters);
@@ -78,7 +83,7 @@ TEST(VulkanResources_CapabilityGraph, UpscalerRecordsExposeBuildFactsAndFailClos
         [](const auto& package) { return package.packageId == "AMD FidelityFX FSR 1"; });
     ASSERT_NE(fsr1Package, records.build.sdkPackageRevisions.end());
     EXPECT_EQ(fsr1Package->revision, "a21ffb8f6c13233ba336352bdff293894c706575");
-#if defined(VIXEN_CONFIGURED_FSR3_UPSCALER)
+#if VIXEN_CONFIGURED_FSR3_UPSCALER
     const auto fsr3Package = std::find_if(
         records.build.sdkPackageRevisions.begin(), records.build.sdkPackageRevisions.end(),
         [](const auto& package) { return package.packageId == "AMD FidelityFX FSR 3.1.4"; });
