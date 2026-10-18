@@ -316,9 +316,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_cpp_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe" _out_glyph_outline_glsl_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_layout_dir_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
@@ -417,9 +417,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
-        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
-        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
-        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
+        set(_out_glyph_outline_cpp_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
+        set(_out_glyph_outline_glsl_dir_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe")
+        set(_out_glyph_outline_layout_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
@@ -650,9 +650,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_glyph_outline_args
         "${_yk_dll_run}"
         --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
-        --out-cpp "${_out_glyph_outline_cpp_run}"
-        --out-glsl "${_out_glyph_outline_glsl_run}"
-        --out-layout-hash "${_out_glyph_outline_layout_run}")
+        --out-cpp-dir "${_out_glyph_outline_cpp_dir_run}"
+        --out-glsl-dir "${_out_glyph_outline_glsl_dir_run}"
+        --out-layout-hash-dir "${_out_glyph_outline_layout_dir_run}")
     vixen_add_codegen_check(glyph_outline_instance_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
         COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"

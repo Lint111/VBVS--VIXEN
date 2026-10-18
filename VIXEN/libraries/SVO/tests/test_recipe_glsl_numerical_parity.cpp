@@ -944,7 +944,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
 
 TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
     using GlyphInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
-    using GlyphSegment = Yeroket::Sdf::Generated::GlyphOutlineSegment;
+    using GlyphSegment = Yeroket::Sdf::Generated::PathSegment;
 
     auto appendContour = [](GlyphInstance& glyph, std::initializer_list<glm::vec2> vertices) {
         ASSERT_GE(vertices.size(), 3U);
