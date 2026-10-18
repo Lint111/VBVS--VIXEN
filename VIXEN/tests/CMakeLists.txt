@@ -24,6 +24,10 @@ add_test(NAME Codegen.LauncherArguments
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
 set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
 
+add_test(NAME Provision.GdbDependencyPackages
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
+set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
