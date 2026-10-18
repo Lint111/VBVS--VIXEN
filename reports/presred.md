@@ -15,7 +15,7 @@ The fsr3 lane's native binary at `af7caa3f` is code-identical to this base (`af7
 | `vkCmdDispatchBase-None-08114` | 10 | same, from the tiled (GPU-yield) march dispatch |
 | `vkCmdDraw-None-09600` | 10 | one 500x500 `R8G8B8A8_UNORM` storage image expected `GENERAL`, is `UNDEFINED` |
 
-(The counter in `uniq -c` shows 20 per VUID because the layer prints each VUID twice per message.) All occur only on the first frame of each graph build.
+(The counter in `uniq -c` shows 20 per VUID because the layer prints each VUID twice per message.) Each VUID first appears on the first frame of a graph build and hits the layer's default limit of 10 reports per VUID, so later frames are not visible in these counts.
 
 ### Root cause of 03580 / 08114 and the fix (`cd81fb61`, `970a3a51`)
 
@@ -37,7 +37,7 @@ The fsr3 lane's native binary at `af7caa3f` is code-identical to this base (`af7
 Reproduces on Dozen too (10 errors per run, `dozen-fix/run.log`). Traced with `VK_LAYER_LUNARG_api_dump` (`dozen-apidump/apidump.txt`):
 - the image is the second of a 4-image ring of 500x500 `R8G8B8A8_UNORM` `STORAGE|TRANSFER_SRC` images (wrapped handles `0x23/0x26/0x29/0x2c`, created consecutively): a render target with one image per swapchain image;
 - the failing command buffers are the march's tiled `vkCmdDispatchBase` chunks (`test_dispatch`); their set `0xfc` binding 0 is that image's view (`0x28`) in `GENERAL`;
-- the march's own barrier (`ComputeDispatchNode.cpp:612-616`) transitions `renderTargetInfo->GetCurrentImage()`, the render target's *current* ring index, while `DescriptorSetNode::HandleStorageImage` picks the view by the swapchain `imageIndex`. On the first frames these differ, so the march transitions one ring image and reads another. The image read is first transitioned to `GENERAL` by a later submission.
+- the march's own barrier (`ComputeDispatchNode.cpp:612-616`) transitions `renderTargetInfo->GetCurrentImage()`, the render target's *current* ring index, while `DescriptorSetNode::HandleStorageImage` picks the view by the swapchain `imageIndex`. When these differ, the march transitions one ring image and reads another; the image read is first transitioned to `GENERAL` by a later submission. Whether it recurs after the first frames is hidden by the layer's 10-report cap (not measured).
 - The featureab note that `s_b2_proxy_prepass` removes it is consistent with that: the pre-pass changes which ring slot is current on the first frame (INFERRED).
 
 The fix is to make the barrier and the descriptor select the same ring image (one index authority). That touches the render-target ring index contract shared by `RenderTargetNode`, `DescriptorSetNode` and `ComputeDispatchNode`, so I stopped at the diagnosis rather than change it without time to witness every consumer.
