@@ -24,6 +24,11 @@ add_test(NAME Codegen.LauncherArguments
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
 set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
 
+add_test(NAME Native.WslDozenHostGate
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_DOZEN_GATE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/wsl-dozen-host-gate"
+            -P "${VIXEN_ROOT}/cmake/tests/test_wsl_dozen_host_gate.cmake")
+set_tests_properties(Native.WslDozenHostGate PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
