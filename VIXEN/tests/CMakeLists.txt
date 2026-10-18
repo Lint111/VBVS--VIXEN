@@ -24,6 +24,11 @@ add_test(NAME Codegen.LauncherArguments
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
 set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
 
+add_test(NAME Provision.VulkanDownload
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_DOWNLOAD_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vulkan-download"
+            -P "${VIXEN_ROOT}/cmake/tests/test_vulkan_provision_download.cmake")
+set_tests_properties(Provision.VulkanDownload PROPERTIES LABELS "Provision;cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
