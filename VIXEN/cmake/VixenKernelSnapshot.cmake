@@ -1,5 +1,6 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/VixenWriteIfDifferent.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/VixenWindowsGitTrust.cmake")
 
 # The default cache is outside source checkouts. Tests/isolated lanes can override
 # it with an untracked directory inside their own worktree.
@@ -51,6 +52,7 @@ function(vixen_kernel_snapshot repository sha out_directory)
     endif()
 
     find_program(_vixen_kernel_git NAMES git REQUIRED)
+    vixen_trust_wsl_git_directory("${repository}")
     execute_process(COMMAND "${_vixen_kernel_git}" -C "${repository}" cat-file -e "${sha}^{commit}"
         RESULT_VARIABLE _exists ERROR_VARIABLE _error OUTPUT_QUIET)
     if(NOT _exists EQUAL 0)
