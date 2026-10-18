@@ -60,6 +60,11 @@ function(vixen_gtest_discover_tests suite target)
         "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;FIXTURES_REQUIRED"
         "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
 
+    # CMake's default discovery timeout is 5 s, which a test binary can miss while the box is loaded.
+    if(NOT DEFINED VGT_DISCOVERY_TIMEOUT)
+        set(VGT_DISCOVERY_TIMEOUT 60)
+    endif()
+
     set(_gtest_arguments)
     foreach(_option NO_PRETTY_TYPES NO_PRETTY_VALUES)
         if(VGT_${_option})
