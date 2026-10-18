@@ -2,37 +2,84 @@
 
 Base: `f750d6e9d2535dfc97329584c9d067b9a9269784`
 
-Implementation commit: `fd89b971` (`feat(textures): extract texture runtime module`)
+Implementation: `fd89b971` (`feat(textures): extract texture runtime module`)
+
+Witness fixes: `705ca3ea` (`fix(textures): unblock scoped witness targets`)
 
 ## LANDABLE NOW
 
-- Added `VIXEN/libraries/Textures` as the runtime module for the existing kernel texture model. The moved loader, STB decoder, texture cacher, residency façade, and CMake target are declared in `VIXEN/libraries/Textures/CMakeLists.txt:4-39`.
-- Kept the node as a binder: `VIXEN/libraries/RenderGraph/src/Nodes/TextureLoaderNode.cpp:110-122` asks `TextureResidency` for existing cached image/sampler resources and emits the unchanged graph outputs.
-- Deleted GLI loader/dependency and the three dead node parameters; removed loader sampler creation and linear upload. The honest slice-1 mip and synchronization notes are in `VIXEN/libraries/Textures/README.md:8-15`.
-- Pinned stb to `2c980bb59875b0d32144a71867fbdebb2f77cd20` in `VIXEN/dependencies/CMakeLists.txt:29-37`, with the MIT/public-domain notice in `VIXEN/libraries/Textures/include/Textures/STBTextureLoader.h:16-19` and the module README.
-- Added five test cases: two CPU decode cases and one cacher-hit case in `VIXEN/libraries/Textures/tests/test_texture_module.cpp:40-74`, plus two node-binding cases in `VIXEN/libraries/RenderGraph/tests/Nodes/test_texture_loader_node.cpp:11-32`.
-- Updated the moved loader’s no-new-mutex policy entry at `VIXEN/scripts/no-new-mutex.allowlist:91`.
-- SPT disposition: R649 is the accepted ruling/design for this slice. The local SPT CLI had no configured workspace for a direct `show R649`, so no close event was written.
+- `VIXEN/libraries/Textures` is a buildable runtime target for the existing
+  texture model. The target and moved implementation are declared in
+  `VIXEN/libraries/Textures/CMakeLists.txt:4-39`; the static STB decoder now
+  returns its existing `VulkanError` without calling the instance-only logger
+  (`VIXEN/libraries/Textures/src/STBTextureLoader.cpp:27-30`).
+- The RenderGraph node remains a binder to the extracted module and keeps the
+  existing graph output contract (`VIXEN/libraries/RenderGraph/src/Nodes/TextureLoaderNode.cpp:110-122`).
+  The five new cases are in `VIXEN/libraries/Textures/tests/test_texture_module.cpp:40-74`
+  and `VIXEN/libraries/RenderGraph/tests/Nodes/test_texture_loader_node.cpp:11-32`.
+- The scoped RenderGraph build also exposed an existing GLM portability defect:
+  `AccumulationConfigNode.cpp` includes `glm/gtx/norm.hpp` without the required
+  `GLM_ENABLE_EXPERIMENTAL` opt-in. The source-local define at
+  `VIXEN/libraries/RenderGraph/src/Nodes/AccumulationConfigNode.cpp:19` matches
+  the established `SVOBuilder.cpp` pattern and is filed as proposal
+  `add65e652f35fd0284bc8944f666f61f82473284cf3afa2da75233d5d1807d1f`.
+- The hard rule scan found no new `EntityId`, `KindRef<All>`, explicit `Id`
+  member, or ID cast in the changed texture/RenderGraph source. `git diff --check`
+  passes, and no new warnings were emitted by the changed sources.
+- R649 disposition: **PARTIAL** — extracted module and scoped runtime witnesses
+  are complete; the production instancing capture remains blocked by the
+  external FSR3 compiler dependency documented below.
 
 ## Verification
 
-Measured:
+Measured on the merged `origin/wave/authoring-convergence` tree (already up to
+date before the witness changes):
 
-- `git diff --check`: pass before commit.
-- Forbidden-surface scan over live VIXEN CMake/source paths: no GLI dependency, old loader path, deleted node parameter, `EntityId`, or `KindRef<All>` additions found. Historical archive/documentation references were not changed.
-- `git merge --no-edit origin/wave/authoring-convergence`: already up to date before the implementation commit.
-- Fixture is a checked-in `500x500`, 8-bit RGB PNG; the decode test requests RGBA8 and checks extent plus the first 16 decoded bytes.
+- Fresh queued CMake configure passed with `UNDERTOW_ROOT=/home/liory/projects/undertow`.
+  The documented WSL preset provisioned the Vulkan SDK/windowing dependencies
+  and generated `VIXEN/build/wsl`.
+- The initial queued target name `RenderGraph` failed because it is an
+  `INTERFACE` target; the concrete targets are `RenderGraphCore` and
+  `RenderGraphNodes`. The corrected queued build reached the source targets.
+  This existing issue is recorded by SPT proposal
+  `7493918f6f210fdd171d295d2fc67e96bf84d2feb5e4923d0ef491c888f7f348`.
+- New texture/node cases: **5/5 pass** on the GPU queue:
+  three texture cases (`TextureDecode` x2 and `TextureCacher` x1) plus two
+  `TextureLoaderNodeBinding` cases.
+- Existing VulkanResources tests: **16 pass, 1 skipped, 0 failed** — 14 GPU
+  cases (including the documented device/driver identity skip) and 3 CPU
+  policy cases.
+- Existing RenderGraph core tests: **42/42 pass** — 40 existing cases plus
+  the two new texture-loader binding cases. The two new cases were also run
+  directly as a 2/2 targeted witness.
+- The full VIXEN application/editor and instancing demo object were not
+  buildable: both the queued `VixenApp`/`VIXEN` build and the direct
+  `BuildInstancingDemoGraph.cpp.o` target stop before compilation because
+  this file is absent:
+  `VIXEN/third_party/fidelityfx-sdk-1.1.4/sdk/tools/binary_store/FidelityFX_SC.exe`.
+  Consequently no instancing capture or before/after byte comparison was
+  produced. This is the brief-known FSR3-optional wave blocker, not a texture
+  test failure. The related existing consolidation proposal is
+  `1359197da1e4c6f76b760086ffb4c374855bc42bd4ed5a34cd65ef589849dbf0`.
 
-Not executed:
-
-- VIXEN CMake configure/build: 0 successful runs. The first queued configure stayed at admission for 625 seconds with no CMake process or cache (`baseline-configure.log`); the retry stayed at admission for 419 seconds (`configure1.log`). Both were stopped by exact-PID cleanup after queue history showed a long-held cross-lane build blocker.
-- New CTests: 0/5 executed; no configured build tree existed.
-- Instancing demo GPU capture and before/after byte comparison: not run because the required executable could not be configured/built.
+Before (wave tip `50e49da6a`), there was no successful configured build or
+CTest result, so no baseline test names were available. During the fresh
+witness, the exposed failures were: the invalid `RenderGraph` aggregate target
+name, the static STB logger call, and the missing GLM opt-in; after the scoped
+fixes, all required library tests above pass. The only remaining failure is the
+FSR3 compiler prerequisite for the production app/capture.
 
 ## STOPs
 
-`STOPPED: baseline unobtainable: VIXEN configure/build/CTest/capture scope; the live queue held both documented configure attempts at admission with no target result or build cache.` Recovery A checked the documented live queue path, `UNDERTOW_ROOT`, FetchContent cache location, and the configured CMake invocation; a second queued retry was attempted. Recovery B was not applicable because no generated output or cache was created. Recovery C was unavailable because no supported target build could be produced without the queued configure. This is an external queue blocker, not a source diagnostic.
+- **STOP: instancing demo capture unavailable.** The required production caller
+  is `VIXEN/application/main/source/graph/BuildInstancingDemoGraph.cpp:49-80`,
+  but its object target has an order-only dependency on generated FSR3 headers
+  produced by the absent `FidelityFX_SC.exe`. The requested before/after
+  capture therefore cannot be measured in this lane. Owner action is to land
+  the documented FSR3-optional wave/provision the pinned compiler binary; no
+  source workaround was added.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-- proposed: Bounded admission diagnostics for queued VIXEN configure/build jobs (SPT proposal `fd1815e66206`)
+- proposed: RenderGraph node needs source-local GLM experimental opt-in
+  (SPT proposal `add65e652f35f`)
