@@ -21,16 +21,30 @@ Base: `f750d6e9d2535dfc97329584c9d067b9a9269784` (`origin/wave/authoring-converg
 - Dozen GPU parity under `systemd-run --user --scope -p MemoryMax=16G`: `RecipeGlslNumericalParityTest.GlyphOutlineBucketMatchesCpu` **1/1 passed**. Measured cgroup peak for this capped glyph shader compile/run: **93,102,080 bytes (~89 MiB)**.
 - Prior published Dozen text-scene evidence for the base records a controller kill at **31,756 MiB** (`/home/liory/codeman-cases/undertow/reports/lookdevleak-evidence/f750d6e9.rss`). This is the measured pre-transport text-scene failure; the current post-transport measurement is the capped glyph parity case, not a text-scene capture.
 
+## Run 2 witnesses
+
+- **App build recovered.** `VIXEN/libraries/RenderGraph/CMakeLists.txt:464-475` changes `ui_shader_spirv_regen` from a phony custom target to an `OUTPUT`-tracked custom command, so an unchanged generated header is not regenerated on every app build. `VIXEN/application/main/cmake/FidelityFXFsr3.cmake:9-15` removes the queue-specific ambient `PATH` from the custom-command identity; the SDK tool directory already contains both `FidelityFX_SC.exe` and `glslangValidator.exe`.
+- The serialized queued FidelityFX witness processed **40/40** blob edges, with **64 permutations per edge**, and exited 0 (`ffx-serial-stable.log`). The final queued `vixen_lookdev_capture` build exited 0 with `ninja: no work to do` (`final-app-build.log`). A parallel `-j4` retry remained stuck in WSL PE compiler children; the documented queue watchdog workaround was an increased idle grace and serialized `-j1`, not a longer app timeout.
+- **Dozen text-scene measurement:** the capped `Application.LookdevCapture.GlyphSdf.latin-carved` / `RendersGlyphSdfLocalizedSign` run reached `memory.peak=17,179,869,184` bytes (16 GiB) and `memory.events max=6,746`, with no OOM kill. It was terminated after 6:42 while blocked in the driver compile call; no capture/reference image was produced. Compared with the base controller kill at **31,756 MiB**, this is a capped upper bound, not a flat-under-cap pass. The nine glyph text-scene cases therefore remain `native`-excluded on Dozen; no re-enable was made.
+- **Measured vs inferred:** generated GLSL still uses the runtime `std430` `glyphOutlineInstances[]` SSBO and indexed `SdfCore_GlyphOutline` calls; the recipe and parity witnesses prove transport/indexing. The remaining Dozen cap-bound compile is inferred to be in the driver’s handling of the 64-segment `SdfCore_GlyphOutline` struct/loop shape, not compile-time outline literals. A further generator design is outside this run’s authorized smallest change.
+- **CPU CTest:** the first scoped run exposed 29 CPU tests, of which 8 were `Not Run` because their binaries were absent. After a queued build of those eight targets, the same scope passed **29/29** (one disabled); this is a clean scoped result, not a full-suite comparison against the base’s 22 known failures.
+- **Visual evidence:** the existing Dozen localized-sign PNG was inspected against the visual-bible concerns for glyph legibility, contrast, orientation, and reference provenance (T03/T04/T07/T10/T13). It is not a published reference and no new capture was produced, so no byte/tolerance visual claim is made.
+
+## SPT DISPOSITION
+
+- **R631 — PARTIAL.** R631(1) is covered by the existing `native` CTest labels and the runtime-buffer implementation; the app build is now landable and GPU parity remains green. R631(2) is not green on Dozen because the text-scene compile reaches the 16 GiB cap. R631(3) is intentionally not applied. Native Windows/RADV reference captures remain unavailable in this lane.
+
 ## STOPs
 
-- **Application/native capture witness unavailable.** The current `VixenApp` build cannot reach the changed application translation units: after the documented `UNDERTOW_ROOT` repair and CMake cache repair, the queued target repeatedly stalls in `ui_shader_spirv_regen` (`timeout 90s` and `timeout 120s`, both exit 124). An earlier pre-cache attempt reached the pinned FidelityFX shader-blob prerequisite and stalled in `FidelityFX_SC.exe`. No current `vixen_lookdev_capture` binary is therefore valid evidence for this change.
-- **Native byte/tolerance reference comparison not run.** Native Windows/RADV is not available in this lane, and the app target did not produce a current capture executable.
-- **Full CPU CTest failing-set comparison not run.** The required full CPU set (base reports 22 known failures) cannot be compared against fresh binaries until the app build prerequisite is repaired; no before/after failure delta is claimed.
+- **Dozen glyph text-scene remains cap-bound.** The runtime SSBO/parity path is correct, but the localized-sign capture reaches the enforced 16 GiB cap before producing a frame. R631(2)/(3) need a further generator change or owner decision about the shader’s 64-segment evaluation shape.
+- **Native byte/tolerance reference comparison not run.** Native Windows/RADV is not available in this lane’s assigned worktree/launcher, so no native capture or reference comparison can be claimed.
+- **Full CPU 22-failure delta not established.** The fresh app-focused tree exposed only 29 CPU tests; all 29 passed after building their missing binaries. The complete base CPU set was not built or rerun, so no full-suite before/after delta is claimed.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-- proposed: VIXEN Text CMake requires ambient UNDERTOW_ROOT
-- proposed: VIXEN SDI regeneration path depends on caller cwd
-- proposed: VIXEN CMake reconfigure needs cache properties for provisioning switches
-- proposed: VIXEN app object builds are coupled to a stalled FidelityFX shader generator
-- proposed: VIXEN app builds repeatedly regenerate UI SPIR-V without a bounded cache path
+- proposed: VIXEN FidelityFX custom commands hash the ambient PATH
+- carried forward: VIXEN Text CMake requires ambient UNDERTOW_ROOT
+- carried forward: VIXEN SDI regeneration path depends on caller cwd
+- carried forward: VIXEN CMake reconfigure needs cache properties for provisioning switches
+- carried forward: VIXEN app object builds are coupled to a stalled FidelityFX shader generator
+- carried forward: VIXEN app builds repeatedly regenerate UI SPIR-V without a bounded cache path

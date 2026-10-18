@@ -461,13 +461,16 @@ set(RENDERGRAPH_UI_SOURCES
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     set(_ui_shader_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/Ui/shaders")
-    add_custom_target(ui_shader_spirv_regen
+    set(_ui_shader_header "${CMAKE_CURRENT_SOURCE_DIR}/include/Ui/UiShaderSpirv.g.h")
+    add_custom_command(
+        OUTPUT "${_ui_shader_header}"
         COMMAND "${Python3_EXECUTABLE}" "${_ui_shader_dir}/regenerate-ui-shader-header.py" --ui-only
         DEPENDS "${_ui_shader_dir}/regenerate-ui-shader-header.py"
             "${_ui_shader_dir}/ui.vert" "${_ui_shader_dir}/ui.frag"
-        BYPRODUCTS "${CMAKE_CURRENT_SOURCE_DIR}/include/Ui/UiShaderSpirv.g.h"
         COMMENT "[codegen] regenerate UiShaderSpirv.g.h from ui.vert/ui.frag"
         VERBATIM)
+    add_custom_target(ui_shader_spirv_regen
+        DEPENDS "${_ui_shader_header}")
 endif()
 
 # ============================================================================
