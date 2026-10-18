@@ -728,6 +728,10 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
     endif()
 endif()
 
+get_property(_vixen_check_targets GLOBAL PROPERTY VIXEN_CHECK_TARGETS)
+add_custom_target(vixen_codegen_checks)
+add_dependencies(vixen_codegen_checks ${_vixen_check_targets})
+
 # ============================================================================
 # GENERATED VERSION HEADER (AR#13)
 # ============================================================================
