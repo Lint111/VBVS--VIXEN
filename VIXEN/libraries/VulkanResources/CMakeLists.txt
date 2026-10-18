@@ -19,9 +19,6 @@ set(VULKANRESOURCES_SOURCES
     src/CapabilityGraph.cpp
     src/error/VulkanError.cpp
     src/Time/EngineTime.cpp
-    src/TextureHandling/Loading/GLITextureLoader.cpp
-    src/TextureHandling/Loading/STBTextureLoader.cpp
-    src/TextureHandling/Loading/TextureLoader.cpp
 )
 
 set(VULKANRESOURCES_HEADERS
@@ -34,9 +31,6 @@ set(VULKANRESOURCES_HEADERS
     include/CapabilityGraph.h
     include/ConfiguredOptionalPath.h
     include/VulkanGlobalNames.h
-    include/TextureHandling/Loading/TextureLoader.h
-    include/TextureHandling/Loading/GLITextureLoader.h
-    include/TextureHandling/Loading/STBTextureLoader.h
 )
 
 # ============================================================================
@@ -84,10 +78,8 @@ target_link_libraries(VulkanResources
         Logger
         ${VULKAN_LIB_LIST}
         glm::glm
-        gli  # Needed for GLITextureLoader
         glfw  # Cross-platform Vulkan surface (glfwCreateWindowSurface) + required-extension query
     PRIVATE
-        stb  # Needed for STBTextureLoader (header-only)
         ResourceManagement  # Sprint 5 Phase 2.5.3: Upload infrastructure
 )
 
@@ -103,13 +95,6 @@ set_target_properties(VulkanResources PROPERTIES
 
 # Platform surface handling is now cross-platform via GLFW (glfwCreateWindowSurface); no
 # VK_USE_PLATFORM_WIN32_KHR define needed.
-
-# Exclude STBTextureLoader from PCH (needs STB headers not available during PCH generation)
-set_source_files_properties(
-    src/TextureHandling/Loading/STBTextureLoader.cpp
-    PROPERTIES
-        SKIP_PRECOMPILE_HEADERS ON
-)
 
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)

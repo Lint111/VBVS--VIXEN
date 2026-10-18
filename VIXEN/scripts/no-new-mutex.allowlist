@@ -88,5 +88,5 @@ VIXEN/libraries/ShaderManagement/src/ShaderCompiler.cpp	1	SH7
 VIXEN/libraries/ShaderManagement/src/ShaderLibrary.cpp	0	SH2
 VIXEN/libraries/VulkanResources/include/VulkanDevice.h	1	VK1,VK2
 VIXEN/libraries/VulkanResources/src/CommandBufferUtility.cpp	0	VK2-borrowed
-VIXEN/libraries/VulkanResources/src/TextureHandling/Loading/TextureLoader.cpp	0	VK2-borrowed
+VIXEN/libraries/Textures/src/TextureLoader.cpp	0	VK2-borrowed
 VIXEN/libraries/VulkanResources/src/VulkanDevice.cpp	0	VK1,VK2

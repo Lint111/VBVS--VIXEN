@@ -4,6 +4,8 @@
 #include "ILoggable.h"
 #include "error/VulkanError.h"
 
+#include <cstdint>
+
 // Forward declaration
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -13,19 +15,19 @@ namespace Vixen::TextureHandling {
 
 using Vixen::Vulkan::Resources::VulkanDevice;
 
-// Texture data owned by the caller after loading
+// Texture data owned by the caller after loading. The sampler is supplied by the
+// texture module's SamplerCacher; this loader owns only the image resources.
 struct TextureData {
-    VkSampler sampler;
-    VkImage image;
-    VkImageLayout imageLayout;
-    VkMemoryAllocateInfo memAllocInfo;
-    VkDeviceMemory mem;
-    VkImageView view;
-    VkCommandBuffer cmdTexture;  // Command buffer used for texture upload
-    uint32_t minMapLevels;
-    uint32_t layerCount;
-    uint32_t textureWidth, textureHeight;
-    VkDescriptorImageInfo descsImageInfo;
+    VkImage image = VK_NULL_HANDLE;
+    VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkMemoryAllocateInfo memAllocInfo{};
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkCommandBuffer cmdTexture = VK_NULL_HANDLE;  // Command buffer used for texture upload
+    uint32_t minMapLevels = 1;
+    uint32_t layerCount = 1;
+    uint32_t textureWidth = 0;
+    uint32_t textureHeight = 0;
 };
 
 // Pixel data loaded from file
@@ -43,12 +45,6 @@ struct PixelData {
 
 // Configuration for texture upload
 struct TextureLoadConfig {
-    enum class UploadMode {
-        Linear,   // CPU-visible linear tiling (VK_IMAGE_TILING_LINEAR)
-        Optimal   // GPU-optimized optimal tiling (VK_IMAGE_TILING_OPTIMAL) via staging
-    };
-
-    UploadMode uploadMode = UploadMode::Optimal;
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 };
@@ -88,14 +84,8 @@ protected:
     VkCommandPool cmdPool;
 
 private:
-    // Upload linear - map memory directly, no staging buffer
-    VulkanStatus UploadLinear(
-        const PixelData& pixelData,
-        TextureData* texture,
-        const TextureLoadConfig& config
-    );
-
-    // Upload optimal - use staging buffer for GPU-optimal layout
+    // Upload through the existing staging/fence path. Mip generation remains a
+    // later slice; callers currently provide one RGBA8 mip level.
     VulkanStatus UploadOptimal(
         const PixelData& pixelData,
         TextureData* texture,
@@ -118,16 +108,11 @@ private:
         uint32_t mipLevels
     );
 
-    VulkanStatus CreateSampler(
-        TextureData* texture,
-        uint32_t mipLevels
-    );
-
     // Release any GPU resources already created in `texture` when a load fails partway, so error
     // paths leak nothing (Load() calls this on upload failure).
     void DestroyPartialTexture(TextureData& texture);
 
-    public:
+public:
     void SetImageLayout(
         VkImage image,
         VkImageAspectFlags aspectMask,

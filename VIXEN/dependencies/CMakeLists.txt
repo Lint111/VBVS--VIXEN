@@ -23,39 +23,14 @@ if(NOT TARGET Vulkan::Headers)
 endif()
 
 # ============================================================================
-# GLI - Compressed Texture Loading (DDS/KTX)
-# ============================================================================
-
-set(GLI_TEST_ENABLE OFF CACHE BOOL "" FORCE)
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)  # Skip git update - use cached version
-FetchContent_Declare(
-    gli
-    GIT_REPOSITORY https://github.com/g-truc/gli.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
-)
-
-FetchContent_MakeAvailable(gli)
-
-# gli is header-only; mark its headers SYSTEM (same rationale as glm above --
-# INTERFACE compile options leak -w into every consumer TU and defeat -Werror).
-if(TARGET gli)
-    get_target_property(_gli_includes gli INTERFACE_INCLUDE_DIRECTORIES)
-    if(_gli_includes)
-        set_property(TARGET gli APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${_gli_includes})
-    endif()
-    unset(_gli_includes)
-    set_target_properties(gli PROPERTIES FOLDER "Dependencies")
-endif()
-
-# ============================================================================
 # STB - Uncompressed Image Loading (PNG/JPG)
 # ============================================================================
 
 FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG        master
+    # stb_image v2.30 tree; pin the exact source revision for reproducible decodes.
+    GIT_TAG        2c980bb59875b0d32144a71867fbdebb2f77cd20
     GIT_SHALLOW    TRUE
 )
 
@@ -150,9 +125,6 @@ endif()
 if(DEFINED vulkanheaders_SOURCE_DIR)
     include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
 endif()
-
-# GLI is header-only
-include_directories(BEFORE ${gli_SOURCE_DIR})
 
 # STB is header-only
 include_directories(BEFORE ${stb_SOURCE_DIR})

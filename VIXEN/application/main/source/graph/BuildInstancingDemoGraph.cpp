@@ -117,11 +117,9 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     // Pull the camera back so the whole gridDim^2 grid (spacing 2.5) is in frame.
     mvpUniform->SetParameter(MvpUniformNodeConfig::PARAM_CAMERA_DISTANCE, 30.0f);
 
-    // Albedo texture (binding 1): empty FILE_PATH => TextureLoaderNode generates a default
+    // Albedo texture (binding 1): empty FILE_PATH => the Textures module generates a default
     // checkerboard, so the general Draw.frag `sampler2D tex` path runs with zero asset deps.
     auto* texture = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureNode));
-    texture->SetParameter(TextureLoaderNodeConfig::SAMPLER_FILTER, std::string("Linear"));
-    texture->SetParameter(TextureLoaderNodeConfig::SAMPLER_ADDRESS_MODE, std::string("Repeat"));
     if (auto* texLogger = texture->GetLogger()) {
         texLogger->SetEnabled(true);
         texLogger->SetTerminalOutput(true);

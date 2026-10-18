@@ -38,6 +38,9 @@ add_subdirectory(Text)
 # CashSystem library (caching and resource management)
 add_subdirectory(CashSystem)
 
+# Texture runtime (STB decode, Vulkan upload, resident texture cache)
+add_subdirectory(Textures)
+
 # RenderGraph static library (render graph system for managing Vulkan resources and execution).
 # KernelDispatch is configured first because RenderGraph lowers array-task work onto its Tier-A
 # DAG/executor contract.

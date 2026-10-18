@@ -694,6 +694,7 @@ target_link_libraries(RenderGraphCore
     PUBLIC
         Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
         VulkanResources
+        Textures
         Logger
         EventBus
         ResourceManagement     # Includes VMA transitively

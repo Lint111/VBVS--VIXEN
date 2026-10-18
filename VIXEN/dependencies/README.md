@@ -6,7 +6,6 @@ Third-party external libraries fetched via CMake FetchContent.
 
 - **GLM** - OpenGL Mathematics library
 - **Vulkan Headers** - Khronos Vulkan header files
-- **GLI** - Compressed texture loading (DDS/KTX)
 - **STB** - Uncompressed image loading (PNG/JPG)
 - **Hash Provider** - OpenSSL or stbrumme/hash-library fallback
 - **GoogleTest** - Unit testing framework (if BUILD_TESTS enabled)

@@ -48,9 +48,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// GLI - Texture library for compressed formats (DDS/KTX)
-#include <gli/gli.hpp>
-
 // ============================================================================
 // Standard Library - Containers
 // ============================================================================
