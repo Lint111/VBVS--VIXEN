@@ -27,7 +27,6 @@ VulkanResult<STBTextureLoader::DecodedImage> STBTextureLoader::DecodeFile(const 
     if (!pixels) {
         std::string reason = std::string("Failed to load texture file: ") + fileName
             + ". STB Error: " + stbi_failure_reason();
-        LOG_ERROR(reason);
         return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, reason});
     }
 

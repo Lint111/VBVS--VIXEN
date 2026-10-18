@@ -16,6 +16,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Generated/AccumulationConfig.g.h"
 #include "VulkanDevice.h"
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compare)
 #include <cstdlib>
 #include <cstring>
