@@ -802,7 +802,8 @@ protected:
     // node renders the mip fallback with REAL samples when the pool came from
     // the production baker path, not just the direct ConcatenateSdfWithMips call.
     void RenderPoolAndMeasure(Vixen::SVO::ConcatenatedOctrees pool, bool residencyRequested,
-                              const char* outPath, RenderStats& stats) {
+                              const char* outPath, RenderStats& stats,
+                              uint32_t targetOctreeIndex = 0u) {
         using C = BodyOctreeSceneNodeConfig;
 
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
@@ -828,7 +829,7 @@ protected:
         // 0.5*kWorldGridSize along each axis.
         constexpr float kRenderScale = 1.0f;
         const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
-            MakeInst(0.0f, 0.0f, 0.0f, kRenderScale, 0u),
+            MakeInst(0.0f, 0.0f, 0.0f, kRenderScale, targetOctreeIndex),
         };
         const glm::vec3 bodyCentre(0.5f * kWorldGridSize * kRenderScale);
         node->SetInstances(instances);
@@ -1309,4 +1310,51 @@ TEST_F(MipFallbackRenderTest, MultiOctreeSecondBodyRendersCorrectlyAfterResidenc
     EXPECT_GT(ratio, 0.5) << "Post-grant silhouette is suspiciously smaller than boot";
     EXPECT_LT(ratio, 6.0) << "Post-grant silhouette is implausibly larger than boot "
                              "(possible addressing corruption)";
+}
+
+// ---------------------------------------------------------------------------
+// T-2898: OctreeConfig.mipPoolBase counts MipSample (8 B) units (MipBake.h), so the
+// shader must scale base + node*channelCount + channel by 2 floats TOGETHER. Octree 0
+// has base 0 and hides a unit mix; octree 1 then reads part of its samples out of
+// octree 0's slice. Each octree gets its own slice of the identical sphere: with
+// octree 0's slice zeroed octree 1 must still match the reference silhouette, and with
+// octree 1's own slice zeroed it must render nothing (any hit means it read octree 0).
+// ---------------------------------------------------------------------------
+TEST_F(MipFallbackRenderTest, SecondOctreeMipFallbackReadsOnlyItsOwnSlice) {
+    ASSERT_TRUE(deviceConfirmed_);
+
+    RenderStats reference;
+    ASSERT_NO_FATAL_FAILURE(
+        BakeRenderAndMeasure(/*residencyRequested=*/false, "/tmp/mip_fallback_second_ref.png", reference));
+    ASSERT_GT(reference.hitPixels, 5000);
+
+    auto renderSecondOctree = [&](bool zeroFirstSlice, const char* outPath, RenderStats& stats) {
+        std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs(2u, &CachedSphereBody());
+        Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
+        ASSERT_EQ(pool.count, 2u);
+        const size_t secondByte =
+            size_t(Vixen::SVO::mipPoolBaseOf(pool.configs[1])) * sizeof(Vixen::SVO::MipSample);
+        ASSERT_GT(secondByte, 0u) << "octree 1 must start past octree 0's mip slice";
+        ASSERT_LE(secondByte, pool.mipPool.size());
+        if (zeroFirstSlice) {
+            std::fill(pool.mipPool.begin(), pool.mipPool.begin() + secondByte, uint8_t{0});
+        } else {
+            std::fill(pool.mipPool.begin() + secondByte, pool.mipPool.end(), uint8_t{0});
+        }
+        RenderPoolAndMeasure(std::move(pool), /*residencyRequested=*/false, outPath, stats,
+                             /*targetOctreeIndex=*/1u);
+    };
+
+    RenderStats ownSliceOnly, ownSliceZeroed;
+    ASSERT_NO_FATAL_FAILURE(renderSecondOctree(/*zeroFirstSlice=*/true,
+                                               "/tmp/mip_fallback_second_own_slice.png", ownSliceOnly));
+    ASSERT_NO_FATAL_FAILURE(renderSecondOctree(/*zeroFirstSlice=*/false,
+                                               "/tmp/mip_fallback_second_own_zeroed.png", ownSliceZeroed));
+
+    EXPECT_EQ(ownSliceOnly.hitPixels, reference.hitPixels)
+        << "octree 1 must shade from its own mip slice exactly like octree 0 does";
+    EXPECT_EQ(ownSliceOnly.centerColBandHits, reference.centerColBandHits);
+    EXPECT_EQ(ownSliceZeroed.hitPixels, 0)
+        << "octree 1 hit pixels with its own mip slice zeroed: the far-field read left its slice "
+           "(mipPoolBase is in MipSample units, the pool is indexed in floats)";
 }
