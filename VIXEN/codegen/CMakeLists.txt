@@ -520,6 +520,22 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             "${VIXEN_DOTNET}" exec
             --runtimeconfig "${_codegen_dotnet_cli_runtimeconfig_path}"
             "${_codegen_dotnet_cli_dll}" build)
+        # Shared direct-run launcher: `dotnet-invariant restore|build <CodegenTool.csproj> ...` outside CMake
+        # gets the same invariant CLI runtimeconfig as the target build, without -p: or DOTNET_* overrides.
+        set(_codegen_dotnet_wrapper_stage "${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant.stage")
+        vixen_write_if_different("${_codegen_dotnet_wrapper_stage}/dotnet-invariant" "#!/bin/sh
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimeconfig_path}\" \"${_codegen_dotnet_cli_dll}\" \"$@\"
+")
+        file(COPY "${_codegen_dotnet_wrapper_stage}/dotnet-invariant"
+            DESTINATION "${CMAKE_CURRENT_BINARY_DIR}"
+            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        message(STATUS "[codegen] direct-run dotnet launcher: ${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant")
+        add_test(NAME Codegen.DirectDotnetLauncher
+            COMMAND "${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant" --version)
+        set_tests_properties(Codegen.DirectDotnetLauncher PROPERTIES
+            LABELS "Codegen;cpu" PASS_REGULAR_EXPRESSION "^[0-9]+\\.[0-9]+\\.[0-9]+")
     endif()
     # Isolate SDK intermediates as well as binaries. The cache key includes the
     # kernel pin, host/SDK identity and build recipe, not the client build path.
