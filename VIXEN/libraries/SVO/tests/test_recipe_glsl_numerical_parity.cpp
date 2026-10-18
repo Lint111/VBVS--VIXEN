@@ -242,13 +242,15 @@ std::string ComposeGlyphComputeShader(const std::string& glyphInstanceGlsl,
                                       const std::string& emittedFieldFn) {
     std::ostringstream ss;
     ss << "#version 450\n" << glyphInstanceGlsl << "\n" << sdfCoreGlsl << "\n";
+    // R631: the runtime glyph SSBO must be declared before the emitted field function is
+    // parsed; the function now indexes this buffer instead of defining a local literal array.
+    ss << "layout(set = 0, binding = 3, std430) readonly buffer InGlyphs { GlyphOutlineInstance glyphOutlineInstances[]; };\n";
     ss << emittedFieldFn << "\n";
     ss << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
 layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };
 layout(set = 0, binding = 2, std430) readonly buffer InParams { float params[6]; };
-layout(set = 0, binding = 3, std430) readonly buffer InGlyphs { GlyphOutlineInstance glyphOutlineInstances[]; };
 void main() {
     if (gl_GlobalInvocationID.x >= points.length()) return;
     float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);

@@ -66,6 +66,13 @@ SdfInstruction combine(SdfOpCode op, float k = 0.f) {
     return in;
 }
 
+SdfInstruction glyph(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::GlyphOutline);
+    in.data[0] = std::bit_cast<float>(index);
+    return in;
+}
+
 // Builds a compiled ShaderBundleBuilder::BuildResult for the given source, mirroring
 // BuildRenderGraph.cpp's own builder configuration (include paths, program name, pipeline
 // type) so this test exercises the SAME preprocessing/compile path production does.
@@ -144,6 +151,33 @@ TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {
     EXPECT_TRUE(result.success) << result.errorMessage
         << "\n--- spliced source (first 4000 chars after marker) ---\n"
         << spliced.substr(spliced.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), 4000);
+}
+
+TEST(UberShaderSplice, GlyphRowsUseFlattenedRuntimeBuffer) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    for (uint32_t recipeId = 100; recipeId < 102; ++recipeId) {
+        RecipeRegistry::RecipeEntry entry{};
+        entry.bytecode = {glyph(/*localIndex=*/0)};
+        entry.glyphInstances.emplace_back();
+        ASSERT_EQ(registry.Register(recipeId, entry), RecipeRegistry::RegisterResult::Ok);
+    }
+
+    std::vector<float> occupancy;
+    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphRows;
+    const std::string spliced = SpliceProceduralRecipesIntoSource(
+        raw, registry, &occupancy, &glyphRows);
+
+    ASSERT_EQ(glyphRows.size(), 2u);
+    EXPECT_NE(spliced.find("glyphOutlineInstances[0]"), std::string::npos);
+    EXPECT_NE(spliced.find("glyphOutlineInstances[1]"), std::string::npos);
+    EXPECT_EQ(spliced.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
+        << "glyph outlines must not be emitted as shader-local arrays";
+
+    const auto result = CompileSource(spliced);
+    EXPECT_TRUE(result.success) << result.errorMessage;
 }
 
 // --- N=10 registered recipes: proves the switch scales + the N=3/N=10 measurement scene

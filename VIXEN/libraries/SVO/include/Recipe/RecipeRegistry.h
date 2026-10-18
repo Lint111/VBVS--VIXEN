@@ -271,6 +271,18 @@ public:
         return out;
     }
 
+    // GlyphOutline bytecode operands are local to each recipe entry. The runtime shader
+    // transport flattens all entries into one SSBO in this same Ids() order, so emitters and
+    // specialized pipelines use this deterministic prefix sum to rebase an entry's indices.
+    [[nodiscard]] uint32_t GlyphInstanceBase(uint32_t recipeId) const {
+        uint32_t base = 0;
+        for (const auto& [id, entry] : entries_) {
+            if (id == recipeId) return base;
+            base += static_cast<uint32_t>(entry.glyphInstances.size());
+        }
+        return base;
+    }
+
 private:
     std::uint64_t generation_ = 0;
 

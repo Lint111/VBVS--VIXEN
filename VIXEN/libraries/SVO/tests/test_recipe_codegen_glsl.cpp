@@ -25,6 +25,12 @@ SdfInstruction MakeOp(SdfOpCode code) {
     in.opCode = static_cast<uint8_t>(code);
     return in;
 }
+SdfInstruction MakeGlyph(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::GlyphOutline);
+    in.data[0] = std::bit_cast<float>(index);
+    return in;
+}
 } // namespace
 
 TEST(EmitProceduralFieldFunctionGlsl, SingleSphereProducesComposableFunction) {
@@ -62,6 +68,19 @@ TEST(EmitProceduralFieldFunctionGlsl, InstructionFloatLiteralsRoundTripExactly) 
         EXPECT_NE(glsl.find("vec3(" + literal + ", " + literal + ", " + literal + "), " + literal),
             std::string::npos) << glsl;
     }
+}
+
+TEST(EmitProceduralFieldFunctionGlsl, GlyphOutlineUsesRuntimeBufferAndRebasedIndex) {
+    SdfInstruction prog[] = {MakeGlyph(/*localIndex=*/2)};
+    Yeroket::Sdf::Generated::GlyphOutlineInstance glyph{};
+    const std::string glsl = EmitProceduralFieldFunctionGlsl(
+        prog, 1, /*recipeId=*/12, /*emitDeclaredPositionOutParam=*/false, nullptr,
+        std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&glyph, 1),
+        /*glyphInstanceBase=*/5);
+
+    EXPECT_NE(glsl.find("glyphOutlineInstances[7]"), std::string::npos) << glsl;
+    EXPECT_EQ(glsl.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
+        << "glyph rows must be runtime SSBO data, not shader literals:\n" << glsl;
 }
 
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. Proves

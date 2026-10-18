@@ -223,14 +223,15 @@ inline std::string EmitSpecializedRecipeComputeShader(
     const RecipeRegistry::RecipeEntry& entry,
     uint32_t recipeId,
     const std::string& sdfCoreKernelsGlsl,
-    bool emitGradientNormal = true)
+    bool emitGradientNormal = true,
+    uint32_t glyphInstanceBase = 0)
 {
     std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
         fieldFn = EmitProceduralFieldFunctionGlsl(
             entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
-            false, nullptr, entry.glyphInstances);
+            false, nullptr, entry.glyphInstances, glyphInstanceBase);
     }
     std::cout << "[RecipeBucketedDispatch] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
@@ -246,6 +247,11 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << "layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\n\n";
 
     out << sdfCoreKernelsGlsl << "\n\n";
+    if (!entry.glyphInstances.empty()) {
+        out << "layout(std430, binding = 5) readonly buffer GlyphOutlineBuffer {\n"
+               "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+               "};\n\n";
+    }
     out << fieldFn << "\n";
 
     // Standalone binding namespace (0..4), mirrors RecipeInstanceBucketing.comp's own
@@ -385,14 +391,15 @@ inline std::string EmitSpecializedRecipeComputeShader(
 inline std::string EmitSpecializedRecipeShadeShader(
     const RecipeRegistry::RecipeEntry& entry,
     uint32_t recipeId,
-    const std::string& sdfCoreKernelsGlsl)
+    const std::string& sdfCoreKernelsGlsl,
+    uint32_t glyphInstanceBase = 0)
 {
     std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
         fieldFn = EmitProceduralFieldFunctionGlsl(
             entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
-            false, nullptr, entry.glyphInstances);
+            false, nullptr, entry.glyphInstances, glyphInstanceBase);
     }
     std::cout << "[BucketShade] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
@@ -404,6 +411,11 @@ inline std::string EmitSpecializedRecipeShadeShader(
     out << "// EmitSpecializedRecipeShadeShader -- do not hand-edit.\n\n";
     out << "layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\n\n";
     out << sdfCoreKernelsGlsl << "\n\n";
+    if (!entry.glyphInstances.empty()) {
+        out << "layout(std430, binding = 5) readonly buffer GlyphOutlineBuffer {\n"
+               "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+               "};\n\n";
+    }
     out << fieldFn << "\n";
     out << kSpecializedRecipeInterfaceGlsl;
     out << "void main() {\n";
