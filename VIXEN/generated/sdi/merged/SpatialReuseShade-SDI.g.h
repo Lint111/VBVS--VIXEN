@@ -393,17 +393,17 @@ struct MiningBeamInstanceTransformBuffer {
  * @brief GlyphOutlineBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x514694740a3ac150 (for runtime discovery)
+ * Layout VixenHash: 0xff580e90c5d8ca0c (for runtime discovery)
  */
 struct GlyphOutlineBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x514694740a3ac150ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xff580e90c5d8ca0cULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "GlyphOutlineInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 2584;
+        static constexpr uint32_t SIZE = 3616;
         static constexpr uint32_t BINDING = 0;
     };
 
