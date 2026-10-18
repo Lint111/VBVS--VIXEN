@@ -29,6 +29,11 @@ add_test(NAME Native.WslDozenHostGate
             -P "${VIXEN_ROOT}/cmake/tests/test_wsl_dozen_host_gate.cmake")
 set_tests_properties(Native.WslDozenHostGate PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.WindowsGitTrust
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_GIT_TRUST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windows-git-trust"
+            -P "${VIXEN_ROOT}/cmake/tests/test_windows_git_trust.cmake")
+set_tests_properties(Native.WindowsGitTrust PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
