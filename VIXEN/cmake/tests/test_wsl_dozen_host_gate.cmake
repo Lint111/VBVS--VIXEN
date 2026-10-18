@@ -40,13 +40,16 @@ if(NOT windows_output MATCHES "DZN_ICD=\\[\\]")
     message(FATAL_ERROR "a Windows host provisioned WSL Dozen: ${windows_output}")
 endif()
 
-# Control: a Unix host with /dev/dxg (WSL itself) still takes the provisioned-cache branch.
-run_gate(linux linux_output)
-if(EXISTS "/dev/dxg")
-    if(NOT linux_output MATCHES "DZN_ICD=\\[${cache}/dzn_icd.json\\]")
-        message(FATAL_ERROR "WSL no longer picks up the provisioned Dozen cache: ${linux_output}")
+# Control: a Unix host with /dev/dxg (WSL itself) still takes the provisioned-cache branch. Only a
+# real Unix host can run it; a Windows host cannot pretend to be one.
+if(CMAKE_HOST_UNIX)
+    run_gate(linux linux_output)
+    if(EXISTS "/dev/dxg")
+        if(NOT linux_output MATCHES "DZN_ICD=\\[${cache}/dzn_icd.json\\]")
+            message(FATAL_ERROR "WSL no longer picks up the provisioned Dozen cache: ${linux_output}")
+        endif()
+    elseif(NOT linux_output MATCHES "DZN_ICD=\\[\\]")
+        message(FATAL_ERROR "a host without /dev/dxg provisioned WSL Dozen: ${linux_output}")
     endif()
-elseif(NOT linux_output MATCHES "DZN_ICD=\\[\\]")
-    message(FATAL_ERROR "a host without /dev/dxg provisioned WSL Dozen: ${linux_output}")
 endif()
 message(STATUS "WSL Dozen provisioning is gated on a Unix host as well as /dev/dxg")
