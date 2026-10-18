@@ -683,6 +683,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
         COMMENT "[codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations"
         VERBATIM)
+    # libraries/ is configured before codegen/, so SVO (and everything linking it) is ordered here.
+    if(TARGET SVO)
+        add_dependencies(SVO recipe_simd_check)
+    endif()
     add_custom_target(recipe_simd_regen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
         COMMENT "[codegen] regenerate recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator from merged declarations"
