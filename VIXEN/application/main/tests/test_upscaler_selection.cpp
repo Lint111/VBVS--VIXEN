@@ -103,7 +103,7 @@ TEST(UpscalerSelectionTest, EndsAtNativeWhenAllRequestedBackendsFail) {
               UpscalerSelectionFailureReason::OverBudget);
 }
 
-TEST(UpscalerSelectionTest, Fsr3FallsBackToFsr1ThenNativeWhenUnqualifiedOrUnsupported) {
+TEST(UpscalerSelectionTest, OptionalProviderFallsBackToFsr1ThenNativeWhenUnqualifiedOrUnsupported) {
     auto fsr3 = Eligible();
     fsr3.qualified = false;
     const std::array withFsr1{
@@ -131,7 +131,7 @@ TEST(UpscalerSelectionTest, Fsr3FallsBackToFsr1ThenNativeWhenUnqualifiedOrUnsupp
     ASSERT_EQ(nativeResult.rejected.size(), 2u);
 }
 
-TEST(UpscalerSelectionTest, Fsr3InitializationFailureAdvancesThroughFsr1ToNative) {
+TEST(UpscalerSelectionTest, OptionalProviderInitializationFailureAdvancesThroughFsr1ToNative) {
     auto fsr3 = Eligible();
     fsr3.initialized = false;
     auto fsr1 = Eligible();
