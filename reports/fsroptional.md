@@ -14,7 +14,7 @@ Evidence: [w9-fsroptional-evidence](/home/liory/codeman-cases/undertow/reports/w
 ### VIXEN FSR3-OFF
 
 - Queued CMake configure passed with `-DBUILD_TESTS=ON -DVIXEN_WITH_FSR3=OFF -DVIXEN_CODEGEN_GATE=ON`; `CMakeCache.txt` records `VIXEN_WITH_FSR3:BOOL=OFF` and configure printed `[FSR3] OFF: shader compiler missing; optional provider defaults off`.
-- No aggregate `vixen_codegen_checks` target exists in the generated target list; the configure completed the individual codegen targets.
+- No aggregate `vixen_codegen_checks` target exists in the generated target list; the configure exposed only the individual codegen targets.
 - Queued focused build passed for `test_upscaler_selection` and `test_vulkanresources_basic`.
 - Queued `Application.UpscalerSelection`: **1/1 passed** after the symbol-name correction.
 - Queued Vulkan `VulkanResources_*` CTest: **13 passed, 1 skipped, 0 failed** out of 14. The skip is the pre-existing device/driver identity case.
