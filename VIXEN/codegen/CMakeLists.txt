@@ -183,6 +183,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
                 "'Windows Subsystem for Linux' feature (wsl.exe on PATH) or run the WSL-side configure.")
             return()
         endif()
+        if(WIN32 AND NOT "$ENV{LOCALAPPDATA}" STREQUAL "")
+            file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" _local_app_data)
+            vixen_ninja_visible_launcher("${WSL_EXE}" "${_local_app_data}/Microsoft/WindowsApps" _wsl_exe)
+            if(NOT _wsl_exe STREQUAL "${WSL_EXE}")
+                message(STATUS "[codegen] using ${_wsl_exe} as the WSL launcher: Ninja cannot stat ${WSL_EXE}")
+                set(WSL_EXE "${_wsl_exe}" CACHE FILEPATH "WSL launcher for codegen checks" FORCE)
+            endif()
+        endif()
         # Resolve the WSL-side dotnet by asking WSL itself, rather than trying to reverse-parse
         # VIXEN_DOTNET's UNC form — deterministic and survives whatever hint matched above.
         execute_process(

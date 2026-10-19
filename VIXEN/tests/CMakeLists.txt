@@ -39,6 +39,11 @@ add_test(NAME Native.KernelPinOverride
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_pin_override.cmake")
 set_tests_properties(Native.KernelPinOverride PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.NinjaVisibleLauncher
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_LAUNCHER_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/ninja-visible-launcher"
+            -P "${VIXEN_ROOT}/cmake/tests/test_ninja_visible_launcher.cmake")
+set_tests_properties(Native.NinjaVisibleLauncher PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
