@@ -772,6 +772,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             list(APPEND _gpu_schema_excluded_sources
                 "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
         endif()
+        # Likewise the Substrate fixture kinds: they use the schema field `.Rate`
+        # facet, which the pinned kernel's source reader does not parse, and
+        # FrameTargets references none of them.
+        if(EXISTS "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
+            list(APPEND _gpu_schema_excluded_sources
+                "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
+        endif()
         set(_gpu_schema_source_files)
         if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")
             file(GLOB_RECURSE _undertow_gpu_schema_sources CONFIGURE_DEPENDS
