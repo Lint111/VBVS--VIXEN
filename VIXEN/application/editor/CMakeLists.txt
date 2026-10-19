@@ -201,6 +201,30 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             LABELS "VIXENCapture;WSL"
             ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
         vixen_lock_gpu_tests(TESTS vixen_wsl_capture_witness)
+
+        # The instancing demo renders straight to a window swapchain (no offscreen path), so its
+        # producer shares this block's WSLg requirement. Capture root follows the same
+        # UT_QUEUE_CAPTURE_ROOT contract as the HUD and editor producers.
+        add_test(NAME vixen_instancing_demo_capture_producer
+            COMMAND bash -c
+                "set -eu
+                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_dir=\"\${capture_root}/instancing\"
+                mkdir -p \"\${capture_dir}\"
+                rm -f \"\${capture_dir}\"/hud_capture_*.png
+                export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
+                \"$<TARGET_FILE:VIXEN>\" > \"\${capture_dir}/instancing_demo.log\" 2>&1
+                for frame in 5 45 75; do test -s \"\${capture_dir}/hud_capture_\${frame}.png\"; done")
+        set_tests_properties(vixen_instancing_demo_capture_producer PROPERTIES
+            WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
+            TIMEOUT 180)
+        vixen_set_suite_properties(RenderGraph GPU TESTS vixen_instancing_demo_capture_producer
+            TEST_ENVIRONMENT
+                "DISPLAY=:0"
+                "VIXEN_INSTANCING_DEMO=1"
+                "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
+                "VIXEN_EXIT_AFTER_FRAMES=85")
+        set_property(TEST vixen_instancing_demo_capture_producer APPEND PROPERTY LABELS VIXEN_INSTANCING_CAPTURE)
     endif()
 endif()
 

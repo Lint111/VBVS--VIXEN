@@ -57,10 +57,12 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     const uint32_t     kInstanceCount = kGridDim * kGridDim;
 
     // ----- Infrastructure -----
+    // main_device / main_swapchain are the names CaptureHudFrameToPng looks up, so the
+    // VIXEN_HUD_CAPTURE_FRAMES / VIXEN_HUD_CAPTURE_DIR producer captures this graph too.
     NodeHandle instanceNode    = renderGraph->AddNode<InstanceNodeType>("inst_instance");
-    NodeHandle deviceNode      = renderGraph->AddNode<DeviceNodeType>("inst_device");
+    NodeHandle deviceNode      = renderGraph->AddNode<DeviceNodeType>("main_device");
     NodeHandle windowNode      = renderGraph->AddNode<WindowNodeType>("main_window");
-    NodeHandle swapChainNode   = renderGraph->AddNode<SwapChainNodeType>("inst_swapchain");
+    NodeHandle swapChainNode   = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("inst_cmd_pool");
     NodeHandle frameSyncNode   = renderGraph->AddNode<FrameSyncNodeType>("inst_frame_sync");
 
