@@ -184,8 +184,10 @@ close to the old floor.
   contention).
 - **Look-dev:** 16 states and angles captured and passed in one process on the round-2 binary. The
   registered repeat-pixel suite (`RendersFourStatesAtFourAnglesDeterministically` via
-  `run_lookdev_capture.cmake`, 64 frames × 16 × 2 runs) and the 32 tone-map parity captures were
-  **not run** this round.
+  `run_lookdev_capture.cmake`, 64 frames × 16 × 2 runs) was **not run** this round.
+- **Tone-map parity** (spot check, 2 of the 32): `Application.ExposureTonemapParity.{reference,system}.midday.angle0`
+  both passed, and the two PNGs are byte-identical. That covers the renamed field in
+  `Reference/ExposureTonemapReference.comp`. The other 30 were not run.
 - **Cornell mining beam with HDR on** (`test_headless_cornell_graph.cpp:313,369`): **pre-existing,
   not this lane.** With HDR on, the beam frame is byte-identical to the no-beam frame.
   - Cause, from the code (not a run on the base): `SpatialReuseShade.comp`
@@ -377,10 +379,13 @@ For now the math stays in the existing hand shaders, which is the existing rende
 
 No SPT id was given for this lane. Round 2's rulings 1-2, the acceptance scenes, the skipped
 checks, the `ev100` rename and the merge are done. PARTIAL:
-- the registered look-dev repeat-pixel suite and the tone-map parity captures were not rerun;
+- the registered look-dev repeat-pixel suite and 30 of the 32 tone-map parity captures were not rerun;
 - STOP 1 needs an owner decision.
 
 ## CONSOLIDATION ISSUES
+
+Filed as proposals (`.spt-proposals/exposure.jsonl`): the mining beam with HDR on, the wave's
+texture-extraction base reds, and the stb shallow-fetch pin.
 
 - **Mining beam with HDR on** (pre-existing): the beam composite lands in `sceneRadianceImage`, but
   the HDR tone map reads `sceneRadianceHistoryOutput`. So with default-on HDR the beam is invisible
