@@ -77,6 +77,17 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             ENVIRONMENT "${_lookdev_test_environment};VK_LAYER_PATH=${_validation_layer_path};VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=500;VIXEN_WINDOW_HEIGHT=500;VIXEN_LOOKDEV_CAPTURE_DIR=${_validation_dir};VIXEN_HDR_EXPOSURE_FIXED=1"
             FAIL_REGULAR_EXPRESSION "pAccelerationStructures-03580;acceleration structure descriptor .* is using acceleration structure VkAccelerationStructureKHR 0x0")
         vixen_lock_gpu_tests(TESTS "${_validation_test}")
+
+        # Every ring image the march binds must already be in its descriptor's layout:
+        # the first frame of each of the four images is where an undeclared binding fails.
+        set(_layout_test "Application.LookdevCapture.StorageImageLayoutsMatchDescriptors")
+        add_test(NAME "${_layout_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+            "--render-scale=1.0" "--upscaler=none")
+        set_tests_properties("${_layout_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+            ENVIRONMENT "${_lookdev_test_environment};VK_LAYER_PATH=${_validation_layer_path};VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=8;VIXEN_WINDOW_WIDTH=500;VIXEN_WINDOW_HEIGHT=500;VIXEN_LOOKDEV_CAPTURE_DIR=${_validation_dir}-layouts;VIXEN_HDR_EXPOSURE_FIXED=1"
+            FAIL_REGULAR_EXPRESSION "None-09600")
+        vixen_lock_gpu_tests(TESTS "${_layout_test}")
     endif()
 
     foreach(_jitter_scale IN ITEMS 1.0 0.5)
