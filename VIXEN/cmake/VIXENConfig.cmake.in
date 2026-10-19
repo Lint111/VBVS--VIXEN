@@ -33,13 +33,12 @@ if(Vulkan_LIBRARY)
 endif()
 find_dependency(TBB)
 
-# gli / freetype / gaia ship their OWN package configs INSIDE this SDK prefix (their
+# freetype / gaia ship their OWN package configs INSIDE this SDK prefix (their
 # FetchContent install rules export configs + headers, unlike the deps bundled directly
 # into VixenTargets). They resolve from the SDK itself — still no external requirement.
 # CONFIG mode forced: these ship configs inside the SDK. Without it, find_package(freetype)
 # would hit CMake's built-in module FindFreetype.cmake (case-insensitive match on Windows)
 # and look for a system freetype instead of the bundled one.
-find_dependency(gli CONFIG)
 find_dependency(freetype CONFIG)
 # gaia's generated gaia-config.cmake is broken upstream — set_and_check(gaia_INCLUDE_DIR "")
 # with an empty path fails the existence check. Its gaia-targets.cmake is fine and

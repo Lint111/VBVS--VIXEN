@@ -25,15 +25,13 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  *
  * Parameters:
  * - FILE_PATH (string) - Path to texture file
- * - UPLOAD_MODE (string) - "Optimal" or "Linear"
- * - GENERATE_MIPMAPS (bool) - Whether to generate mipmaps
- * - SAMPLER_FILTER (string) - "Linear" or "Nearest"
- * - SAMPLER_ADDRESS_MODE (string) - "Repeat", "Clamp", or "Mirror"
+ * The extracted Textures module owns upload mode, sampler state, and mip policy;
+ * those were never read by this graph node.
  * 
  * Type ID: 112
  */
 namespace TextureLoaderNodeCounts {
-    static constexpr size_t INPUTS = 1;  // Changed from 0
+    static constexpr size_t INPUTS = 1;
     static constexpr size_t OUTPUTS = 5; // image, view, sampler, device, sampler-pair (AR#31)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -51,12 +49,8 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
 
     // ===== PARAMETER NAMES =====
     static constexpr const char* FILE_PATH = "filePath";
-    static constexpr const char* UPLOAD_MODE = "uploadMode";
-    static constexpr const char* GENERATE_MIPMAPS = "generateMipmaps";
-    static constexpr const char* SAMPLER_FILTER = "samplerFilter";
-    static constexpr const char* SAMPLER_ADDRESS_MODE = "samplerAddressMode";
 
-    // ===== OUTPUTS (4) =====
+    // ===== OUTPUTS (5) =====
     OUTPUT_SLOT(TEXTURE_IMAGE, VkImage, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);

@@ -10,8 +10,7 @@ include(GoogleTest)
 # test_traits_debug, test_registration, test_simple_traits, test_syntax_check,
 # test_type_check). Each contributes a uniquely-named run_test_X() function;
 # test_compile_time_resource_system_main.cpp's int main() calls all 7 in
-# sequence. Union of every constituent's include dirs/link libs (gli was
-# needed by test_minimal/test_compile_time_cache/test_type_check).
+# sequence. Union of every constituent's include dirs/link libs.
 # ===========================================================================
 add_executable(test_compile_time_resource_system
     ../test_minimal.cpp
@@ -25,7 +24,7 @@ add_executable(test_compile_time_resource_system
 )
 # Use VIXEN_ROOT for project root - link against RenderGraph for includes
 target_include_directories(test_compile_time_resource_system PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_compile_time_resource_system PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
+target_link_libraries(test_compile_time_resource_system PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_compile_time_resource_system PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_compile_time_resource_system PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -39,7 +38,7 @@ add_executable(test_recursive_validation
 target_include_directories(test_recursive_validation PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
 # Core::Core supplies Headers.h (relocated there in AR#3/#4). The sibling tests get it via
 # their RenderGraph link; this one links neither, so name Core directly.
-target_link_libraries(test_recursive_validation PRIVATE Core::Core ${Vulkan_LIBRARIES} gli)
+target_link_libraries(test_recursive_validation PRIVATE Core::Core ${Vulkan_LIBRARIES})
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 

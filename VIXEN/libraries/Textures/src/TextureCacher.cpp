@@ -1,15 +1,15 @@
-#include "pch.h"
-#include "TextureCacher.h"
+#include "Headers.h"
+#include "Textures/TextureCacher.h"
 #include "SamplerCacher.h"
-#include "VixenHash.h"
-#include "TextureHandling/Loading/TextureLoader.h"
-#include "TextureHandling/Loading/STBTextureLoader.h"
+#include "Textures/TextureLoader.h"
+#include "Textures/STBTextureLoader.h"
 #include "VulkanDevice.h"
 #include "error/VulkanError.h"
 #include <fstream>
+#include <stdexcept>
 #include <sstream>
-
-using namespace Vixen::Hash;
+#include <typeindex>
+#include <vector>
 
 namespace CashSystem {
 
@@ -29,15 +29,12 @@ std::shared_ptr<TextureWrapper> TextureCacher::GetOrCreate(const TextureCreatePa
 std::shared_ptr<TextureWrapper> TextureCacher::GetOrCreateTexture(
     const std::string& filePath,
     std::shared_ptr<SamplerWrapper> samplerWrapper,
-    VkFormat format,
-    bool generateMipmaps
+    VkFormat format
 ) {
     TextureCreateParams params{};
     params.filePath = filePath;
     params.format = format;
-    params.generateMipmaps = generateMipmaps;
     params.samplerWrapper = samplerWrapper;
-    params.fileChecksum = ComputeFileChecksum(filePath);
 
     return GetOrCreate(params);
 }
@@ -46,7 +43,6 @@ std::shared_ptr<TextureWrapper> TextureCacher::Create(const TextureCreateParams&
     auto wrapper = std::make_shared<TextureWrapper>();
     wrapper->filePath = ci.filePath;
     wrapper->format = ci.format;
-    wrapper->generateMipmaps = ci.generateMipmaps;
 
     // Handle sampler via composition pattern
     if (ci.samplerWrapper) {
@@ -70,43 +66,21 @@ std::shared_ptr<TextureWrapper> TextureCacher::Create(const TextureCreateParams&
         }
     }
 
-    // Load texture from file (also caches pixel data in wrapper)
+    // Load texture from file through the extracted Textures module path.
     LoadTextureFromFile(ci, *wrapper);
 
     return wrapper;
 }
 
 std::uint64_t TextureCacher::ComputeKey(const TextureCreateParams& ci) const {
-    // Build key string from file path + format + mip settings + file checksum
+    // Build key string from file path and format. Mip generation is not part of
+    // slice 1: STB supplies one RGBA8 level and no runtime code generates mips.
     std::ostringstream keyStream;
     keyStream << ci.filePath << "|"
-              << static_cast<uint32_t>(ci.format) << "|"
-              << (ci.generateMipmaps ? "1" : "0") << "|"
-              << ci.fileChecksum;
+              << static_cast<uint32_t>(ci.format);
 
     const std::string keyString = keyStream.str();
     return std::hash<std::string>{}(keyString);
-}
-
-std::string TextureCacher::ComputeFileChecksum(const std::string& filePath) const {
-    try {
-        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) {
-            return "";
-        }
-
-        std::streamsize size = file.tellg();
-        file.seekg(0, std::ios::beg);
-
-        std::vector<uint8_t> buffer(size);
-        if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
-            return "";
-        }
-
-        return ComputeSHA256Hex(buffer.data(), buffer.size());
-    } catch (const std::exception&) {
-        return "";
-    }
 }
 
 std::vector<uint8_t> TextureCacher::GenerateCheckerboard(uint32_t& outSize) {
@@ -155,7 +129,6 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
     }
 
     TextureLoadConfig config{};
-    config.uploadMode = TextureLoadConfig::UploadMode::Optimal;
     config.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     config.format = ci.format;
 
@@ -191,14 +164,8 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
 
     TextureData data = loadResult.value();
 
-    // TextureLoader also creates an internal sampler and leaves its upload command
-    // buffer allocated. The cacher uses SamplerCacher's sampler (composition) and
-    // owns image/view/memory only, so release the loader-owned sampler + cmd buffer
-    // here to avoid leaks. The transient pool itself is freed in Cleanup().
-    if (data.sampler != VK_NULL_HANDLE) {
-        vkDestroySampler(m_device->device, data.sampler, nullptr);
-        data.sampler = VK_NULL_HANDLE;
-    }
+    // The loader returns image resources only; SamplerCacher owns the sampler.
+    // Free the upload command buffer here. The transient pool itself is freed in Cleanup().
     if (data.cmdTexture != VK_NULL_HANDLE) {
         vkFreeCommandBuffers(m_device->device, m_uploadCommandPool, 1, &data.cmdTexture);
         data.cmdTexture = VK_NULL_HANDLE;
@@ -213,19 +180,13 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
     wrapper.mipLevels = data.minMapLevels;
     wrapper.arrayLayers = 1;
 
-    // Cache the CPU-side pixels (key benefit of TextureCacher) for the generated
-    // case; for files we keep the decoded bytes unavailable here (STB frees them
-    // inside Load) and leave pixelData empty, which is acceptable for caching.
-    if (ci.filePath.empty() && !generatedPixels.empty()) {
-        wrapper.pixelData = std::move(generatedPixels);
-    }
-
     LOG_INFO("[TextureCacher::LoadTextureFromFile] Texture uploaded successfully ("
              + std::to_string(wrapper.width) + "x" + std::to_string(wrapper.height) + ")");
 }
 
 bool TextureCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
-    // Serialize texture metadata and cached pixel data
+    // Serialize texture metadata. Decoded pixels are no longer retained by the
+    // cacher; the resident GPU image is the cache value and the file path is the key.
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -234,7 +195,7 @@ bool TextureCacher::SerializePayloadToFile(const std::filesystem::path& path) co
     }
 
     // Write version header
-    uint32_t version = 1;
+    uint32_t version = 2;
     file.write(reinterpret_cast<const char*>(&version), sizeof(version));
 
     // Write number of cached textures (snapshot: count written == rows written, holding nothing)
@@ -257,15 +218,6 @@ bool TextureCacher::SerializePayloadToFile(const std::filesystem::path& path) co
         file.write(reinterpret_cast<const char*>(&wrapper->height), sizeof(wrapper->height));
         file.write(reinterpret_cast<const char*>(&wrapper->mipLevels), sizeof(wrapper->mipLevels));
         file.write(reinterpret_cast<const char*>(&wrapper->arrayLayers), sizeof(wrapper->arrayLayers));
-        file.write(reinterpret_cast<const char*>(&wrapper->generateMipmaps), sizeof(wrapper->generateMipmaps));
-
-        // Write cached pixel data (key benefit - avoids reloading/decoding)
-        uint32_t pixelDataSize = static_cast<uint32_t>(wrapper->pixelData.size());
-        file.write(reinterpret_cast<const char*>(&pixelDataSize), sizeof(pixelDataSize));
-        if (pixelDataSize > 0) {
-            file.write(reinterpret_cast<const char*>(wrapper->pixelData.data()), pixelDataSize);
-        }
-
         // Write sampler parameters (if available)
         if (wrapper->samplerWrapper) {
             uint8_t hasSampler = 1;
@@ -299,7 +251,7 @@ bool TextureCacher::DeserializePayloadFromFile(const std::filesystem::path& path
     // Read version header
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
-    if (version != 1) {
+    if (version != 2) {
         LOG_ERROR("DeserializeFromFile: Unsupported version: " + std::to_string(version));
         return false;
     }
@@ -321,22 +273,11 @@ bool TextureCacher::DeserializePayloadFromFile(const std::filesystem::path& path
         // Read format and dimensions
         VkFormat format;
         uint32_t width, height, mipLevels, arrayLayers;
-        bool generateMipmaps;
         file.read(reinterpret_cast<char*>(&format), sizeof(format));
         file.read(reinterpret_cast<char*>(&width), sizeof(width));
         file.read(reinterpret_cast<char*>(&height), sizeof(height));
         file.read(reinterpret_cast<char*>(&mipLevels), sizeof(mipLevels));
         file.read(reinterpret_cast<char*>(&arrayLayers), sizeof(arrayLayers));
-        file.read(reinterpret_cast<char*>(&generateMipmaps), sizeof(generateMipmaps));
-
-        // Read cached pixel data
-        uint32_t pixelDataSize = 0;
-        file.read(reinterpret_cast<char*>(&pixelDataSize), sizeof(pixelDataSize));
-        std::vector<uint8_t> pixelData(pixelDataSize);
-        if (pixelDataSize > 0) {
-            file.read(reinterpret_cast<char*>(pixelData.data()), pixelDataSize);
-        }
-
         // Read sampler data
         uint8_t hasSampler = 0;
         file.read(reinterpret_cast<char*>(&hasSampler), sizeof(hasSampler));
@@ -384,8 +325,6 @@ void TextureCacher::Cleanup() {
             }
         }
 
-        // Clear cached pixel data
-        wrapper->pixelData.clear();
     });
 
     // Destroy the transient upload command pool (frees any command buffers still

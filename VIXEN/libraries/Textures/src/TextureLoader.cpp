@@ -1,8 +1,10 @@
-#include "TextureHandling/Loading/TextureLoader.h"
+#include "Textures/TextureLoader.h"
 #include "VulkanDevice.h"
 #include "CommandBufferUtility.h"
 #include "Logger.h"
 #include "error/VulkanError.h"
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 
 namespace Vixen::TextureHandling {
@@ -20,10 +22,9 @@ VulkanResult<TextureData> TextureLoader::Load(const char* fileName, const Textur
     VK_PROPAGATE_ERROR(pixelDataResult);  // Nothing allocated yet on failure
     PixelData pixelData = pixelDataResult.value();
 
-    // Upload based on config mode
-    VulkanStatus uploadStatus = (config.uploadMode == TextureLoadConfig::UploadMode::Linear)
-        ? UploadLinear(pixelData, &texture, config)
-        : UploadOptimal(pixelData, &texture, config);
+    // Slice 1 keeps the existing optimal-tiled upload path. Mip generation and
+    // asynchronous queue ownership are deliberately later slices.
+    VulkanStatus uploadStatus = UploadOptimal(pixelData, &texture, config);
 
     // Free pixel data (library-specific) - always runs, even on upload failure,
     // so the pixels allocated by LoadPixelData are never leaked.
@@ -64,9 +65,7 @@ VulkanResult<TextureData> TextureLoader::LoadFromMemory(
     pixelData.mipLevels = 1;  // single mip level for procedurally-supplied bytes
     pixelData.size = static_cast<VkDeviceSize>(width) * height * 4;  // RGBA8
 
-    VulkanStatus uploadStatus = (config.uploadMode == TextureLoadConfig::UploadMode::Linear)
-        ? UploadLinear(pixelData, &texture, config)
-        : UploadOptimal(pixelData, &texture, config);
+    VulkanStatus uploadStatus = UploadOptimal(pixelData, &texture, config);
 
     // Tear down any partially-created GPU resources on failure so nothing leaks.
     if (!uploadStatus.has_value()) {
@@ -77,120 +76,18 @@ VulkanResult<TextureData> TextureLoader::LoadFromMemory(
     return texture;
 }
 
-// Tear down whatever GPU resources Upload* created in `texture` before a failure, so a failed
+// Tear down whatever GPU resources UploadOptimal created in `texture` before a failure, so a failed
 // Load() leaks nothing. Handles left VK_NULL_HANDLE by the value-initialised TextureData are skipped.
 void TextureLoader::DestroyPartialTexture(TextureData& texture) {
     VkDevice dev = deviceObj->device;
-    if (texture.sampler != VK_NULL_HANDLE)    vkDestroySampler(dev, texture.sampler, nullptr);
     if (texture.view != VK_NULL_HANDLE)       vkDestroyImageView(dev, texture.view, nullptr);
     if (texture.cmdTexture != VK_NULL_HANDLE) vkFreeCommandBuffers(dev, cmdPool, 1, &texture.cmdTexture);
     if (texture.mem != VK_NULL_HANDLE)        vkFreeMemory(dev, texture.mem, nullptr);
     if (texture.image != VK_NULL_HANDLE)      vkDestroyImage(dev, texture.image, nullptr);
-    texture.sampler = VK_NULL_HANDLE;
     texture.view = VK_NULL_HANDLE;
     texture.cmdTexture = VK_NULL_HANDLE;
     texture.mem = VK_NULL_HANDLE;
     texture.image = VK_NULL_HANDLE;
-}
-
-VulkanStatus TextureLoader::UploadLinear(
-    const PixelData& pixelData,
-    TextureData* texture,
-    const TextureLoadConfig& config
-) {
-    // Create image with linear tiling
-    VK_PROPAGATE_ERROR(CreateImage(
-        texture,
-        config.usage,
-        config.format,
-        VK_IMAGE_TILING_LINEAR,
-        pixelData.width,
-        pixelData.height,
-        pixelData.mipLevels
-    ));
-
-    // Map and copy directly to image memory
-    VkImageSubresource subresource{};
-    subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    subresource.mipLevel = 0;
-    subresource.arrayLayer = 0;
-
-    VkSubresourceLayout layout;
-    vkGetImageSubresourceLayout(deviceObj->device, texture->image, &subresource, &layout);
-
-    void* data;
-    VkResult result = vkMapMemory(deviceObj->device, texture->mem, 0, texture->memAllocInfo.allocationSize, 0, &data);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to map image memory! VkResult: " + std::to_string(result));
-        return std::unexpected(VulkanError{result, "Failed to map image memory (UploadLinear)"});
-    }
-
-    memcpy(data, pixelData.pixels, static_cast<size_t>(pixelData.size));
-    vkUnmapMemory(deviceObj->device, texture->mem);
-
-    // Transition layout using command buffer
-    CommandBufferMgr::AllocateCommandBuffer(&deviceObj->device, cmdPool, &texture->cmdTexture);
-    CommandBufferMgr::BeginCommandBuffer(texture->cmdTexture);
-
-    VkImageSubresourceRange subresourceRange{};
-    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    subresourceRange.baseMipLevel = 0;
-    subresourceRange.levelCount = pixelData.mipLevels;
-    subresourceRange.layerCount = 1;
-
-    texture->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    SetImageLayout(
-        texture->image,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_PREINITIALIZED,
-        texture->imageLayout,
-        subresourceRange,
-        texture->cmdTexture
-    );
-
-    CommandBufferMgr::EndCommandBuffer(texture->cmdTexture);
-
-    // Submit
-    VkFence fence;
-    VkFenceCreateInfo fenceCI{};
-    fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
-        return std::unexpected(VulkanError{result, "Failed to create fence (UploadLinear)"});
-    }
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &texture->cmdTexture;
-
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11); not held across the fence
-        // wait below.
-        std::lock_guard submitLock(deviceObj->SubmitMutex(deviceObj->queue));
-        result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
-    }
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to submit queue! VkResult: " + std::to_string(result));
-        vkDestroyFence(deviceObj->device, fence, nullptr);
-        return std::unexpected(VulkanError{result, "Failed to submit queue (UploadLinear)"});
-    }
-
-    result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
-        vkDestroyFence(deviceObj->device, fence, nullptr);
-        return std::unexpected(VulkanError{result, "Wait for fence timeout (UploadLinear)"});
-    }
-
-    vkDestroyFence(deviceObj->device, fence, nullptr);
-
-    // Create image view and sampler
-    VK_PROPAGATE_ERROR(CreateImageView(texture, config.format, pixelData.mipLevels));
-    VK_PROPAGATE_ERROR(CreateSampler(texture, pixelData.mipLevels));
-
-    return {};
 }
 
 VulkanStatus TextureLoader::UploadOptimal(
@@ -370,9 +267,8 @@ VulkanStatus TextureLoader::UploadOptimal(
     vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
     vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
 
-    // Create image view and sampler
+    // The sampler is owned and deduplicated by SamplerCacher.
     VK_PROPAGATE_ERROR(CreateImageView(texture, config.format, pixelData.mipLevels));
-    VK_PROPAGATE_ERROR(CreateSampler(texture, pixelData.mipLevels));
 
     return {};
 }
@@ -474,41 +370,6 @@ VulkanStatus TextureLoader::CreateImageView(
         LOG_ERROR("Failed to create image view! VkResult: " + std::to_string(result));
         return std::unexpected(VulkanError{result, "Failed to create image view (CreateImageView)"});
     }
-
-    return {};
-}
-
-VulkanStatus TextureLoader::CreateSampler(
-    TextureData* texture,
-    uint32_t mipLevels
-) {
-    VkSamplerCreateInfo samplerCI{};
-    samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerCI.magFilter = VK_FILTER_LINEAR;
-    samplerCI.minFilter = VK_FILTER_LINEAR;
-    samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCI.mipLodBias = 0.0f;
-    samplerCI.anisotropyEnable = VK_TRUE;
-    samplerCI.maxAnisotropy = 16.0f;
-    samplerCI.compareEnable = VK_FALSE;
-    samplerCI.compareOp = VK_COMPARE_OP_NEVER;
-    samplerCI.minLod = 0.0f;
-    samplerCI.maxLod = static_cast<float>(mipLevels);
-    samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-    samplerCI.unnormalizedCoordinates = VK_FALSE;
-
-    VkResult result = vkCreateSampler(deviceObj->device, &samplerCI, nullptr, &texture->sampler);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create sampler! VkResult: " + std::to_string(result));
-        return std::unexpected(VulkanError{result, "Failed to create sampler (CreateSampler)"});
-    }
-
-    texture->descsImageInfo.sampler = texture->sampler;
-    texture->descsImageInfo.imageView = texture->view;
-    texture->descsImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     return {};
 }

@@ -3,13 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/TextureLoaderNodeConfig.h"
-
-// Forward declarations
-namespace CashSystem {
-    class TextureCacher;
-    struct TextureWrapper;
-    struct SamplerWrapper;
-}
+#include "Textures/Residency.h"
 
 namespace Vixen::RenderGraph {
 
@@ -29,7 +23,7 @@ public:
         NodeType* nodeType
     );
 
-    ~TextureLoaderNode() override = default;
+    ~TextureLoaderNode() override;
 
 protected:
     // Template method pattern - override *Impl() methods
@@ -50,13 +44,14 @@ private:
     // Task profile for compile-time cost estimation (Sprint 6.5)
     ITaskProfile* compileProfile_ = nullptr;
 
-    // CashSystem integration - cached wrappers
+    // Textures module ownership keeps the existing cache values alive while the
+    // node binds their handles to graph outputs.
     std::shared_ptr<CashSystem::TextureWrapper> cachedTextureWrapper;
     std::shared_ptr<CashSystem::SamplerWrapper> cachedSamplerWrapper;
+    std::unique_ptr<Vixen::Textures::TextureResidency> residency;
 
     // Helper methods
-    void RegisterCachers();
-    void LoadTextureResources(const std::string& filePath, bool generateMipmaps);
+    void LoadTextureResources(const std::string& filePath);
 };
 
 /**

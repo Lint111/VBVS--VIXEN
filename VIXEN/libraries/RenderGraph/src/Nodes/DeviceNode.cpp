@@ -14,7 +14,6 @@
 #include "PipelineCacher.h"
 #include "PipelineLayoutCacher.h"
 #include "DescriptorSetLayoutCacher.h"
-#include "TextureCacher.h"
 #include "Memory/DirectAllocator.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/BatchedUploader.h"

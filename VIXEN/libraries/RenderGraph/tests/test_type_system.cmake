@@ -27,7 +27,6 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_array_type_validation PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${glm_SOURCE_DIR}
-        ${gli_SOURCE_DIR}
     )
 
     # Add Vulkan headers
@@ -97,7 +96,6 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_field_extraction PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${glm_SOURCE_DIR}
-        ${gli_SOURCE_DIR}
     )
 
     # Add Vulkan headers
@@ -153,7 +151,6 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_resource_gatherer PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${glm_SOURCE_DIR}
-        ${gli_SOURCE_DIR}
     )
 
     # Add Vulkan headers
