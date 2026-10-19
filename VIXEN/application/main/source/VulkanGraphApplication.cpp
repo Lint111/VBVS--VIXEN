@@ -1964,7 +1964,7 @@ void VulkanGraphApplication::RunHdrMeterDebugReadback() {
         float state[4];
         std::memcpy(state, mapped, sizeof(state));
         meter->UnmapReadback(device);
-        std::cout << "[HDRMeter] frame=" << frameCounter_ << " EV100=" << state[0]
+        std::cout << "[HDRMeter] frame=" << frameCounter_ << " log2Exposure=" << state[0]
                   << " meteredEV100=" << state[2] << " targetLog2Exposure=" << state[3]
                   << " exposure=" << std::exp2(state[0]) << "\n";
         lastLoggedFrame = frameCounter_;

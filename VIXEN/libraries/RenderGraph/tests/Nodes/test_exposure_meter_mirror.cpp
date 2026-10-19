@@ -18,7 +18,7 @@ constexpr float kLog2HundredOverK = 3.0f;
 
 struct ExposureSettings {
     float keyValue = 0.18f;
-    float minEV100 = 0.5f;
+    float minEV100 = -8.0f;
     float maxEV100 = 12.0f;
     float lowPercent = 50.0f;
     float highPercent = 95.0f;
@@ -180,10 +180,10 @@ void FullFrameIsMeteredNotOneTile() {
 }
 
 void EV100ClampBoundsDarkAndBrightScenes() {
-    // A near-black frame would need +10 EV; the default minimum caps the boost at
+    // A near-black frame would need +17 EV; the default minimum caps the boost at
     // key / (2^(min - 3)), so a dark scene is never pushed to white.
     ExposureSettings settings;
-    const MeterState dark = Settle(std::vector<float>(64 * 64, 0.0005f), settings);
+    const MeterState dark = Settle(std::vector<float>(64 * 64, 1.0e-5f), settings);
     assert(dark.meteredEV100 < settings.minEV100);
     assert(Near(dark.targetLog2Exposure, std::log2(settings.keyValue) - (settings.minEV100 - 3.0f), 1e-5f));
     // A frame brighter than the maximum is held at the maximum rather than crushed further.

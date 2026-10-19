@@ -97,6 +97,12 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
+            # Undo/redo must restore the frame byte for byte, so eye adaptation is made instant
+            # here (the maximum 0.5 s step x 100/s leaves e^-50 of the gap): exposure is then a
+            # function of the frame, not of its history.
+            "VIXEN_HDR_EXPOSURE_DT=0.5"
+            "VIXEN_HDR_EXPOSURE_SPEED_UP=100"
+            "VIXEN_HDR_EXPOSURE_SPEED_DOWN=100"
             "VIXEN_EXIT_AFTER_FRAMES=140")
 
     if(VIXEN_FAIL_SCENARIOS)

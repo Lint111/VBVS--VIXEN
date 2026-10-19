@@ -108,10 +108,14 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
         float speedUp;
         float speedDown;
     };
+    // The floor is how far a dim frame may be brightened toward the key: look-dev midday
+    // meters about -1 EV100, so default -8 allows ~7 EV of boost (UE 4.27's
+    // min/max_brightness span, 8 EV), dark -12 allows ~11 EV (toward HDRP's -1..14 span)
+    // and bright -4 only ~3 EV.
     static constexpr ExposurePreset EXPOSURE_PRESETS[] = {
-        {"default", 0.18f, 0.5f, 12.0f, 50.0f, 95.0f, 3.0f, 1.0f},
-        {"dark", 0.18f, 1.0f, 12.0f, 75.0f, 98.0f, 3.0f, 1.0f},
-        {"bright", 0.18f, 0.5f, 16.0f, 10.0f, 90.0f, 3.0f, 1.0f},
+        {"default", 0.18f, -8.0f, 12.0f, 50.0f, 95.0f, 3.0f, 1.0f},
+        {"dark", 0.18f, -12.0f, 12.0f, 75.0f, 98.0f, 3.0f, 1.0f},
+        {"bright", 0.18f, -4.0f, 16.0f, 10.0f, 90.0f, 3.0f, 1.0f},
     };
     // EXPOSURE_PRESETS[0] ("default") supplies every unset exposure parameter.
 

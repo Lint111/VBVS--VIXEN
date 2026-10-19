@@ -33,11 +33,11 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ExposureMeterResult
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x7a82e00a809949e8 (for runtime discovery)
+ * Layout VixenHash: 0x2f9153042b2c9ae9 (for runtime discovery)
  */
 struct ExposureMeterResult {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7a82e00a809949e8ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x2f9153042b2c9ae9ULL;
 
     // Member metadata structs
     struct pc_0 {

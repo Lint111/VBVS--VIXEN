@@ -8,14 +8,14 @@
 const uint kExposureHistogramBins = 128u;
 const float kExposureHistogramLog2Min = -20.0;
 const float kExposureHistogramBinsPerEV = 4.0;
-// ExposureMeterResult.state once ev100 holds an adapted value.
+// ExposureMeterResult.state once log2Exposure holds an adapted value.
 const uint kExposureStateAdapted = 0x45585031u;
 
-// ev100 is the log2 exposure multiplier the tonemap applies (historic name);
+// log2Exposure is the log2 exposure multiplier the tonemap applies;
 // meteredEV100 is the percentile-window scene EV100 before clamping, and
 // targetLog2Exposure the clamped target the adaptation is moving toward.
 struct ExposureMeterState {
-    float ev100;
+    float log2Exposure;
     uint state;
     float meteredEV100;
     float targetLog2Exposure;

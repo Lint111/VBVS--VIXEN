@@ -22,7 +22,8 @@ const float kLog2HundredOverK = 3.0;
 
 void main() {
 #ifdef VIXEN_HDR_EXPOSURE_FIXED
-    if (gl_LocalInvocationIndex == 0u) result.meterState.ev100 = 4.66783;
+    // The default meter's settled reading for look-dev midday, angle 0 (round-2 measure run).
+    if (gl_LocalInvocationIndex == 0u) result.meterState.log2Exposure = 1.508;
 #else
     uint lane = gl_LocalInvocationIndex;
     binCount[lane] = result.histogram[lane];
@@ -32,7 +33,7 @@ void main() {
         uint total = 0u;
         for (uint b = 0u; b < kExposureHistogramBins; ++b) total += binCount[b];
 
-        float previous = result.meterState.ev100;
+        float previous = result.meterState.log2Exposure;
         bool adapted = result.meterState.state == kExposureStateAdapted && !isnan(previous) && !isinf(previous);
         float target = adapted ? result.meterState.targetLog2Exposure : 0.0;
         if (total != 0u) {
@@ -73,7 +74,7 @@ void main() {
             float step = max(lightingConfig.exposureDeltaSeconds, 0.0) * max(rate, 0.0);
             next = step > 0.0 ? previous + (target - previous) * (1.0 - exp(-step)) : target;
         }
-        result.meterState.ev100 = next;
+        result.meterState.log2Exposure = next;
         result.meterState.targetLog2Exposure = target;
         result.meterState.state = kExposureStateAdapted;
     }
