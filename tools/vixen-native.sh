@@ -60,7 +60,7 @@ do_checkout() {
     [[ ! -e "$dir" ]] || die "$dir exists but is not a git checkout; refusing to touch it"
     mkdir -p "$native_base"
     say "cloning $branch into $dir"
-    git clone --no-hardlinks --branch "$branch" "$repo_root" "$dir"
+    git clone --quiet --no-hardlinks --branch "$branch" "$repo_root" "$dir"
 }
 
 do_sync() {
