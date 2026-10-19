@@ -54,6 +54,13 @@ add_test(NAME Native.KernelSnapshotPublish
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_publish.cmake")
 set_tests_properties(Native.KernelSnapshotPublish PROPERTIES LABELS "cpu")
 
+if(UNIX)
+    add_test(NAME Native.WslRouteLauncher
+        COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_vixen_native_launcher.sh" "${VIXEN_ROOT}/.."
+                "${CMAKE_CURRENT_BINARY_DIR}/wsl-route-launcher")
+    set_tests_properties(Native.WslRouteLauncher PROPERTIES LABELS "cpu")
+endif()
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
