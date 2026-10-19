@@ -18,6 +18,35 @@ if(NOT DEFINED VIXEN_KERNEL_CACHE_DIR)
         "Content-addressed pinned kernel snapshots and built CodegenTool cache")
 endif()
 
+# Chooses the kernel SHA for this configure. The override lives in the build tree's cache, so
+# it is recorded together with the tracked pin it was set against; once the tracked pin moves
+# (a merge, a new lane base) a carried-over override is cleared instead of keeping the tree on a
+# snapshot the source no longer pins.
+function(vixen_select_kernel_sha tracked out_sha)
+    set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
+        "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
+    set(_override "${VIXEN_YEROKET_KERNEL_SHA_OVERRIDE}")
+    set(_recorded "${VIXEN_YEROKET_KERNEL_SHA_OVERRIDE_RECORDED}")
+    if(_override AND _recorded MATCHES "^${_override}@" AND NOT _recorded STREQUAL "${_override}@${tracked}")
+        message(STATUS "[codegen] clearing stale kernel pin override ${_override}: the tracked pin moved "
+            "from ${_recorded} to ${tracked}")
+        set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
+            "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin" FORCE)
+        set(_override "")
+    endif()
+    if(_override)
+        set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE_RECORDED "${_override}@${tracked}" CACHE INTERNAL
+            "Kernel pin override and the tracked pin it was set against" FORCE)
+        message(STATUS "[codegen] using per-build-tree kernel pin override: ${_override}")
+        set(${out_sha} "${_override}" PARENT_SCOPE)
+    else()
+        set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE_RECORDED "" CACHE INTERNAL
+            "Kernel pin override and the tracked pin it was set against" FORCE)
+        message(STATUS "[codegen] using tracked Yeroket kernel pin: ${tracked}")
+        set(${out_sha} "${tracked}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(vixen_kernel_snapshot repository sha out_directory)
     string(LENGTH "${sha}" _length)
     if(NOT _length EQUAL 40 OR NOT sha MATCHES "^[0-9a-fA-F]+$")
