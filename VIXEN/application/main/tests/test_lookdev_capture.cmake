@@ -101,6 +101,30 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS ${_exposure_parity_tests})
     message(STATUS "[Application Tests] Added: 32 one-frame native tone-map parity captures")
 
+    # Owner exposure acceptance scenes: a closed room beside the stage, seen from outside through
+    # its doorway, from inside through its window, and on a walk in and back out. The adaptation
+    # step is pinned to 0.1 s so 5 frames are 0.5 s of simulated time per walk capture.
+    set(_exposure_room_tests)
+    foreach(_room IN ITEMS door window walk)
+        set(_frames 30)
+        if(_room STREQUAL "walk")
+            set(_frames 5)
+        endif()
+        set(_test "Application.LookdevCapture.ExposureRoom.${_room}")
+        add_test(NAME "${_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--gtest_filter=LookdevCapture.RendersExposureRoomAcceptance")
+        set_tests_properties("${_test}" PROPERTIES
+            LABELS "Application"
+            TIMEOUT 1200
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_EXPOSURE_ROOM=${_room};VIXEN_HDR_EXPOSURE_DT=0.1;VIXEN_LOOKDEV_CAPTURE_FRAMES=${_frames};VIXEN_WINDOW_WIDTH=480;VIXEN_WINDOW_HEIGHT=320;VIXEN_HDR_METER_DEBUG=200;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/exposure-room/${_room}"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+        list(APPEND _exposure_room_tests "${_test}")
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_exposure_room_tests})
+
     set(_glyphsdf_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf")
     set(_glyphsdf_capture_tests)
     foreach(_variant IN ITEMS latin-carved latin-embossed qps-rtl-carved qps-rtl-embossed)
