@@ -44,6 +44,16 @@ add_test(NAME Native.NinjaVisibleLauncher
             -P "${VIXEN_ROOT}/cmake/tests/test_ninja_visible_launcher.cmake")
 set_tests_properties(Native.NinjaVisibleLauncher PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.KernelSnapshotReuse
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SNAPSHOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-snapshot-reuse"
+            -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_reuse.cmake")
+set_tests_properties(Native.KernelSnapshotReuse PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.KernelSnapshotPublish
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SNAPSHOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-snapshot-publish"
+            -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_publish.cmake")
+set_tests_properties(Native.KernelSnapshotPublish PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
