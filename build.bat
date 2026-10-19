@@ -30,6 +30,11 @@ REM   target-name  optional CMake target to build instead of the full graph
 REM                (e.g. VixenApp, or a single test binary). Omit to build
 REM                everything, as before.
 REM
+REM From WSL (including SSH shells, whose PATH has no cmd.exe) use tools/vixen-native.sh instead of
+REM calling cmd.exe by hand: it finds cmd.exe, keeps the Windows batch path intact, syncs a per-lane
+REM checkout under /mnt/c/vixen-native, runs 'provision' when the pinned tools are missing and then
+REM runs this script. See its --help.
+REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
 REM
