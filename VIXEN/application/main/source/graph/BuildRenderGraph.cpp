@@ -483,6 +483,25 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 } // namespace
 
 
+void VulkanGraphApplication::SelectNativeUpscalerForModulelessGraph() {
+    // The production graph's native candidate passes every gate: it is compiled in, permitted
+    // by every profile and pass, has no runtime capability, and owns no external context.
+    UpscalerEligibility native;
+    native.compiled = true;
+    native.permittedByRuntimeProfile = true;
+    native.permittedByPass = true;
+    native.runtimeSupported = true;
+    native.inputCompatible = true;
+    native.initialized = true;
+    native.qualified = true;
+    native.admittedByBudget = true;
+    upscalerCandidatesForCompile_ = {{"native", native, true, false}};
+    const UpscalerSelectionResult selection =
+        SelectUpscalerProviderForInitialization(upscalerCandidatesForCompile_);
+    selectedUpscalerProviderId_ = selection.selected ? std::string(selection.selected->id) : std::string{};
+    selectedUpscalerHasRealContext_ = selection.selected != nullptr;
+}
+
 void VulkanGraphApplication::BuildRenderGraph() {
     upscalerPerfPasses_.clear();
     proceduralShaderLibNodes_.clear();
@@ -523,6 +542,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_UI_DEMO")) {
         mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
         BuildUIGraph();
+        SelectNativeUpscalerForModulelessGraph();
         return;
     }
 
@@ -531,6 +551,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_INSTANCING_DEMO")) {
         mainLogger->Info("VIXEN_INSTANCING_DEMO set - building instanced-cube raster demo graph");
         BuildInstancingDemoGraph();
+        SelectNativeUpscalerForModulelessGraph();
         return;
     }
 
@@ -540,6 +561,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_AUTOSYNC_DEMO")) {
         mainLogger->Info("VIXEN_AUTOSYNC_DEMO set - building auto-sync FrameGraph demo graph");
         BuildAutoSyncDemoGraph();
+        SelectNativeUpscalerForModulelessGraph();
         return;
     }
 
@@ -551,6 +573,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_FANIN_DEMO")) {
         mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
         BuildFanInDemoGraph();
+        SelectNativeUpscalerForModulelessGraph();
         return;
     }
 
