@@ -106,29 +106,12 @@ else()
 endif()
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
-# Resolve YEROKET_ROOT from the first home candidate that actually contains the repo,
-# so a Windows configure with USERPROFILE (or a mounted WSL home) still finds it.
-# -DYEROKET_ROOT= overrides the probe entirely.
-if(NOT DEFINED YEROKET_ROOT)
-    set(_yk_root "")
-    foreach(_h IN LISTS _home_candidates)
-        if(_h AND EXISTS "${_h}/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj")
-            set(_yk_root "${_h}/Github/Yeroket-Fantasy")
-            break()
-        endif()
-    endforeach()
-    # Fall back to the WSL-home default even if the probe missed, so the not-found
-    # WARNING below reports a meaningful path rather than an empty string.
-    if(NOT _yk_root)
-        set(_yk_root "$ENV{HOME}/Github/Yeroket-Fantasy")
-    endif()
-    set(YEROKET_ROOT "${_yk_root}" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
-endif()
-
 # Every drift guard consumes the reviewed, immutable kernel pin. Reuse a locked
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
+# Not cached: a cached root would hide a later YEROKET_ROOT environment value.
+vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)

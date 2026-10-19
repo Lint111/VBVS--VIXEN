@@ -23,11 +23,13 @@ cat > "$fake/cmd.exe" <<'STUB'
 printf '%s\n' "$@" > "$FAKE_ARGV"
 echo "$*" >> "$FAKE_CALLS"
 pwd > "$FAKE_CWD"
+printf '%s\n' "${WSLENV-}" > "$FAKE_WSLENV"
 echo "fake cmd output"
 exit "${FAKE_RC:-0}"
 STUB
 chmod +x "$fake/cmd.exe"
 export FAKE_ARGV="$scratch/argv.txt" FAKE_CWD="$scratch/cwd.txt" FAKE_CALLS="$scratch/calls.txt"
+export FAKE_WSLENV="$scratch/wslenv.txt"
 export VIXEN_NATIVE_SYSTEM32="$fake"
 # A PATH with no Windows entries, as in an SSH shell.
 export PATH="/usr/bin:/bin"
@@ -80,6 +82,8 @@ check "build passes the action, preset and target to build.bat with a Windows ba
     bash -c '"$0" build all vixen-ninja VixenApp >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${a[0]}" = /c && [[ "${a[1]}" == *build.bat ]] && [[ "${a[1]}" == *\\* ]] && test "${a[2]}" = all && test "${a[3]}" = vixen-ninja && test "${a[4]}" = VixenApp' "$launcher"
 check "an argument with spaces stays one argument" \
     bash -c '"$0" bat build.bat "two words" >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${#a[@]}" = 3 && test "${a[2]}" = "two words"' "$launcher"
+check "YEROKET_ROOT is forwarded into the Windows process as a path" \
+    bash -c 'YEROKET_ROOT=/home/x/Yeroket-Fantasy "$0" bat build.bat >/dev/null; tr ":" "\n" < "$FAKE_WSLENV" | grep -qx "YEROKET_ROOT/p"' "$launcher"
 check "bat refuses a path that leaves the worktree" \
     bash -c '! "$0" bat ../elsewhere.bat >/dev/null 2>&1' "$launcher"
 check "build exit code is the batch file's exit code" \

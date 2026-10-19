@@ -14,8 +14,8 @@
 #   bat RELPATH [ARGS]         prepare, then run a batch file of the checkout (e.g. a direct vcvars64 route)
 # --direct skips the native checkout and runs this worktree's own build.bat (it maps the UNC path itself).
 # Environment: VIXEN_NATIVE_ROOT (default /mnt/c/vixen-native), VIXEN_NATIVE_SYSTEM32 (cmd.exe directory
-# override). UNDERTOW_ROOT, VIXEN_BINARY_DIR and the other VIXEN_* knobs documented in build.bat are
-# forwarded into the Windows process.
+# override). UNDERTOW_ROOT, YEROKET_ROOT, VIXEN_BINARY_DIR and the other VIXEN_* knobs documented in
+# build.bat are forwarded into the Windows process; the two roots are forwarded as paths.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -111,7 +111,7 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
-    local forward="UNDERTOW_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"

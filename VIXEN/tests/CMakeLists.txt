@@ -54,6 +54,11 @@ add_test(NAME Native.KernelSnapshotPublish
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_publish.cmake")
 set_tests_properties(Native.KernelSnapshotPublish PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.YeroketRootOrder
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_YEROKET_ROOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/yeroket-root-order"
+            -P "${VIXEN_ROOT}/cmake/tests/test_yeroket_root_order.cmake")
+set_tests_properties(Native.YeroketRootOrder PROPERTIES LABELS "cpu")
+
 if(UNIX)
     add_test(NAME Native.WslRouteLauncher
         COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_vixen_native_launcher.sh" "${VIXEN_ROOT}/.."
