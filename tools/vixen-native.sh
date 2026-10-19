@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # WSL -> Windows-native route for VIXEN: finds cmd.exe, keeps Windows path quoting intact,
-# provisions the per-lane native checkout and syncs it to the lane's committed tip.
+# provisions the per-lane native checkout, syncs it to the lane's committed tip and bootstraps
+# the pinned toolchain before the build.
 #
 # Usage: tools/vixen-native.sh [--lane NAME] [--branch NAME] [--direct] [--log FILE] COMMAND [ARGS]
 #   cmd                        print the discovered cmd.exe
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
-#   prepare                    sync (the command to run before queueing the build)
+#   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
+#   prepare                    sync + provision (run this before queueing the build)
 #   build [ACTION [PRESET [TARGET]]]
 #                              prepare, then build.bat (ACTION defaults to build.bat's own default)
 #   bat RELPATH [ARGS]         prepare, then run a batch file of the checkout (e.g. a direct vcvars64 route)
@@ -121,8 +123,24 @@ run_bat() {
     return "$rc"
 }
 
+do_provision() {
+    local dir tool missing=0
+    dir="$(base_dir)"
+    for tool in ninja-bin.txt cmake-exe.txt; do
+        [[ -f "$dir/VIXEN/.win-native-toolchain/$tool" ]] || missing=1
+    done
+    if [[ "$missing" == 0 ]]; then say "native toolchain already provisioned in $dir"; return 0; fi
+    say "native toolchain pins missing in $dir; running build.bat provision"
+    run_bat "$dir/build.bat" provision || {
+        local rc=$?
+        say "provision stopped with exit code $rc (20 = needs an elevated PowerShell, 30 = Vulkan SDK version decision); see the log"
+        return "$rc"
+    }
+}
+
 do_prepare() {
     if [[ "$direct" != 1 ]]; then do_sync; fi
+    do_provision
 }
 
 while [[ $# -gt 0 ]]; do
@@ -131,11 +149,11 @@ while [[ $# -gt 0 ]]; do
         --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
         --direct) direct=1; shift ;;
         --log) log_file="${2:?--log needs a file}"; shift 2 ;;
-        -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) break ;;
     esac
 done
-[[ $# -gt 0 ]] || die "missing command (cmd|checkout|sync|prepare|build|bat); see --help"
+[[ $# -gt 0 ]] || die "missing command (cmd|checkout|sync|provision|prepare|build|bat); see --help"
 command_name="$1"; shift
 if [[ -z "$log_file" ]]; then
     log_file="$repo_root/.tmp/vixen-native/$lane-$command_name-$(date +%Y%m%d-%H%M%S).log"
@@ -145,6 +163,7 @@ case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
     checkout) do_checkout ;;
     sync) do_sync ;;
+    provision) if [[ "$direct" != 1 ]]; then do_sync; fi; do_provision ;;
     prepare) do_prepare ;;
     build) do_prepare; run_bat "$(base_dir)/build.bat" "$@" ;;
     bat)

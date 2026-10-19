@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/vixen-native.sh against a fake System32 (cmd.exe stub) and throwaway git repositories:
-# command discovery, per-lane checkout, sync to the committed tip and exit codes.
+# command discovery, per-lane checkout, sync to the committed tip, provisioning and exit codes.
 # Usage: test_vixen_native_launcher.sh <repo-root> <scratch-dir>
 set -uo pipefail
 
@@ -72,6 +72,10 @@ check "sync refuses a diverged checkout" \
     bash -c '! "$0" sync >/dev/null 2>&1' "$launcher"
 git -C "$native/lane-a" reset -q --hard HEAD~1
 
+check "build provisions when the pinned files are missing, then runs build.bat" \
+    bash -c ': > "$FAKE_CALLS"; "$0" build all vixen-ninja VixenApp >/dev/null; mapfile -t c < "$FAKE_CALLS"; test "${#c[@]}" = 2 && [[ "${c[0]}" == "/c "*"build.bat provision" ]] && [[ "${c[1]}" == "/c "*"build.bat all vixen-ninja VixenApp" ]]' "$launcher"
+mkdir -p "$native/lane-a/VIXEN/.win-native-toolchain"
+touch "$native/lane-a/VIXEN/.win-native-toolchain/ninja-bin.txt" "$native/lane-a/VIXEN/.win-native-toolchain/cmake-exe.txt"
 check "build passes the action, preset and target to build.bat with a Windows batch path" \
     bash -c '"$0" build all vixen-ninja VixenApp >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${a[0]}" = /c && [[ "${a[1]}" == *build.bat ]] && [[ "${a[1]}" == *\\* ]] && test "${a[2]}" = all && test "${a[3]}" = vixen-ninja && test "${a[4]}" = VixenApp' "$launcher"
 check "an argument with spaces stays one argument" \
@@ -82,4 +86,7 @@ check "build exit code is the batch file's exit code" \
     bash -c 'FAKE_RC=7 "$0" build >/dev/null; test $? = 7' "$launcher"
 check "build output is kept in the log" \
     bash -c 'log="$1/build.log"; "$0" --log "$log" build >/dev/null; grep -q "fake cmd output" "$log"' "$launcher" "$scratch"
+check "a provisioning stop (exit 20) stops the build before build.bat runs" \
+    bash -c 'rm -rf "$1/lane-a/VIXEN/.win-native-toolchain"; : > "$FAKE_CALLS"; FAKE_RC=20 "$0" build all >/dev/null; rc=$?; test $rc = 20 && test "$(wc -l < "$FAKE_CALLS")" = 1 && grep -q "build.bat provision" "$FAKE_CALLS"' "$launcher" "$native"
+
 exit "$failures"
