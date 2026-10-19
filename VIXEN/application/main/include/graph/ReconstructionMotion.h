@@ -1,8 +1,6 @@
 #pragma once
 
 #include "Core/RenderGraph.h"
-#include "Nodes/ComputeDispatchNode.h"
-#include "Nodes/ImageSyncGathererNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/DeviceNode.h"
 
@@ -22,9 +20,13 @@ CONSTEXPR_NODE_CONFIG(ReconstructionMotionPorts, 0, 4, SlotArrayMode::Single) {
     }
 };
 
+// marchWrites is the primary march's one image-write gatherer (its IMAGE_WRITE_ARRAY
+// source); its owner pre-registers firstWriteSlot + 2 slots, and these targets fill
+// the last two.
 struct ReconstructionMotionParams {
     ConnectionBatch* batch = nullptr;
-    NodeHandle device, sourceTarget, primaryMarch;
+    NodeHandle device, sourceTarget, marchWrites;
+    uint32_t firstWriteSlot = 0;
 };
 
 // The raymarcher writes these at its exact internal extent, including sky
@@ -37,8 +39,6 @@ public:
         auto& batch = *params.batch;
         const auto motion = scope.AddNode<RenderTargetNodeType>("motion");
         const auto validity = scope.AddNode<RenderTargetNodeType>("validity");
-        const auto writes = scope.AddNode<ImageSyncGathererNodeType>("writes");
-        scope.GetInstance<ImageSyncGathererNode>(writes)->PreRegisterImageSlots(2);
         uint32_t index = 0;
         for (auto target : {motion, validity}) {
             scope.GetInstance<RenderTargetNode>(target)->SetParameter(RenderTargetNodeConfig::PARAM_FORMAT,
@@ -47,12 +47,10 @@ public:
                           target, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
                  .Connect(params.sourceTarget, RenderTargetNodeConfig::RENDER_TARGET,
                           target, RenderTargetNodeConfig::EXTENT_SOURCE)
-                 .Connect(target, RenderTargetNodeConfig::RENDER_TARGET, writes, index++,
+                 .Connect(target, RenderTargetNodeConfig::RENDER_TARGET,
+                          params.marchWrites, params.firstWriteSlot + index++,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         }
-        batch.Connect(writes, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      params.primaryMarch, ComputeDispatchNodeConfig::IMAGE_WRITE_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
         scope.BindOutput(ReconstructionMotionPorts::MOTION, motion, RenderTargetNodeConfig::RENDER_TARGET);
         scope.BindOutput(ReconstructionMotionPorts::VALIDITY, validity, RenderTargetNodeConfig::RENDER_TARGET);
         scope.BindOutput(ReconstructionMotionPorts::MOTION_VIEW, motion, RenderTargetNodeConfig::CURRENT_VIEW);
