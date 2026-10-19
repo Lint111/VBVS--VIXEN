@@ -1,17 +1,11 @@
 /**
  * @file test_view_hud_golden.cpp
- * @brief View Contract Inc-2 golden-mirror gate. Proves the generated Hud.g.h RmlUi data-model
- * registration block (a) compiles + binds against a real Rml::DataModelConstructor, and (b)
- * matches, as a normalized ordered call sequence, the CANONICAL Hud [View] schema field order
- * (tick, bodyCount, activeLensName, activeLensCount, factions[HudFaction], events[HudEvent],
- * inspectSelected, inspectName, inspectCause, inspectMaxGrievance, inspectStrength,
- * inspectTopRelName, inspectTopRelSig).
- * The human truth used to be the hand-written block in UIRenderNode.cpp (Inc-1); that block is
- * deleted in Inc-2 (the node is now a generic IView host — see Ui/IView.h), so the truth moves
- * to the schema itself (codegen/view-schemas/Hud.cs) and its native consumer, HudView::Register
- * (application/main/include/graph/HudView.h). Do NOT parse either at runtime — the expected
- * sequence below is a maintained literal; the pinning comment tells a future editor to update
- * both sides together.
+ * @brief View Contract Inc-2 gate. Proves the generated Hud.g.h RmlUi data-model registration
+ * block compiles and binds against a real Rml::DataModelConstructor with no RmlUi error (a
+ * missing struct/array registration or a failed Bind is logged as an error and fails the test).
+ * That the header matches the canonical Hud [View] schema (codegen/view-schemas/Hud.cs) is NOT
+ * asserted here: the view_hud_check codegen target regenerates the header from the schema and
+ * fails the build on any difference, so a hand-copied expected sequence would only track it.
  */
 #include <gtest/gtest.h>
 #include <RmlUi/Core.h>
@@ -19,11 +13,8 @@
 #include <RmlUi/Core/RenderInterface.h>
 #include <RmlUi/Core/SystemInterface.h>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
-#include <regex>
 
 #include "Generated/Hud.g.h"   // the artifact under test
 #include "Ui/IView.h"
@@ -47,74 +38,23 @@ public:
     void ReleaseTexture(Rml::TextureHandle) override {}
 };
 
-// Canonical Hud schema field order (codegen/view-schemas/Hud.cs), mirrored by the native
-// consumer's HudView::Register (application/main/include/graph/HudView.h) — NOT the deleted
-// UIRenderNode.cpp hand-written block (Inc-1's anchor; removed in Inc-2).
-const std::vector<std::string> kExpected = {
-    "RegisterStruct<HudFaction>",
-    "RegisterMember(name,&HudFaction::name)",
-    "RegisterMember(grievance,&HudFaction::grievance)",
-    "RegisterMember(focused,&HudFaction::focused)",
-    "RegisterMember(known,&HudFaction::known)",
-    "RegisterMember(inLens,&HudFaction::inLens)",
-    "RegisterMember(recentChanged,&HudFaction::recentChanged)",
-    "RegisterMember(recentEventAge,&HudFaction::recentEventAge)",
-    "RegisterStruct<HudEvent>",
-    "RegisterMember(kind,&HudEvent::kind)",
-    "RegisterMember(tick,&HudEvent::tick)",
-    "RegisterArray<std::vector<HudFaction>",   // regex [^>]+ stops at the first '>', so the
-    "RegisterArray<std::vector<HudEvent>",     // captured token intentionally omits the closing '>>'
-    "Bind(tick)",
-    "Bind(bodyCount)",
-    "Bind(activeLensName)",
-    "Bind(activeLensCount)",
-    "Bind(factions)",
-    "Bind(events)",
-    "Bind(inspectSelected)",
-    "Bind(inspectName)",
-    "Bind(inspectCause)",
-    "Bind(inspectMaxGrievance)",
-    "Bind(inspectStrength)",
-    "Bind(inspectTopRelName)",
-    "Bind(inspectTopRelSig)",
-};
-
-std::string ReadGeneratedHeader() {
-    std::ifstream f(VIEW_HUD_G_H);
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
-
-std::vector<std::string> ExtractSequence(const std::string& src) {
-    std::vector<std::string> seq;
-    // Custom delimiter "re(...)re": the pattern contains the literal sequence )" (e.g. in
-    // (\w+)",) which would otherwise close a default-delimited R"(...)" raw string early.
-    static const std::regex re(
-        R"re(RegisterStruct<(\w+)>|RegisterMember\("(\w+)",\s*&(\w+::\w+)\)|RegisterArray<([^>]+)>|c\.Bind\("(\w+)",)re");
-    for (std::sregex_iterator it(src.begin(), src.end(), re), end; it != end; ++it) {
-        const std::smatch& m = *it;
-        if (m[1].matched)      seq.push_back("RegisterStruct<" + m[1].str() + ">");
-        else if (m[2].matched) seq.push_back("RegisterMember(" + m[2].str() + ",&" + m[3].str() + ")");
-        else if (m[4].matched) seq.push_back("RegisterArray<" + m[4].str() + ">");
-        else if (m[5].matched) seq.push_back("Bind(" + m[5].str() + ")");
+// Records RmlUi errors/warnings (RmlUi logs a failed Bind or an unregistered type through the
+// SystemInterface and keeps going, so the log is where a broken registration shows up).
+class RecordingSystemInterface final : public Rml::SystemInterface {
+public:
+    double GetElapsedTime() override { return 0.0; }
+    bool LogMessage(Rml::Log::Type type, const Rml::String& message) override {
+        if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_WARNING || type == Rml::Log::LT_ASSERT)
+            problems.push_back(message);
+        return Rml::SystemInterface::LogMessage(type, message);
     }
-    return seq;
-}
+    std::vector<std::string> problems;
+};
 
 }  // namespace
 
-TEST(ViewHudGolden, GeneratedSequenceMatchesCanonicalSchema) {
-    const std::string src = ReadGeneratedHeader();
-    ASSERT_FALSE(src.empty()) << "could not read " << VIEW_HUD_G_H;
-    const std::vector<std::string> got = ExtractSequence(src);
-    EXPECT_EQ(got, kExpected)
-        << "generated Hud.g.h registration sequence diverged from the canonical Hud [View] "
-           "schema (codegen/view-schemas/Hud.cs) / HudView::Register truth — regenerate the "
-           "header or re-transcribe kExpected.";
-}
-
 TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
-    Vixen::Ui::VixenRmlSystemInterface sysIface;
+    RecordingSystemInterface sysIface;
     NullRenderInterface renderIface;
     Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sysIface);
@@ -134,6 +74,9 @@ TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     ASSERT_TRUE(static_cast<bool>(c));
     Vixen::Views::BindHudModel(c, bind);
     EXPECT_TRUE(static_cast<bool>(c.GetModelHandle()));
+    EXPECT_TRUE(sysIface.problems.empty())
+        << "RmlUi reported a problem while binding the generated Hud model: "
+        << (sysIface.problems.empty() ? "" : sysIface.problems.front());
 
     Rml::RemoveContext("view-golden");
     Rml::Shutdown();
