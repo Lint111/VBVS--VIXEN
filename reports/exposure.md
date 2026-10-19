@@ -1,12 +1,209 @@
 # Lane exposure: dynamic exposure (eye adaptation)
 
-Branch `lane-exposure` off `origin/wave/authoring-convergence` `e4a18398`. This is a 3-hour
-checkpoint, not a final report. All captures ran on Dozen and count for correctness only.
-Evidence (logs, captures, contact sheets, CSV):
-`/home/liory/codeman-cases/undertow/reports/exposure-evidence/`. Prior art:
+Branch `lane-exposure`. Round 1 (3-hour checkpoint, `99f533e9`) is kept below as §R1. Round 2
+(owner rulings of 2026-10-20) is first. All captures ran on Dozen and count for correctness only;
+no timing in this report is representative. Evidence (logs, captures, CSV, scripts):
+`/home/liory/codeman-cases/undertow/reports/exposure-evidence/round2/` (round 1: the parent
+directory). Contact sheets: [`exposure-visual/`](exposure-visual/). Prior art:
 [`exposure-priorart.md`](exposure-priorart.md).
 
-## 1. Why the default-on meter whited out (MEASURED)
+## Round 2
+
+Merged `origin/wave/authoring-convergence` `13358fe3` first (merge `ad3bc4c8`, no conflicts), so
+every round-2 build, capture and test below ran on the merged tree.
+
+### R2.1 Brightening floor (ruling 2)
+
+`LightingConfigNodeConfig.h:115` `EXPOSURE_PRESETS`: the EV100 floor is now default **-8**,
+`dark` **-12**, `bright` **-4** (was 0.5 / 1.0 / 0.5; key, percentiles and speeds unchanged).
+
+Why these values (prior-art table, `exposure-priorart.md` §3/§6). VIXEN EV100 is in scene units,
+where look-dev midday meters about -1. So the floor is best read as "how many EV a frame may be
+lifted below midday":
+- default -8 allows about 7 EV of brightening. That is UE 4.27's `min_brightness`..`max_brightness`
+  span (0.03..8, log2 ≈ 8 EV).
+- dark -12 allows about 11 EV, toward HDRP's -1..14 span (15 EV), for interiors and space.
+- bright -4 allows about 3 EV, so exterior presets never lift a dark corner far.
+
+Round 1's 0.5 floor was above every current fixture's reading, so the meter could only darken.
+Every fixture now meters inside the window (HUD -1.79, editor 0.04..0.23, look-dev -0.8..-2.5,
+room interior -4.1). Only near-black space frames reach the floor (§R2.3).
+
+### R2.2 Look-dev compensation re-derived (ruling 1; MEASURED)
+
+**Method.** The old and new paths share the same ACES (Narkowicz) + sRGB tone map. Inverting it per
+pixel gives log2(L·2^net), so for the same scene the median per-pixel difference between two
+captures is their net-exposure difference.
+- **Validation.** On round 1's midday sheet the method reads +4.638 EV between the old-meter and
+  new panels. The logged values give 4.668 - 3.25 - 0.026 = +4.642.
+- **Measurement run.** Each state × 4 angles at 500², new meter, old compensation; adaptation
+  pinned to the 0.5 s maximum step (`VIXEN_HDR_EXPOSURE_DT=10` is clamped to 0.5 s by the node),
+  16 frames per angle, so converged.
+- **Comparison.** Against the reviewed hdrmeter HDR-on frames (`reports/hdrmeter/visual-*-off-on-500.png`),
+  both full-frame and on an 80-px sky strip (geometry-free).
+- **Night.** The day states agree full-frame and on the sky strip to 0.01 EV. Night's geometry and
+  service lights changed since the review (full-frame IQR about 2 EV), so night uses the sky strip
+  (four angles 2.72..2.84).
+
+| state | old comp | mean Δ to reviewed | new comp (`LookdevSceneDefinition.h:97-100`) |
+|---|---|---|---|
+| midday | -3.25 | +2.87 | **-0.38** |
+| late-afternoon | -3.25 | +2.84 | **-0.41** |
+| overcast | -3.50 | +3.00 | **-0.50** |
+| night-service | -5.10 | +2.76 (sky) | **-2.34** |
+
+So about 2.9 EV of each old value only cancelled the old meter. What remains is look intent: day
+sits about 0.4 EV under key 0.18, and night 2.3 EV under it.
+
+**Round 2 against the reviewed frames.** Per angle within ±0.29 EV, per-state mean about 0
+(`round2/lookdev-r2-vs-reviewed.txt`). The per-angle spread is the new meter weighting sky-heavy
+angles differently from the old key-1.0 meter.
+
+**Looked at** (`exposure-visual/lookdev-<state>-reviewed-off-r1-r2.png`; columns reviewed /
+HDR off / round 1 / round 2, one row per angle):
+- **midday:** round 2 is the reviewed look: bright, saturated, blue-violet sky, white hull with red
+  door, readable trees and figure. Round 1 was crushed to near black. The only difference from the
+  review is the dark-red cast shadows on the ground, which are the shadow pass that landed after
+  the review (HDR-off shows them too).
+- **late-afternoon:** same verdict; warm ground, readable foliage, sky matches.
+- **overcast:** same; the pale water and the pale-sand ground match the review.
+- **night-service:** the review's dark navy night: hull and figure readable, warm service-light
+  pools. The pools are broader than in the review because of the lighting changes since then, not
+  exposure. Round 1 was black.
+
+`VIXEN_HDR_EXPOSURE_FIXED` pinned the old meter's midday reading 4.66783. It now pins the new
+meter's midday angle-0 reading **1.508** (`ExposureReduce.comp:26`), so fixed-exposure captures keep
+the reviewed midday look under the new compensation.
+
+### R2.3 Planet compensation re-derived (MEASURED)
+
+Planet pins a net exposure of 3 (planetref D7/D8), so its compensation has always been "target
+minus the meter's reading". The old corner-tile readings (0, 4.059, 0.029) only described the old
+meter.
+- **Measurement.** All 12 states were run with the new meter (default preset, meter logged).
+  Planet-filled frames settle at log2 exposure 1.37..1.65. C7-60 and C7-60-1p5au read 6.94. The
+  seven mostly-black-sky frames (C2, C4a-c, C5a-moon, C9) meter below the -8 floor and settle at
+  the floor's 8.526.
+- **Change.** `PlanetSceneDefinition.h:425-435` now carries those readings, and `ExposureFor()`
+  keeps net exposure 3.
+
+**Looked at** (`exposure-visual/planet-states-{1,2}.png`; columns reviewed planetsky frame / new
+meter with the old compensation / round 2):
+- Round 2 matches the reviewed planetsky frames in all 12 states: C1 disc tones, C2-term flat grey
+  face, the C4a station and limb glow, C7 stone tones, star points.
+- The middle column shows what the re-derivation prevents: C1 and C7 turn white, the C4/C9 limb
+  glow blows out, and C7-60 ground goes pure white.
+
+### R2.4 Owner acceptance scenes (ruling: dark room / window / walk)
+
+The look-dev scene machinery can express an interior with an opening, so this is not a STOP. An
+SDF recipe of an outer box, minus the inner box, minus a doorway and a window
+(`test_lookdev_capture.cpp`, `ExposureRoomInstructions`), registered through the same procedural
+recipe path as the stage, beside the stage on a stone pad.
+- **Lighting.** Midday sun.
+- **Fill.** The renderer's ambient term is unoccluded sky fill, so the room scenes lower it from
+  0.14 to 0.01. That puts the interior about 6.8 EV under the sun; real interiors sit 5-8 EV under
+  their sunlit exterior.
+- **Sky.** The stage's authored night-navy sky (0.02-0.06) would make "outside" darker than the room
+  walls, so the room scenes use a daylight sky (0.05, 0.08, 0.18), about a tenth of sunlit white.
+- Both are fixture values in the test, not engine defaults.
+- **Registration.** Three CTests: `Application.LookdevCapture.ExposureRoom.{door,window,walk}`,
+  480×320, step pinned to 0.1 s. All three passed (`round2/logs/room3-*.log`).
+
+Looked at (`exposure-visual/room-door-window.png`, `room-walk-frames.png`, `room-walk-curve.png`):
+- **door: adapted to the exterior** (exposure 0.89×). The sunlit pad is bright yellow and the sky
+  blue. Through the doorway the room is **near black** (about 8/255); only the sun patch on the
+  floor inside the door shows. Not lifted to grey. PASS. The doorway wall itself reads dark brown:
+  at midday the sun grazes vertical walls (N·L 0.3), and the meter follows the pad.
+- **window: adapted to the dark interior** (19.8×). The interior wall reads mid-grey and readable;
+  the window is **blown to pale blue-white**, and the sun patch on the floor is white. PASS.
+- **walk** (meter CSV `round2/room/walk-meter.csv`):
+  - **0-2 s, outside:** 0.89×.
+  - **2.5 s, through the door:** the frame goes black.
+  - **2.5-8 s, inside:** the room lifts gradually from black to readable grey.
+  - **9.0 s, back out:** the exterior is blown toward white, then settles by about 9.5-10 s.
+  - Measured against the configured speeds:
+    - darkening (going in, `speedDown` 1/s): 0.606 of the gap remains after 0.5 s, against
+      e^-0.5 = 0.607;
+    - brightening (coming out, `speedUp` 3/s): 0.222 remains after 0.5 s, against
+      e^-1.5 = 0.223.
+  - The inside/outside gap is 4.8 EV.
+- **Intermediate captures** (`round2/logs/room-*.log`, `room2-*.log`): the first attempt (stage
+  night sky, fill 0.03) gave only a 1.2 EV inside/outside gap. The interior read dark grey and the
+  window view did not blow out, which led to the sky and fill values above.
+
+### R2.5 HUD and editor under the lower floor (looked at; MEASURED)
+
+**HUD** (`exposure-visual/hud-oldmeter-r1-r2.png`, frame 75):
+
+| | sphere (375,250) | sky (450,400) | luma p5/p50/p95 | pixels ≥250 |
+|---|---|---|---|---|
+| old meter | (255,255,255) | (206,206,241) | 50/209/255 | 8.7 % |
+| round 1 | (167,171,178) | (18,18,51) | 19/26/171 | 0 % |
+| round 2 | (237,239,241) | (75,75,150) | 33/81/239 | **0 %** |
+
+Round 2 lifts the dim HUD frame toward middle grey (median 26 → 81), with no clipping. The old
+white-out does not return.
+
+**Editor** (`editor-off-r1-r2.png`): almost the same as round 1. The editor meters about 0.1 EV100,
+close to the old floor.
+
+### R2.6 Checks (MEASURED unless marked)
+
+- **CPU checks, all passed:**
+  - `test_exposure_meter_mirror` 1/1, updated for the -8 floor; the floor case now uses a 1e-5
+    frame.
+  - `LightingConfigParity.*` 4/4 and `LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct` 1/1
+    (the 272-byte layout).
+  - `sdi_merged_drift_check` 1/1, after regenerating `ReconstructionExposure-SDI.g.h` and
+    `ExposureTonemapReference-SDI.g.h`. The rename changes their layout hash, and the first run
+    caught it.
+- **Textures/RenderGraph/VulkanResources, CPU part:** 1250/1260. The 10 failures are all
+  `Rml::Initialise()` returning false ("No font engine interface set!") in
+  `UiCompositionHostTest.*` (6), `ViewEditorLayersGolden/Reconcile` (2) and `BlobView.*` (2). This
+  is an RmlUi environment fault, unrelated (INFERRED; not rerun on the base).
+- **The same suites, GPU part:** 173/189 passed.
+  - `ProceduralRecipeRenderTest.*` (10) fail on a test-local GLSL compile error
+    (`shader:6: ')' Expected`).
+  - `EditorDocumentRenderTest` (3) and `AppFlowEditorToggleRenderTest` (1) fail identically at the
+    round-1 floor (0.5) and the new one. Their sources never reference exposure, tone mapping or
+    HDR, so they are unrelated (INFERRED pre-existing).
+  - `vixen_text_shader_capture_producer` hit its timeout under GPU contention.
+  - `EditorToggleUndoCapture.UndoRedoRestoresRenderByteExact` is fixed below.
+- **`HudRenderCapture.*` 3/3, `EditorToggleUndoCapture.*` 7/7, producers 2/2**
+  (`round2/logs/editor-instant.log`).
+  - `UndoRedoRestoresRenderByteExact` failed at the -8 floor and passed at 0.5 and with HDR off.
+    With the lower floor the editor frame adapts, and an exponential approach never lands
+    exactly, so undo's frame differed in the fourth decimal of log2 exposure.
+  - **Fix:** the producer's registration (`application/editor/CMakeLists.txt`) makes adaptation
+    instant (0.5 s step × 100/s), so each capture is a function of what it shows. The test still
+    asserts byte equality.
+- **Planet:** all 12 `Application.PlanetCapture.<state>` passed (the two-run repeat-pixel witness).
+  C1, C1-epic and C7 passed on rerun: the first attempt lost the device with
+  `VK_ERROR_OUT_OF_DEVICE_MEMORY` in the same second as a concurrent room capture (Dozen
+  contention).
+- **Look-dev:** 16 states and angles captured and passed in one process on the round-2 binary. The
+  registered repeat-pixel suite (`RendersFourStatesAtFourAnglesDeterministically` via
+  `run_lookdev_capture.cmake`, 64 frames × 16 × 2 runs) and the 32 tone-map parity captures were
+  **not run** this round.
+- **Cornell mining beam with HDR on** (`test_headless_cornell_graph.cpp:313,369`): **pre-existing,
+  not this lane.** With HDR on, the beam frame is byte-identical to the no-beam frame.
+  - Cause, from the code (not a run on the base): `SpatialReuseShade.comp`
+    `CompositeMiningBeams` writes only `sceneRadianceImage`. The HDR tone map
+    (`ExposureTonemapSystem`) reads `sceneRadianceHistoryOutput`, which is stored before the beam
+    composite.
+  - The composite came with `3dcdef4f` (mining-beam feedback); the fixture is registered with
+    `VIXEN_HDR_EXPOSURE=0`.
+- **Build:** zero new warnings in touched targets. Three build reds, all base:
+  - the `no-new-mutex` gate's stale allowlist row for `Textures/src/TextureLoader.cpp`;
+  - the `test_registration_api` link (TextureCacher), both from the wave's `fd89b971` texture
+    extraction;
+  - `frame_targets_schema_check` (`SubstrateKinds.cs:173 'Rate'`, the undertow pair; known since
+    round 1).
+
+## §R1 Round 1 (checkpoint `99f533e9`)
+
+### 1. Why the default-on meter whited out (MEASURED)
 
 The old path (`ExposureMeter.comp` / `ExposureReduce.comp` before this lane) worked like this:
 
@@ -35,7 +232,7 @@ Pixel values at frame 75 (`sheets/hud-off-oldmeter-new.png`):
 The editor capture shows the same pattern: 32.2 % of pixels clipped with the old meter, 0 % with
 the new default.
 
-## 2. What changed (commit `4fb2d687`)
+### 2. What changed (commit `4fb2d687`)
 
 This extends the existing exposure path (meter → reduce → generated tone-map). It is not a
 parallel system.
@@ -96,7 +293,7 @@ look-dev midday −0.97. Only starfield/cornell (1.03) meters above it. The defa
 the dark scenes and only darkens bright ones. **The floor is the main value for the owner to
 tune.**
 
-## 3. Witness (looked at; sheets in `exposure-evidence/sheets/`)
+### 3. Witness (looked at; sheets in `exposure-evidence/sheets/`)
 
 | scene | sheet | result |
 |---|---|---|
@@ -119,7 +316,7 @@ With the default floor, the same switch stays flat at 1.02× (`series-night-to-m
 both states meter below the floor. The three-state run failed the look-dev harness's 300 s
 runtime budget (406 s on Dozen). The images and meter log are complete.
 
-## 4. Tests
+### 4. Tests
 
 - `test_exposure_meter_mirror`, rewritten as a CPU mirror of the new shaders. It covers:
   - percentile rejection of a dark background;
@@ -143,7 +340,7 @@ runtime budget (406 s on Dozen). The images and meter log are complete.
 - Build warnings: none new. The only warning in touched targets is the pre-existing
   `DeviceNode.cpp:683`. No golden was recaptured.
 
-## 5. R619.1: should the exposure math be a kernel callable?
+### 5. R619.1: should the exposure math be a kernel callable?
 
 INFERRED from scanning the pinned kernel source (`96570e48`):
 
@@ -160,36 +357,48 @@ For now the math stays in the existing hand shaders, which is the existing rende
 
 ## STOPs
 
-1. **Look-dev and planet compensation are calibrated against the old meter.** The look-dev
-   presets use −3.25 / −3.25 / −3.5 / −5.1 EV (`LookdevSceneDefinition.h:94-97`), and
-   `PlanetSceneDefinition.h:52-93` derives its compensation from old meter readings.
-   - The old midday net exposure was about +1.42 EV. This is INFERRED from the fixed midday
-     constant 4.66783 minus 3.25.
-   - Under the new default, midday nets 0.03 − 3.25 = −3.2 EV, which crushes it.
-   - These are owner-tuned look values (R419), so I did not retune them.
-   - Options: (a) re-derive each scene's compensation so its net exposure matches the reviewed
-     hdrmeter sheets (midday ≈ +1.4 EV); (b) lower the default floor so auto-exposure brightens
-     dim VIXEN scenes, and give HUD/editor the `dark` preset; (c) both.
-   - Recommendation: (a), plus an owner pick of the floor from a contact sheet.
-2. **Default floor value.** 0.5 EV100 in scene units fixes the white-out but makes auto-exposure
-   darken-only for every current fixture. The owner should choose this deliberately (see §2).
+1. **Planet-style pinned exposure under an auto meter.** Planet keeps a physical net exposure of 3,
+   so its compensation must cancel the meter's settled reading per state. That is what it always
+   did, now with the new meter's readings. Seven states sit at the -8 floor, so changing the
+   default floor changes their compensation.
+   - The unified form would be a scene-declared exposure mode (auto vs pinned) in `SceneLook`. That
+     is a new declaration field, so I did not mint it.
+   - Options: (a) keep the measured table (done; re-measure if the floor moves); (b) an owner ruling
+     for a pinned mode in `SceneLook` (R507.3's declaration).
+   - Recommendation: (b).
+2. **Floor values are defaults, not final.** -8/-12/-4 come from the prior-art spans. HUD now reads
+   brighter (median 26 → 81, 0 % clipped). The owner should judge HUD and editor from
+   `exposure-visual/hud-oldmeter-r1-r2.png` and `editor-off-r1-r2.png`.
+3. **Acceptance-room fixture values** (fill 0.01, daylight sky) are test fixture values, needed
+   because the renderer's ambient is unoccluded sky fill and the stage sky is night-navy. An
+   occluded sky fill (AO) is renderer work outside this lane.
 
 ## SPT DISPOSITION
 
-No SPT id was given for this lane. The work is PARTIAL: the white-out is fixed and the adaptation
-is witnessed. Still open: the look-dev/planet compensation (STOP 1), the CPU/GPU suite runs and
-the final merge with the wave.
+No SPT id was given for this lane. Round 2's rulings 1-2, the acceptance scenes, the skipped
+checks, the `ev100` rename and the merge are done. PARTIAL:
+- the registered look-dev repeat-pixel suite and the tone-map parity captures were not rerun;
+- STOP 1 needs an owner decision.
 
 ## CONSOLIDATION ISSUES
 
-- With HDR on, the cornell fixture's beam assertions fail
-  (`test_headless_cornell_graph.cpp:313`, `:369`): the mining-beam overlay doesn't reach the
-  tone-mapped image. INFERRED pre-existing: the fixture is registered with
-  `VIXEN_HDR_EXPOSURE=0`, so default-on HDR was never tested with the beam.
-- `frame_targets_schema_regen` fails against the undertow pair (`SubstrateKinds.cs:173:13:
-  unsupported schema field fluent call 'Rate'`), which blocks `exposure_tonemap_gpu_regen` through
-  its dependency. I ran the tone-map codegen command directly.
-- The meter field is still named `ev100`, but it holds a log2 exposure multiplier, not EV100.
-  Renaming it touches the tone-map kernel source and the look-dev tests.
-- The queue's `test` and `light` resources were head-blocked for more than 10 minutes twice
-  during this lane.
+- **Mining beam with HDR on** (pre-existing): the beam composite lands in `sceneRadianceImage`, but
+  the HDR tone map reads `sceneRadianceHistoryOutput`. So with default-on HDR the beam is invisible
+  (`test_headless_cornell_graph.cpp:313,369`). The fix is a renderer decision: tone-map the
+  composited image, or composite into the history the tone map reads (with ghosting).
+- **Base reds on the wave** (`13358fe3`): `no-new-mutex` stale allowlist row
+  (`Textures/src/TextureLoader.cpp`); `test_registration_api` link failure (TextureCacher); both
+  from `fd89b971`.
+- **stb is pinned to a SHA that `GIT_SHALLOW TRUE` cannot fetch** (`dependencies/CMakeLists.txt:33`,
+  `fd89b971`). A fresh fetch cache fails configure; I worked around it with
+  `-DFETCHCONTENT_SOURCE_DIR_STB=~/.cache/vixen-fetchcontent-cache/stb-src`. Configure also needs
+  `UNDERTOW_ROOT`, and the build needs `VULKAN_SDK` in its environment (the UI/text SPIR-V
+  regeneration).
+- **RmlUi tests fail `Rml::Initialise()`** ("No font engine interface set!", 10 tests).
+- **`ProceduralRecipeRenderTest.*`** (10) fail on a test-local GLSL compile error.
+- `frame_targets_schema_check` / `exposure_tonemap_gpu_regen`: the undertow pair's
+  `SubstrateKinds.cs:173 'Rate'` (from round 1).
+- The node clamps a pinned adaptation step to 0.5 s, so `VIXEN_HDR_EXPOSURE_DT` above 0.5 is
+  silently 0.5. It is documented here; logging the clamp would help.
+- The queue's two-GPU sharing caused simultaneous `VK_ERROR_OUT_OF_DEVICE_MEMORY` in two jobs
+  (planet C1 and the room walk at 01:36:44); reruns passed.
