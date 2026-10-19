@@ -13,7 +13,7 @@ float SdfCore_GlyphOutline(float3 p, GlyphOutlineInstance glyph) {
     {
         if (segmentIndex < segmentCount)
         {
-            GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
+            PathSegment segment = glyph.Segments[segmentIndex];
             float2 p0 = float2(segment.P0.X, segment.P0.Y);
             float2 p1 = float2(segment.P1.X, segment.P1.Y);
             float2 p2 = float2(segment.P2.X, segment.P2.Y);
@@ -70,6 +70,214 @@ float SdfCore_GlyphOutline(float3 p, GlyphOutlineInstance glyph) {
         }
     }
     bool inside = checkWinding && ((glyph.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0));
+    return (inside ? -minimumDistance : minimumDistance);
+}
+
+float SdfCore_PathDistance(float3 p, PathInstance path) {
+    float3 query = p;
+    if (path.Dimension == 2u)
+    {
+        query.z = 0.0;
+    }
+    int segmentCount = (int)path.SegmentCount;
+    if (segmentCount > PathInstance.PathSegmentCapacity)
+    {
+        segmentCount = PathInstance.PathSegmentCapacity;
+    }
+    float bestDistanceSquared = 1.0e20;
+    float3 bestPoint = float3(0.0, 0.0, 0.0);
+    [loop] for (int segmentIndex = 0; segmentIndex < PathInstance.PathSegmentCapacity; ++segmentIndex)
+    {
+        if (segmentIndex < segmentCount)
+        {
+            PathSegment segment = path.Segments[segmentIndex];
+            float3 p0 = float3(segment.P0.X, segment.P0.Y, segment.P0.Z);
+            float3 p1 = float3(segment.P1.X, segment.P1.Y, segment.P1.Z);
+            float3 p2 = float3(segment.P2.X, segment.P2.Y, segment.P2.Z);
+            float3 p3 = float3(segment.P3.X, segment.P3.Y, segment.P3.Z);
+            [loop] for (int seedIndex = 0; seedIndex < 5; ++seedIndex)
+            {
+                float t = (float)seedIndex * 0.25;
+                [loop] for (int iteration = 0; iteration < 8; ++iteration)
+                {
+                    float u = 1.0 - t;
+                    float3 point = float3(0.0, 0.0, 0.0);
+                    float3 tangent = float3(0.0, 0.0, 0.0);
+                    float3 secondDerivative = float3(0.0, 0.0, 0.0);
+                    if (segment.Kind == PathSegment.Line)
+                    {
+                        point = p0 * u + p1 * t;
+                        tangent = p1 - p0;
+                        secondDerivative = float3(0.0, 0.0, 0.0);
+                    }
+                    else
+                    {
+                        if (segment.Kind == PathSegment.QuadraticBezier)
+                        {
+                            point = p0 * (u * u) + p1 * (2.0 * u * t) + p2 * (t * t);
+                            tangent = (p1 - p0) * (2.0 * u) + (p2 - p1) * (2.0 * t);
+                            secondDerivative = (p0 - p1 * 2.0 + p2) * 2.0;
+                        }
+                        else
+                        {
+                            point = p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t);
+                            tangent = (p1 - p0) * (3.0 * u * u) + (p2 - p1) * (6.0 * u * t) + (p3 - p2) * (3.0 * t * t);
+                            secondDerivative = (p0 - p1 * 2.0 + p2) * (6.0 * u) + (p1 - p2 * 2.0 + p3) * (6.0 * t);
+                        }
+                    }
+                    float3 offset = point - query;
+                    float numerator = offset.x * tangent.x + offset.y * tangent.y + offset.z * tangent.z;
+                    float denominator = tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z + offset.x * secondDerivative.x + offset.y * secondDerivative.y + offset.z * secondDerivative.z;
+                    if (denominator > 1.0e-12 || denominator < -1.0e-12)
+                    {
+                        float nextT = t - numerator / denominator;
+                        if (nextT < 0.0)
+                        {
+                            nextT = 0.0;
+                        }
+                        if (nextT > 1.0)
+                        {
+                            nextT = 1.0;
+                        }
+                        t = nextT;
+                    }
+                }
+                float oneMinusT = 1.0 - t;
+                float3 candidate = float3(0.0, 0.0, 0.0);
+                if (segment.Kind == PathSegment.Line)
+                {
+                    candidate = p0 * oneMinusT + p1 * t;
+                }
+                else
+                {
+                    if (segment.Kind == PathSegment.QuadraticBezier)
+                    {
+                        candidate = p0 * (oneMinusT * oneMinusT) + p1 * (2.0 * oneMinusT * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        candidate = p0 * (oneMinusT * oneMinusT * oneMinusT) + p1 * (3.0 * oneMinusT * oneMinusT * t) + p2 * (3.0 * oneMinusT * t * t) + p3 * (t * t * t);
+                    }
+                }
+                float3 difference = query - candidate;
+                float distanceSquared = difference.x * difference.x + difference.y * difference.y + difference.z * difference.z;
+                if (distanceSquared < bestDistanceSquared)
+                {
+                    bestDistanceSquared = distanceSquared;
+                    bestPoint = candidate;
+                }
+            }
+        }
+    }
+    if (path.Closed != 0u && segmentCount > 0)
+    {
+        PathSegment firstSegment = path.Segments[0];
+        PathSegment lastSegment = path.Segments[segmentCount - 1];
+        float3 firstPoint = float3(firstSegment.P0.X, firstSegment.P0.Y, firstSegment.P0.Z);
+        float3 lastPoint = float3(0.0, 0.0, 0.0);
+        if (lastSegment.Kind == PathSegment.Line)
+        {
+            lastPoint = float3(lastSegment.P1.X, lastSegment.P1.Y, lastSegment.P1.Z);
+        }
+        else
+        {
+            if (lastSegment.Kind == PathSegment.QuadraticBezier)
+            {
+                lastPoint = float3(lastSegment.P2.X, lastSegment.P2.Y, lastSegment.P2.Z);
+            }
+            else
+            {
+                lastPoint = float3(lastSegment.P3.X, lastSegment.P3.Y, lastSegment.P3.Z);
+            }
+        }
+        float3 closingEdge = firstPoint - lastPoint;
+        float edgeLengthSquared = closingEdge.x * closingEdge.x + closingEdge.y * closingEdge.y + closingEdge.z * closingEdge.z;
+        float projection = (edgeLengthSquared > 0.0 ? ((query.x - lastPoint.x) * closingEdge.x + (query.y - lastPoint.y) * closingEdge.y + (query.z - lastPoint.z) * closingEdge.z) / edgeLengthSquared : 0.0);
+        if (projection < 0.0)
+        {
+            projection = 0.0;
+        }
+        if (projection > 1.0)
+        {
+            projection = 1.0;
+        }
+        float3 closingPoint = lastPoint + closingEdge * projection;
+        float3 closingDifference = query - closingPoint;
+        float closingDistanceSquared = closingDifference.x * closingDifference.x + closingDifference.y * closingDifference.y + closingDifference.z * closingDifference.z;
+        if (closingDistanceSquared < bestDistanceSquared)
+        {
+            bestDistanceSquared = closingDistanceSquared;
+            bestPoint = closingPoint;
+        }
+    }
+    float3 nearestDifference = query - bestPoint;
+    float minimumDistance = length(nearestDifference);
+    if (path.Dimension != 2u || path.Closed == 0u)
+    {
+        return minimumDistance;
+    }
+    uint crossings = 0u;
+    int winding = 0;
+    [loop] for (int segmentIndex = 0; segmentIndex < PathInstance.PathSegmentCapacity; ++segmentIndex)
+    {
+        if (segmentIndex < segmentCount)
+        {
+            PathSegment segment = path.Segments[segmentIndex];
+            float2 p0 = float2(segment.P0.X, segment.P0.Y);
+            float2 p1 = float2(segment.P1.X, segment.P1.Y);
+            float2 p2 = float2(segment.P2.X, segment.P2.Y);
+            float2 p3 = float2(segment.P3.X, segment.P3.Y);
+            float2 previous = p0;
+            [loop] for (int sampleIndex = 1; sampleIndex <= 16; ++sampleIndex)
+            {
+                float t = (float)sampleIndex / 16.0;
+                float u = 1.0 - t;
+                float2 current = float2(0.0, 0.0);
+                if (segment.Kind == PathSegment.Line)
+                {
+                    current = p0 * u + p1 * t;
+                }
+                else
+                {
+                    if (segment.Kind == PathSegment.QuadraticBezier)
+                    {
+                        current = p0 * (u * u) + p1 * (2.0 * u * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        current = p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t);
+                    }
+                }
+                if ((previous.y <= query.y && current.y > query.y) || (previous.y > query.y && current.y <= query.y))
+                {
+                    float crossingX = previous.x + (query.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+                    if (crossingX > query.x)
+                    {
+                        crossings += 1u;
+                        winding += (current.y > previous.y ? 1 : -1);
+                    }
+                }
+                previous = current;
+            }
+        }
+    }
+    if (segmentCount > 0)
+    {
+        PathSegment firstSegment = path.Segments[0];
+        PathSegment lastSegment = path.Segments[segmentCount - 1];
+        float2 previous = float2((lastSegment.Kind == PathSegment.Line ? lastSegment.P1.X : (lastSegment.Kind == PathSegment.QuadraticBezier ? lastSegment.P2.X : lastSegment.P3.X)), (lastSegment.Kind == PathSegment.Line ? lastSegment.P1.Y : (lastSegment.Kind == PathSegment.QuadraticBezier ? lastSegment.P2.Y : lastSegment.P3.Y)));
+        float2 current = float2(firstSegment.P0.X, firstSegment.P0.Y);
+        if ((previous.y <= query.y && current.y > query.y) || (previous.y > query.y && current.y <= query.y))
+        {
+            float crossingX = previous.x + (query.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+            if (crossingX > query.x)
+            {
+                crossings += 1u;
+                winding += (current.y > previous.y ? 1 : -1);
+            }
+        }
+    }
+    bool inside = (path.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0);
     return (inside ? -minimumDistance : minimumDistance);
 }
 

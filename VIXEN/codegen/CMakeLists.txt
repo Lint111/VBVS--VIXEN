@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
+set(_vixen_tracked_yeroket_kernel_sha "38da3fa122d4801b73125dd43bfffae25b20a732")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -325,6 +325,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/UnityMathematicsTypes.cs" _recipe_math_types_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
@@ -426,6 +427,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
         set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
+        set(_recipe_math_types_run "${VIXEN_ROOT}/codegen/UnityMathematicsTypes.cs")
         set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
         set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
@@ -674,6 +676,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
+        --recipe-kernels-extra "${_recipe_math_types_run}"
         --out-header "${_out_recipe_simd_run}"
         --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
         --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}"
@@ -771,13 +774,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         if(IS_DIRECTORY "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
             list(APPEND _gpu_schema_excluded_sources
                 "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-        endif()
-        # Likewise the Substrate fixture kinds: they use the schema field `.Rate`
-        # facet, which the pinned kernel's source reader does not parse, and
-        # FrameTargets references none of them.
-        if(EXISTS "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
-            list(APPEND _gpu_schema_excluded_sources
-                "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
         endif()
         set(_gpu_schema_source_files)
         if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")

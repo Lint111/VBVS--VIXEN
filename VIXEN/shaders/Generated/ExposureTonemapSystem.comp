@@ -43,12 +43,12 @@ struct LightingConfig {
 
 layout(std430, binding = 2) readonly buffer meterBlock
 {
-    float meter[];
-};
+    float values[];
+} meter;
 layout(std430, binding = 3) readonly buffer LightingConfigSSBOBlock
 {
-    LightingConfig LightingConfigSSBO[];
-};
+    LightingConfig values[];
+} LightingConfigSSBO;
 layout(rgba16f, set = 0, binding = 0) uniform readonly image2D sceneRadianceHistoryOutput_current;
 layout(rgba8, set = 0, binding = 1) uniform writeonly image2D outputImage_current;
 layout(push_constant, std430) uniform ExposureTonemapSystemPushConstants
@@ -84,5 +84,5 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    ExposureTonemapSystem_Body(meter[0], LightingConfigSSBO[0], int(linearId));
+    ExposureTonemapSystem_Body(meter.values[0], LightingConfigSSBO.values[0], int(linearId));
 }

@@ -428,7 +428,7 @@
     ] },
     { "owner": "core:haul-stock-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulStockSpend", "root": false, "order": 68, "message": true, "kind": "haul_stock_spend", "indexes": [{ "name": "Source", "fields": ["Subject", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Subject", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
-      { "name": "Resource", "storage": "namespacedId", "refKind": "resource", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef>", "kindRefCatalog": "resource-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.ResourceRef" },
+      { "name": "Resource", "storage": "entityId", "refKind": "resource", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef>" },
       { "name": "FromBody", "storage": "int" },
       { "name": "CargoKg", "storage": "double", "unit": { "name": "Kilogram", "symbol": "kg", "dimensions": [1, 0, 0, 0, 0, 0], "scaleToSi": 1 } }
     ] },
@@ -1242,6 +1242,9 @@
     { "id": "core:faction_members" },
     { "id": "core:select" }
   ],
+  "aggregate_economy_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "ArrivalTick", "required": true, "detail": "the tick at which the aggregate arrival occurs", "value": { "kind": "scalar", "scalar": "long" } }
+  ] },
   "aggressor": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the faction that declares the war", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
   ] },
@@ -1259,6 +1262,13 @@
     { "name": "value", "required": true, "detail": "stable declared enum ordinal", "value": { "kind": "scalar", "scalar": "int" } },
     { "name": "initial", "required": true, "detail": "whether this is the single initial state", "value": { "kind": "scalar", "scalar": "bool" } },
     { "name": "terminal", "required": true, "detail": "whether this state is explicitly terminal", "value": { "kind": "scalar", "scalar": "bool" } }
+  ] },
+  "asset_control": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "asset", "required": true, "detail": "the asset's EntityId.Value", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "controller", "required": true, "detail": "EntityId.Value of the controlling entity (0 when no controls edge)", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "controlled", "required": true, "detail": "whether a controls edge points at the asset", "value": { "kind": "scalar", "scalar": "bool" } },
+    { "name": "ownerless", "required": true, "detail": "the materialized salvage:ownerless marker (up-for-grabs)", "value": { "kind": "scalar", "scalar": "bool" } },
+    { "name": "ownerStamp", "required": true, "detail": "EntityId.Value of the asset's ORIGINAL faction stamp (the latent claim)", "value": { "kind": "scalar", "scalar": "long" } }
   ] },
   "belt_payload": { "codegen": { "introducedInVersion": 96, "attach": "celestial_body" }, "fields": [
     { "name": "inner_au", "required": true, "detail": "inner annulus radius in AU", "value": { "kind": "scalar", "scalar": "number" } },
@@ -1370,7 +1380,7 @@
     { "name": "loyalty", "required": false, "detail": "{ faction-id: value }", "value": { "kind": "map", "keyRefKind": "faction", "entry": { "kind": "scalar", "scalar": "number" } } },
     { "name": "tags", "required": false, "detail": "[tag-ref, ...]", "value": { "kind": "valueList", "element": "id", "refKind": "tag" } },
     { "name": "select", "required": false, "detail": "implicit-selector DSL", "property": "Selector", "value": { "kind": "scalar", "scalar": "constraint" } },
-    { "name": "factions", "required": false, "detail": "[part_of-id, ...]", "property": "Allegiances", "value": { "kind": "valueList", "element": "id", "refKind": "part_of" } },
+    { "name": "factions", "required": false, "detail": "[part_of-id, ...]", "property": "Allegiances", "value": { "kind": "valueList", "element": "id", "refKind": "part_of", "refRelation": "PartOf" } },
     { "name": "preference", "required": false, "detail": "casting preference", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Substrate.CastingPreference", "options": ["refuse", "loosen", "grounded_synthesis"], "optionDocs": ["Refuse to cast the role if no valid candidate matches — the storyline will not fire.", "Relax the role's constraints and cast the nearest available candidate.", "Synthesize a grounded character that satisfies the constraints, seeded from the world state."] } },
     { "name": "relationships", "required": false, "detail": "{ character-or-faction id: relationship_kind id } — t0 relationship kind for each authored pair", "value": { "kind": "map", "keyRefKind": "entity", "entry": { "kind": "scalar", "scalar": "id", "refKind": "relationship_kind", "kindRefCatalog": "relationship-kind-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.RelationshipKindRef" } } },
     { "name": "relationship_trust", "required": false, "detail": "{ character-or-faction id: initial trust [-1,1] }", "value": { "kind": "map", "keyRefKind": "entity", "entry": { "kind": "scalar", "scalar": "float" } } },
@@ -1383,6 +1393,10 @@
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "who", "required": true, "detail": "the character who died", "value": { "kind": "scalar", "scalar": "id", "refKind": "character", "kindRefCatalog": "character-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.CharacterRef" } },
     { "name": "killer", "required": false, "detail": "the character responsible, when known", "value": { "kind": "scalar", "scalar": "id", "refKind": "character", "kindRefCatalog": "character-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.CharacterRef" } }
+  ] },
+  "charge_target": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "buffer", "required": true, "detail": "the link's buffered scalar intensity", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "capacity", "required": true, "detail": "the link's buffer capacity", "value": { "kind": "scalar", "scalar": "float" } }
   ] },
   "composition_profile": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -1411,6 +1425,9 @@
     { "name": "knob", "required": true, "detail": "param-id — the per-faction knob that scales the deposit (e.g. diplomacy:war_density)", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "cap", "required": false, "detail": "soft-cap for the central-add density (default 2.0; unused by the erode/local mechanisms)", "value": { "kind": "scalar", "scalar": "float" } }
   ] },
+  "containment_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "contains", "required": true, "detail": "whether the container-tagged entity also carries the contained tag", "value": { "kind": "scalar", "scalar": "bool" } }
+  ] },
   "contract": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "name", "required": false, "detail": "display name", "value": { "kind": "scalar", "scalar": "text" } },
@@ -1425,8 +1442,18 @@
     { "name": "dest_body", "required": false, "detail": "G2: destination body index — the BUYER's place the deal delivers to; default 0 (consulted only when dest_kind is set)", "value": { "kind": "scalar", "scalar": "int" } },
     { "name": "dest_kind", "required": false, "detail": "G2: surface | orbit | station at dest_body — OMIT ⇒ a local deal (delivers at the source place)", "value": { "kind": "enum", "backing": "text", "options": ["surface", "orbit", "station"] } }
   ] },
+  "crew_bond": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "strength", "required": true, "detail": "the bond's scalar strength", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "relationship", "required": true, "detail": "which relationship this bond is (stored ref; LAST)", "value": { "kind": "scalar", "scalar": "id", "refKind": "relationship_kind", "kindRefCatalog": "relationship-kind-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.RelationshipKindRef" } }
+  ] },
+  "crystallized": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "conceptRef", "required": true, "detail": "the crystallized concept (stored ref; LAST)", "value": { "kind": "scalar", "scalar": "id", "refKind": "concept", "kindRefCatalog": "concept-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.ConceptRef" } }
+  ] },
   "defender": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the faction the war is declared on", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
+  ] },
+  "density_decay_rate": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "frac", "required": true, "detail": "the per-row decay fraction applied to density", "value": { "kind": "scalar", "scalar": "float" } }
   ] },
   "dialogue_opportunity": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -1553,6 +1580,9 @@
     { "name": "knowledge_maps", "required": false, "detail": "[knowledge_map id, ...] — the t0 knowledge maps this owner starts with (links the authored MAP entity, decoupled from the ordering tag tree)", "value": { "kind": "scalar", "scalar": "id", "refKind": "knowledge_map", "kindRefCatalog": "knowledge-map-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.KnowledgeMapRef", "kindRefList": true } },
     { "name": "map_fragments", "required": false, "detail": "[local_knowledge_map_fragment id, ...] — for place/character the fragments ANCHORED here; for faction the fragments it OWNS (a pointer creating an ownership edge to fragments anchored elsewhere)", "value": { "kind": "scalar", "scalar": "id", "refKind": "local_knowledge_map_fragment", "kindRefCatalog": "local-knowledge-map-fragment-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.LocalKnowledgeMapFragmentRef", "kindRefList": true } }
   ], "entityKind": "Faction", "members": [{ "kind": "faction_knowledge_entry" }, { "kind": "faction_member_count", "properties": ["MemberCount"] }] },
+  "faction_adjacency_count": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "members", "required": true, "detail": "the materialized graph-adjacency count (EdgeCountTo the faction over member-of)", "value": { "kind": "scalar", "scalar": "float" } }
+  ] },
   "faction_knowledge_entry": { "codegen": { "introducedInVersion": 96, "attach": "faction" }, "fields": [
     { "name": "id", "required": true, "detail": "owner + field + tag-key identity", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "tag", "required": true, "detail": "tag name", "value": { "kind": "scalar", "scalar": "text" } },
@@ -1576,6 +1606,8 @@
     { "name": "style", "required": false, "detail": "style", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "anim", "required": false, "detail": "anim", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "sound", "required": false, "detail": "sound", "value": { "kind": "scalar", "scalar": "text" } }
+  ] },
+  "frontier_seed": { "codegen": { "introducedInVersion": 96 }, "fields": [
   ] },
   "generation_config": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -1625,6 +1657,10 @@
   "input_preset": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } }
   ] },
+  "knowledge_density_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "value", "required": true, "detail": "the per-tag density scalar (erodible)", "value": { "kind": "scalar", "scalar": "float", "rate": "(float value, float t, float decay) => -decay * value", "rateSubsteps": 32, "rateSite": "SubstrateKinds.cs:173" } },
+    { "name": "tag", "required": true, "detail": "which tag this density is for (stored ref into the tag catalog)", "value": { "kind": "scalar", "scalar": "id", "refKind": "tag", "kindRefCatalog": "tag-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.TagRef" } }
+  ] },
   "knowledge_map": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "root_tag", "required": false, "detail": "the map-root tag this map orders under (ordering placement, decoupled from identity)", "value": { "kind": "scalar", "scalar": "id", "refKind": "tag", "kindRefCatalog": "tag-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.TagRef" } }
@@ -1640,6 +1676,13 @@
     { "name": "from_practice", "required": false, "detail": "practice key (extract | refine | construct | move) — the node EMERGES from doing: researchable only once the faction has performed the practice", "property": "FromPractice", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "unlocks", "required": false, "detail": "effect instances fired once when this node is researched", "value": { "kind": "scalar", "scalar": "id", "refKind": "effect", "kindRefTarget": "$content", "inlineFamily": "effect", "kindRefList": true } }
   ] },
+  "knowledge_node_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "node", "required": true, "detail": "which authored knowledge node this membership cell represents (stored ref)", "value": { "kind": "scalar", "scalar": "id", "refKind": "knowledge_node", "kindRefCatalog": "knowledge-node-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.KnowledgeNodeRef" } }
+  ] },
+  "knowledge_owner_map": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "faction", "required": true, "detail": "the owner faction EntityId.Value", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "map", "required": true, "detail": "the map root TagId.Value", "value": { "kind": "scalar", "scalar": "uint" } }
+  ] },
   "language_preset": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "locale", "required": true, "detail": "BCP 47 tag; the string-table locale column", "value": { "kind": "scalar", "scalar": "text" } },
@@ -1649,7 +1692,7 @@
     { "name": "shaping_class", "required": true, "detail": "default | joining | indic | cluster", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.ShapingClass", "options": ["default", "joining", "indic", "cluster"] } },
     { "name": "line_breaking_class", "required": true, "detail": "word | phrase | dictionary", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.LineBreakingClass", "options": ["word", "phrase", "dictionary"] } },
     { "name": "casing_behavior", "required": true, "detail": "locale-sensitive | none | turkic", "value": { "kind": "enum", "backing": "byte", "realEnum": "Undertow.Modding.CasingBehavior", "options": ["locale-sensitive", "none", "turkic"] } },
-    { "name": "plural_categories", "required": true, "detail": "zero | one | two | few | many | other", "value": { "kind": "valueList", "element": "enum", "clrType": "Undertow.Modding.PluralCategory" } },
+    { "name": "plural_categories", "required": true, "detail": "zero | one | two | few | many | other", "value": { "kind": "valueList", "element": "enum", "elementBacking": "byte", "elementRealEnum": "Undertow.Modding.PluralCategory", "clrType": "Undertow.Modding.PluralCategory" } },
     { "name": "gender_categories", "required": true, "detail": "declared grammatical gender categories", "value": { "kind": "valueList", "element": "text" } },
     { "name": "font_fallback", "required": true, "detail": "ordered font faces used for glyph fallback", "value": { "kind": "scalar", "scalar": "id", "refKind": "font_face", "kindRefCatalog": "font-face-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.FontFaceRef", "kindRefList": true } },
     { "name": "minimum_font_size_pt", "required": true, "detail": "minimum readable font size in points", "value": { "kind": "scalar", "scalar": "float" } },
@@ -1664,6 +1707,17 @@
   ] },
   "leveraging_faction": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the faction that used the fact", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
+  ] },
+  "link_downstream": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "id", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "target", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "place", "refRelation": "LinkDownstream" } }
+  ], "relationship": { "form": "tag", "name": "LinkDownstream" } },
+  "link_edge": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "buffer", "required": true, "detail": "LinkState.Buffer — the persisted charge", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "capacity", "required": true, "detail": "LinkState.Capacity", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "releaseRate", "required": true, "detail": "LinkState.ReleaseRate", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "loss", "required": true, "detail": "LinkState.Loss — the fraction lost in transit", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "downstream", "required": true, "detail": "the ALREADY-RESOLVED downstream place (stored ref; LAST)", "value": { "kind": "scalar", "scalar": "id", "refKind": "place", "kindRefCatalog": "place-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.PlaceRef", "refRelation": "LinkDownstream" } }
   ] },
   "link_group": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -1724,6 +1778,25 @@
     { "name": "policy_id", "required": true, "detail": "kernel policy id", "authoredAs": "id", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "version", "required": true, "detail": "kernel policy semantic version", "value": { "kind": "scalar", "scalar": "text" } }
   ] },
+  "map_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "attrs", "required": true, "detail": "a bare map (no annotation) of string keys to float values", "value": { "kind": "map", "vocab": [], "entry": { "kind": "scalar", "scalar": "float" } } }
+  ] },
+  "map_cell_nested": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "radius", "required": true, "detail": "a top-level scalar sibling of the map (keeps the component non-empty)", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "layers", "required": true, "detail": "a string-keyed map of owned layer children", "value": { "kind": "map", "vocab": [], "entry": { "kind": "scalar", "scalar": "id", "refKind": "map_cell_nested_layer", "kindRefCatalog": "map-cell-nested-layer-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.MapCellNestedLayerRef" } } }
+  ] },
+  "map_cell_nested_layer": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "mass", "required": true, "detail": "a scalar sibling of the inner map", "value": { "kind": "scalar", "scalar": "number" } },
+    { "name": "mix", "required": true, "detail": "a string-keyed map of owned mix children", "value": { "kind": "map", "vocab": [], "entry": { "kind": "scalar", "scalar": "id", "refKind": "map_cell_nested_mix", "kindRefCatalog": "map-cell-nested-mix-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.MapCellNestedMixRef" } } }
+  ] },
+  "map_cell_nested_mix": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "fraction", "required": true, "detail": "the scalar fraction stored at this map key", "value": { "kind": "scalar", "scalar": "number" } }
+  ] },
+  "map_cell_soa": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "attrs", "required": true, "detail": "a Soa-bucket map (fixed capacity 4) of string keys to float values", "value": { "kind": "map", "vocab": [], "bucket": 4, "layout": "soa", "entry": { "kind": "scalar", "scalar": "float" } } }
+  ] },
   "module": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name — the module a ship hosts (e.g. core:engine)", "value": { "kind": "scalar", "scalar": "id" } }
   ] },
@@ -1732,6 +1805,11 @@
     { "name": "mass_earth", "required": true, "detail": "mass in Earth masses", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "radius_earth", "required": true, "detail": "radius in Earth radii", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "mass_ratio", "required": true, "detail": "moon-to-parent mass ratio", "value": { "kind": "scalar", "scalar": "number", "unit": { "name": "Dimensionless", "symbol": "1", "dimensions": [0, 0, 0, 0, 0, 0], "scaleToSi": 1 } } }
+  ] },
+  "observed_attr": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "subject", "required": true, "detail": "the observed subject's EntityId.Value", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "value", "required": true, "detail": "the materialized attribute value (0 when absent)", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "present", "required": true, "detail": "whether the subject carried the attribute at materialization time", "value": { "kind": "scalar", "scalar": "bool" } }
   ] },
   "offer": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -1758,6 +1836,23 @@
     { "name": "period_years", "required": true, "detail": "orbital period in years", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "epoch_years", "required": true, "detail": "explicit orbital epoch in years", "value": { "kind": "scalar", "scalar": "number" } }
   ] },
+  "pair_payload_fixture_payload": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "amount", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "count", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "int" } },
+    { "name": "enabled", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "bool" } }
+  ] },
+  "pair_payload_fixture_relation": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "id", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "target", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "all", "refRelation": "PartOf" } },
+    { "name": "payload", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "pair_payload_fixture_payload" } }
+  ], "relationship": { "form": "container", "name": "PairPayloadFixtureRelation" } },
+  "pair_payload_fixture_result": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "sum", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "float" } }
+  ] },
+  "part_of": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "id", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "target", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "id", "refKind": "all", "refRelation": "PartOf" } }
+  ], "relationship": { "form": "tag", "name": "PartOf" } },
   "participation_counterpart": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the event occurrence the character took part in", "value": { "kind": "scalar", "scalar": "id", "refKind": "event" } }
   ] },
@@ -1861,6 +1956,10 @@
   "recipient_faction": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the faction that learns the fact", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
   ] },
+  "ref_list_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "tags", "required": true, "detail": "a LIST of tag refs", "value": { "kind": "scalar", "scalar": "id", "refKind": "tag", "kindRefCatalog": "tag-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.TagRef", "kindRefList": true } }
+  ] },
   "relation": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "from", "required": true, "detail": "source entity ref", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "edge", "required": true, "detail": "relation edge kind (bare legacy name, e.g. loves)", "value": { "kind": "enum", "backing": "text", "options": ["served_under", "betrayed", "owes", "born_on", "survived", "controls", "member_of", "allied_with", "rival_of", "informs_on", "loves", "grudge_against", "knows", "owns", "participated_in"], "optionDocs": ["A served under / was subordinate to B.", "A betrayed B.", "A owes a debt or obligation to B.", "A was born on / originated at the body or place B.", "A survived an event or crisis alongside B.", "A controls, commands, or governs B.", "A is a member of the faction or group B.", "A is allied with B (mutual co-operation pact).", "A is a rival of B (competitive antagonism, short of open war).", "A informs on / survives B by reporting to a third party.", "A loves B (strong personal attachment).", "A holds a grudge against B (lasting grievance or enmity).", "A knows B (a plain acquaintance — the default edge for an authored relationship_kind that names no recognized edge kind).", "A (faction) owns B (body) — territorial ownership (PointOwnership/AreaClaim), confers rights.", "A participated in event/occurrence B — the emergent-history participation graph (design 2026-08-14)."] } },
@@ -1921,6 +2020,11 @@
     { "name": "to", "required": false, "detail": "name bound to the pair's target endpoint", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "no", "required": false, "detail": "absence term (R285, R291.1): the query requires that NO pair of this relation exists from the plain argument named by from to the one named by to", "value": { "kind": "scalar", "scalar": "bool" } }
   ] },
+  "salvage_claim": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "asset", "required": true, "detail": "EntityId.Value of the asset being claimed", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "claimant", "required": true, "detail": "EntityId.Value of the claiming faction", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "aggrieved", "required": true, "detail": "EntityId.Value of the prior owner owed a grudge (0 = none: recovery, not theft)", "value": { "kind": "scalar", "scalar": "long" } }
+  ] },
   "scoring_policy": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "name", "required": false, "detail": "display name", "value": { "kind": "scalar", "scalar": "text" } },
@@ -1948,11 +2052,25 @@
     { "name": "hz_outer_au", "required": true, "detail": "outer habitable-zone bound in AU", "value": { "kind": "scalar", "scalar": "number" } },
     { "name": "snow_line_au", "required": true, "detail": "snow-line distance in AU", "value": { "kind": "scalar", "scalar": "number" } }
   ] },
+  "stock_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "faction", "required": true, "detail": "EntityId.Value of the owning faction", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "place", "required": true, "detail": "EntityId.Value of the place this stock sits at", "value": { "kind": "scalar", "scalar": "long" } },
+    { "name": "mass", "required": true, "detail": "the stock mass in kg (f64)", "value": { "kind": "scalar", "scalar": "number" } },
+    { "name": "resource", "required": true, "detail": "which resource this stock is of (stored ref; LAST)", "value": { "kind": "scalar", "scalar": "id", "refKind": "resource", "kindRefCatalog": "resource-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.ResourceRef" } }
+  ] },
+  "stock_drain_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "kg", "required": true, "detail": "the stock cell's current mass (drained in place by the ordered per-cell take)", "value": { "kind": "scalar", "scalar": "float" } }
+  ] },
   "storyline": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "roles", "required": false, "detail": "casting roles (discriminated)", "generatedCodec": "StorylineRoles", "generatedCodecType": "System.Collections.Generic.IReadOnlyList<Undertow.Content.BakedRole>", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "branches", "required": false, "detail": "branch outcome maps", "generatedCodec": "StorylineBranches", "generatedCodecType": "System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyDictionary<string, string>>", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "consequences", "required": false, "detail": "ordered effect instances fired on completion", "value": { "kind": "scalar", "scalar": "id", "refKind": "effect", "kindRefTarget": "$content", "inlineFamily": "effect", "kindRefList": true } }
+  ] },
+  "string_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "label", "required": true, "detail": "a bucketed string value", "value": { "kind": "scalar", "scalar": "text", "bucket": 16 } },
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "note", "required": true, "detail": "an unset-bucket string (defaults to 256 + warns)", "value": { "kind": "scalar", "scalar": "text" } }
   ] },
   "tag": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "id", "required": true, "detail": "modid:name", "value": { "kind": "scalar", "scalar": "id" } },
@@ -2092,8 +2210,29 @@
     { "name": "name", "required": true, "detail": "section field key", "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "type", "required": true, "detail": "source-resolved wire field type", "value": { "kind": "scalar", "scalar": "text" } }
   ] },
+  "value_list_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "ids", "required": true, "detail": "a bucketed list of tag-like ids (element width derived from Id, never authored)", "value": { "kind": "valueList", "element": "id", "bucket": 4, "layout": "soa", "clrType": "Undertow.Modding.Id" } },
+    { "name": "labels", "required": true, "detail": "a bucketed list of strings with an authored per-string width", "value": { "kind": "valueList", "element": "text", "bucket": 3, "width": 16, "layout": "soa" } },
+    { "name": "notes", "required": true, "detail": "a bucketed list of strings with an unset width (defaults to 256 + warns)", "value": { "kind": "valueList", "element": "text", "bucket": 2, "layout": "soa" } }
+  ] },
+  "value_list_cell_aos": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "weight", "required": true, "detail": "a scalar value", "value": { "kind": "scalar", "scalar": "float" } },
+    { "name": "ids", "required": true, "detail": "an Aos-carrier list of tag-like ids (bare — no bucket/layout authored)", "value": { "kind": "valueList", "element": "id" } },
+    { "name": "labels", "required": true, "detail": "an Aos-carrier list of strings (bare — no bucket/layout authored)", "value": { "kind": "valueList", "element": "text" } },
+    { "name": "notes", "required": true, "detail": "an Aos-carrier list of strings (bare — no bucket/layout authored)", "value": { "kind": "valueList", "element": "text" } }
+  ] },
+  "vehicle_row": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "PlanetIndex", "required": true, "detail": "the host-resolved planet index", "value": { "kind": "scalar", "scalar": "int" } },
+    { "name": "TargetIndex", "required": true, "detail": "the host-resolved arrival target index", "value": { "kind": "scalar", "scalar": "int" } },
+    { "name": "InTransit", "required": true, "detail": "whether the vehicle is currently in transit", "value": { "kind": "scalar", "scalar": "bool" } }
+  ] },
   "winner": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the side that won the contest", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
+  ] },
+  "world_fact_cell": { "codegen": { "introducedInVersion": 96 }, "fields": [
+    { "name": "held", "required": true, "detail": "whether the world stores this fact", "value": { "kind": "scalar", "scalar": "bool" } },
+    { "name": "whenTick", "required": true, "detail": "the stored fact's tick (0 when not held)", "value": { "kind": "scalar", "scalar": "long" } }
   ] },
   "wronged": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "participant", "required": true, "detail": "the party the contract default wronged", "value": { "kind": "scalar", "scalar": "id", "refKind": "faction" } }
