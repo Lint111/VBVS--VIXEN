@@ -9601,6 +9601,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         requestedUpscalerOrder = {"native", "", ""};
         requestedUpscalerCount = 1;
     }
+    if (renderPathConfig.upscaler == UpscalerKind::Fsr3 &&
+        FindUpscalerBackend("fsr3") == nullptr) {
+        if (mainLogger) {
+            mainLogger->Warning(
+                "[BuildRenderGraph] Requested upscaler 'fsr3' is unavailable in this build; "
+                "falling back to available providers");
+        }
+        requestedUpscalerOrder = {"fsr1", "linear", "native"};
+        requestedUpscalerCount = 3;
+    }
 
     std::vector<UpscalerFrameInput> availableUpscalerInputs{UpscalerFrameInput::Color};
     if (reconstructionInputsEnabled) {

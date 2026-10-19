@@ -15,21 +15,47 @@ file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
 set(APP_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/shaders")
 set(APP_SDI_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/sdi")
 
-# This lane adds the pinned SDK's temporal upscaler provider and Vulkan shaders.
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FidelityFXFsr3.cmake")
-target_compile_definitions(VulkanResources PUBLIC VIXEN_CONFIGURED_FSR3_UPSCALER=1)
+# FSR3 is an optional provider. The shader compiler is intentionally not tracked in
+# the SDK checkout, so a fresh machine defaults to the provider being absent.
+set(_vixen_fsr3_shader_compiler
+    "${VIXEN_ROOT}/third_party/fidelityfx-sdk-1.1.4/sdk/tools/binary_store/FidelityFX_SC.exe")
+if(EXISTS "${_vixen_fsr3_shader_compiler}")
+    set(_vixen_fsr3_default ON)
+else()
+    set(_vixen_fsr3_default OFF)
+endif()
+option(VIXEN_WITH_FSR3 "Build and offer the FidelityFX FSR3 upscaler" ${_vixen_fsr3_default})
+if(VIXEN_WITH_FSR3 AND NOT EXISTS "${_vixen_fsr3_shader_compiler}")
+    set(VIXEN_WITH_FSR3 OFF CACHE BOOL "Build and offer the FidelityFX FSR3 upscaler" FORCE)
+    set(_vixen_fsr3_reason "shader compiler missing; requested provider disabled")
+elseif(VIXEN_WITH_FSR3)
+    set(_vixen_fsr3_reason "shader compiler found")
+else()
+    if(EXISTS "${_vixen_fsr3_shader_compiler}")
+        set(_vixen_fsr3_reason "disabled by VIXEN_WITH_FSR3=OFF")
+    else()
+        set(_vixen_fsr3_reason "shader compiler missing; optional provider defaults off")
+    endif()
+endif()
+if(VIXEN_WITH_FSR3)
+    set(_vixen_fsr3_configured 1)
+    set(_vixen_fsr3_status ON)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FidelityFXFsr3.cmake")
+else()
+    set(_vixen_fsr3_configured 0)
+    set(_vixen_fsr3_status OFF)
+endif()
+message(STATUS "[FSR3] ${_vixen_fsr3_status}: ${_vixen_fsr3_reason}")
+target_compile_definitions(VulkanResources PUBLIC
+    VIXEN_CONFIGURED_FSR3_UPSCALER=${_vixen_fsr3_configured})
 
-# ----------------------------------------------------------------------------
-# VixenApp: the engine's render driver, as a reusable static library.
-# ----------------------------------------------------------------------------
-add_library(VixenApp STATIC
+set(VIXEN_APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
     # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/Fsr3Upscaler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
@@ -42,8 +68,17 @@ add_library(VixenApp STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/StbImageWriteImpl.cpp            # View Contract Inc-2 Task 5: PNG-capture harness's stb_image_write TU
     ${CMAKE_CURRENT_SOURCE_DIR}/source/PerfCsvWriter.cpp                # Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: perf-CSV writer
     ${CMAKE_CURRENT_SOURCE_DIR}/source/FrameCapture.cpp                 # M4b: headless GPU-frame snapshot (CaptureFrameToPng); moved in-tree from the deleted Profiler library, was its only real (non-benchmark) consumer
-    ${HPP_FILES}
 )
+if(VIXEN_WITH_FSR3)
+    list(APPEND VIXEN_APP_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/Fsr3Upscaler.cpp)
+endif()
+
+# ----------------------------------------------------------------------------
+# VixenApp: the engine's render driver, as a reusable static library.
+# ----------------------------------------------------------------------------
+add_library(VixenApp STATIC ${VIXEN_APP_SOURCES} ${HPP_FILES})
+target_compile_definitions(VixenApp PRIVATE VIXEN_WITH_FSR3=${_vixen_fsr3_configured})
 
 # ----------------------------------------------------------------------------
 # M3: generate the node-usage manifest by scanning the graph-builder TUs and registered module
@@ -83,12 +118,14 @@ target_link_libraries(VixenApp PUBLIC
     RenderGraphCore
     CashSystem
     VulkanResources
-    FidelityFXFsr3VK
     Logger
     stb   # FrameCapture.cpp: stb_image_write.h / stb_image_resize2.h (headless PNG snapshot)
     ${VULKAN_LIB_LIST}
     glm::glm
 )
+if(VIXEN_WITH_FSR3)
+    target_link_libraries(VixenApp PUBLIC FidelityFXFsr3VK)
+endif()
 
 # Inc-1 M4: scoped node linkage — VixenApp links only the RenderGraphNode_<Name> OBJECT
 # libraries named in the manifest generated above, not the full unscoped RenderGraph facade.
@@ -232,5 +269,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_lookdev_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_planet_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_upscaler_selection.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/tests/test_fsr3_record_status.cmake)
+if(VIXEN_WITH_FSR3)
+    include(${CMAKE_CURRENT_LIST_DIR}/tests/test_fsr3_record_status.cmake)
+endif()
 vixen_schedule_runtime_dlls_for_current_directory()
