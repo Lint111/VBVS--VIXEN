@@ -60,6 +60,11 @@ struct Image {
 // VulkanGraphApplication's own default (hudCaptureDir_ = "temp"); allow an override via the same
 // env name so this test can point at a different capture dir without touching the .bat.
 std::string CaptureDir() {
+    // The box queue supplies this only when the test is running; it must win over the
+    // configure-time fallback injected by vixen_gtest_discover_tests.
+    if (const char* root = std::getenv("UT_QUEUE_CAPTURE_ROOT")) {
+        if (*root != '\0') return std::string(root) + "/hud";
+    }
     if (const char* env = std::getenv("VIXEN_HUD_CAPTURE_DIR")) return env;
     return "temp";
 }
