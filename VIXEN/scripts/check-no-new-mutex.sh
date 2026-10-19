@@ -26,7 +26,8 @@
 #                                                                   a later re-add cannot hide under it)
 #   WARN  a pinned row whose family is UNCLASSIFIED                (declared but not yet in the inventory;
 #                                                                   exit 0 — the list is honest, not closed)
-#   --fix rewrites the allowlist from the tree: counts re-synced, new files appended as UNCLASSIFIED,
+#   --fix rewrites the allowlist from the tree: counts re-synced, new files appended (a file that owns no
+#         mutex and acquires SubmitMutex() is classified VK2-borrowed; any other new file is UNCLASSIFIED),
 #         stale rows dropped, existing family IDs preserved. The diff IS the declaration to review.
 #
 # usage: check-no-new-mutex.sh [--root REPOSITORY_ROOT] [--allowlist FILE] [--fix]
@@ -85,6 +86,7 @@ SYNTAX = re.compile(r'\bstd::(?:mutex|recursive_mutex|shared_mutex|shared_timed_
                     r'timed_mutex|lock_guard|scoped_lock|unique_lock|shared_lock)\b')
 MUTEX_TYPE = re.compile(r'\bstd::(?:mutex|recursive_mutex|shared_mutex|shared_timed_mutex|timed_mutex)\b')
 GUARD_OPENER = re.compile(r'(?:lock_guard|unique_lock|shared_lock|scoped_lock)\s*<\s*$')
+SUBMIT_BORROW = re.compile(r'\bSubmitMutex\s*\(')
 CENSUS_DECL = re.compile(r'\bLockCensus::(?:Mutex|SharedMutex)\s*<')
 
 
@@ -103,6 +105,7 @@ def owning_declarations(source: str) -> int:
 
 scanned = 0
 actual = {}  # relative path -> (owned, syntax_lines)
+borrows_submit = set()  # files that take VulkanDevice::SubmitMutex() (the VK2 family)
 for base in SCAN_ROOTS:
     if not base.is_dir():
         print(f"FAIL: scan root missing: {base}")
@@ -122,6 +125,8 @@ for base in SCAN_ROOTS:
             continue
         rel = path.relative_to(root).as_posix()
         actual[rel] = (owning_declarations(source), syntax_lines)
+        if SUBMIT_BORROW.search(source):
+            borrows_submit.add(rel)
 
 pinned = {}  # relative path -> (owned, families)
 order = []
@@ -152,7 +157,12 @@ if fix:
     rows = []
     for rel in sorted(actual):
         owned, _ = actual[rel]
-        families = pinned[rel][1] if rel in pinned else 'UNCLASSIFIED'
+        if rel in pinned:
+            families = pinned[rel][1]
+        elif owned == 0 and rel in borrows_submit:
+            families = 'VK2-borrowed'
+        else:
+            families = 'UNCLASSIFIED'
         rows.append((rel, owned, families))
     header = (
         "# No-new-mutex allowlist — the declared exception set for scripts/check-no-new-mutex.sh.\n"
@@ -170,7 +180,10 @@ if fix:
     resynced = sorted(rel for rel in actual if rel in pinned and pinned[rel][0] != actual[rel][0])
     print(f"fixed {allowlist_path}: {len(rows)} rows; added={len(added)} dropped={len(dropped)} resynced={len(resynced)}")
     for rel in added:
-        print(f"  + {rel} (UNCLASSIFIED — classify before merging)")
+        if rel in borrows_submit and actual[rel][0] == 0:
+            print(f"  + {rel} (VK2-borrowed: derived from its SubmitMutex() acquisition)")
+        else:
+            print(f"  + {rel} (UNCLASSIFIED — classify before merging)")
     for rel in dropped:
         print(f"  - {rel}")
     for rel in resynced:
