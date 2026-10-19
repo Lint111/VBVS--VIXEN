@@ -61,10 +61,12 @@ endif()
 vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
 
 # CTest fixtures produce the live editor and main-app captures before their file-assertion cases.
-# Both output directories are absolute build-tree paths so the runners need no source-tree CWD or
-# DISPLAY. The shared application test environment supplies Dozen and its loader paths.
+# The build-tree directories are the non-queue fallback; Linux command wrappers switch each GPU
+# process to UT_QUEUE_CAPTURE_ROOT at run time so documents, logs, and captures stay together.
+# The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
-    set(VIXEN_EDITOR_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/editor")
+    set(VIXEN_EDITOR_CAPTURE_ROOT "${CMAKE_BINARY_DIR}/runtime-captures")
+    set(VIXEN_EDITOR_CAPTURE_DIR "${VIXEN_EDITOR_CAPTURE_ROOT}/editor")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
     # SaveDocument writes beside its input. Give the capture producer a build-tree copy so its
     # save/reopen script never mutates the tracked BuiltAssets sample.
@@ -74,7 +76,14 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
 
     add_test(NAME vixen_editor_capture_producer
         COMMAND bash -c
-            "exec \"$<TARGET_FILE:vixen_editor>\" \"${VIXEN_EDITOR_TEST_DOCUMENT}\" > \"${VIXEN_EDITOR_CAPTURE_DIR}/run_editor_script.log\" 2>&1")
+            "set -eu
+            capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
+            capture_dir=\"\${capture_root}/editor\"
+            document=\"\${capture_dir}/sample_tri_layer.vxd\"
+            mkdir -p \"\${capture_dir}\"
+            cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
+            export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
+            exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
@@ -113,7 +122,18 @@ endif()
 if(BUILD_TESTS AND TARGET VIXEN)
     set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
     file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
-    add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME vixen_hud_capture_producer
+            COMMAND bash -c
+                "set -eu
+                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_dir=\"\${capture_root}/hud\"
+                mkdir -p \"\${capture_dir}\"
+                export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
+                exec \"$<TARGET_FILE:VIXEN>\"")
+    else()
+        add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    endif()
     set_tests_properties(vixen_hud_capture_producer PROPERTIES
         FIXTURES_SETUP VixenHudCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
@@ -133,7 +153,18 @@ if(BUILD_TESTS AND TARGET VIXEN)
     # 5 and 45.
     set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/textshader")
     file(MAKE_DIRECTORY "${VIXEN_TEXT_SHADER_CAPTURE_DIR}")
-    add_test(NAME vixen_text_shader_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME vixen_text_shader_capture_producer
+            COMMAND bash -c
+                "set -eu
+                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_dir=\"\${capture_root}/textshader\"
+                mkdir -p \"\${capture_dir}\"
+                export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
+                exec \"$<TARGET_FILE:VIXEN>\"")
+    else()
+        add_test(NAME vixen_text_shader_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    endif()
     set_tests_properties(vixen_text_shader_capture_producer PROPERTIES
         FIXTURES_SETUP VixenTextShaderCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
@@ -176,11 +207,16 @@ endif()
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME vixen_editor_appflow_channel_gate
-        COMMAND ${Python3_EXECUTABLE} "${VIXEN_ROOT}/tools/appflow_channel_gate.py"
-            --editor "$<TARGET_FILE:vixen_editor>"
-            --server "${VIXEN_ROOT}/tools/appflow_mcp_server.py"
-            --document "${VIXEN_EDITOR_TEST_DOCUMENT}"
-            --transcript "${VIXEN_EDITOR_CAPTURE_DIR}/appflow-channel-transcript.json")
+        COMMAND bash -c
+            "set -eu
+            capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
+            capture_dir=\"\${capture_root}/editor\"
+            document=\"\${capture_dir}/sample_tri_layer.vxd\"
+            transcript=\"\${capture_dir}/appflow-channel-transcript.json\"
+            mkdir -p \"\${capture_dir}\"
+            cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
+            export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
+            exec \"${Python3_EXECUTABLE}\" \"${VIXEN_ROOT}/tools/appflow_channel_gate.py\" --editor \"$<TARGET_FILE:vixen_editor>\" --server \"${VIXEN_ROOT}/tools/appflow_mcp_server.py\" --document \"\${document}\" --transcript \"\${transcript}\"")
     set_tests_properties(vixen_editor_appflow_channel_gate PROPERTIES
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
         TIMEOUT 300)

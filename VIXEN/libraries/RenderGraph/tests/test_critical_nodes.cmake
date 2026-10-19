@@ -651,6 +651,8 @@ else()
 endif()
 set_target_properties(test_rendergraph_criticalnodes_windowedcapture PROPERTIES FOLDER "Tests/RenderGraph Tests")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The CMake paths remain the outside-queue fallback. The file-only consumers prefer
+    # UT_QUEUE_CAPTURE_ROOT/<editor|hud> at test runtime, matching the GPU fixture wrappers.
     vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_windowedcapture
         FIXTURES_REQUIRED "VixenEditorCapture;VixenHudCapture"
         TEST_ENVIRONMENT
