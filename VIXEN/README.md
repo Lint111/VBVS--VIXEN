@@ -22,6 +22,21 @@ cmake --build build --config Debug --parallel 16     # or Release
   `VIXEN_VULKAN_SDK_VERSION` (see that file for the live value; don't hardcode it here, it moves). A
   manually-installed `C:/VulkanSDK/<version>` is also detected. On WSL2 this only provisions the
   *headers/loader*; see the GPU-rendering note below.
+- **Shared dependency cache (Linux/WSL):** the auto-provisioned Vulkan SDK and X11 dev libraries
+  are not copied per worktree; every worktree uses one entry under
+  `${XDG_CACHE_HOME:-~/.cache}/vixen/`:
+  `vulkan-sdk/<sdk-version>/` and `windowing/<package-set-hash>/` (Dozen is `wsl-vulkan/`). The first
+  configure that needs an entry downloads it into a temp dir under a file lock, stamps it
+  (`.vixen-complete`) and renames it into place, so concurrent configures wait and then reuse it, and
+  a partial entry is repopulated. Overrides: `-DVIXEN_VULKAN_CACHE_DIR=<dir>` (holds `<version>/`
+  entries) and `-DVIXEN_WINDOWING_CACHE_DIR=<dir>` (the one entry); an override dir is owned by the
+  provisioner. A build tree configured before this change moves to the shared cache on its next
+  configure and leaves the old `VIXEN/.vulkan-sdk` / `VIXEN/.windowing-deps` alone.
+  - **Clear one entry:** `cmake --build <build> --target vixen-uninstall-vulkan` /
+    `vixen-uninstall-windowing`, or `rm -rf ~/.cache/vixen/vulkan-sdk/<version>`; **clear all:**
+    `rm -rf ~/.cache/vixen/vulkan-sdk ~/.cache/vixen/windowing` (no build may be running).
+  - **Drop the old per-tree copies (one line, per worktree):**
+    `rm -rf VIXEN/.vulkan-sdk VIXEN/.windowing-deps`.
 - **WSL2 GPU rendering:** the default WSL2 Vulkan ICD is **software** (lavapipe/llvmpipe) — 10-25x
   slower than a real GPU and not representative of driver behavior. `cmake/ProvisionWslVulkan.cmake`
   auto-builds Mesa **Dozen** (Vulkan-over-D3D12) for real-GPU rendering on `/dev/dxg`; see FR-20 in
