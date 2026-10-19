@@ -100,6 +100,7 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 // Sparse-Mip ESVO LOD Inc2 M3: CPU-side residency occlusion gate (Inc1 M4b's deferred
 // spec) — coarse ray-vs-sphere test of a candidate against already brick-resident trees.
 #include "OcclusionGate.h"
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compares)
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
