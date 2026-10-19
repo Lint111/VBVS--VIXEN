@@ -17,7 +17,7 @@ if(NOT TARGET Vulkan::Headers)
     FetchContent_Declare(
         VulkanHeaders
         GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-        GIT_TAG main
+        GIT_TAG v1.3.290  # Same tag as cmake/VulkanHeaders.cmake (b379292b)
     )
     FetchContent_MakeAvailable(VulkanHeaders)
 endif()
@@ -31,8 +31,7 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)  # Skip git update
 FetchContent_Declare(
     gli
     GIT_REPOSITORY https://github.com/g-truc/gli.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+    GIT_TAG        3542f8830178061e0661f5df1e89d36ba7d7b0ab  # Pinned against upstream drift; no GIT_SHALLOW, CMake can't shallow-fetch a sha
 )
 
 FetchContent_MakeAvailable(gli)
@@ -80,8 +79,7 @@ else()
     FetchContent_Declare(
         stbrumme_hash
         GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
-        GIT_TAG        master
-        GIT_SHALLOW    TRUE
+        GIT_TAG        d389d18112bcf7e4786ec5e8723f3658a7f433d7  # Pinned against upstream drift; no GIT_SHALLOW, CMake can't shallow-fetch a sha
     )
     FetchContent_MakeAvailable(stbrumme_hash)
     add_compile_definitions(HAS_STBRUMME_HASH)
