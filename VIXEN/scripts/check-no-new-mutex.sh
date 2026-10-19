@@ -30,22 +30,32 @@
 #         mutex and acquires SubmitMutex() is classified VK2-borrowed; any other new file is UNCLASSIFIED),
 #         stale rows dropped, existing family IDs preserved. The diff IS the declaration to review.
 #
-# usage: check-no-new-mutex.sh [--root REPOSITORY_ROOT] [--allowlist FILE] [--fix]
+# The acquisition index (R661.3, T-2939): the checker also generates the lock-inventory acquisition index,
+# Vixen-Docs/01-Architecture/runtime-lock-index.g.md, from the same source scan plus the allowlist's
+# families: one row per census file (sorted), each acquisition site named by its enclosing symbol and lock
+# alias — never a line number, so unrelated edits do not move it.
+#   FAIL  the generated index differs from the tree/allowlist     (stale — re-sync with --fix)
+#   --fix rewrites the index together with the allowlist.
+#
+# usage: check-no-new-mutex.sh [--root REPOSITORY_ROOT] [--allowlist FILE] [--index FILE] [--fix]
 set -euo pipefail
 export LC_ALL=C
 
 usage() {
     cat >&2 <<'EOF'
-usage: check-no-new-mutex.sh [--root REPOSITORY_ROOT] [--allowlist FILE] [--fix]
+usage: check-no-new-mutex.sh [--root REPOSITORY_ROOT] [--allowlist FILE] [--index FILE] [--fix]
 
 Fails if VIXEN/libraries or VIXEN/application gains a mutex declaration that is not pinned in
-scripts/no-new-mutex.allowlist (or self-declared via Core/LockCensus.h). --fix re-syncs the allowlist
-from the tree (new rows are appended as UNCLASSIFIED and reported as WARN until classified).
+scripts/no-new-mutex.allowlist (or self-declared via Core/LockCensus.h), or if the generated
+acquisition index (Vixen-Docs/01-Architecture/runtime-lock-index.g.md) is stale. --fix re-syncs the
+allowlist and the index from the tree (new rows are appended as UNCLASSIFIED and reported as WARN
+until classified).
 EOF
 }
 
 ROOT_ARG=""
 ALLOWLIST_ARG=""
+INDEX_ARG=""
 FIX=0
 while (($# > 0)); do
     case "$1" in
@@ -55,6 +65,9 @@ while (($# > 0)); do
         --allowlist)
             if (($# < 2)); then echo "ERROR: --allowlist requires a file path" >&2; usage; exit 2; fi
             ALLOWLIST_ARG="$2"; shift 2 ;;
+        --index)
+            if (($# < 2)); then echo "ERROR: --index requires a file path" >&2; usage; exit 2; fi
+            INDEX_ARG="$2"; shift 2 ;;
         --fix) FIX=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) echo "ERROR: unknown argument: $1" >&2; usage; exit 2 ;;
@@ -67,8 +80,10 @@ else
     ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 fi
 ALLOWLIST="${ALLOWLIST_ARG:-$ROOT/VIXEN/scripts/no-new-mutex.allowlist}"
+INDEX="${INDEX_ARG:-$ROOT/VIXEN/Vixen-Docs/01-Architecture/runtime-lock-index.g.md}"
 
-python3 - "$ROOT" "$ALLOWLIST" "$FIX" <<'PY'
+python3 - "$ROOT" "$ALLOWLIST" "$FIX" "$INDEX" <<'PY'
+import bisect
 import re
 import sys
 from pathlib import Path
@@ -76,6 +91,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 allowlist_path = Path(sys.argv[2])
 fix = sys.argv[3] == "1"
+index_path = Path(sys.argv[4])
 
 EXTENSIONS = {'.h', '.hpp', '.hxx', '.cpp', '.c', '.cc', '.cxx', '.inl', '.ipp', '.ixx'}
 SCAN_ROOTS = (root / 'VIXEN' / 'libraries', root / 'VIXEN' / 'application')
@@ -103,8 +119,179 @@ def owning_declarations(source: str) -> int:
     return count + len(CENSUS_DECL.findall(source))
 
 
+# --- Acquisition index: enclosing symbol + lock alias per mutex-syntax site (no line numbers) ---
+SITE = re.compile(r'\bstd::(?:mutex|recursive_mutex|shared_mutex|shared_timed_mutex|timed_mutex|'
+                  r'lock_guard|scoped_lock|unique_lock|shared_lock)\b|\bLockCensus::(?:Mutex|SharedMutex)\s*<')
+GUARD_TYPES = ('lock_guard', 'scoped_lock', 'unique_lock', 'shared_lock')
+BRACE_EVENT = re.compile(r'[{};]')
+TYPE_SCOPE = re.compile(r'^(?:template\s*<[^{};]*?>\s*)?(?:(?:typedef|export|inline)\s+)*'
+                        r'(class|struct|union|enum(?:\s+(?:class|struct))?|namespace)\b\s*'
+                        r'(?:alignas\s*\([^)]*\)\s*)?(?:\[\[[^\]]*\]\]\s*)?((?:\w+::)*\w+)?')
+INIT_BRACE = re.compile(r'(?<!:)[:,](?!:)\s*[\w:<>~]+\s*$')
+LAMBDA_TAIL = re.compile(r'\]\s*(?:\([^()]*\))?\s*(?:mutable\s*|noexcept\s*|->\s*[\w:<>&*\s]+)*$')
+OPERATOR_NAME = re.compile(r'((?:~?\w+(?:<[^<>]*>)?::)*operator\s*(?:\(\s*\)|\[\s*\]|[^\s\w(]+|\w+))\s*\(')
+NOT_A_FUNCTION = {'if', 'for', 'while', 'switch', 'catch', 'else', 'do', 'try', 'return', 'sizeof',
+                  'decltype', 'alignas', 'noexcept', 'requires'}
+FILE_SCOPE = '(file scope)'
+
+
+def clean_header(text: str) -> str:
+    text = re.sub(r'(?m)^[ \t]*#.*$', ' ', text)
+    text = re.sub(r'\b(?:public|private|protected)\s*:(?!:)', ' ', text)
+    return ' '.join(text.split())
+
+
+def function_name(header: str):
+    header = re.sub(r'^template\s*<[^()]*?>\s*', '', header)
+    operator = OPERATOR_NAME.search(header)
+    if operator:
+        return ''.join(operator.group(1).split())
+    open_paren = header.find('(')
+    if open_paren < 0 or LAMBDA_TAIL.search(header):
+        return None
+    pre = header[:open_paren].rstrip()
+    if pre.endswith(']'):
+        return None
+    previous = None
+    while previous != pre:
+        previous = pre
+        pre = re.sub(r'<[^<>]*>', '', pre)
+    name = re.search(r'~?\w+(?:::~?\w+)*$', pre)
+    if not name or name.group(0) in NOT_A_FUNCTION:
+        return None
+    return name.group(0)
+
+
+def classify_scope(header: str):
+    if '(' not in header:
+        scope = TYPE_SCOPE.match(header)
+        if scope:
+            return ('namespace' if scope.group(1) == 'namespace' else 'type'), scope.group(2)
+    if '->' not in header and INIT_BRACE.search(header):
+        return 'init', None
+    name = function_name(header)
+    return ('function', name) if name else ('anonymous', None)
+
+
+def scope_timeline(source: str):
+    """(positions, scope names): the enclosing class/function chain after each brace/semicolon event."""
+    stack = []
+    header_start = 0
+    positions = []
+    scopes = []
+    for event in BRACE_EVENT.finditer(source):
+        mark = event.group()
+        if mark == '{':
+            stack.append(classify_scope(clean_header(source[header_start:event.start()])))
+            header_start = event.end()
+        elif mark == '}':
+            kind = stack.pop()[0] if stack else 'anonymous'
+            if kind != 'init':  # a constructor's brace-init stays part of its header
+                header_start = event.end()
+        else:
+            header_start = event.end()
+        names = [name for kind, name in stack if kind in ('type', 'function') and name]
+        positions.append(event.start())
+        scopes.append('::'.join(names) if names else FILE_SCOPE)
+    return positions, scopes
+
+
+def scope_at(timeline, offset: int) -> str:
+    positions, scopes = timeline
+    at = bisect.bisect_left(positions, offset) - 1
+    return scopes[at] if at >= 0 else FILE_SCOPE
+
+
+def balanced(source: str, start: int, opener: str, closer: str):
+    """Text between the bracket at source[start] and its partner (bounded), plus the index after it."""
+    depth = 0
+    for index in range(start, min(len(source), start + 400)):
+        if source[index] == opener:
+            depth += 1
+        elif source[index] == closer:
+            depth -= 1
+            if depth == 0:
+                return source[start + 1:index], index + 1
+    return None, start + 1
+
+
+def tidy(text: str) -> str:
+    text = ' '.join(text.replace('`', "'").split()).replace('|', '\\|')
+    return text if len(text) <= 120 else text[:117] + '...'
+
+
+def lock_alias(source: str, match) -> tuple:
+    """(alias, end offset consumed): the guard's lock expression, or the declared lock's name."""
+    token = match.group()
+    index = match.end()
+    if token.startswith('LockCensus::'):
+        template, after = balanced(source, index - 1, '<', '>')
+        name = re.match(r'\s*(\w+)', source[after:])
+        kind = token.split('::')[1].rstrip(' <').strip()
+        label = f"{kind}<{' '.join((template or '').split())}>"
+        return (f"{label} {name.group(1)}" if name else label), after
+    short = token[len('std::'):]
+    if short in GUARD_TYPES:
+        end = index
+        angle = re.match(r'\s*<', source[index:])
+        if angle:
+            _, end = balanced(source, index + angle.end() - 1, '<', '>')
+        declarator = re.match(r'\s*(?:[&*]\s*)*(\w+)?\s*', source[end:])
+        name = declarator.group(1)
+        bracket = end + declarator.end()
+        if bracket < len(source) and source[bracket] in '({':
+            closer = ')' if source[bracket] == '(' else '}'
+            argument, after = balanced(source, bracket, source[bracket], closer)
+            if argument is not None and argument.strip():
+                return f"{short}({tidy(argument)})", max(end, after)
+        return (f"{short} {name}" if name else short), end
+    declarator = re.match(r'\s*((?:[&*]\s*)*)(\w+)?', source[index:])
+    name = declarator.group(2)
+    if not name or name in ('const', 'operator'):
+        return short, index
+    qualifier = declarator.group(1).replace(' ', '')
+    return f"{short}{qualifier} {name}", index
+
+
+def acquisition_sites(source: str) -> list:
+    timeline = scope_timeline(source)
+    sites = set()
+    consumed = -1
+    for match in SITE.finditer(source):
+        if match.start() < consumed:
+            continue  # a guard's own template argument
+        alias, consumed = lock_alias(source, match)
+        sites.add((scope_at(timeline, match.start()), alias))
+    return sorted(sites)
+
+
+def render_index(rows, sites_by_file) -> str:
+    """rows: sorted (relative path, owned, families); the whole file is a function of tree + allowlist."""
+    out = [
+        "<!-- GENERATED by VIXEN/scripts/check-no-new-mutex.sh (--fix rewrites it; the check fails when it is stale). Do not edit. -->",
+        "# Runtime lock acquisition index (generated)",
+        "",
+        "One row per non-test file under `libraries/` and `application/` that carries std mutex/guard syntax "
+        "(the census lexer of `2026-09-08-runtime-lock-inventory-and-classification.md`). Families come from "
+        "`scripts/no-new-mutex.allowlist`; sites are `enclosing symbol -> lock alias` and carry no line numbers, "
+        "so an unrelated edit does not move them. An alias is a declared lock (`mutex m_mutex`, `mutex& m`), a guard over "
+        "its lock expression (`lock_guard(m_mutex)`), or a guard parameter/variable (`unique_lock lk`).",
+        "",
+        f"{len(rows)} files, {sum(owned for _, owned, _ in rows)} owning declarations.",
+        "",
+        "| Source file | Owned | Families | Acquisition sites (symbol -> lock alias) |",
+        "|---|---|---|---|",
+    ]
+    for rel, owned, families in rows:
+        display = rel[len('VIXEN/'):] if rel.startswith('VIXEN/') else rel
+        cell = '<br>'.join(f"`{scope}` -> `{alias}`" for scope, alias in sites_by_file[rel])
+        out.append(f"| `{display}` | {owned} | {families.replace(',', ', ')} | {cell} |")
+    return '\n'.join(out) + '\n'
+
+
 scanned = 0
 actual = {}  # relative path -> (owned, syntax_lines)
+sites_by_file = {}  # relative path -> sorted (symbol, lock alias) acquisition sites
 borrows_submit = set()  # files that take VulkanDevice::SubmitMutex() (the VK2 family)
 for base in SCAN_ROOTS:
     if not base.is_dir():
@@ -125,6 +312,7 @@ for base in SCAN_ROOTS:
             continue
         rel = path.relative_to(root).as_posix()
         actual[rel] = (owning_declarations(source), syntax_lines)
+        sites_by_file[rel] = acquisition_sites(source)
         if SUBMIT_BORROW.search(source):
             borrows_submit.add(rel)
 
@@ -175,9 +363,12 @@ if fix:
     )
     body = ''.join(f"{rel}\t{owned}\t{families}\n" for rel, owned, families in rows)
     allowlist_path.write_text(header + body, encoding='utf-8')
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(render_index(rows, sites_by_file), encoding='utf-8', newline='\n')
     added = sorted(set(actual) - set(pinned))
     dropped = sorted(set(pinned) - set(actual))
     resynced = sorted(rel for rel in actual if rel in pinned and pinned[rel][0] != actual[rel][0])
+    print(f"fixed {index_path}: {len(rows)} files")
     print(f"fixed {allowlist_path}: {len(rows)} rows; added={len(added)} dropped={len(dropped)} resynced={len(resynced)}")
     for rel in added:
         if rel in borrows_submit and actual[rel][0] == 0:
@@ -208,6 +399,13 @@ for rel in sorted(actual):
 for rel in order:
     if rel not in actual:
         failures.append(f"stale allowlist row (file gone or mutex-free): {rel} (re-sync with --fix)")
+
+expected_rows = [(rel, actual[rel][0], pinned[rel][1] if rel in pinned else 'UNCLASSIFIED') for rel in sorted(actual)]
+expected_index = render_index(expected_rows, sites_by_file)
+if not index_path.is_file():
+    failures.append(f"acquisition index missing: {index_path} (generate it with --fix)")
+elif index_path.read_bytes().decode('utf-8') != expected_index:
+    failures.append(f"stale acquisition index: {index_path} (re-sync with --fix)")
 
 for message in warnings:
     print(f"WARN: {message}")
