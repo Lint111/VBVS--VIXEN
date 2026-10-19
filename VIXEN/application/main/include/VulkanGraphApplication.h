@@ -213,6 +213,13 @@ public:
 
 protected:
     /**
+     * @brief Record the native provider as the compiled upscaler for a graph that builds no
+     *        upscaler module (the isolated demo graphs), so Prepare()'s post-compile
+     *        candidate check sees the same state the production graph reports for native.
+     */
+    void SelectNativeUpscalerForModulelessGraph();
+
+    /**
      * @brief Handle shutdown request from user (X button clicked)
      */
     void HandleShutdownRequest();
