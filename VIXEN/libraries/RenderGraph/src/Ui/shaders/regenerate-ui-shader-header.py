@@ -28,7 +28,9 @@ def find_glslc() -> str:
         for candidate in (Path(sdk) / "bin/glslc", Path(sdk) / "Bin/glslc.exe"):
             if candidate.is_file():
                 return str(candidate)
+    cache_home = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     candidates = [
+        cache_home / "vixen/vulkan-sdk/1.4.350.1/x86_64/bin/glslc",
         ROOT / ".vulkan-sdk/1.4.350.1/x86_64/bin/glslc",
         Path.home() / ".cache/vixen/vulkan/1.4.350.1/x86_64/bin/glslc",
     ]

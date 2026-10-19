@@ -2,8 +2,9 @@
 #
 # Self-contained Vulkan provisioning. A consumer should only ever build VIXEN — never install the
 # Vulkan SDK by hand. When no SDK is found, this downloads the prebuilt LunarG SDK (headers +
-# loader + validation layers) into a persistent, gitignored cache and synthesises Vulkan::Vulkan,
-# so everything downstream (find_package(Vulkan), Vulkan::Vulkan) works unchanged.
+# loader + validation layers) into a persistent machine-wide cache shared by every worktree
+# (see VixenSharedCache.cmake) and synthesises Vulkan::Vulkan, so everything downstream
+# (find_package(Vulkan), Vulkan::Vulkan) works unchanged.
 #
 # Validation layers are gated by build type (Debug = on, Release = off) and surfaced as the
 # VIXEN_VULKAN_VALIDATION compile symbol + a clear status line, so the active mode is obvious in
@@ -13,17 +14,49 @@
 #   -DVIXEN_AUTO_PROVISION_VULKAN=OFF   require a system SDK instead of auto-downloading
 #   VIXEN_VULKAN_SDK_VERSION=X.Y.Z.W   expected SDK version; platform defaults and capability floors
 #                                      are shared in cmake/vulkan-sdk-settings.env
-#   -DVIXEN_VULKAN_CACHE_DIR=<path>     where the provisioned SDK lives (default <src>/.vulkan-sdk)
+#   -DVIXEN_VULKAN_CACHE_DIR=<path>     where the provisioned SDKs live, one <version>/ entry each
+#                                      (default ${XDG_CACHE_HOME:-~/.cache}/vixen/vulkan-sdk, shared by all
+#                                      worktrees; a dedicated dir the provisioner owns)
 #   -DVIXEN_VULKAN_VALIDATION=ON|OFF    force validation on/off (default: from build type)
-#   -DVIXEN_UNINSTALL_VULKAN=ON         remove the provisioned cache and stop (the uninstall flag)
+#   -DVIXEN_UNINSTALL_VULKAN=ON         remove this SDK version's cache entry and stop (the uninstall flag)
 #   build target  vixen-uninstall-vulkan   same, as an explicit build step
 
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/VulkanSdkSettings.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/VixenSharedCache.cmake")
 
 option(VIXEN_AUTO_PROVISION_VULKAN "Download a prebuilt Vulkan SDK into a cache when none is found" ON)
-set(VIXEN_VULKAN_CACHE_DIR "${VIXEN_ROOT}/.vulkan-sdk" CACHE PATH "Persistent Vulkan provisioning cache")
+# Shared across worktrees on Linux. A build tree still carrying the old in-tree default is moved to
+# the shared cache; the old <src>/.vulkan-sdk dir is left alone (remove it by hand).
+if(UNIX)
+    vixen_shared_cache_root(_vixen_shared_cache_root)
+    set(_vixen_vulkan_cache_default "${_vixen_shared_cache_root}/vulkan-sdk")
+else()
+    set(_vixen_vulkan_cache_default "${VIXEN_ROOT}/.vulkan-sdk")
+endif()
+if(UNIX AND DEFINED CACHE{VIXEN_VULKAN_CACHE_DIR} AND
+   "${VIXEN_VULKAN_CACHE_DIR}" STREQUAL "${VIXEN_ROOT}/.vulkan-sdk")
+    set(VIXEN_VULKAN_CACHE_DIR "${_vixen_vulkan_cache_default}" CACHE PATH
+        "Persistent Vulkan provisioning cache" FORCE)
+    # Discovery results cached from the old location (Vulkan_INCLUDE_DIR, Vulkan_LIBRARY, glslc, ...)
+    # would keep this tree on the old SDK; drop them so they are found again in the shared cache.
+    get_cmake_property(_vixen_cache_vars CACHE_VARIABLES)
+    foreach(_vixen_cache_var IN LISTS _vixen_cache_vars)
+        get_property(_vixen_cache_val CACHE "${_vixen_cache_var}" PROPERTY VALUE)
+        string(FIND "${_vixen_cache_val}" "${VIXEN_ROOT}/.vulkan-sdk/" _vixen_cache_pos)
+        if(_vixen_cache_pos EQUAL 0)
+            unset("${_vixen_cache_var}" CACHE)
+        endif()
+    endforeach()
+    unset(_vixen_cache_vars)
+    unset(_vixen_cache_var)
+    unset(_vixen_cache_val)
+    unset(_vixen_cache_pos)
+    message(STATUS "VIXEN: moved this build tree from the in-tree Vulkan cache to ${VIXEN_VULKAN_CACHE_DIR}; "
+                   "the old ${VIXEN_ROOT}/.vulkan-sdk is unused and can be deleted.")
+endif()
+set(VIXEN_VULKAN_CACHE_DIR "${_vixen_vulkan_cache_default}" CACHE PATH "Persistent Vulkan provisioning cache")
 option(VIXEN_UNINSTALL_VULKAN "Remove the provisioned Vulkan cache and stop" OFF)
 
 function(_vixen_sdk_version_from_root _root _out)
@@ -69,9 +102,9 @@ endif()
 
 # --- uninstall (flag form; the target form is defined at the bottom) ---
 if(VIXEN_UNINSTALL_VULKAN)
-    if(EXISTS "${VIXEN_VULKAN_CACHE_DIR}")
-        file(REMOVE_RECURSE "${VIXEN_VULKAN_CACHE_DIR}")
-        message(STATUS "VIXEN: removed provisioned Vulkan cache: ${VIXEN_VULKAN_CACHE_DIR}")
+    if(EXISTS "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}")
+        file(REMOVE_RECURSE "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}")
+        message(STATUS "VIXEN: removed provisioned Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION} from ${VIXEN_VULKAN_CACHE_DIR}")
     endif()
     message(FATAL_ERROR "VIXEN: Vulkan uninstalled. Re-run cmake without -DVIXEN_UNINSTALL_VULKAN=ON.")
 endif()
@@ -166,26 +199,64 @@ if(NOT Vulkan_FOUND AND VIXEN_AUTO_PROVISION_VULKAN)
             "entry point first: build.bat provision (environment override: VIXEN_VULKAN_SDK_VERSION).")
     endif()
 
-    set(_vk_root "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}/x86_64")
+    set(_vk_entry "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}")
+    set(_vk_root "${_vk_entry}/x86_64")
+    set(_vk_stamp "${_vk_entry}/${VIXEN_SHARED_CACHE_STAMP}")
 
-    if(NOT EXISTS "${_vk_root}/include/vulkan/vulkan.h")
-        set(_tarball "${VIXEN_VULKAN_CACHE_DIR}/vulkansdk-linux-x86_64-${VIXEN_VULKAN_SDK_VERSION}.tar.xz")
-        set(_url "https://sdk.lunarg.com/sdk/download/${VIXEN_VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VIXEN_VULKAN_SDK_VERSION}.tar.xz")
-        file(MAKE_DIRECTORY "${VIXEN_VULKAN_CACHE_DIR}")
-        if(NOT EXISTS "${_tarball}")
-            message(STATUS "VIXEN: Vulkan SDK not found — downloading prebuilt LunarG SDK ${VIXEN_VULKAN_SDK_VERSION} (~320 MB, one-time, cached) ...")
-            file(DOWNLOAD "${_url}" "${_tarball}" SHOW_PROGRESS TLS_VERIFY ON STATUS _dl)
-            list(GET _dl 0 _code)
-            if(NOT _code EQUAL 0)
-                file(REMOVE "${_tarball}")
-                message(FATAL_ERROR "VIXEN: Vulkan SDK download failed (${_dl}). URL: ${_url}")
-            endif()
-        endif()
-        message(STATUS "VIXEN: extracting Vulkan SDK into ${VIXEN_VULKAN_CACHE_DIR} ...")
-        file(ARCHIVE_EXTRACT INPUT "${_tarball}" DESTINATION "${VIXEN_VULKAN_CACHE_DIR}")
-    else()
-        message(STATUS "VIXEN: reusing cached Vulkan SDK at ${_vk_root} (no download).")
+    # An entry is usable only when it carries the stamp (written after a complete extract, right
+    # before the atomic rename into place) and still has the files configure needs.
+    set(_vk_entry_ok FALSE)
+    if(EXISTS "${_vk_stamp}" AND EXISTS "${_vk_root}/include/vulkan/vulkan.h" AND EXISTS "${_vk_root}/bin/glslc")
+        set(_vk_entry_ok TRUE)
     endif()
+
+    if(NOT _vk_entry_ok)
+        file(MAKE_DIRECTORY "${VIXEN_VULKAN_CACHE_DIR}")
+        # Several worktrees may configure at once: one populates, the others wait here and then reuse.
+        file(LOCK "${_vk_entry}.lock" GUARD PROCESS TIMEOUT 3600 RESULT_VARIABLE _vk_lock_rc)
+        if(NOT _vk_lock_rc EQUAL 0)
+            message(FATAL_ERROR "VIXEN: could not lock the Vulkan SDK cache entry ${_vk_entry}: ${_vk_lock_rc}")
+        endif()
+        if(EXISTS "${_vk_stamp}" AND EXISTS "${_vk_root}/include/vulkan/vulkan.h" AND EXISTS "${_vk_root}/bin/glslc")
+            set(_vk_entry_ok TRUE)  # another configure finished it while we waited
+        endif()
+    endif()
+
+    if(NOT _vk_entry_ok)
+        # We hold this version's lock, so any ".tmp-<version>-*" dir is a dead populate attempt.
+        file(GLOB _vk_stale "${VIXEN_VULKAN_CACHE_DIR}/.tmp-${VIXEN_VULKAN_SDK_VERSION}-*")
+        foreach(_vk_old IN LISTS _vk_stale)
+            file(REMOVE_RECURSE "${_vk_old}")
+        endforeach()
+        string(RANDOM LENGTH 8 ALPHABET "0123456789abcdef" _vk_suffix)
+        set(_vk_tmp "${VIXEN_VULKAN_CACHE_DIR}/.tmp-${VIXEN_VULKAN_SDK_VERSION}-${_vk_suffix}")
+        set(_tarball "${_vk_tmp}/vulkansdk-linux-x86_64-${VIXEN_VULKAN_SDK_VERSION}.tar.xz")
+        set(_url "https://sdk.lunarg.com/sdk/download/${VIXEN_VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VIXEN_VULKAN_SDK_VERSION}.tar.xz")
+        file(MAKE_DIRECTORY "${_vk_tmp}")
+        message(STATUS "VIXEN: Vulkan SDK not found — downloading prebuilt LunarG SDK ${VIXEN_VULKAN_SDK_VERSION} (~320 MB, one-time, shared by all worktrees) ...")
+        file(DOWNLOAD "${_url}" "${_tarball}" SHOW_PROGRESS TLS_VERIFY ON STATUS _dl)
+        list(GET _dl 0 _code)
+        if(NOT _code EQUAL 0)
+            file(REMOVE_RECURSE "${_vk_tmp}")
+            message(FATAL_ERROR "VIXEN: Vulkan SDK download failed (${_dl}). URL: ${_url}")
+        endif()
+        message(STATUS "VIXEN: extracting Vulkan SDK into ${_vk_entry} ...")
+        file(ARCHIVE_EXTRACT INPUT "${_tarball}" DESTINATION "${_vk_tmp}/extract")
+        if(NOT EXISTS "${_vk_tmp}/extract/${VIXEN_VULKAN_SDK_VERSION}/x86_64/include/vulkan/vulkan.h" OR
+           NOT EXISTS "${_vk_tmp}/extract/${VIXEN_VULKAN_SDK_VERSION}/x86_64/bin/glslc")
+            file(REMOVE_RECURSE "${_vk_tmp}")
+            message(FATAL_ERROR "VIXEN: the downloaded Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION} is incomplete (missing headers or glslc); nothing was cached.")
+        endif()
+        file(WRITE "${_vk_tmp}/extract/${VIXEN_VULKAN_SDK_VERSION}/${VIXEN_SHARED_CACHE_STAMP}"
+             "Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION}\n")
+        # An entry without a valid stamp is a corrupt or partial leftover of this same key.
+        file(REMOVE_RECURSE "${_vk_entry}")
+        file(RENAME "${_vk_tmp}/extract/${VIXEN_VULKAN_SDK_VERSION}" "${_vk_entry}")
+        file(REMOVE_RECURSE "${_vk_tmp}")
+    else()
+        message(STATUS "VIXEN: reusing shared cached Vulkan SDK at ${_vk_root} (no download).")
+    endif()
+    file(LOCK "${_vk_entry}.lock" RELEASE)
 
     if(EXISTS "${_vk_root}/include/vulkan/vulkan.h")
         # Point FindVulkan at the cached SDK and re-discover so Vulkan::Vulkan + the SDK tools resolve.
@@ -330,6 +401,6 @@ message(STATUS "VIXEN: Vulkan validation layers: ${VIXEN_VULKAN_VALIDATION} "
 # --- uninstall as an explicit build step ---
 if(NOT TARGET vixen-uninstall-vulkan)
     add_custom_target(vixen-uninstall-vulkan
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${VIXEN_VULKAN_CACHE_DIR}"
-        COMMENT "VIXEN: removing provisioned Vulkan cache (${VIXEN_VULKAN_CACHE_DIR})")
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}"
+        COMMENT "VIXEN: removing provisioned Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION} (${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION})")
 endif()
