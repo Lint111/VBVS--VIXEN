@@ -33,30 +33,24 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ExposureMeterResult
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x31b43a45539be2e0 (for runtime discovery)
+ * Layout VixenHash: 0x80f7bced34979787 (for runtime discovery)
  */
 struct ExposureMeterResult {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x31b43a45539be2e0ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x80f7bced34979787ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "float";
+        static constexpr const char* TYPE = "ExposureMeterState";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t SIZE = 16;
         static constexpr uint32_t BINDING = 0;
     };
     struct pc_1 {
         static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 4;
+        static constexpr uint32_t OFFSET = 16;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 1;
-    };
-    struct pc_2 {
-        static constexpr const char* TYPE = "TileExposure";
-        static constexpr uint32_t OFFSET = 8;
-        static constexpr uint32_t SIZE = 8;
-        static constexpr uint32_t BINDING = 2;
     };
 
 };

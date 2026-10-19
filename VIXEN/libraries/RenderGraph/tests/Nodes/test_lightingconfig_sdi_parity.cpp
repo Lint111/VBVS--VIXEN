@@ -90,12 +90,12 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Struct SIZE == C++ struct size (the cel schema's std430 layout is 240 B).
+    // (a) Struct SIZE == C++ struct size (the cel + exposure schema's std430 layout is 272 B).
     EXPECT_EQ(static_cast<std::size_t>(lightingConfig->type.sizeInBytes), sizeof(LightingConfig))
         << "LightingConfig size (" << lightingConfig->type.sizeInBytes
         << ") != sizeof(LightingConfig) (" << sizeof(LightingConfig) << ") — std430 drift";
-    EXPECT_EQ(lightingConfig->type.sizeInBytes, 240u)
-        << "LightingConfig size must be 240 for the cel shading settings";
+    EXPECT_EQ(lightingConfig->type.sizeInBytes, 272u)
+        << "LightingConfig size must be 272 for the cel shading and exposure settings";
 
     // (b) Top-level field offsets.
     ASSERT_FALSE(lightingConfig->members.empty())
@@ -154,6 +154,14 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         {"skyColor", offsetof(LightingConfig, skyColorX)},
         {"skyMode", offsetof(LightingConfig, skyMode)},
         {"skyGradientSlope", offsetof(LightingConfig, skyGradientSlope)},
+        {"exposureKeyValue", offsetof(LightingConfig, exposureKeyValue)},
+        {"exposureMinEV100", offsetof(LightingConfig, exposureMinEV100)},
+        {"exposureMaxEV100", offsetof(LightingConfig, exposureMaxEV100)},
+        {"exposureLowPercent", offsetof(LightingConfig, exposureLowPercent)},
+        {"exposureHighPercent", offsetof(LightingConfig, exposureHighPercent)},
+        {"exposureSpeedUp", offsetof(LightingConfig, exposureSpeedUp)},
+        {"exposureSpeedDown", offsetof(LightingConfig, exposureSpeedDown)},
+        {"exposureDeltaSeconds", offsetof(LightingConfig, exposureDeltaSeconds)},
     };
     for (const auto& f : celFields) {
         const SpirvStructMember* sm = FindSubMember(*lightingConfig, f.name);

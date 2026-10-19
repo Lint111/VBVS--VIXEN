@@ -53,17 +53,17 @@ struct ExposureMeterResult {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6f03924fb7e8818e (for runtime discovery)
+ * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6f03924fb7e8818eULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 240;
+        static constexpr uint32_t SIZE = 272;
         static constexpr uint32_t BINDING = 0;
     };
 

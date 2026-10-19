@@ -1948,16 +1948,25 @@ void VulkanGraphApplication::PostTick() {
 void VulkanGraphApplication::RunHdrMeterDebugReadback() {
     static uint64_t lastLoggedFrame = ~uint64_t(0);
     if (lastLoggedFrame == frameCounter_ || !renderGraph) return;
-    if (frameCounter_ != 0 && frameCounter_ != 59 && frameCounter_ != 119) return;
+    // VIXEN_HDR_METER_DEBUG=<n> logs the first n frames (any non-number: 120).
+    const char* framesEnv = std::getenv("VIXEN_HDR_METER_DEBUG");
+    const uint64_t loggedFrames = framesEnv && std::strtoull(framesEnv, nullptr, 10) > 1
+        ? std::strtoull(framesEnv, nullptr, 10) : 120u;
+    if (frameCounter_ >= loggedFrames) return;
     auto* meter = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("exposure_meter_buffer"));
     auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
     if (!meter || !deviceNode || !deviceNode->GetVulkanDevice()) return;
     auto* device = deviceNode->GetVulkanDevice();
     vkDeviceWaitIdle(device->device); // observation-only settle point; never used by the meter
     if (void* mapped = meter->MapForReadback(device)) {
-        const float ev100 = *reinterpret_cast<const float*>(mapped);
+        // ExposureHistogram.glsl ExposureMeterState: applied log2 exposure, state word,
+        // metered scene EV100 and the clamped log2 target the adaptation approaches.
+        float state[4];
+        std::memcpy(state, mapped, sizeof(state));
         meter->UnmapReadback(device);
-        std::cout << "[HDRMeter] frame=" << frameCounter_ << " EV100=" << ev100 << "\n";
+        std::cout << "[HDRMeter] frame=" << frameCounter_ << " EV100=" << state[0]
+                  << " meteredEV100=" << state[2] << " targetLog2Exposure=" << state[3]
+                  << " exposure=" << std::exp2(state[0]) << "\n";
         lastLoggedFrame = frameCounter_;
     }
 }

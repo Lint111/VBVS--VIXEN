@@ -59,6 +59,17 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr const char* PARAM_SKY_COLOR_G = "skyColorG";
     static constexpr const char* PARAM_SKY_COLOR_B = "skyColorB";
     static constexpr const char* PARAM_SKY_GRADIENT_SLOPE = "skyGradientSlope";
+    // Dynamic exposure (eye adaptation) read by ExposureReduce.comp; see
+    // reports/exposure-priorart.md for the source of each preset value.
+    static constexpr const char* PARAM_EXPOSURE_KEY_VALUE = "exposureKeyValue";
+    static constexpr const char* PARAM_EXPOSURE_MIN_EV100 = "exposureMinEV100";
+    static constexpr const char* PARAM_EXPOSURE_MAX_EV100 = "exposureMaxEV100";
+    static constexpr const char* PARAM_EXPOSURE_LOW_PERCENT = "exposureLowPercent";
+    static constexpr const char* PARAM_EXPOSURE_HIGH_PERCENT = "exposureHighPercent";
+    static constexpr const char* PARAM_EXPOSURE_SPEED_UP = "exposureSpeedUp";
+    static constexpr const char* PARAM_EXPOSURE_SPEED_DOWN = "exposureSpeedDown";
+    // > 0 pins the adaptation step (deterministic captures); 0 uses graph frame time.
+    static constexpr const char* PARAM_EXPOSURE_FIXED_DELTA_SECONDS = "exposureFixedDeltaSeconds";
 
     static constexpr uint32_t SHADING_MODE_LAMBERT_GGX = 0u;
     static constexpr uint32_t SHADING_MODE_CEL = 1u;
@@ -81,6 +92,28 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr float DEFAULT_SKY_GRADIENT_SLOPE = 0.4f;
     static constexpr float MIN_EXPOSURE_COMPENSATION_EV = -16.0f;
     static constexpr float MAX_EXPOSURE_COMPENSATION_EV = 16.0f;
+    // Longest wall-clock step one frame may adapt by; a stall resumes smoothly.
+    static constexpr float MAX_EXPOSURE_DELTA_SECONDS = 0.5f;
+
+    // Exposure presets selected by VIXEN_HDR_EXPOSURE_PRESET. EV100 is measured
+    // in scene units (VIXEN radiance is not calibrated in cd/m2): a frame whose
+    // percentile window averages L meters EV100 = log2(L) + 3.
+    struct ExposurePreset {
+        const char* name;
+        float keyValue;
+        float minEV100;
+        float maxEV100;
+        float lowPercent;
+        float highPercent;
+        float speedUp;
+        float speedDown;
+    };
+    static constexpr ExposurePreset EXPOSURE_PRESETS[] = {
+        {"default", 0.18f, 0.5f, 12.0f, 50.0f, 95.0f, 3.0f, 1.0f},
+        {"dark", 0.18f, 1.0f, 12.0f, 75.0f, 98.0f, 3.0f, 1.0f},
+        {"bright", 0.18f, 0.5f, 16.0f, 10.0f, 90.0f, 3.0f, 1.0f},
+    };
+    // EXPOSURE_PRESETS[0] ("default") supplies every unset exposure parameter.
 
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,

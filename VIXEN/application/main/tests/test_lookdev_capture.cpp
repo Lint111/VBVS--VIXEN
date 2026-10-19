@@ -48,6 +48,8 @@
 #include <numeric>
 #include <memory>
 #include <sstream>
+#include <functional>
+#include <type_traits>
 #include <stdexcept>
 #include <span>
 #include <string>
@@ -255,9 +257,22 @@ std::vector<CaptureScenario> BuildScenarios() {
     const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
     constexpr size_t kPanAngles = 24;
     const size_t angleCount = slowPan ? kPanAngles : yaws.size();
-    scenarios.reserve(presets.size() * angleCount);
-    for (const auto& preset : presets) {
-        if (requestedState && preset.name != std::string(requestedState)) continue;
+    // VIXEN_LOOKDEV_CAPTURE_STATE selects one state, or an ordered comma list
+    // (e.g. "night-service,midday") so one process witnesses exposure adaptation
+    // across a lighting switch.
+    std::vector<std::reference_wrapper<const std::decay_t<decltype(presets.front())>>> ordered;
+    if (requestedState && *requestedState != '\0') {
+        std::istringstream names(requestedState);
+        for (std::string name; std::getline(names, name, ',');) {
+            for (const auto& preset : presets)
+                if (preset.name == name) ordered.emplace_back(preset);
+        }
+    } else {
+        for (const auto& preset : presets) ordered.emplace_back(preset);
+    }
+    scenarios.reserve(ordered.size() * angleCount);
+    for (const auto& presetRef : ordered) {
+        const auto& preset = presetRef.get();
         for (size_t angle = 0; angle < angleCount; ++angle) {
             if (!slowPan && requestedAngle >= 0 && static_cast<int>(angle) != requestedAngle)
                 continue;
@@ -1737,8 +1752,12 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
     const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
     const bool oneAngleRequested = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE") != nullptr;
-    ASSERT_EQ(scenarios.size(), slowPan ? 24u : (oneAngleRequested ? 1u : 4u))
-        << "CTest must select one supported look-dev lighting preset";
+    const char* stateList = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
+    const size_t requestedStates = stateList
+        ? 1u + static_cast<size_t>(std::count(stateList, stateList + std::strlen(stateList), ','))
+        : 1u;
+    ASSERT_EQ(scenarios.size(), requestedStates * (slowPan ? 24u : (oneAngleRequested ? 1u : 4u)))
+        << "CTest must select supported look-dev lighting presets";
     std::string error;
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;

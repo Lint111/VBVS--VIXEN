@@ -202,6 +202,38 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         LightingConfigNodeConfig::DEFAULT_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MIN_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MAX_EXPOSURE_COMPENSATION_EV);
+    const auto& exposureDefaults = LightingConfigNodeConfig::EXPOSURE_PRESETS[0];
+    cfg.exposureKeyValue = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_KEY_VALUE,
+        exposureDefaults.keyValue, 0.001f, 10.0f);
+    cfg.exposureMinEV100 = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_MIN_EV100,
+        exposureDefaults.minEV100, -32.0f, 32.0f);
+    cfg.exposureMaxEV100 = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_MAX_EV100,
+        exposureDefaults.maxEV100, cfg.exposureMinEV100, 32.0f);
+    cfg.exposureLowPercent = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_LOW_PERCENT,
+        exposureDefaults.lowPercent, 0.0f, 100.0f);
+    cfg.exposureHighPercent = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_HIGH_PERCENT,
+        exposureDefaults.highPercent, cfg.exposureLowPercent, 100.0f);
+    cfg.exposureSpeedUp = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_SPEED_UP,
+        exposureDefaults.speedUp, 0.0f, 100.0f);
+    cfg.exposureSpeedDown = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_SPEED_DOWN,
+        exposureDefaults.speedDown, 0.0f, 100.0f);
+    // Adaptation advances by this frame's step: a pinned step keeps captures
+    // deterministic, otherwise the graph's frame time keeps it rate independent.
+    const float fixedDeltaSeconds = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_FIXED_DELTA_SECONDS, 0.0f,
+        0.0f, LightingConfigNodeConfig::MAX_EXPOSURE_DELTA_SECONDS);
+    const RenderGraph* graph = GetOwningGraph();
+    const float frameDeltaSeconds = graph ? FiniteOr(graph->GetTime().GetDeltaTime(), 0.0f) : 0.0f;
+    cfg.exposureDeltaSeconds = fixedDeltaSeconds > 0.0f
+        ? fixedDeltaSeconds
+        : std::clamp(frameDeltaSeconds, 0.0f, LightingConfigNodeConfig::MAX_EXPOSURE_DELTA_SECONDS);
     cfg.dimBandFloor = ReadClampedFloat(
         *this, LightingConfigNodeConfig::PARAM_DIM_BAND_FLOOR,
         LightingConfigNodeConfig::DEFAULT_DIM_BAND_FLOOR, 0.0f, 0.95f);
