@@ -7,7 +7,7 @@ add_executable(test_registration_api
 )
 target_compile_features(test_registration_api PRIVATE cxx_std_23)
 if(TARGET CashSystem)
-    target_link_libraries(test_registration_api PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+    target_link_libraries(test_registration_api PRIVATE GTest::gtest_main CashSystem Textures Logger VulkanResources)
 else()
     target_link_libraries(test_registration_api PRIVATE GTest::gtest_main Logger)
 endif()
