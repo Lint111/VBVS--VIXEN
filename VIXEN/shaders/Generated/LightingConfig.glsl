@@ -39,7 +39,7 @@ struct LightingConfig {
     float exposureSpeedUp;
     float exposureSpeedDown;
     float exposureDeltaSeconds;
-    float _envTailPadding0;
+    float lookSaturation;
     float _envTailPadding1;
     float _envTailPadding2;
 };

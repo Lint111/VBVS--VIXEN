@@ -282,17 +282,27 @@ bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     return envFlagEnabled(name);
 }
 
-// Dynamic exposure config: the built-in scenes are the default SceneLook, so they take its exposure
-// declaration (the space preset); VIXEN_HDR_EXPOSURE_PRESET=<name> picks another preset. Offscreen
-// captures pin the adaptation step to 1/60 s so repeat runs are pixel-identical;
-// VIXEN_HDR_EXPOSURE_DT=<seconds> overrides it (0 = graph frame time). Scenes with their own SceneLook
-// (look-dev, planet) replace the preset when they apply it.
+// Dynamic exposure config: the built-in scenes are the default SceneLook, so they contribute it as the
+// scene layer (the space exposure preset). Environment overrides form the dev layer, which resolves above
+// every scene: VIXEN_HDR_EXPOSURE_PRESET=<name> replaces all seven preset values and
+// VIXEN_HDR_EXPOSURE_<PARAMETER>=<value> one of them (the node clamps it). Offscreen captures pin the
+// adaptation step to 1/60 s so repeat runs are pixel-identical; VIXEN_HDR_EXPOSURE_DT=<seconds> overrides
+// it (0 = graph frame time).
 void ConfigureExposure(LightingConfigNode& lighting, bool offscreenPresentation, Vixen::Log::Logger& logger) {
     using Config = LightingConfigNodeConfig;
+    Vixen::App::SetSceneLookLayer(lighting, Vixen::App::SceneLook{});
     Config::ExposurePreset preset = Vixen::App::ExposureSettings(Vixen::App::SceneLook{}.exposure);
+    PartialLook dev;
     if (const char* name = std::getenv("VIXEN_HDR_EXPOSURE_PRESET"); name && *name) {
         if (const Config::ExposurePreset* found = Config::FindExposurePreset(name)) {
             preset = *found;
+            dev.exposureKeyValue = found->keyValue;
+            dev.exposureMinEV100 = found->minEV100;
+            dev.exposureMaxEV100 = found->maxEV100;
+            dev.exposureLowPercent = found->lowPercent;
+            dev.exposureHighPercent = found->highPercent;
+            dev.exposureSpeedUp = found->speedUp;
+            dev.exposureSpeedDown = found->speedDown;
         } else {
             std::string known;
             for (const Config::ExposurePreset& candidate : Config::EXPOSURE_PRESETS)
@@ -301,18 +311,19 @@ void ConfigureExposure(LightingConfigNode& lighting, bool offscreenPresentation,
                            "'; using '" + preset.name + "' (known: " + known + ")");
         }
     }
-    Vixen::App::ApplyExposureSettings(lighting, preset);
-    // VIXEN_HDR_EXPOSURE_<PARAMETER>=<value> overrides one preset value (the node clamps it).
-    const auto overrideExposure = [&lighting](const char* parameter, const char* env) {
-        if (const char* raw = std::getenv(env); raw && *raw) lighting.SetParameter(parameter, std::strtof(raw, nullptr));
+    const auto overrideExposure = [&dev](std::optional<float> PartialLook::*channel, const char* env) {
+        if (const char* raw = std::getenv(env); raw && *raw) dev.*channel = std::strtof(raw, nullptr);
     };
-    overrideExposure(Config::PARAM_EXPOSURE_KEY_VALUE, "VIXEN_HDR_EXPOSURE_KEY_VALUE");
-    overrideExposure(Config::PARAM_EXPOSURE_MIN_EV100, "VIXEN_HDR_EXPOSURE_MIN_EV100");
-    overrideExposure(Config::PARAM_EXPOSURE_MAX_EV100, "VIXEN_HDR_EXPOSURE_MAX_EV100");
-    overrideExposure(Config::PARAM_EXPOSURE_LOW_PERCENT, "VIXEN_HDR_EXPOSURE_LOW_PERCENT");
-    overrideExposure(Config::PARAM_EXPOSURE_HIGH_PERCENT, "VIXEN_HDR_EXPOSURE_HIGH_PERCENT");
-    overrideExposure(Config::PARAM_EXPOSURE_SPEED_UP, "VIXEN_HDR_EXPOSURE_SPEED_UP");
-    overrideExposure(Config::PARAM_EXPOSURE_SPEED_DOWN, "VIXEN_HDR_EXPOSURE_SPEED_DOWN");
+    overrideExposure(&PartialLook::exposureKeyValue, "VIXEN_HDR_EXPOSURE_KEY_VALUE");
+    overrideExposure(&PartialLook::exposureMinEV100, "VIXEN_HDR_EXPOSURE_MIN_EV100");
+    overrideExposure(&PartialLook::exposureMaxEV100, "VIXEN_HDR_EXPOSURE_MAX_EV100");
+    overrideExposure(&PartialLook::exposureLowPercent, "VIXEN_HDR_EXPOSURE_LOW_PERCENT");
+    overrideExposure(&PartialLook::exposureHighPercent, "VIXEN_HDR_EXPOSURE_HIGH_PERCENT");
+    overrideExposure(&PartialLook::exposureSpeedUp, "VIXEN_HDR_EXPOSURE_SPEED_UP");
+    overrideExposure(&PartialLook::exposureSpeedDown, "VIXEN_HDR_EXPOSURE_SPEED_DOWN");
+    LookContribution devContribution;
+    devContribution.look = dev;
+    lighting.Look().SetSlot(LookLayer::DevOverride, 0, std::move(devContribution));
     float fixedDeltaSeconds = offscreenPresentation ? 1.0f / 60.0f : 0.0f;
     if (const char* raw = std::getenv("VIXEN_HDR_EXPOSURE_DT"); raw && *raw) {
         fixedDeltaSeconds = std::strtof(raw, nullptr);
@@ -5949,7 +5960,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: seeded one emissive star and three bodies");
             }
             if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
-                lighting->SetLights({starLight}, 0.04f, {1.5f});
+                Vixen::App::SetSceneLightsLayer(*lighting, LookLightSet::From({starLight}, 0.04f, {1.5f}));
             }
         } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).

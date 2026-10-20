@@ -24,7 +24,7 @@ namespace LightingConfigNodeCounts {
  * pattern. The default content is one directional light matching
  * Lighting.glsl's previously-hardcoded default. Cel shading is tuned through
  * this node's runtime parameters, and hosts may replace the shared light set
- * through SetLights() without node-graph rewiring. Re-uploaded every Execute
+ * through its Look() layers without node-graph rewiring. Re-uploaded every Execute
  * (208 B) so parameter and light changes take effect immediately.
  *
  * Inputs: 2
@@ -39,35 +39,16 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
                       LightingConfigNodeCounts::OUTPUTS,
                       LightingConfigNodeCounts::ARRAY_MODE) {
 
-    // Runtime tuning parameters read by LightingConfigNode::TypedExecuteImpl.
+    // Runtime tuning parameters read by LightingConfigNode::TypedExecuteImpl. The look channels (exposure,
+    // saturation, cel thresholds, sky, lights) are not parameters: they resolve through LightingConfigNode::Look().
     // Lambert+GGX remains selectable with mode 0; cel is the node default (1).
     static constexpr const char* PARAM_SHADING_MODE = "shadingMode";
     static constexpr const char* PARAM_CEL_BAND_COUNT = "celBandCount";
-    static constexpr const char* PARAM_CEL_SHADOW_THRESHOLD = "celShadowThreshold";
-    static constexpr const char* PARAM_CEL_LIT_THRESHOLD = "celLitThreshold";
-    static constexpr const char* PARAM_CEL_RAMP_SOFTNESS = "celRampSoftness";
     static constexpr const char* PARAM_CEL_LIT_HUE_SHIFT_DEGREES = "celLitHueShiftDegrees";
     static constexpr const char* PARAM_CEL_SHADOW_HUE_SHIFT_DEGREES = "celShadowHueShiftDegrees";
     static constexpr const char* PARAM_CEL_BAND_FALLOFF_START = "celBandFalloffStart";
     static constexpr const char* PARAM_CEL_BAND_FALLOFF_END = "celBandFalloffEnd";
     static constexpr const char* PARAM_CEL_LIGHT_SPILL_SCALE = "celLightSpillScale";
-    static constexpr const char* PARAM_EXPOSURE_COMPENSATION_EV = "exposureCompensationEV";
-    // Cel profile floor and scene environment (sky) declaration.
-    static constexpr const char* PARAM_DIM_BAND_FLOOR = "dimBandFloor";
-    static constexpr const char* PARAM_SKY_MODE = "skyMode";
-    static constexpr const char* PARAM_SKY_COLOR_R = "skyColorR";
-    static constexpr const char* PARAM_SKY_COLOR_G = "skyColorG";
-    static constexpr const char* PARAM_SKY_COLOR_B = "skyColorB";
-    static constexpr const char* PARAM_SKY_GRADIENT_SLOPE = "skyGradientSlope";
-    // Dynamic exposure (eye adaptation) read by ExposureReduce.comp; see
-    // reports/exposure-priorart.md for the source of each preset value.
-    static constexpr const char* PARAM_EXPOSURE_KEY_VALUE = "exposureKeyValue";
-    static constexpr const char* PARAM_EXPOSURE_MIN_EV100 = "exposureMinEV100";
-    static constexpr const char* PARAM_EXPOSURE_MAX_EV100 = "exposureMaxEV100";
-    static constexpr const char* PARAM_EXPOSURE_LOW_PERCENT = "exposureLowPercent";
-    static constexpr const char* PARAM_EXPOSURE_HIGH_PERCENT = "exposureHighPercent";
-    static constexpr const char* PARAM_EXPOSURE_SPEED_UP = "exposureSpeedUp";
-    static constexpr const char* PARAM_EXPOSURE_SPEED_DOWN = "exposureSpeedDown";
     // > 0 pins the adaptation step (deterministic captures); 0 uses graph frame time.
     static constexpr const char* PARAM_EXPOSURE_FIXED_DELTA_SECONDS = "exposureFixedDeltaSeconds";
 
