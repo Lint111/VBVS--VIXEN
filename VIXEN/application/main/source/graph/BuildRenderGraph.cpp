@@ -8955,7 +8955,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (drop-in swap; placeholder 1-byte for binary/procedural bodies).
     // idOutputImage/historyImage/outputImage are per-frame re-emitted views
     // (Execute-only); outputImage is bound to the march SOLELY for
-    // imageSize() (never imageStore'd post-split — PARAM_WRITES_NO_IMAGE).
+    // imageSize() (never imageStore'd post-split — PARAM_WRITES_NO_IMAGE);
+    // its layout still comes from march_image_writes below.
     // InstanceSkipMask has low bucket-ownership words [0..5] and high B1
     // camera-visibility words [6..11]. The primary march reads both regions;
     // TraceWorldShadow reads only the low region. The zeroed placeholder makes
@@ -9080,10 +9081,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // gates only the FEATURE + provider; the Connect itself is derived from
     // the member table (the epoch's original promise for this exact site).
     SdiFeatureSet marchFeatures;
+    // Every storage image the march binds writeonly is declared here, so its
+    // IMAGE_WRITE_ARRAY moves each one's CURRENT ring image to GENERAL before
+    // the dispatch. outputImage (slot 0) is bound only for imageSize(), but
+    // SpatialReuse's own transition runs after the march: without this entry
+    // each ring image's first frame binds it in UNDEFINED
+    // (VUID-vkCmdDraw-None-09600 at submit).
+    NodeHandle marchImageWrites = renderGraph->AddNode<ImageSyncGathererNodeType>("march_image_writes");
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(marchImageWrites))
+        ->PreRegisterImageSlots(reconstructionInputsEnabled ? 3 : 1);
+    batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  marchImageWrites, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+         .Connect(marchImageWrites, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_WRITE_ARRAY,
+                  SlotRoleModifier(SlotRole::Execute));
     if (reconstructionInputsEnabled) {
         reconstructionMotionModule = renderGraph->Instantiate<ReconstructionMotionModule>(
             "render_path/reconstruction_motion", ReconstructionMotionParams{
-                &batch, deviceNode, renderTargetNode, computeDispatch});
+                &batch, deviceNode, renderTargetNode, marchImageWrites, 1});
         sceneProviders.ProvideSubGraphOutput("motionVectorImage", *reconstructionMotionModule,
             ReconstructionMotionPorts::MOTION_VIEW.index, SlotRole::Execute);
         sceneProviders.ProvideSubGraphOutput("motionValidityImage", *reconstructionMotionModule,
