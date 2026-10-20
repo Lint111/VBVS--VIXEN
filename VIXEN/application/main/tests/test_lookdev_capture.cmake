@@ -15,6 +15,36 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         ${VIXEN_CTEST_GPU_ENVIRONMENT}
         "VIXEN_HDR_EXPOSURE=1"
         "VIXEN_HUD_SUPPRESS=1")
+    set(_lookdev_test_environment_modification
+        "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+    # One state per test is the default registration: a state is two fresh processes (about 10 minutes
+    # on Dozen), so the four-state run exceeds any single timeout there. Each state keeps the 1200 s
+    # bound on its own, and a stalled state costs the queue one state, not four.
+    set(_lookdev_states midday late-afternoon overcast night-service)
+    set(_lookdev_state_tests)
+    foreach(_state IN LISTS _lookdev_states)
+        set(_test Application.LookdevCapture.State.${_state})
+        add_test(NAME ${_test}
+            COMMAND ${CMAKE_COMMAND}
+                "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
+                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev"
+                "-DLOOKDEV_CAPTURE_STATES=${_state}"
+                -DLOOKDEV_CAPTURE_BUDGET_S=900
+                -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
+        set_tests_properties(${_test}
+            PROPERTIES
+                LABELS "Application"
+                TIMEOUT 1200
+                ENVIRONMENT "${_lookdev_test_environment}"
+                ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
+        list(APPEND _lookdev_state_tests ${_test})
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_lookdev_state_tests})
+
+    # The four-state aggregate keeps its name for the capture tooling that selects it. It carries only
+    # the `native` label, which the split runner excludes by default (`ctest -L native` selects it).
+    list(LENGTH _lookdev_states _lookdev_state_count)
+    math(EXPR _lookdev_aggregate_timeout "${_lookdev_state_count} * 1200")
     add_test(NAME Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         COMMAND ${CMAKE_COMMAND}
             "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
@@ -23,13 +53,12 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
     set_tests_properties(Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         PROPERTIES
-            LABELS "Application"
-            TIMEOUT 1200
+            LABELS "native"
+            TIMEOUT ${_lookdev_aggregate_timeout}
             ENVIRONMENT "${_lookdev_test_environment}"
-            ENVIRONMENT_MODIFICATION
-                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+            ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
-    message(STATUS "[Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)")
+    message(STATUS "[Application Tests] Added: vixen_lookdev_capture (${_lookdev_state_count} per-state tests of 4 angles, repeat-pixel witness; aggregate under label native)")
 
     foreach(_depth_case IN ITEMS native reduced-odd fixed-exposure)
         set(_depth_scale 1.0)
