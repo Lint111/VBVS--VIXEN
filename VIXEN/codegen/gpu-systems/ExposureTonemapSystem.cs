@@ -27,12 +27,12 @@ public static class ExposureTonemapSystem
     public static void Run(
         in Texture2D<Rgba16f> sceneRadianceHistoryOutput,
         ref Texture2D<Rgba8> outputImage,
-        in float[] meter,
+        in ExposureMeterState[] meter,
         in LightingConfig[] LightingConfigSSBO,
         int i)
     {
         Rgba16f source = sceneRadianceHistoryOutput.Current[i];
-        float exposure = math.pow(2.0f, meter[0] + LightingConfigSSBO[0].exposureCompensationEV);
+        float exposure = math.pow(2.0f, meter[0].log2Exposure + LightingConfigSSBO[0].exposureCompensationEV);
 
         float red = math.max(source.x * exposure, 0.0f);
         float green = math.max(source.y * exposure, 0.0f);

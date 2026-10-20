@@ -46,9 +46,8 @@
 #include "merged/InstanceOcclusionCull-SDI.g.h"  // Semantic-wiring S1: B1 cull named binding/push constants
 #include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
-#include "Generated/ExposureTonemapSystem.g.h"
 #include "merged/ExposureTonemapReference-SDI.g.h"
-#include "merged/ExposureTonemapSystem-SDI.g.h"
+#include "Nodes/GeneratedSystemStage.h"            // renderbridge S1: generated GPU systems from the composition manifest
 #include "merged/SpatialReuseShade-SDI.g.h"
 #include "merged/ExposureMeter-SDI.g.h"
 #include "merged/ExposureReduce-SDI.g.h"
@@ -81,16 +80,6 @@ namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
 namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wide epoch clear
 namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
-namespace ExposureSystemSdi = ShaderInterface::ExposureTonemapSystem;
-
-static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeX == 8u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemLocalSizeY == 8u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_sceneRadianceHistoryOutput_current == 0u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_outputImage_current == 1u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_meter == 2u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemBinding_LightingConfigSSBO == 3u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[0].set == 0u);
-static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[1].set == 0u);
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -805,9 +794,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle exposureReduceShaderLib{};
     NodeHandle exposureReduceNode{};
     NodeHandle exposureMeterBuffer{};
+    generatedSystems_ = {};
     if (hdrExposureEnabled) {
-        exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
-        exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
+        // The vixen: frame-targets composition's generated systems (today the tone map) come from
+        // its manifest; only the capture-test hand reference still builds its own stage.
+        if (exposureReference) {
+            exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
+            exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
+        } else {
+            std::vector<std::filesystem::path> manifestPaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/Generated/GpuSystems.manifest.json",
+#endif
+                "shaders/Generated/GpuSystems.manifest.json",
+                "../shaders/Generated/GpuSystems.manifest.json",
+            };
+            generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(manifestPaths));
+        }
         exposureReduceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_reduce_shader_lib");
         exposureReduceNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_reduce");
         exposureMeterBuffer = renderGraph->AddNode<StorageBufferNodeType>("exposure_meter_buffer");
@@ -2646,22 +2649,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseShaderLib, makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"),
         std::move(srsShaderFeatures));
 
-    auto exposureFamily = exposureReference
-        ? makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference")
-        : makeLightingFamily("Generated/ExposureTonemapSystem.comp", "ExposureTonemapSystem");
-    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
-        ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
-            auto builder = exposureFamily->MakeBuilder({});
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
+    const auto registerComputeFamily = [this, graph = renderGraph](
+        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle))
+            ->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
+                auto builder = family->MakeBuilder({});
+                builder.SetTargetVulkanVersion(vulkanVer)
+                       .SetTargetSpirvVersion(spirvVer)
+                       .AddIncludePath("shaders")
+                       .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                       .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .EnableCaching(&shaderCacheManager_);
-            return builder;
-        });
+                       .EnableCaching(&shaderCacheManager_);
+                return builder;
+            });
+    };
+    if (hdrExposureEnabled && exposureReference) {
+        registerComputeFamily(exposureShaderLib,
+            makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference"));
+    }
+    // The runner compiles each generated system's GLSL through the same family path.
+    generatedSystems_.RegisterShaders([&](NodeHandle libHandle, const std::string& glsl, const std::string& program) {
+        registerComputeFamily(libHandle, makeLightingFamily("Generated/" + glsl, program));
+    });
     auto exposureMeterFamily = makeLightingFamily("ExposureMeter.comp", "ExposureMeter");
     if (hdrExposureEnabled && !hdrExposureFixed) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureMeterShaderLib))
         ->RegisterShaderBuilder([this, exposureMeterFamily](int vulkanVer, int spirvVer) {
@@ -3256,7 +3267,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled && !reconstructionInputsEnabled) {
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseSceneRadianceWriteGatherer))->PreRegisterImageSlots(1);
     }
-    if (hdrExposureEnabled) {
+    if (hdrExposureEnabled && exposureReference) {
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(exposureSceneRadianceReadGatherer))->PreRegisterImageSlots(1);
     }
 
@@ -9050,20 +9061,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ExposureMeter consumes the complete post-accumulation scene-linear signal, including
     // beams. ExposureTonemapSystem consumes the matching current scene-radiance image so the
     // same-frame beam is displayed without feeding the beam into temporal history input.
-    if (hdrExposureEnabled) {
-        sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
-                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
-                               SlotRole::Execute);
-        sceneProviders.Provide("sceneRadianceHistoryOutput_current", sceneRadianceNode,
-                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
-    } else {
-        sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
-                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
-                               SlotRole::Execute);
-        sceneProviders.Provide("sceneRadianceHistoryOutput_current", accumulationHistoryNode,
-                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
-                               SlotRole::Execute);
-    }
+    sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                           SlotRole::Execute);
     sceneProviders.Provide("_ExtentX", renderTargetNode,
                            RenderTargetNodeConfig::WIDTH_OUT, SlotRole::Execute);
     sceneProviders.Provide("_ExtentY", renderTargetNode,
@@ -9073,14 +9073,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
         sceneProviders.Provide("meter", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
-        sceneProviders.Provide("meterBlock", exposureMeterBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
     }
     // Legacy march interface remains registered for the flag-off/identity path;
     // the HDR seam has a distinct name in SpatialReuseShade.
     sceneProviders.Provide("outputImage", renderTargetNode,
-                           RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("outputImage_current", renderTargetNode,
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
                            StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, kSceneRoles);
@@ -9595,20 +9591,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
             renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
             lightingCommon, sceneProviders, {});
         (void)exposureSynth;
+        auto* exposureStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureNode));
+        exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 7u) / 8u);
+        exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 7u) / 8u);
+        exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     } else {
-        const auto exposureSynth = SynthesizeComputeStage<ExposureSystemSdi::Metadata,
-                                                           ExposureSystemSdi::MEMBERS>(
-            renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
-            lightingCommon, sceneProviders, {});
-        (void)exposureSynth;
+        // Hand passes register the resources the generated systems read under their schema
+        // identity (R680.4); the runner binds, orders and dispatches every manifest system.
+        const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
+        const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
+        const SchemaIdentity exposureMeter{"Vixen.Codegen.Gpu.ExposureMeterState", "*"};
+        SchemaResourceRegistry frameResources;
+        frameResources.Provide(sceneRadiance, sceneRadianceNode,
+                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        frameResources.ProvideImage(sceneRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
+        frameResources.Provide(outputImage, renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+        frameResources.ProvideImage(outputImage, renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
+        frameResources.Provide(exposureMeter, exposureMeterBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                               SlotRole::Execute);
+        frameResources.ProvideProducer(exposureMeter, exposureReduceNode);
+        frameResources.Provide({"LightingConfig", "*"}, lightingConfigNode,
+                               LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+        frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                                     renderExtent.width);
+        frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                                     renderExtent.height);
+        generatedSystems_.Wire(renderGraph, batch, lightingCommon, frameResources);
+        // Hand consumers of the display image order after its last generated writer.
+        exposureNode = *generatedSystems_.LastWriter(outputImage);
     }
-    auto* exposureStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureNode));
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    const auto exposureWorkgroups = Vixen::Gpu::ExposureTonemapSystemWorkgroups(
-        renderExtent.width, renderExtent.height);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, exposureWorkgroups[0]);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, exposureWorkgroups[1]);
-    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
     const auto registerModuleShaderFamily = [this, graph = renderGraph](
@@ -10101,8 +10113,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
     if (hdrExposureEnabled) {
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+        // The generated tone map's image hazards are wired by its runner from the manifest.
+        if (exposureReference) {
+            batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                          exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+        }
         if (!reconstructionInputsEnabled) {
             batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
                           spatialReuseSceneRadianceWriteGatherer, 0,
@@ -10111,12 +10126,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY,
                           SlotRoleModifier(SlotRole::Execute));
         }
-        batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
-                      exposureSceneRadianceReadGatherer, 0,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
-             .Connect(exposureSceneRadianceReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      exposureNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
+        if (exposureReference) {
+            batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
+                          exposureSceneRadianceReadGatherer, 0,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 .Connect(exposureSceneRadianceReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                          exposureNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                          SlotRoleModifier(SlotRole::Execute));
+        }
     }
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
     // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
@@ -10750,8 +10767,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                  .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                           exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         }
-        batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        if (exposureReference) {
+            batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        }
     }
     if (!upscalerModule.has_value() && hdrExposureEnabled) {
         batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
