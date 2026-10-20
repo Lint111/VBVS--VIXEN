@@ -1,0 +1,11 @@
+# The Gaia ECS pin shared by VIXEN, undertow and the kernel (owner rulings R668.5, R668.7).
+# This is the Lint111 fork of richardbiely/gaia-ecs: the upstream stack pin a2e62491 plus two commits
+# (31 SoA members, 65535-byte SoA members). The second commit repacks the raw Component::value() bits
+# (size 13 -> 16 bits, alignment stored as log2+1); Component::size()/alig() are unchanged.
+#
+# Same flat form as undertow's toolchain/providers/*.pin: 'sha:', 'branch:' and 'remote:' lines,
+# '#' comments ignored. VIXEN's CMake reads this file; undertow and the kernel keep a byte-identical
+# copy at toolchain/providers/gaia.pin. Change all three in one batch.
+sha: 84ba7f10dfabd376a862c6fc54d3d43ed365ae54
+branch: pin/soa31-2026-10-20
+remote: https://github.com/Lint111/gaia-ecs.git

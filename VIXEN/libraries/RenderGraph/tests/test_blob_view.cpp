@@ -13,6 +13,7 @@
 
 #include "Ui/BlobView.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 using namespace Vixen::RenderGraph;
 
@@ -39,10 +40,12 @@ constexpr ViewBlob kBlob = {"blobtest", kFields, 0x1234u};
 struct RmlFixture {
     Vixen::Ui::VixenRmlSystemInterface sys;
     NullRender render;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::Context* ctx = nullptr;
     RmlFixture() {
         Rml::SetSystemInterface(&sys);
         Rml::SetRenderInterface(&render);
+        Rml::SetFontEngineInterface(&fontEngine);
         Rml::Initialise();
         ctx = Rml::CreateContext("t", Rml::Vector2i(64, 64));
     }
