@@ -80,8 +80,11 @@ public struct LightingConfig
     public float exposureSpeedUp;
     public float exposureSpeedDown;
     public float exposureDeltaSeconds;
+    // Look saturation, applied by the tone map in linear space before the tone curve:
+    // 0 = greyscale, 1 = unchanged (the neutral value), 2 = doubled chroma.
+    // LightingConfigNode clamps this to [0, 2].
+    public float lookSaturation;
     // Round the struct size to std430's 16-byte structure alignment.
-    public float _envTailPadding0;
     public float _envTailPadding1;
     public float _envTailPadding2;
 }

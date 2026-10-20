@@ -162,6 +162,7 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         {"exposureSpeedUp", offsetof(LightingConfig, exposureSpeedUp)},
         {"exposureSpeedDown", offsetof(LightingConfig, exposureSpeedDown)},
         {"exposureDeltaSeconds", offsetof(LightingConfig, exposureDeltaSeconds)},
+        {"lookSaturation", offsetof(LightingConfig, lookSaturation)},
     };
     for (const auto& f : celFields) {
         const SpirvStructMember* sm = FindSubMember(*lightingConfig, f.name);

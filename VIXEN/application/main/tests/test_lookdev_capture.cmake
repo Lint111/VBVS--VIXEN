@@ -6,7 +6,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
-    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text)
+    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb)
     target_compile_definitions(vixen_lookdev_capture PRIVATE
         TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
         TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf")
@@ -100,6 +100,26 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_exposure_parity_tests})
     message(STATUS "[Application Tests] Added: 32 one-frame native tone-map parity captures")
+
+    # Saturation channel: one midday frame at saturation 1, 0 and 2 in one process (the tone-map stage), then the
+    # system tone map and its reference shader are captured separately so the lane can compare the pair.
+    foreach(_mode IN ITEMS system reference)
+        set(_test "Application.LookdevCapture.SaturationChannel.${_mode}")
+        set(_mode_flag "0")
+        if(_mode STREQUAL "reference")
+            set(_mode_flag "1")
+        endif()
+        add_test(NAME "${_test}"
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" "--gtest_filter=LookdevCapture.SaturationChannel")
+        set_tests_properties("${_test}" PROPERTIES
+            LABELS "Application"
+            TIMEOUT 900
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/saturation/${_mode};VIXEN_EXPOSURE_TONEMAP_REFERENCE=${_mode_flag}"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+        vixen_lock_gpu_tests(TESTS "${_test}")
+    endforeach()
 
     # Owner exposure acceptance scenes: a closed room beside the stage, seen from outside through
     # its doorway, from inside through its window, and on a walk in and back out. The adaptation

@@ -7,6 +7,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Generated/LightingConfig.g.h"
+#include "Look/LookResolver.h"
 #include "VulkanDevice.h"
 #include <algorithm>
 #include <cmath>
@@ -51,10 +52,13 @@ float FiniteOr(float value, float fallback) {
     return std::isfinite(value) ? value : fallback;
 }
 
+float ClampFinite(float value, float fallback, float low, float high) {
+    return std::clamp(FiniteOr(value, fallback), low, high);
+}
+
 float ReadClampedFloat(const LightingConfigNode& node, const char* parameter,
                        float fallback, float low, float high) {
-    return std::clamp(FiniteOr(node.GetParameterValue<float>(parameter, fallback), fallback),
-                      low, high);
+    return ClampFinite(node.GetParameterValue<float>(parameter, fallback), fallback, low, high);
 }
 
 // M11.1: the Cornell demo authors its own light -- the ceiling area-emitter
@@ -84,24 +88,6 @@ std::unique_ptr<NodeInstance> LightingConfigNodeType::CreateInstance(const std::
 LightingConfigNode::LightingConfigNode(const std::string& n, NodeType* t)
     : TypedNode<LightingConfigNodeConfig>(n, t)
 {
-}
-
-void LightingConfigNode::SetLights(const std::vector<Vixen::Gpu::Light>& lights,
-                                   float ambientIntensity,
-                                   const std::vector<float>& celSpillPurposeScales) {
-    customLighting_ = {};
-    customLighting_.ambientIntensity = ambientIntensity;
-    customLighting_.lightCount = static_cast<uint32_t>(
-        std::min(lights.size(), std::size(customLighting_.lights)));
-    for (uint32_t i = 0; i < customLighting_.lightCount; ++i) {
-        customLighting_.lights[i] = lights[i];
-        const float requestedPurposeScale = i < celSpillPurposeScales.size()
-            ? celSpillPurposeScales[i]
-            : 1.0f;
-        customLighting_.celSpillPurposeScales[i] = std::clamp(
-            FiniteOr(requestedPurposeScale, 1.0f), 0.0f, 4.0f);
-    }
-    hasCustomLighting_ = true;
 }
 
 void LightingConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
@@ -142,12 +128,20 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(LightingConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
-    // Re-upload the current shared light set each frame (208 B); this keeps
-    // SetLights() updates live without graph rewiring.
-    Vixen::Gpu::LightingConfig cfg = hasCustomLighting_
-        ? customLighting_
-        : MakeDefaultLightingConfig();
-    if (!hasCustomLighting_ && IsCornellDemo()) {
+    // The resolver is the only source of look values; the whole record is re-uploaded each frame (208 B),
+    // so layer changes take effect without graph rewiring.
+    const ResolvedLook look = look_.Resolve();
+    Vixen::Gpu::LightingConfig cfg = MakeDefaultLightingConfig();
+    if (look.lights) {
+        const LookLightSet& set = *look.lights;
+        cfg = {};
+        cfg.ambientIntensity = set.ambientIntensity;
+        cfg.lightCount = std::min<uint32_t>(set.lightCount, static_cast<uint32_t>(std::size(cfg.lights)));
+        for (uint32_t i = 0; i < cfg.lightCount; ++i) {
+            cfg.lights[i] = set.lights[i];
+            cfg.celSpillPurposeScales[i] = ClampFinite(set.celSpillPurposeScales[i], 1.0f, 0.0f, 4.0f);
+        }
+    } else if (IsCornellDemo()) {
         // Ceiling area-emitter (light-tree/ReSTIR/DDGI) is the Cornell scene's
         // sole light; drop the stray directional light but keep the ambient
         // baseline (not the blotching source -- see IsCornellDemo() comment).
@@ -163,19 +157,16 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.celBandCount = std::clamp(GetParameterValue<uint32_t>(
         LightingConfigNodeConfig::PARAM_CEL_BAND_COUNT,
         LightingConfigNodeConfig::DEFAULT_CEL_BAND_COUNT), 2u, 5u);
-    cfg.celShadowThreshold = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_CEL_SHADOW_THRESHOLD,
-        LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_THRESHOLD, 0.0f, 1.0f);
-    cfg.celLitThreshold = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_CEL_LIT_THRESHOLD,
-        LightingConfigNodeConfig::DEFAULT_CEL_LIT_THRESHOLD, 0.0f, 1.0f);
+    cfg.celShadowThreshold = ClampFinite(
+        look.celShadowThreshold, LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_THRESHOLD, 0.0f, 1.0f);
+    cfg.celLitThreshold = ClampFinite(
+        look.celLitThreshold, LightingConfigNodeConfig::DEFAULT_CEL_LIT_THRESHOLD, 0.0f, 1.0f);
     if (cfg.celLitThreshold <= cfg.celShadowThreshold) {
         cfg.celShadowThreshold = LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_THRESHOLD;
         cfg.celLitThreshold = LightingConfigNodeConfig::DEFAULT_CEL_LIT_THRESHOLD;
     }
-    cfg.celRampSoftness = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_CEL_RAMP_SOFTNESS,
-        LightingConfigNodeConfig::DEFAULT_CEL_RAMP_SOFTNESS, 0.0f, 0.5f);
+    cfg.celRampSoftness = ClampFinite(
+        look.celRampSoftness, LightingConfigNodeConfig::DEFAULT_CEL_RAMP_SOFTNESS, 0.0f, 0.5f);
     cfg.celLitHueShiftDegrees = std::remainder(FiniteOr(GetParameterValue<float>(
         LightingConfigNodeConfig::PARAM_CEL_LIT_HUE_SHIFT_DEGREES,
         LightingConfigNodeConfig::DEFAULT_CEL_LIT_HUE_SHIFT_DEGREES),
@@ -197,33 +188,21 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.celLightSpillScale = ReadClampedFloat(
         *this, LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE,
         LightingConfigNodeConfig::DEFAULT_CEL_LIGHT_SPILL_SCALE, 0.0f, 0.25f);
-    cfg.exposureCompensationEV = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
-        LightingConfigNodeConfig::DEFAULT_EXPOSURE_COMPENSATION_EV,
+    cfg.exposureCompensationEV = ClampFinite(
+        look.exposureCompensationEV, LightingConfigNodeConfig::DEFAULT_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MIN_EXPOSURE_COMPENSATION_EV,
         LightingConfigNodeConfig::MAX_EXPOSURE_COMPENSATION_EV);
     const auto& exposureDefaults = LightingConfigNodeConfig::EXPOSURE_PRESETS[0];
-    cfg.exposureKeyValue = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_KEY_VALUE,
-        exposureDefaults.keyValue, 0.001f, 10.0f);
-    cfg.exposureMinEV100 = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_MIN_EV100,
-        exposureDefaults.minEV100, -32.0f, 32.0f);
-    cfg.exposureMaxEV100 = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_MAX_EV100,
-        exposureDefaults.maxEV100, cfg.exposureMinEV100, 32.0f);
-    cfg.exposureLowPercent = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_LOW_PERCENT,
-        exposureDefaults.lowPercent, 0.0f, 100.0f);
-    cfg.exposureHighPercent = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_HIGH_PERCENT,
-        exposureDefaults.highPercent, cfg.exposureLowPercent, 100.0f);
-    cfg.exposureSpeedUp = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_SPEED_UP,
-        exposureDefaults.speedUp, 0.0f, 100.0f);
-    cfg.exposureSpeedDown = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_SPEED_DOWN,
-        exposureDefaults.speedDown, 0.0f, 100.0f);
+    cfg.exposureKeyValue = ClampFinite(look.exposureKeyValue, exposureDefaults.keyValue, 0.001f, 10.0f);
+    cfg.exposureMinEV100 = ClampFinite(look.exposureMinEV100, exposureDefaults.minEV100, -32.0f, 32.0f);
+    cfg.exposureMaxEV100 = ClampFinite(
+        look.exposureMaxEV100, exposureDefaults.maxEV100, cfg.exposureMinEV100, 32.0f);
+    cfg.exposureLowPercent = ClampFinite(look.exposureLowPercent, exposureDefaults.lowPercent, 0.0f, 100.0f);
+    cfg.exposureHighPercent = ClampFinite(
+        look.exposureHighPercent, exposureDefaults.highPercent, cfg.exposureLowPercent, 100.0f);
+    cfg.exposureSpeedUp = ClampFinite(look.exposureSpeedUp, exposureDefaults.speedUp, 0.0f, 100.0f);
+    cfg.exposureSpeedDown = ClampFinite(look.exposureSpeedDown, exposureDefaults.speedDown, 0.0f, 100.0f);
+    cfg.lookSaturation = ClampFinite(look.saturation, 1.0f, 0.0f, 2.0f);
     // Adaptation advances by this frame's step: a pinned step keeps captures
     // deterministic, otherwise the graph's frame time keeps it rate independent.
     const float fixedDeltaSeconds = ReadClampedFloat(
@@ -234,26 +213,15 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.exposureDeltaSeconds = fixedDeltaSeconds > 0.0f
         ? fixedDeltaSeconds
         : std::clamp(frameDeltaSeconds, 0.0f, LightingConfigNodeConfig::MAX_EXPOSURE_DELTA_SECONDS);
-    cfg.dimBandFloor = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_DIM_BAND_FLOOR,
-        LightingConfigNodeConfig::DEFAULT_DIM_BAND_FLOOR, 0.0f, 0.95f);
-    cfg.skyMode = GetParameterValue<uint32_t>(
-                      LightingConfigNodeConfig::PARAM_SKY_MODE,
-                      LightingConfigNodeConfig::SKY_MODE_GRADIENT) == LightingConfigNodeConfig::SKY_MODE_SOLID
+    cfg.dimBandFloor = ClampFinite(look.dimBandFloor, LightingConfigNodeConfig::DEFAULT_DIM_BAND_FLOOR, 0.0f, 0.95f);
+    cfg.skyMode = look.skyMode == LightingConfigNodeConfig::SKY_MODE_SOLID
         ? LightingConfigNodeConfig::SKY_MODE_SOLID
         : LightingConfigNodeConfig::SKY_MODE_GRADIENT;
-    cfg.skyColorX = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_R,
-        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_R, 0.0f, 1000.0f);
-    cfg.skyColorY = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_G,
-        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_G, 0.0f, 1000.0f);
-    cfg.skyColorZ = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_SKY_COLOR_B,
-        LightingConfigNodeConfig::DEFAULT_SKY_COLOR_B, 0.0f, 1000.0f);
-    cfg.skyGradientSlope = ReadClampedFloat(
-        *this, LightingConfigNodeConfig::PARAM_SKY_GRADIENT_SLOPE,
-        LightingConfigNodeConfig::DEFAULT_SKY_GRADIENT_SLOPE, 0.0f, 1.0f);
+    cfg.skyColorX = ClampFinite(look.skyColor[0], LightingConfigNodeConfig::DEFAULT_SKY_COLOR_R, 0.0f, 1000.0f);
+    cfg.skyColorY = ClampFinite(look.skyColor[1], LightingConfigNodeConfig::DEFAULT_SKY_COLOR_G, 0.0f, 1000.0f);
+    cfg.skyColorZ = ClampFinite(look.skyColor[2], LightingConfigNodeConfig::DEFAULT_SKY_COLOR_B, 0.0f, 1000.0f);
+    cfg.skyGradientSlope = ClampFinite(
+        look.skyGradientSlope, LightingConfigNodeConfig::DEFAULT_SKY_GRADIENT_SLOPE, 0.0f, 1.0f);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

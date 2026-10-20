@@ -27,6 +27,7 @@
 #include "ShellOctreeGpu.h"
 
 #include <gtest/gtest.h>
+#include <stb_image.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -220,6 +221,7 @@ struct CaptureScenario {
     bool posed = false;
     glm::vec3 eye{0.0f};
     glm::vec3 target{0.0f};
+    float saturation = 1.0f;   // SceneLook saturation for this capture
 };
 
 // Owner exposure acceptance scenes (2026-10-19): a closed room beside the look-dev stage, with a
@@ -1148,21 +1150,19 @@ public:
             }
         }
 
-        lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
-                             scenarios_.front().lighting.ambient,
-                             Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
-        lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
-                                scenarios_.front().lighting.exposureCompensationEV);
-        auto sceneLook = Vixen::App::Lookdev::SceneLookDeclaration();
+        Vixen::App::SetSceneLightsLayer(*lighting_, LightSetFor(scenarios_.front().lighting));
+        sceneLook_ = Vixen::App::Lookdev::SceneLookDeclaration();
+        sceneLook_.exposure.compensationEV = scenarios_.front().lighting.exposureCompensationEV;
+        sceneLook_.saturation = scenarios_.front().saturation;
         if (exposureRoom) {
-            sceneLook.environment.color[0] = kRoomSkyColor.r;
-            sceneLook.environment.color[1] = kRoomSkyColor.g;
-            sceneLook.environment.color[2] = kRoomSkyColor.b;
+            sceneLook_.environment.color[0] = kRoomSkyColor.r;
+            sceneLook_.environment.color[1] = kRoomSkyColor.g;
+            sceneLook_.environment.color[2] = kRoomSkyColor.b;
         }
         Vixen::App::ApplySceneLook(
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
-            sceneLook);
+            sceneLook_);
         if (glyphSdfScene || sdfFilterNonText) {
             if (glyphSdfCompare || sdfFilterNonText)
                 SetRecipePool(std::move(glyphScene.pool));
@@ -1366,11 +1366,10 @@ public:
                 camera_->SetYawForTest(next.yawRadians);
                 camera_->SetPitchForTest(kPitchRadians);
             }
-            lighting_->SetLights(Vixen::App::Lookdev::Lights(next.lighting),
-                                 next.lighting.ambient,
-                                 Vixen::App::Lookdev::CelSpillPurposeScales(next.lighting));
-            lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
-                                    next.lighting.exposureCompensationEV);
+            Vixen::App::SetSceneLightsLayer(*lighting_, LightSetFor(next.lighting));
+            sceneLook_.exposure.compensationEV = next.lighting.exposureCompensationEV;
+            sceneLook_.saturation = next.saturation;
+            Vixen::App::SetSceneLookLayer(*lighting_, sceneLook_);
         }
         return true;
     }
@@ -1379,6 +1378,11 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    static Vixen::RenderGraph::LookLightSet LightSetFor(const Vixen::App::Lookdev::LightingPreset& preset) {
+        return Vixen::RenderGraph::LookLightSet::From(Vixen::App::Lookdev::Lights(preset), preset.ambient,
+                                                      Vixen::App::Lookdev::CelSpillPurposeScales(preset));
+    }
+
     // Per frame: the raw centre texel of the pick image (a single jittered read) next to the voted crosshair pick.
     bool TracePick() {
         using namespace Vixen::RenderGraph;
@@ -1867,6 +1871,7 @@ private:
     std::vector<double> frameWallMs_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
     Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
+    Vixen::App::SceneLook sceneLook_;
     size_t scenarioIndex_ = 0;
     size_t capturedCount_ = 0;
     uint32_t framesInScenario_ = 0;
@@ -1942,6 +1947,93 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+namespace {
+
+struct DecodedPng {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> rgba;
+};
+
+DecodedPng DecodePng(const std::filesystem::path& path) {
+    DecodedPng image;
+    int channels = 0;
+    stbi_uc* pixels = stbi_load(path.string().c_str(), &image.width, &image.height, &channels, 4);
+    if (!pixels) return image;
+    image.rgba.assign(pixels, pixels + static_cast<size_t>(image.width) * image.height * 4u);
+    stbi_image_free(pixels);
+    return image;
+}
+
+float SrgbToLinear(uint8_t code) {
+    const float c = static_cast<float>(code) / 255.0f;
+    return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
+}
+
+struct SaturationStats {
+    int maxChannelSpread = 0;      // largest max(R,G,B) - min(R,G,B), in 8-bit codes
+    double meanSpread = 0.0;       // mean of that spread, in codes
+    double meanLinearLuma = 0.0;
+};
+
+SaturationStats MeasureSaturation(const DecodedPng& image) {
+    SaturationStats stats;
+    const size_t pixelCount = static_cast<size_t>(image.width) * image.height;
+    for (size_t i = 0; i < pixelCount; ++i) {
+        const uint8_t r = image.rgba[i * 4], g = image.rgba[i * 4 + 1], b = image.rgba[i * 4 + 2];
+        const int spread = std::max({r, g, b}) - std::min({r, g, b});
+        stats.maxChannelSpread = std::max(stats.maxChannelSpread, spread);
+        stats.meanSpread += spread;
+        stats.meanLinearLuma += 0.2126 * SrgbToLinear(r) + 0.7152 * SrgbToLinear(g) + 0.0722 * SrgbToLinear(b);
+    }
+    stats.meanSpread /= static_cast<double>(pixelCount);
+    stats.meanLinearLuma /= static_cast<double>(pixelCount);
+    return stats;
+}
+
+}  // namespace
+
+// The saturation channel (S1): one midday frame at saturation 1 (the default), 0 and 2, switched live through
+// the scene layer of the look resolver. 0 is greyscale, 2 boosts chroma, and luminance is preserved.
+TEST(LookdevCapture, SaturationChannel) {
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> base = BuildScenarios();
+    ASSERT_EQ(base.size(), 1u) << "CTest must select one state and one angle";
+    std::vector<CaptureScenario> scenarios;
+    for (const float saturation : {1.0f, 0.0f, 2.0f}) {
+        CaptureScenario scenario = base.front();
+        scenario.saturation = saturation;
+        scenario.filename = "saturation-" + std::to_string(static_cast<int>(saturation)) + ".png";
+        scenarios.push_back(scenario);
+    }
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+
+    const DecodedPng neutral = DecodePng(outputDir / scenarios[0].filename);
+    const DecodedPng grey = DecodePng(outputDir / scenarios[1].filename);
+    const DecodedPng boosted = DecodePng(outputDir / scenarios[2].filename);
+    ASSERT_FALSE(neutral.rgba.empty());
+    ASSERT_EQ(grey.rgba.size(), neutral.rgba.size());
+    ASSERT_EQ(boosted.rgba.size(), neutral.rgba.size());
+    const SaturationStats n = MeasureSaturation(neutral);
+    const SaturationStats g = MeasureSaturation(grey);
+    const SaturationStats b = MeasureSaturation(boosted);
+    std::printf("[SATURATION] spread mean/max sat0=%.3f/%d sat1=%.3f/%d sat2=%.3f/%d; linear luma sat0=%.5f sat1=%.5f sat2=%.5f\n",
+        g.meanSpread, g.maxChannelSpread, n.meanSpread, n.maxChannelSpread, b.meanSpread, b.maxChannelSpread,
+        g.meanLinearLuma, n.meanLinearLuma, b.meanLinearLuma);
+    std::fflush(stdout);
+
+    EXPECT_GT(n.meanSpread, 1.0) << "the neutral frame must carry colour for this test to mean anything";
+    EXPECT_LE(g.maxChannelSpread, 1) << "saturation 0 is greyscale";
+    EXPECT_GT(b.meanSpread, n.meanSpread * 1.3) << "saturation 2 boosts chroma";
+    EXPECT_NEAR(g.meanLinearLuma, n.meanLinearLuma, n.meanLinearLuma * 0.02) << "luminance is preserved";
+    EXPECT_NEAR(b.meanLinearLuma, n.meanLinearLuma, n.meanLinearLuma * 0.05) << "luminance is preserved";
 }
 
 TEST(LookdevCapture, RendersExposureRoomAcceptance) {

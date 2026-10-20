@@ -33,5 +33,10 @@ void main() {
     if (any(greaterThanEqual(p, imageSize(outputImage)))) return;
     vec3 radiance = max(imageLoad(sceneRadianceHistoryOutput, p).rgb *
                         exp2(meter.log2Exposure + lightingConfig.exposureCompensationEV), vec3(0.0));
+    float saturation = lightingConfig.lookSaturation;
+    if (saturation != 1.0) {
+        float luma = 0.2126 * radiance.r + 0.7152 * radiance.g + 0.0722 * radiance.b;
+        radiance = max(radiance * saturation + vec3(luma * (1.0 - saturation)), vec3(0.0));
+    }
     imageStore(outputImage, p, vec4(linearToSrgb(acesFitted(radiance)), 1.0));
 }
