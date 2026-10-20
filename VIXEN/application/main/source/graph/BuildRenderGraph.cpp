@@ -27,6 +27,7 @@
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"
+#include "graph/AntiAliasingModule.h"
 #include "graph/UpscalerModules.h"
 #include "graph/ReconstructionDepth.h"
 #include "graph/ReconstructionMotion.h"
@@ -528,7 +529,7 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 void VulkanGraphApplication::SelectNativeUpscalerForModulelessGraph() {
     // The production graph's native candidate passes every gate: it is compiled in, permitted
     // by every profile and pass, has no runtime capability, and owns no external context.
-    UpscalerEligibility native;
+    RenderModuleEligibility native;
     native.compiled = true;
     native.permittedByRuntimeProfile = true;
     native.permittedByPass = true;
@@ -538,8 +539,8 @@ void VulkanGraphApplication::SelectNativeUpscalerForModulelessGraph() {
     native.qualified = true;
     native.admittedByBudget = true;
     upscalerCandidatesForCompile_ = {{"native", native, true, false}};
-    const UpscalerSelectionResult selection =
-        SelectUpscalerProviderForInitialization(upscalerCandidatesForCompile_);
+    const RenderModuleSelectionResult selection =
+        SelectRenderModuleProviderForInitialization(upscalerCandidatesForCompile_);
     selectedUpscalerProviderId_ = selection.selected ? std::string(selection.selected->id) : std::string{};
     selectedUpscalerHasRealContext_ = selection.selected != nullptr;
 }
@@ -9742,12 +9743,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         requestedUpscalerCount = 3;
     }
 
-    std::vector<UpscalerFrameInput> availableUpscalerInputs{UpscalerFrameInput::Color};
+    std::vector<RenderModuleFrameInput> availableUpscalerInputs{RenderModuleFrameInput::Color};
     if (reconstructionInputsEnabled) {
-        availableUpscalerInputs.push_back(UpscalerFrameInput::Depth);
-        availableUpscalerInputs.push_back(UpscalerFrameInput::MotionVectors);
-        availableUpscalerInputs.push_back(UpscalerFrameInput::Jitter);
-        if (hdrExposureEnabled) availableUpscalerInputs.push_back(UpscalerFrameInput::Exposure);
+        availableUpscalerInputs.push_back(RenderModuleFrameInput::Depth);
+        availableUpscalerInputs.push_back(RenderModuleFrameInput::MotionVectors);
+        availableUpscalerInputs.push_back(RenderModuleFrameInput::Jitter);
+        if (hdrExposureEnabled) availableUpscalerInputs.push_back(RenderModuleFrameInput::Exposure);
     }
 
     // Provider choice happens while assembling the graph, before DeviceNode creates its live
@@ -9790,11 +9791,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const UpscalerFrameDescription upscalerFrame{
         {renderExtent.width, renderExtent.height},
         {static_cast<uint32_t>(width), static_cast<uint32_t>(height)},
-        UpscalerImageFormat::Rgba8Unorm,
-        UpscalerImageFormat::Rgba8Unorm,
+        RenderModuleImageFormat::Rgba8Unorm,
+        RenderModuleImageFormat::Rgba8Unorm,
         availableUpscalerInputs
     };
-    std::vector<UpscalerProviderCandidate> upscalerCandidates;
+    std::vector<RenderModuleProviderCandidate> upscalerCandidates;
     std::vector<const UpscalerBackendDescriptor*> orderedUpscalerBackends;
     upscalerCandidates.reserve(requestedUpscalerCount);
     orderedUpscalerBackends.reserve(requestedUpscalerCount);
@@ -9805,7 +9806,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             continue;
         }
 
-        UpscalerEligibility eligibility;
+        RenderModuleEligibility eligibility;
         const std::string_view compiledAdapter = backend->nativeFallback
             ? std::string_view{"Upscaler.Native"}
             : backend->moduleTypeName;
@@ -9868,8 +9869,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         orderedUpscalerBackends.push_back(backend);
     }
 
-    const UpscalerSelectionResult upscalerSelection =
-        SelectUpscalerProviderForInitialization(upscalerCandidates);
+    const RenderModuleSelectionResult upscalerSelection =
+        SelectRenderModuleProviderForInitialization(upscalerCandidates);
     for (const auto& rejected : upscalerSelection.rejected) {
         const UpscalerBackendDescriptor* backend = FindUpscalerBackend(rejected.id);
         const std::string variantSuggestion =
@@ -9879,7 +9880,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (mainLogger) {
             mainLogger->Warning("[BuildRenderGraph] Upscaler provider '" +
                                 std::string(rejected.id) + "' rejected: " +
-                                std::string(UpscalerSelectionFailureText(rejected.reason)) +
+                                std::string(RenderModuleSelectionFailureText(rejected.reason)) +
                                 "; trying the next provider; suggest " + variantSuggestion);
         }
     }
@@ -9930,6 +9931,40 @@ void VulkanGraphApplication::BuildRenderGraph() {
     selectedUpscalerHasRealContext_ = selectedUpscalerBackend &&
         selectedUpscalerBackend->nativeFallback;
 
+    // Anti-aliasing module (R676): the same selection predicate as the upscaler, over the AA
+    // backend table. `none` is the terminal pass-through and adds no work.
+    const AntiAliasingFrameDescription antiAliasingFrame{
+        .presentationSampling =
+            renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual,
+        .temporalUpscalerSelected = selectedUpscalerBackend && selectedUpscalerBackend->contract &&
+            selectedUpscalerBackend->contract->retainsHistory,
+        .colorSpace = hdrExposureEnabled ? AntiAliasingColorSpace::LinearHdr
+                                         : AntiAliasingColorSpace::DisplayReferred,
+        .colorFormat = hdrExposureEnabled ? RenderModuleImageFormat::Rgba16Float
+                                          : RenderModuleImageFormat::Rgba8Unorm,
+        .availableFrameInputs = availableUpscalerInputs,
+    };
+    const auto antiAliasingCandidates =
+        BuildAntiAliasingCandidates(renderPathConfig.antiAliasing, antiAliasingFrame);
+    const RenderModuleSelectionResult antiAliasingSelection =
+        SelectRenderModuleProviderForInitialization(antiAliasingCandidates);
+    for (const auto& rejected : antiAliasingSelection.rejected) {
+        const auto* backend = FindAntiAliasingBackend(rejected.id);
+        const std::string_view passRefusal =
+            backend ? AntiAliasingPassRefusal(*backend, antiAliasingFrame) : std::string_view{};
+        if (mainLogger) {
+            mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider '" + std::string(rejected.id) +
+                             "' rejected: " +
+                             std::string(RenderModuleSelectionFailureText(rejected.reason)) +
+                             (rejected.reason == RenderModuleSelectionFailureReason::NotPermittedByPass &&
+                                      !passRefusal.empty()
+                                  ? " (" + std::string(passRefusal) + ")"
+                                  : std::string{}));
+        }
+    }
+    selectedAntiAliasingProviderId_ = antiAliasingSelection.selected
+        ? std::string(antiAliasingSelection.selected->id) : std::string("none");
+
     if (selectedUpscalerBackend && !selectedUpscalerBackend->nativeFallback) {
         UpscalerModuleBuildContext params;
         params.batch = &batch;
@@ -9952,7 +9987,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         params.recordExecution = [this](std::string columnName, NodeHandle node) {
             upscalerPerfPasses_.push_back({std::move(columnName), node});
         };
-        params.providerInitializationReported = [this](UpscalerProviderInitializationResult result) {
+        params.providerInitializationReported = [this](RenderModuleProviderInitializationResult result) {
             selectedUpscalerHasRealContext_ = result.initialized;
             reportedUpscalerInitialization_ = std::move(result);
         };

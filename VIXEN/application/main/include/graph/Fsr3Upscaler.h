@@ -9,7 +9,7 @@
 namespace Vixen::RenderGraph {
 
 struct Fsr3UpscalerHooks {
-    std::function<UpscalerProviderInitializationResult(VulkanDevice*)> initialize;
+    std::function<RenderModuleProviderInitializationResult(VulkanDevice*)> initialize;
     ComputeStageNode::ExternalRecorder record;
     std::function<void()> cleanup;
 };
@@ -20,6 +20,6 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
     ReconstructionDepthConvention depthConvention,
     float nearPlane,
     float farPlane,
-    std::function<void(UpscalerProviderInitializationResult)> reportRecordFailure = {});
+    std::function<void(RenderModuleProviderInitializationResult)> reportRecordFailure = {});
 
 } // namespace Vixen::RenderGraph

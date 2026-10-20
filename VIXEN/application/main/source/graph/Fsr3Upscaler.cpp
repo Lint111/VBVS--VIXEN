@@ -34,7 +34,7 @@ public:
 
     ~Fsr3ContextState() { Cleanup(); }
 
-    UpscalerProviderInitializationResult Initialize(VulkanDevice* device) {
+    RenderModuleProviderInitializationResult Initialize(VulkanDevice* device) {
         std::string failure = InitializeContext(device);
         if (failure.empty()) return {"fsr3", true, {}};
         Cleanup();
@@ -470,7 +470,7 @@ Fsr3UpscalerHooks CreateFsr3UpscalerHooks(
     ReconstructionDepthConvention depthConvention,
     float nearPlane,
     float farPlane,
-    std::function<void(UpscalerProviderInitializationResult)> reportRecordFailure) {
+    std::function<void(RenderModuleProviderInitializationResult)> reportRecordFailure) {
     auto state = std::make_shared<Fsr3ContextState>(
         renderExtent, outputExtent, depthConvention, nearPlane, farPlane);
     return {

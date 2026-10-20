@@ -94,6 +94,9 @@ public:
     struct RenderPathConfig {
         float renderScale = 1.0f;
         UpscalerKind upscaler = UpscalerKind::None;
+        // Requested anti-aliasing provider id (AntiAliasingModule.h); selection falls back to
+        // the `none` pass-through wherever the pass or the frame does not admit it.
+        std::string_view antiAliasing = "taa";
         bool temporalJitter = false;
         Vixen::RenderGraph::ReconstructionSamplingPath samplingPath =
             Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
@@ -294,12 +297,13 @@ private:
     // Providers that failed their real context initialization during this Prepare() are skipped
     // when the graph is rebuilt for the next candidate.
     std::vector<std::string> upscalerInitializationFailures_;
-    std::vector<UpscalerProviderCandidate> upscalerCandidatesForCompile_;
+    std::vector<RenderModuleProviderCandidate> upscalerCandidatesForCompile_;
     std::string selectedUpscalerProviderId_;
     bool selectedUpscalerHasRealContext_ = false;
+    std::string selectedAntiAliasingProviderId_ = "none";
     // Set by the selected provider's context initialization during CompileRenderGraph; Prepare()
     // reads it to decide whether to fall back. Cleared before every graph build.
-    std::optional<UpscalerProviderInitializationResult> reportedUpscalerInitialization_;
+    std::optional<RenderModuleProviderInitializationResult> reportedUpscalerInitialization_;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index
