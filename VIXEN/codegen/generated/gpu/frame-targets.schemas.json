@@ -5,6 +5,15 @@
   "runtimeStateNodes": [
   ],
   "systems": [
+    { "id": "vixen:lighting-settings-write", "writes": ["state:lighting-settings.lightCount", "state:lighting-settings.ambientIntensity", "state:lighting-settings.lights", "state:lighting-settings.celSpillPurposeScales", "state:lighting-settings.shadingMode", "state:lighting-settings.celBandCount", "state:lighting-settings.celShadowThreshold", "state:lighting-settings.celLitThreshold", "state:lighting-settings.celRampSoftness", "state:lighting-settings.celLitHueShiftDegrees", "state:lighting-settings.celShadowHueShiftDegrees", "state:lighting-settings.celBandFalloffStart", "state:lighting-settings.celBandFalloffEnd", "state:lighting-settings.celLightSpillScale", "state:lighting-settings.dimBandFloor", "state:lighting-settings.skyColor", "state:lighting-settings.skyMode", "state:lighting-settings.skyGradientSlope"] },
+    { "id": "vixen:scene-look-settings-write", "writes": ["state:scene-look-settings.exposureCompensationEV", "state:scene-look-settings.exposureKeyValue", "state:scene-look-settings.exposureMinEV100", "state:scene-look-settings.exposureMaxEV100", "state:scene-look-settings.exposureLowPercent", "state:scene-look-settings.exposureHighPercent", "state:scene-look-settings.exposureSpeedUp", "state:scene-look-settings.exposureSpeedDown", "state:scene-look-settings.exposureDeltaSeconds", "state:scene-look-settings.lookSaturation", "state:scene-look-settings.presentationMode", "state:scene-look-settings.frameSeed"] },
+    { "id": "vixen:shadow-settings-write", "writes": ["state:shadow-settings.enabled", "state:shadow-settings.raysPerLight", "state:shadow-settings.maxShadowDistance", "state:shadow-settings.biasEpsilon"] },
+    { "id": "vixen:accumulation-settings-write", "writes": ["state:accumulation-settings.enabled", "state:accumulation-settings.alpha", "state:accumulation-settings.maxFrames", "state:accumulation-settings.resetOnMotion", "state:accumulation-settings.reprojectionEnabled"] },
+    { "id": "vixen:reservoir-settings-write", "writes": ["state:reservoir-settings.reservoirEnabled", "state:reservoir-settings.candidateCount", "state:reservoir-settings.spatialRadius", "state:reservoir-settings.spatialCount", "state:reservoir-settings.temporalCap", "state:reservoir-settings.biasedModeEnabled", "state:reservoir-settings.lightTreeCutThreshold"] },
+    { "id": "vixen:probe-grid-settings-write", "writes": ["state:probe-grid-settings.probeGridEnabled", "state:probe-grid-settings.originX", "state:probe-grid-settings.originY", "state:probe-grid-settings.originZ", "state:probe-grid-settings.spacingX", "state:probe-grid-settings.spacingY", "state:probe-grid-settings.spacingZ", "state:probe-grid-settings.countX", "state:probe-grid-settings.countY", "state:probe-grid-settings.countZ", "state:probe-grid-settings.raysPerProbe", "state:probe-grid-settings.hysteresisRate", "state:probe-grid-settings.amortizationFactor"] },
+    { "id": "vixen:direct-lighting", "reads": ["state:lighting-settings.lightCount", "state:lighting-settings.lights", "state:shadow-settings.enabled", "state:shadow-settings.raysPerLight", "state:shadow-settings.maxShadowDistance", "state:shadow-settings.biasEpsilon", "state:reservoir-settings.reservoirEnabled", "state:reservoir-settings.candidateCount", "state:reservoir-settings.temporalCap", "state:reservoir-settings.lightTreeCutThreshold"] },
+    { "id": "vixen:body-instance-ray-march", "reads": ["state:accumulation-settings.enabled", "state:accumulation-settings.alpha", "state:accumulation-settings.maxFrames", "state:accumulation-settings.resetOnMotion", "state:accumulation-settings.reprojectionEnabled"] },
+    { "id": "vixen:probe-update", "reads": ["state:probe-grid-settings.probeGridEnabled", "state:probe-grid-settings.originX", "state:probe-grid-settings.originY", "state:probe-grid-settings.originZ", "state:probe-grid-settings.spacingX", "state:probe-grid-settings.spacingY", "state:probe-grid-settings.spacingZ", "state:probe-grid-settings.countX", "state:probe-grid-settings.countY", "state:probe-grid-settings.countZ", "state:probe-grid-settings.raysPerProbe", "state:probe-grid-settings.hysteresisRate", "state:probe-grid-settings.amortizationFactor"] }
   ],
   "dataPipes": [
   ],
@@ -15,26 +24,38 @@
   "runtimeStateEscapes": [
   ],
   "runtimeStates": [
-    { "owner": "vixen:frame-targets", "clrType": "Vixen.Codegen.Gpu.FrameTargets", "root": true, "order": 2, "kind": "state:frame-targets", "singleton": true, "fields": [
+    { "owner": "vixen:frame-targets", "clrType": "Vixen.Codegen.Gpu.FrameTargets", "root": true, "order": 3, "kind": "state:frame-targets", "singleton": true, "fields": [
       { "name": "SceneRadianceHistoryOutput", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba16f", "representation": "image", "format": "VK_FORMAT_R16G16B16A16_SFLOAT", "imageFormat": "rgba16f", "extent": { "source": "presentation" } } },
       { "name": "OutputImage", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba8", "representation": "image", "format": "VK_FORMAT_R8G8B8A8_UNORM", "imageFormat": "rgba8", "extent": { "source": "presentation" } } },
       { "name": "PresentationMode", "storage": "uint", "default": 0 }
     ] },
-    { "owner": "vixen:hit-record", "clrType": "Vixen.Codegen.Gpu.HitRecord", "root": true, "order": 3, "kind": "state:hit-record", "fields": [
+    { "owner": "vixen:hit-record", "clrType": "Vixen.Codegen.Gpu.HitRecord", "root": true, "order": 4, "kind": "state:hit-record", "fields": [
     ] },
-    { "owner": "vixen:reservoir-record", "clrType": "Vixen.Codegen.Gpu.ReservoirRecord", "root": true, "order": 4, "kind": "state:reservoir-record", "fields": [
+    { "owner": "vixen:reservoir-record", "clrType": "Vixen.Codegen.Gpu.ReservoirRecord", "root": true, "order": 7, "kind": "state:reservoir-record", "fields": [
       { "name": "y", "storage": "uint" },
       { "name": "weightSum", "storage": "float" },
       { "name": "sampleCount", "storage": "uint" },
       { "name": "targetPdf", "storage": "float" }
     ] },
-    { "owner": "vixen:exposure-meter", "clrType": "Vixen.Codegen.Gpu.ExposureMeterState", "root": true, "order": 1, "kind": "state:exposure-meter", "fields": [
+    { "owner": "vixen:exposure-meter", "clrType": "Vixen.Codegen.Gpu.ExposureMeterState", "root": true, "order": 2, "kind": "state:exposure-meter", "fields": [
       { "name": "log2Exposure", "storage": "float" },
       { "name": "state", "storage": "uint" },
       { "name": "meteredEV100", "storage": "float" },
       { "name": "targetLog2Exposure", "storage": "float" }
     ] },
-    { "owner": "vixen:camera", "clrType": "Vixen.Codegen.Gpu.PrevCameraConfig", "root": true, "order": 0, "kind": "state:camera", "singleton": true, "fields": [
+    { "owner": "vixen:camera", "clrType": "Vixen.Codegen.Gpu.PrevCameraConfig", "root": true, "order": 1, "kind": "state:camera", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:lighting-settings", "clrType": "Vixen.Codegen.Gpu.LightingSettings", "root": true, "order": 5, "kind": "state:lighting-settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:scene-look-settings", "clrType": "Vixen.Codegen.Gpu.SceneLookSettings", "root": true, "order": 9, "kind": "state:scene-look-settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:shadow-settings", "clrType": "Vixen.Codegen.Gpu.ShadowSettings", "root": true, "order": 10, "kind": "state:shadow-settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:accumulation-settings", "clrType": "Vixen.Codegen.Gpu.AccumulationSettings", "root": true, "order": 0, "kind": "state:accumulation-settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:reservoir-settings", "clrType": "Vixen.Codegen.Gpu.ReservoirSettings", "root": true, "order": 8, "kind": "state:reservoir-settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:probe-grid-settings", "clrType": "Vixen.Codegen.Gpu.ProbeGridSettings", "root": true, "order": 6, "kind": "state:probe-grid-settings", "singleton": true, "fields": [
     ] }
   ],
   "sharedMapElements": [

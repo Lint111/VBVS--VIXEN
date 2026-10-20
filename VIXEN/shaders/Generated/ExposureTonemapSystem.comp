@@ -11,6 +11,19 @@ struct ExposureMeterState {
     float meteredEV100;
     float targetLog2Exposure;
 };
+
+#ifdef VIXEN_SOA_ExposureMeterState_BUFFER
+ExposureMeterState ExposureMeterState_Load(uint index)
+{
+    ExposureMeterState value;
+    value.log2Exposure = uintBitsToFloat(VIXEN_SOA_ExposureMeterState_BUFFER.words[(((VIXEN_SOA_ExposureMeterState_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u]);
+    value.state = VIXEN_SOA_ExposureMeterState_BUFFER.words[(((VIXEN_SOA_ExposureMeterState_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u];
+    value.meteredEV100 = uintBitsToFloat(VIXEN_SOA_ExposureMeterState_BUFFER.words[(((VIXEN_SOA_ExposureMeterState_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u]);
+    value.targetLog2Exposure = uintBitsToFloat(VIXEN_SOA_ExposureMeterState_BUFFER.words[(((VIXEN_SOA_ExposureMeterState_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+#undef VIXEN_SOA_ExposureMeterState_BUFFER
+#endif
 #endif // EXPOSUREMETERSTATE_GLSL
 #ifndef LIGHT_GLSL
 #define LIGHT_GLSL
@@ -21,6 +34,19 @@ struct Light {
     vec3 radiance;
     float range;
 };
+
+#ifdef VIXEN_SOA_Light_BUFFER
+Light Light_Load(uint index)
+{
+    Light value;
+    value.direction_or_position = uintBitsToFloat(uvec3(VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[0u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[0u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[0u] >> 2u) + index * 3u)) + 2u]));
+    value.kind = VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u];
+    value.radiance = uintBitsToFloat(uvec3(VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[2u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[2u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[2u] >> 2u) + index * 3u)) + 2u]));
+    value.range = uintBitsToFloat(VIXEN_SOA_Light_BUFFER.words[(((VIXEN_SOA_Light_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+#undef VIXEN_SOA_Light_BUFFER
+#endif
 #endif // LIGHT_GLSL
 #ifndef LIGHTINGCONFIG_GLSL
 #define LIGHTINGCONFIG_GLSL
@@ -57,6 +83,63 @@ struct LightingConfig {
     uint presentationMode;
     uint frameSeed;
 };
+
+#ifdef VIXEN_SOA_LightingConfig_BUFFER
+LightingConfig LightingConfig_Load(uint index)
+{
+    LightingConfig value;
+    value.lightCount = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u];
+    value.ambientIntensity = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u]);
+    value.lights[0].direction_or_position = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 2u]));
+    value.lights[0].kind = VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 3u) + 0u];
+    value.lights[0].radiance = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 2u]));
+    value.lights[0].range = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 0u) + 7u) + 0u]);
+    value.lights[1].direction_or_position = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 2u]));
+    value.lights[1].kind = VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 3u) + 0u];
+    value.lights[1].radiance = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 2u]));
+    value.lights[1].range = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 8u) + 7u) + 0u]);
+    value.lights[2].direction_or_position = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 2u]));
+    value.lights[2].kind = VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 3u) + 0u];
+    value.lights[2].radiance = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 2u]));
+    value.lights[2].range = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 16u) + 7u) + 0u]);
+    value.lights[3].direction_or_position = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 2u]));
+    value.lights[3].kind = VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 3u) + 0u];
+    value.lights[3].radiance = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 2u]));
+    value.lights[3].range = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((((VIXEN_SOA_LightingConfig_BUFFER.words[2u] >> 2u) + index * 32u)) + 24u) + 7u) + 0u]);
+    value.celSpillPurposeScales[0] = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[((((VIXEN_SOA_LightingConfig_BUFFER.words[3u] >> 2u) + index * 4u)) + 0u) + 0u]);
+    value.celSpillPurposeScales[1] = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[((((VIXEN_SOA_LightingConfig_BUFFER.words[3u] >> 2u) + index * 4u)) + 1u) + 0u]);
+    value.celSpillPurposeScales[2] = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[((((VIXEN_SOA_LightingConfig_BUFFER.words[3u] >> 2u) + index * 4u)) + 2u) + 0u]);
+    value.celSpillPurposeScales[3] = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[((((VIXEN_SOA_LightingConfig_BUFFER.words[3u] >> 2u) + index * 4u)) + 3u) + 0u]);
+    value.shadingMode = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u];
+    value.celBandCount = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u];
+    value.celShadowThreshold = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u]);
+    value.celLitThreshold = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u]);
+    value.celRampSoftness = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[8u] >> 2u) + index * 1u)) + 0u]);
+    value.celLitHueShiftDegrees = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[9u] >> 2u) + index * 1u)) + 0u]);
+    value.celShadowHueShiftDegrees = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[10u] >> 2u) + index * 1u)) + 0u]);
+    value.celBandFalloffStart = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[11u] >> 2u) + index * 1u)) + 0u]);
+    value.celBandFalloffEnd = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[12u] >> 2u) + index * 1u)) + 0u]);
+    value.celLightSpillScale = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[13u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureCompensationEV = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[14u] >> 2u) + index * 1u)) + 0u]);
+    value.dimBandFloor = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[15u] >> 2u) + index * 1u)) + 0u]);
+    value.skyColor = uintBitsToFloat(uvec3(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[16u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[16u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[16u] >> 2u) + index * 3u)) + 2u]));
+    value.skyMode = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[17u] >> 2u) + index * 1u)) + 0u];
+    value.skyGradientSlope = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[18u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureKeyValue = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[19u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureMinEV100 = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[20u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureMaxEV100 = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[21u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureLowPercent = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[22u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureHighPercent = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[23u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureSpeedUp = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[24u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureSpeedDown = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[25u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureDeltaSeconds = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[26u] >> 2u) + index * 1u)) + 0u]);
+    value.lookSaturation = uintBitsToFloat(VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[27u] >> 2u) + index * 1u)) + 0u]);
+    value.presentationMode = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[28u] >> 2u) + index * 1u)) + 0u];
+    value.frameSeed = VIXEN_SOA_LightingConfig_BUFFER.words[(((VIXEN_SOA_LightingConfig_BUFFER.words[29u] >> 2u) + index * 1u)) + 0u];
+    return value;
+}
+#undef VIXEN_SOA_LightingConfig_BUFFER
+#endif
 #endif // LIGHTINGCONFIG_GLSL
 
 layout(std430, binding = 2) readonly buffer meterBlock

@@ -370,8 +370,2762 @@
     }
   ],
   "barriers": [],
-  "transfers": [],
-  "transferPlan": [],
+  "transfers": [
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.alpha"
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.enabled"
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.maxFrames"
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.reprojectionEnabled"
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.resetOnMotion"
+    },
+    {
+      "before": "vixen:lighting-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:lighting-settings.lightCount"
+    },
+    {
+      "before": "vixen:lighting-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:lighting-settings.lights"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.amortizationFactor"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countX"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countY"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countZ"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.hysteresisRate"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originX"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originY"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originZ"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.probeGridEnabled"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.raysPerProbe"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingX"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingY"
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingZ"
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.candidateCount"
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.lightTreeCutThreshold"
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.reservoirEnabled"
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.temporalCap"
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.biasEpsilon"
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.enabled"
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.maxShadowDistance"
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.raysPerLight"
+    }
+  ],
+  "transferPlan": [
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.alpha",
+      "system": "vixen:body-instance-ray-march",
+      "argument": "state:accumulation-settings",
+      "kind": "state:accumulation-settings",
+      "member": "alpha",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "alpha",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxFrames",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "resetOnMotion",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "reprojectionEnabled",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.enabled",
+      "system": "vixen:body-instance-ray-march",
+      "argument": "state:accumulation-settings",
+      "kind": "state:accumulation-settings",
+      "member": "enabled",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "alpha",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxFrames",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "resetOnMotion",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "reprojectionEnabled",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.maxFrames",
+      "system": "vixen:body-instance-ray-march",
+      "argument": "state:accumulation-settings",
+      "kind": "state:accumulation-settings",
+      "member": "maxFrames",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "alpha",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxFrames",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "resetOnMotion",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "reprojectionEnabled",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.reprojectionEnabled",
+      "system": "vixen:body-instance-ray-march",
+      "argument": "state:accumulation-settings",
+      "kind": "state:accumulation-settings",
+      "member": "reprojectionEnabled",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "alpha",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxFrames",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "resetOnMotion",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "reprojectionEnabled",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:accumulation-settings-write",
+      "after": "vixen:body-instance-ray-march",
+      "direction": "cpuToGpu",
+      "resource": "state:accumulation-settings.resetOnMotion",
+      "system": "vixen:body-instance-ray-march",
+      "argument": "state:accumulation-settings",
+      "kind": "state:accumulation-settings",
+      "member": "resetOnMotion",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "alpha",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxFrames",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "resetOnMotion",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "reprojectionEnabled",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:lighting-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:lighting-settings.lightCount",
+      "system": "vixen:direct-lighting",
+      "argument": "state:lighting-settings",
+      "kind": "state:lighting-settings",
+      "member": "lightCount",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "lightCount",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "ambientIntensity",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lights",
+          "offset": 8,
+          "sourceOffset": 16,
+          "stride": 128,
+          "size": 128,
+          "alignment": 16
+        },
+        {
+          "member": "celSpillPurposeScales",
+          "offset": 12,
+          "sourceOffset": 144,
+          "stride": 16,
+          "size": 16,
+          "alignment": 4
+        },
+        {
+          "member": "shadingMode",
+          "offset": 16,
+          "sourceOffset": 160,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandCount",
+          "offset": 20,
+          "sourceOffset": 164,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celShadowThreshold",
+          "offset": 24,
+          "sourceOffset": 168,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLitThreshold",
+          "offset": 28,
+          "sourceOffset": 172,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celRampSoftness",
+          "offset": 32,
+          "sourceOffset": 176,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLitHueShiftDegrees",
+          "offset": 36,
+          "sourceOffset": 180,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celShadowHueShiftDegrees",
+          "offset": 40,
+          "sourceOffset": 184,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandFalloffStart",
+          "offset": 44,
+          "sourceOffset": 188,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandFalloffEnd",
+          "offset": 48,
+          "sourceOffset": 192,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLightSpillScale",
+          "offset": 52,
+          "sourceOffset": 196,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "dimBandFloor",
+          "offset": 56,
+          "sourceOffset": 200,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "skyColor",
+          "offset": 60,
+          "sourceOffset": 208,
+          "stride": 12,
+          "size": 12,
+          "alignment": 16
+        },
+        {
+          "member": "skyMode",
+          "offset": 64,
+          "sourceOffset": 220,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "skyGradientSlope",
+          "offset": 68,
+          "sourceOffset": 224,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:lighting-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:lighting-settings.lights",
+      "system": "vixen:direct-lighting",
+      "argument": "state:lighting-settings",
+      "kind": "state:lighting-settings",
+      "member": "lights",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "lightCount",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "ambientIntensity",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lights",
+          "offset": 8,
+          "sourceOffset": 16,
+          "stride": 128,
+          "size": 128,
+          "alignment": 16
+        },
+        {
+          "member": "celSpillPurposeScales",
+          "offset": 12,
+          "sourceOffset": 144,
+          "stride": 16,
+          "size": 16,
+          "alignment": 4
+        },
+        {
+          "member": "shadingMode",
+          "offset": 16,
+          "sourceOffset": 160,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandCount",
+          "offset": 20,
+          "sourceOffset": 164,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celShadowThreshold",
+          "offset": 24,
+          "sourceOffset": 168,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLitThreshold",
+          "offset": 28,
+          "sourceOffset": 172,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celRampSoftness",
+          "offset": 32,
+          "sourceOffset": 176,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLitHueShiftDegrees",
+          "offset": 36,
+          "sourceOffset": 180,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celShadowHueShiftDegrees",
+          "offset": 40,
+          "sourceOffset": 184,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandFalloffStart",
+          "offset": 44,
+          "sourceOffset": 188,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celBandFalloffEnd",
+          "offset": 48,
+          "sourceOffset": 192,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "celLightSpillScale",
+          "offset": 52,
+          "sourceOffset": 196,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "dimBandFloor",
+          "offset": 56,
+          "sourceOffset": 200,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "skyColor",
+          "offset": 60,
+          "sourceOffset": 208,
+          "stride": 12,
+          "size": 12,
+          "alignment": 16
+        },
+        {
+          "member": "skyMode",
+          "offset": 64,
+          "sourceOffset": 220,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "skyGradientSlope",
+          "offset": 68,
+          "sourceOffset": 224,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.amortizationFactor",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "amortizationFactor",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countX",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "countX",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countY",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "countY",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.countZ",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "countZ",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.hysteresisRate",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "hysteresisRate",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originX",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "originX",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originY",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "originY",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.originZ",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "originZ",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.probeGridEnabled",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "probeGridEnabled",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.raysPerProbe",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "raysPerProbe",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingX",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "spacingX",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingY",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "spacingY",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:probe-grid-settings-write",
+      "after": "vixen:probe-update",
+      "direction": "cpuToGpu",
+      "resource": "state:probe-grid-settings.spacingZ",
+      "system": "vixen:probe-update",
+      "argument": "state:probe-grid-settings",
+      "kind": "state:probe-grid-settings",
+      "member": "spacingZ",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "probeGridEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originX",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originY",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "originZ",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingX",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingY",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spacingZ",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countX",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countY",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "countZ",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerProbe",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "hysteresisRate",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "amortizationFactor",
+          "offset": 48,
+          "sourceOffset": 48,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.candidateCount",
+      "system": "vixen:direct-lighting",
+      "argument": "state:reservoir-settings",
+      "kind": "state:reservoir-settings",
+      "member": "candidateCount",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "reservoirEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "candidateCount",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialRadius",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialCount",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "temporalCap",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasedModeEnabled",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lightTreeCutThreshold",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.lightTreeCutThreshold",
+      "system": "vixen:direct-lighting",
+      "argument": "state:reservoir-settings",
+      "kind": "state:reservoir-settings",
+      "member": "lightTreeCutThreshold",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "reservoirEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "candidateCount",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialRadius",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialCount",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "temporalCap",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasedModeEnabled",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lightTreeCutThreshold",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.reservoirEnabled",
+      "system": "vixen:direct-lighting",
+      "argument": "state:reservoir-settings",
+      "kind": "state:reservoir-settings",
+      "member": "reservoirEnabled",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "reservoirEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "candidateCount",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialRadius",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialCount",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "temporalCap",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasedModeEnabled",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lightTreeCutThreshold",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:reservoir-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:reservoir-settings.temporalCap",
+      "system": "vixen:direct-lighting",
+      "argument": "state:reservoir-settings",
+      "kind": "state:reservoir-settings",
+      "member": "temporalCap",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "reservoirEnabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "candidateCount",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialRadius",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "spatialCount",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "temporalCap",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasedModeEnabled",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lightTreeCutThreshold",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.biasEpsilon",
+      "system": "vixen:direct-lighting",
+      "argument": "state:shadow-settings",
+      "kind": "state:shadow-settings",
+      "member": "biasEpsilon",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerLight",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxShadowDistance",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasEpsilon",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.enabled",
+      "system": "vixen:direct-lighting",
+      "argument": "state:shadow-settings",
+      "kind": "state:shadow-settings",
+      "member": "enabled",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerLight",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxShadowDistance",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasEpsilon",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.maxShadowDistance",
+      "system": "vixen:direct-lighting",
+      "argument": "state:shadow-settings",
+      "kind": "state:shadow-settings",
+      "member": "maxShadowDistance",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerLight",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxShadowDistance",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasEpsilon",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:shadow-settings-write",
+      "after": "vixen:direct-lighting",
+      "direction": "cpuToGpu",
+      "resource": "state:shadow-settings.raysPerLight",
+      "system": "vixen:direct-lighting",
+      "argument": "state:shadow-settings",
+      "kind": "state:shadow-settings",
+      "member": "raysPerLight",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "enabled",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "raysPerLight",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "maxShadowDistance",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "biasEpsilon",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    }
+  ],
   "allocations": [
     {
       "kind": "state:frame-targets",

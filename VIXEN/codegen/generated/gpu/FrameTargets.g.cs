@@ -27,6 +27,30 @@ namespace Vixen.Codegen.Gpu
     {
     }
 
+    public struct LightingSettingsState
+    {
+    }
+
+    public struct SceneLookSettingsState
+    {
+    }
+
+    public struct ShadowSettingsState
+    {
+    }
+
+    public struct AccumulationSettingsState
+    {
+    }
+
+    public struct ReservoirSettingsState
+    {
+    }
+
+    public struct ProbeGridSettingsState
+    {
+    }
+
     public readonly struct FrameTargetsStateKind { public const string CatalogKey = "state:frame-targets"; }
 
     public readonly struct HitRecordStateKind { public const string CatalogKey = "state:hit-record"; }
@@ -36,6 +60,18 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ExposureMeterStateKind { public const string CatalogKey = "state:exposure-meter"; }
 
     public readonly struct PrevCameraConfigStateKind { public const string CatalogKey = "state:camera"; }
+
+    public readonly struct LightingSettingsStateKind { public const string CatalogKey = "state:lighting-settings"; }
+
+    public readonly struct SceneLookSettingsStateKind { public const string CatalogKey = "state:scene-look-settings"; }
+
+    public readonly struct ShadowSettingsStateKind { public const string CatalogKey = "state:shadow-settings"; }
+
+    public readonly struct AccumulationSettingsStateKind { public const string CatalogKey = "state:accumulation-settings"; }
+
+    public readonly struct ReservoirSettingsStateKind { public const string CatalogKey = "state:reservoir-settings"; }
+
+    public readonly struct ProbeGridSettingsStateKind { public const string CatalogKey = "state:probe-grid-settings"; }
 }
 namespace Undertow.Modding
 {
