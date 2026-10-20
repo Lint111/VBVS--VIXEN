@@ -61,12 +61,76 @@ struct LightingConfig {
 
 layout(std430, binding = 2) readonly buffer meterBlock
 {
-    ExposureMeterState values[];
+    uint words[];
 } meter;
 layout(std430, binding = 3) readonly buffer LightingConfigSSBOBlock
 {
-    LightingConfig values[];
+    uint words[];
 } LightingConfigSSBO;
+ExposureMeterState meter_Load(uint index)
+{
+    ExposureMeterState value;
+    value.log2Exposure = uintBitsToFloat(meter.words[(((meter.words[0u] >> 2u) + index * 1u)) + 0u]);
+    value.state = meter.words[(((meter.words[1u] >> 2u) + index * 1u)) + 0u];
+    value.meteredEV100 = uintBitsToFloat(meter.words[(((meter.words[2u] >> 2u) + index * 1u)) + 0u]);
+    value.targetLog2Exposure = uintBitsToFloat(meter.words[(((meter.words[3u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+
+LightingConfig LightingConfigSSBO_Load(uint index)
+{
+    LightingConfig value;
+    value.lightCount = LightingConfigSSBO.words[(((LightingConfigSSBO.words[0u] >> 2u) + index * 1u)) + 0u];
+    value.ambientIntensity = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[1u] >> 2u) + index * 1u)) + 0u]);
+    value.lights[0].direction_or_position = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 0u) + 2u]));
+    value.lights[0].kind = LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 3u) + 0u];
+    value.lights[0].radiance = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 4u) + 2u]));
+    value.lights[0].range = uintBitsToFloat(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 0u) + 7u) + 0u]);
+    value.lights[1].direction_or_position = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 0u) + 2u]));
+    value.lights[1].kind = LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 3u) + 0u];
+    value.lights[1].radiance = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 4u) + 2u]));
+    value.lights[1].range = uintBitsToFloat(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 8u) + 7u) + 0u]);
+    value.lights[2].direction_or_position = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 0u) + 2u]));
+    value.lights[2].kind = LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 3u) + 0u];
+    value.lights[2].radiance = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 4u) + 2u]));
+    value.lights[2].range = uintBitsToFloat(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 16u) + 7u) + 0u]);
+    value.lights[3].direction_or_position = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 0u) + 2u]));
+    value.lights[3].kind = LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 3u) + 0u];
+    value.lights[3].radiance = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 0u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 1u], LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 4u) + 2u]));
+    value.lights[3].range = uintBitsToFloat(LightingConfigSSBO.words[(((((LightingConfigSSBO.words[2u] >> 2u) + index * 32u)) + 24u) + 7u) + 0u]);
+    value.celSpillPurposeScales[0] = uintBitsToFloat(LightingConfigSSBO.words[((((LightingConfigSSBO.words[3u] >> 2u) + index * 4u)) + 0u) + 0u]);
+    value.celSpillPurposeScales[1] = uintBitsToFloat(LightingConfigSSBO.words[((((LightingConfigSSBO.words[3u] >> 2u) + index * 4u)) + 1u) + 0u]);
+    value.celSpillPurposeScales[2] = uintBitsToFloat(LightingConfigSSBO.words[((((LightingConfigSSBO.words[3u] >> 2u) + index * 4u)) + 2u) + 0u]);
+    value.celSpillPurposeScales[3] = uintBitsToFloat(LightingConfigSSBO.words[((((LightingConfigSSBO.words[3u] >> 2u) + index * 4u)) + 3u) + 0u]);
+    value.shadingMode = LightingConfigSSBO.words[(((LightingConfigSSBO.words[4u] >> 2u) + index * 1u)) + 0u];
+    value.celBandCount = LightingConfigSSBO.words[(((LightingConfigSSBO.words[5u] >> 2u) + index * 1u)) + 0u];
+    value.celShadowThreshold = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[6u] >> 2u) + index * 1u)) + 0u]);
+    value.celLitThreshold = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[7u] >> 2u) + index * 1u)) + 0u]);
+    value.celRampSoftness = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[8u] >> 2u) + index * 1u)) + 0u]);
+    value.celLitHueShiftDegrees = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[9u] >> 2u) + index * 1u)) + 0u]);
+    value.celShadowHueShiftDegrees = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[10u] >> 2u) + index * 1u)) + 0u]);
+    value.celBandFalloffStart = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[11u] >> 2u) + index * 1u)) + 0u]);
+    value.celBandFalloffEnd = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[12u] >> 2u) + index * 1u)) + 0u]);
+    value.celLightSpillScale = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[13u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureCompensationEV = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[14u] >> 2u) + index * 1u)) + 0u]);
+    value.dimBandFloor = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[15u] >> 2u) + index * 1u)) + 0u]);
+    value.skyColor = uintBitsToFloat(uvec3(LightingConfigSSBO.words[(((LightingConfigSSBO.words[16u] >> 2u) + index * 3u)) + 0u], LightingConfigSSBO.words[(((LightingConfigSSBO.words[16u] >> 2u) + index * 3u)) + 1u], LightingConfigSSBO.words[(((LightingConfigSSBO.words[16u] >> 2u) + index * 3u)) + 2u]));
+    value.skyMode = LightingConfigSSBO.words[(((LightingConfigSSBO.words[17u] >> 2u) + index * 1u)) + 0u];
+    value.skyGradientSlope = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[18u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureKeyValue = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[19u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureMinEV100 = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[20u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureMaxEV100 = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[21u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureLowPercent = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[22u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureHighPercent = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[23u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureSpeedUp = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[24u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureSpeedDown = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[25u] >> 2u) + index * 1u)) + 0u]);
+    value.exposureDeltaSeconds = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[26u] >> 2u) + index * 1u)) + 0u]);
+    value.lookSaturation = uintBitsToFloat(LightingConfigSSBO.words[(((LightingConfigSSBO.words[27u] >> 2u) + index * 1u)) + 0u]);
+    value.presentationMode = LightingConfigSSBO.words[(((LightingConfigSSBO.words[28u] >> 2u) + index * 1u)) + 0u];
+    value.frameSeed = LightingConfigSSBO.words[(((LightingConfigSSBO.words[29u] >> 2u) + index * 1u)) + 0u];
+    return value;
+}
+
 layout(rgba16f, set = 0, binding = 0) uniform readonly image2D sceneRadianceHistoryOutput_current;
 layout(rgba8, set = 0, binding = 1) uniform writeonly image2D outputImage_current;
 layout(push_constant, std430) uniform ExposureTonemapSystemPushConstants
@@ -118,5 +182,7 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    ExposureTonemapSystem_Body(meter.values[0], LightingConfigSSBO.values[0], int(linearId));
+    ExposureMeterState _value_meter = meter_Load(0u);
+    LightingConfig _value_LightingConfigSSBO = LightingConfigSSBO_Load(0u);
+    ExposureTonemapSystem_Body(_value_meter, _value_LightingConfigSSBO, int(linearId));
 }

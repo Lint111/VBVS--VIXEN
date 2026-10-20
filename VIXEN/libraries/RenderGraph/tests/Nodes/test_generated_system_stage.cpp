@@ -127,6 +127,30 @@ TEST(GeneratedSystemStage, HotFillRunsOnlyWhenItsCpuWriterRan) {
     EXPECT_EQ(calls, 1u);
 }
 
+TEST(GeneratedSystemStage, HandStageRowsWithoutBindingsShareOneSchemaUpload) {
+    auto manifest = GpuSystemManifest::Parse(kManifest);
+    manifest.transferPlan[0].binding = -1;
+    auto secondConsumer = manifest.transferPlan[0];
+    secondConsumer.after = "vixen:another-hand-stage";
+    secondConsumer.system = "vixen:another-hand-stage";
+    secondConsumer.argument = "state_scene_look";
+    manifest.transferPlan.push_back(secondConsumer);
+
+    struct Meter {
+        float density;
+        uint32_t flags;
+    } meter{1.0f, 3u};
+    TransferSourceRegistry sources;
+    sources.ProvideSingleton<Meter>({"Fixture.Meter", "*"}, &meter, [] { return 1u; });
+    TransferPlan plan(manifest);
+    uint32_t calls = 0;
+    const auto ledger = plan.Fill(0, sources,
+        [&](const GpuTransferPlanRow&, uint32_t, std::span<const std::byte>) { ++calls; });
+    EXPECT_EQ(calls, 1u);
+    EXPECT_EQ(ledger.buffersUploaded, 1u);
+    EXPECT_EQ(ledger.steady_state_bytes_uploaded, sizeof(Meter));
+}
+
 TEST(GeneratedSystemStage, AnArgumentWithoutSchemaIdentityIsRejected) {
     std::string manifest = kManifest;
     manifest.replace(manifest.find("\"Fixture.Meter\""), std::string("\"Fixture.Meter\"").size(), "\"\"");

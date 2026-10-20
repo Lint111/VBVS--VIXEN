@@ -289,8 +289,8 @@ public:
         const uint32_t slot = static_cast<uint32_t>(frame % GenerationSlots);
         std::map<std::string, bool> filled;
         for (const auto& row : rows_) {
-            if (row.direction != GpuTransferDirection::CpuToGpu || row.binding < 0 || row.regions.empty()) continue;
-            const std::string key = row.system + "\n" + row.argument;
+            if (row.direction != GpuTransferDirection::CpuToGpu || row.regions.empty()) continue;
+            const std::string key = row.identity.Text();
             if (filled.contains(key)) continue;
 
             TransferChangedSnapshot snapshot = sources.changed(row.identity);

@@ -45,7 +45,42 @@
           "binding": 2,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
-          "accessKind": "ComputeStorageRead"
+          "accessKind": "ComputeStorageRead",
+          "layout": "soaComponentRegions",
+          "regions": [
+            {
+              "member": "log2Exposure",
+              "offset": 0,
+              "sourceOffset": 0,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "state",
+              "offset": 4,
+              "sourceOffset": 4,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "meteredEV100",
+              "offset": 8,
+              "sourceOffset": 8,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "targetLog2Exposure",
+              "offset": 12,
+              "sourceOffset": 12,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            }
+          ]
         },
         {
           "name": "LightingConfigSSBO",
@@ -56,7 +91,250 @@
           "binding": 3,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
-          "accessKind": "ComputeStorageRead"
+          "accessKind": "ComputeStorageRead",
+          "layout": "soaComponentRegions",
+          "regions": [
+            {
+              "member": "lightCount",
+              "offset": 0,
+              "sourceOffset": 0,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "ambientIntensity",
+              "offset": 4,
+              "sourceOffset": 4,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "lights",
+              "offset": 8,
+              "sourceOffset": 16,
+              "stride": 128,
+              "size": 128,
+              "alignment": 16
+            },
+            {
+              "member": "celSpillPurposeScales",
+              "offset": 12,
+              "sourceOffset": 144,
+              "stride": 16,
+              "size": 16,
+              "alignment": 4
+            },
+            {
+              "member": "shadingMode",
+              "offset": 16,
+              "sourceOffset": 160,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celBandCount",
+              "offset": 20,
+              "sourceOffset": 164,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celShadowThreshold",
+              "offset": 24,
+              "sourceOffset": 168,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celLitThreshold",
+              "offset": 28,
+              "sourceOffset": 172,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celRampSoftness",
+              "offset": 32,
+              "sourceOffset": 176,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celLitHueShiftDegrees",
+              "offset": 36,
+              "sourceOffset": 180,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celShadowHueShiftDegrees",
+              "offset": 40,
+              "sourceOffset": 184,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celBandFalloffStart",
+              "offset": 44,
+              "sourceOffset": 188,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celBandFalloffEnd",
+              "offset": 48,
+              "sourceOffset": 192,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "celLightSpillScale",
+              "offset": 52,
+              "sourceOffset": 196,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureCompensationEV",
+              "offset": 56,
+              "sourceOffset": 200,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "dimBandFloor",
+              "offset": 60,
+              "sourceOffset": 204,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "skyColor",
+              "offset": 64,
+              "sourceOffset": 208,
+              "stride": 12,
+              "size": 12,
+              "alignment": 16
+            },
+            {
+              "member": "skyMode",
+              "offset": 68,
+              "sourceOffset": 220,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "skyGradientSlope",
+              "offset": 72,
+              "sourceOffset": 224,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureKeyValue",
+              "offset": 76,
+              "sourceOffset": 228,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureMinEV100",
+              "offset": 80,
+              "sourceOffset": 232,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureMaxEV100",
+              "offset": 84,
+              "sourceOffset": 236,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureLowPercent",
+              "offset": 88,
+              "sourceOffset": 240,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureHighPercent",
+              "offset": 92,
+              "sourceOffset": 244,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureSpeedUp",
+              "offset": 96,
+              "sourceOffset": 248,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureSpeedDown",
+              "offset": 100,
+              "sourceOffset": 252,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "exposureDeltaSeconds",
+              "offset": 104,
+              "sourceOffset": 256,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "lookSaturation",
+              "offset": 108,
+              "sourceOffset": 260,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "presentationMode",
+              "offset": 112,
+              "sourceOffset": 264,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            },
+            {
+              "member": "frameSeed",
+              "offset": 116,
+              "sourceOffset": 268,
+              "stride": 4,
+              "size": 4,
+              "alignment": 4
+            }
+          ]
         },
         {
           "name": "sceneRadianceHistoryOutput_current",
@@ -93,6 +371,7 @@
   ],
   "barriers": [],
   "transfers": [],
+  "transferPlan": [],
   "allocations": [
     {
       "kind": "state:frame-targets",
