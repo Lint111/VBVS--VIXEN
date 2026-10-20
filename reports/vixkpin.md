@@ -1,52 +1,57 @@
-# VIXEN tracked kernel pin refresh
+# vixkpin round 2: kernel pin 96570e48 -> b1576418 (recipeguard), PathInstance block, consumers on PathPoint/PathSegment
 
-## LANDABLE NOW
+Branch `lane-vixkpin` (lane sn-vixkpin2). Merged `origin/wave/authoring-convergence` twice (last: gaia pin / UninstallVulkan, 7 files, clean, rebuilt after). Undertow pair `pair-hlsl` at `origin/main-wave`. Release, FSR3 OFF, Dozen ICD (correctness only, no timing).
 
-`8d68e9839ac3af02b937b2b419c27f829e90cccc` — VIXEN now tracks the current Yeroket `origin/main` kernel commit for its codegen checks.
+## Result in one line
 
-## Base and cause
+The kernel pin is at `b1576418a1ca4cf29dd22853ff3cd1aba6372c83`, the build is green, all 37+1 drift guards pass, Text/Textures/VulkanResources/CashSystem and three of four capture producers are green. The 10 `ProceduralRecipeRenderTest` and 10 SVO HLSL tests are NOT fixed by this pin: the kernel HLSL emitter output is invalid (STOP below).
 
-Base: `fc69e0c33be2321f52c0c1fb3c260d42a7de88a4` on `lane-vixkpin`, off `origin/wave/authoring-convergence`.
+## What changed
 
-The old tracked pin was `a2b2d6b9e1e93b37b1adc0d7dd99e1c63bf96bad`. P692 changed Undertow's `Leveraged.Source` schema index from `unique: true` to `unique: false` in `core/src/Undertow.Authoring/Schema/schemas.json:166`; the row's `F` and `R` faction references can repeat for multiple leverage occurrences. The old CodegenTool rejected that current catalogue during `appflow_check` with `RuntimeState 'Undertow.Content.Core.Systems.Diplomacy.Leveraged' index 'Source' must be unique with owner visibility.`
+- `VIXEN/codegen/CMakeLists.txt:132` and `VIXEN/cmake/tests/test_kernel_snapshot_reuse.cmake:5`: pin `b1576418...`. `rg 38da3fa1` outside reports finds nothing.
+- `VIXEN/codegen/UnityMathematicsTypes.cs` deleted. The kernel's own `UnityMathematicsPrelude.cs` is enough for `--recipe-simd-cpp`, `--recipe-kernels-cpp` and `--recipe-opcode-mirror`; the `--recipe-kernels-extra` argument and all `_recipe_math_types_run` references are gone. No kernel follow-up needed for the floats.
+- `VIXEN/codegen/CMakeLists.txt`: new `path_instance_check` (ALL) and `path_instance_regen` targets, same form as the glyph block. Generated: `SVO/include/Recipe/generated/PathInstance.g.hpp`, `PathInstance.layout.sha256`, `SVO/shaders/recipe/PathInstance.g.glsl`; `GlyphOutlineInstance.g.hpp` regenerated (recipeguard `#ifndef` guards let both headers coexist, so round 1's STOP is resolved).
+- Consumers moved to `PathPoint` (3 floats) / `PathSegment` (56 B): `Text/include/Text/GlyphOutline.h:20-21`, `Text/src/GlyphOutline.cpp`, `Text/src/GlyphAtlas.cpp`, `Text/tests/test_text_shaping.cpp`, `application/main/tests/test_lookdev_capture.cpp`, `SVO/tests/test_recipe_glsl_numerical_parity.cpp:945`. The glyph payload is 2584 -> 3616 B and no hand-written code carries that number.
+- SVO plumbing for `PathInstance` (the generated eval dispatch and kernels need it): `SdfRecipeEval.h` (`evalRecipe` takes `std::span<const PathInstance>`), `RecipeRegistry.h` (`pathInstances` entry field), `SdfRecipeCodegenGlsl.h` (emits `pathInstances[N]` rows), `UberShaderSplice.h`, `SpecializedRecipeShaderGlsl.h`, `VoxelDocument/src/EditorDocumentModel.cpp` (includes). Files shared with other lanes touched minimally: `SdfRecipeEval.h`, `RecipeRegistry.h`, `SdfRecipeCodegenGlsl.h`, `EditorDocumentModel.cpp`, Text sources.
+- `SVO/tests/test_recipe_glsl_numerical_parity.cpp`: `GlyphOutline` and `PathDistance` exempted from `CorpusCoversEveryValidOpcode` (tracked gap for PathDistance, see issues).
 
-Fresh old-pin baseline: configure exited 0 and printed the discovered Undertow catalogue plus the old tracked SHA. The queued `appflow_check` command exited 1:
+## R660 classification (one line each)
 
-```text
-bash /home/liory/.local/bin/with-test-lock.sh --agent vixkpin --resource light --label appflow-old-pin -- nice -n 10 cmake --build ../build/wsl --target appflow_check -j4
-```
+- 37 `*_check` generated-source targets plus `path_instance_check`: INVARIANT ("source is current"); regenerated, not re-blessed.
+- `GlyphOutlineInstance` 2584 -> 3616 B, segment stride 40 -> 56, `...LayoutHash`: no hard-coded copy in hand-written code (grep); generated `static_assert`s derive from the struct. Nothing to convert.
+- `CorpusCoversEveryValidOpcode` (182, 183 uncovered): INVARIANT ("every valid opcode is exercised or exempted"); kept, exemptions documented in the test.
+- `ProceduralRecipeRenderTest.*`, `EditorDocumentRenderTest.*`: image/compile thresholds, left as is (not re-blessed).
 
-The failure log is `/home/liory/.local/state/undertow/undertow-box-logs/1791411063-light-appflow-old-pin.log`. It reaches `CodegenModuleDefinition.Run` at `ModuleRegistry.cs:177`, `ModuleRegistry.TryDispatch` at line 309, and `Program.RunDispatch` at line 929 before aborting. This reproduces the supplied editorbase log against this lane's base and current Undertow catalogue.
+## Tests (MEASURED, evidence in `/home/liory/codeman-cases/undertow/reports/vixkpin2-evidence/`)
 
-## Change
-
-Changed only `_vixen_tracked_yeroket_kernel_sha` in `VIXEN/codegen/CMakeLists.txt:132`, from `a2b2d6b9e1e93b37b1adc0d7dd99e1c63bf96bad` to `8d68e9839ac3af02b937b2b419c27f829e90cccc`. The remote `Yeroket-Fantasy` `origin/main` resolves to that same SHA. The derived `YEROKET_KERNEL_SHA` assignment was left untouched.
-
-A fresh reconfigure printed `[codegen] using tracked Yeroket kernel pin: 8d68e9839ac3af02b937b2b419c27f829e90cccc` and the current Undertow schema catalogue path. The updated `appflow_check` passed. All 22 distinct `*_check` targets passed, and the fresh full ALL build completed all 1118 steps with exit 0. After the old-pin capture comparison, all 22 checks passed again on the restored tracked pin. No generated VIXEN source outputs changed.
-
-## Witness
-
-- `ctest -L RenderGraph`: 1339 tests passed, 0 failed; 11 configured skips.
-- `ctest -L SVO`: 752 labeled tests; 751 passed, 8 skipped, 1 disabled. The sole failure was `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, with `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94`. This is the established opcode-94/T-1449 failure also recorded in `reports/vixpin.md`; the other runnable SVO tests passed.
-- The focused capture-related selection passed 11/11 with caller `DISPLAY`, `WAYLAND_DISPLAY`, `VK_ICD_FILENAMES`, `VK_LAYER_PATH`, and `LD_LIBRARY_PATH` unset. `vixen_wsl_capture_witness` passed twice on the tracked pin. For a direct old/new pin-selection comparison, I selected the parent pin through `VIXEN_YEROKET_KERNEL_SHA_OVERRIDE`, captured to `build/wsl/runtime-captures/baseline-parent-pin`, cleared the override, reconfigured to the tracked `8d68e9839ac3af02b937b2b419c27f829e90cccc` pin, and captured to `build/wsl/runtime-captures/native`. The runtime executables were the same in both captures because the old-pin `appflow_check` is the failing regression and prevents a successful full old-pin build. `tools/compare-capture-pixels.py --require-byte-identical` found all 7 PNGs byte-identical with zero pixel differences.
-- The final tracked-pin full ALL build exited 0; Ninja reported `no work to do` after its directory-glob recheck, with zero compile/link units. A separate no-op rebuild also exited 0 with `ninja: no work to do`.
-- Configure provisioned the Linux Vulkan SDK and X11 dependencies in this worktree. The SDK's lowercase `include/glslang` required the documented local `Include -> include` symlink because VIXEN checks an uppercase path. The first configure submitted as a build resource waited over two minutes for admission and was canceled before starting; the same configure completed through the light queue. The configure used the required worktree-local `VIXEN_FETCHCONTENT_CACHE` environment value.
-- The CodeGraph query and `tools/codegraph-vixen.sh` reported that this disposable worktree has no CodeGraph index. I did not initialize one.
-- KFR follow-up: not applicable; this CMake codegen pin change does not alter renderer graph assembly or runtime behavior.
-
-The new CodegenTool bootstrap emitted .NET `NETSDK1188` package-locale warnings from Microsoft.CodeAnalysis 4.8.0. The full C++ build also reported warnings in unchanged third-party and test sources (Gaia, `test_gpu_query_manager.cpp`, and SVO scene-generator tests); the changed CMake line produced no compiler warning.
+- Plain `cmake --build build/wsl` exit 0 (`build4`, and `build5` after the final wave merge).
+- `ctest -L ^SVO$`: 789/799 pass, 10 fail: `RecipeCodegen.{EmitsMirrorCsgCompilesToSpirv, EmitsCsgModifierCompilesToSpirv, EmitsCompilableProceduralShader, EmitsLeafPrimitivesCompilesToSpirv, EmitsPositionedLeafPrimitivesCompilesToSpirv, EmitsM3b3PrimitivesCompilesToSpirv}`, `SdfRecipeCodegen.{M4b_TwistTransformSpirV_Compiles, M4a_RevolutionSpirV_Compiles, M4c_ValueMathDisplacementSpirV_Compiles}`, `CodegenEmit.M4d_Float3AndVMControl_CompilesSpirV`. Cause: "HLSL parsing failed" (see STOP). `RecipeGlslOpcodeCoverage` passes after the exemption.
+- `ctest -L RenderGraph` (Dozen): 1414/1429 pass (11 of them skipped), 15 fail. Failing by name: `ProceduralRecipeRenderTest.{RenderProceduralRecipe, RenderMirrorCsgRecipe, RenderSubtractBoxSphere, RenderTorus, RenderCone, RenderPyramid, RenderRevolution, RenderTwist, RenderDisplacement, RenderComposition}`, `EditorDocumentRenderTest.{GoldenDocumentAllLayersRendersVisibleBody, DisablingCutLayerChangesTopFaceSilhouette, LayeredSlabSubtractSphereGuardsAreExactAndCaptureHasHole}`, `AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender`, `vixen_text_shader_capture_producer` (Timeout).
+- INFERRED base comparison: I did not build the merged wave base. Sn-vixleft's base run (`reports/vixleft.md`) lists the same names (10 Procedural, 3 EditorDocument with hitPixels 42082 vs 50000, 1 AppFlow with boreDiffPixels 0, the text-shader producer). So: the 10 `ProceduralRecipeRenderTest`, the 3 `EditorDocumentRenderTest` and the `AppFlowEditorToggleRenderTest` expected greens are all STILL RED, unchanged from the base, and no test newly failed.
+- `BodyInstanceRayMarchRenderTest.RenderMultiKindBodiesProvesStrideFix` passes (no segfault in the full RenderGraph run this time; vixleft saw one in the text-shader producer). `vixen_text_shader_capture_producer`: Timeout at the 184 s ctest property, alone and in the full run: unchanged.
+- Capture producers, each its own GPU job: `vixen_editor_capture_producer` PASS, `vixen_hud_capture_producer` PASS, `vixen_instancing_demo_capture_producer` PASS, `vixen_text_shader_capture_producer` Timeout.
+- `ctest -L ^Textures$` 3/3, `^VulkanResources$` 17/17, `^CashSystem$` 117/117, `^Text$` 15/15.
+- Hard-rule grep on added hand-written lines (EntityId, `KindRef<All>`, explicit `Id`, attribute forms): no matches.
 
 ## STOPs
 
-None in the requested scope. The updated pin clears the AppFlow abort. The one SVO opcode-94 failure is the already documented T-1449 baseline result.
+- The 10 HLSL-composing SVO tests and the 10 `ProceduralRecipeRenderTest` fail because the kernel's HLSL emitter (`SdfCoreKernels.g.hlsl:10,12`) emits `GlyphOutlineInstance.SegmentCapacity` / `PathInstance.PathSegmentCapacity` (C# static member syntax) and defines no HLSL structs. MEASURED: error at shader:6 column 57, identical construct on the base. The brief's and vixleft's "stale pin" attribution is wrong. Fixing it is a kernel HLSL-emitter change; a VIXEN-side rewrite of the generated file would be a deviation, so I did not build one.
+- The 3 `EditorDocumentRenderTest` and the AppFlow toggle test fail on image thresholds with the same numbers as the base; whether that is Dozen or a real regression is not isolated (needs a native GPU run). They are not the HLSL parse failure.
 
 ## SPT DISPOSITION
 
-No existing SPT task was closed. Four consolidation proposals were appended to `.spt-proposals/vixkpin.jsonl`.
+- stb pin fetchable: CLOSE (`f20e97c2`, round 1).
+- `frame_targets_schema_check` real cause (stale pin): CLOSE (pin, exclusion revert and regenerated schema are green and landed with this branch).
+- Kernel pin bump with goldens as invariants: CLOSE (`7e8e5284` + opcode exemption commit).
+- Round-1 proposal "Kernel --recipe-parameter-block cannot emit GlyphOutlineInstance and PathInstance together": OBSOLETE, recipeguard fixed it; the Unity.Mathematics stub is deleted. Cannot be edited here, flag for closure.
+- 10 `ProceduralRecipeRenderTest` HLSL failures: OPEN, owner is the kernel HLSL emitter (proposal below).
+- 3 `EditorDocumentRenderTest` + 1 `AppFlowEditorToggleRenderTest`: OPEN (proposal below).
+- Text-shader capture timeout/segfault: OPEN, unchanged.
 
 ## CONSOLIDATION ISSUES
 
-- proposed: Track VIXEN's codegen kernel pin with kernel landings
-- proposed: Make the Vulkan SDK glslang include lookup case-tolerant
-- proposed: Classify CMake configure jobs separately from full builds in the box queue
-- proposed: Default VIXEN FetchContent to a worktree-local cache
+- Kernel HLSL emitter output is not valid HLSL (static member access, no struct defs); breaks 10 SVO and 10 RenderGraph tests (`tier:sol effort:M`, `.spt-proposals/vixkpin2.jsonl`).
+- `PathDistance` (opcode 183) has no producer, corpus program or parity test; exempted from the opcode-coverage corpus (`tier:luna effort:M`).
+- Editor render image-threshold failures under Dozen are not isolated (`owner-question effort:M`).
+- Round-1 kernel-emitter proposal in `.spt-proposals/vixkpin.jsonl` is obsolete (recipeguard landed in the kernel).
+- `Vulkan-Headers GIT_TAG main` and `stbrumme/hash-library GIT_TAG master` remain moving refs (round 1, not changed).

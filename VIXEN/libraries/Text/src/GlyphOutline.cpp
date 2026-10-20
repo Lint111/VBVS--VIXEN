@@ -1,6 +1,7 @@
 #include "Text/GlyphOutline.h"
 
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"
 #include "Text/GlyphAtlas.h"
 
@@ -25,7 +26,7 @@ struct OutlineBuilder {
     bool malformed = false;
 };
 
-void StorePoint(GlyphOutlinePoint& target, const FT_Vector& point) {
+void StorePoint(PathPoint& target, const FT_Vector& point) {
     target.X = static_cast<float>(point.x);
     target.Y = static_cast<float>(point.y);
 }
@@ -46,7 +47,7 @@ void AppendSegment(OutlineBuilder& builder, SegmentKind kind,
         return;
     }
 
-    GlyphOutlineSegment segment{};
+    PathSegment segment{};
     StorePoint(segment.P0, builder.current);
     StorePoint(segment.P1, kind == SegmentKind::Line ? end : control1);
     StorePoint(segment.P2, kind == SegmentKind::Line ? end :

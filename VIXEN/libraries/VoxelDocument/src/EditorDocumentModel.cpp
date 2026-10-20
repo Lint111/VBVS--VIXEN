@@ -9,6 +9,8 @@
 #include <utility>
 
 #include "Recipe/generated/RecipeContainer.g.h"
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include <RecipeSimd.g.hpp>
 
 namespace Vixen::Editor {
