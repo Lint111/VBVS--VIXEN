@@ -96,7 +96,6 @@
       { "name": "PolicyRevision", "storage": "ulong" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealStep", "root": false, "order": 27, "kind": "deal_step", "indexes": [{ "name": "Source", "fields": ["Session"], "unique": false, "visibility": "owner" }], "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "Session", "storage": "entityId", "refKind": "deal_session" },
       { "name": "StepOrdinal", "storage": "int" },
       { "name": "DealId", "storage": "ulong" },
@@ -122,14 +121,12 @@
       { "name": "RecurrenceTicks", "storage": "long" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealParty", "root": false, "order": 22, "kind": "deal_party", "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "DealId", "storage": "ulong" },
       { "name": "PartyOrdinal", "storage": "int" },
       { "name": "Actor", "storage": "entityId" },
       { "name": "Role", "storage": "byte" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealRequirement", "root": false, "order": 24, "kind": "deal_requirement", "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "DealId", "storage": "ulong" },
       { "name": "PartyOrdinal", "storage": "int" },
       { "name": "NodeOrdinal", "storage": "int" },
@@ -138,7 +135,6 @@
       { "name": "Node", "storage": "string" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealSettlement", "root": false, "order": 26, "kind": "deal_settlement", "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "DealId", "storage": "ulong" },
       { "name": "PartyOrdinal", "storage": "int" },
       { "name": "EffectOrdinal", "storage": "int" },
@@ -151,14 +147,12 @@
       { "name": "Scale", "storage": "double" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealDecision", "root": false, "order": 21, "kind": "deal_decision", "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "DealId", "storage": "ulong" },
       { "name": "PartyOrdinal", "storage": "int" },
       { "name": "Decision", "storage": "byte" },
       { "name": "DecidedAtTick", "storage": "long" }
     ] },
     { "owner": "core:deal-protocol", "clrType": "Undertow.Content.Core.Systems.Deals.DealPolicyCadence", "root": false, "order": 23, "kind": "deal_policy_cadence", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
-      { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Policy", "storage": "string" },
       { "name": "LastNegotiationTick", "storage": "long" }
