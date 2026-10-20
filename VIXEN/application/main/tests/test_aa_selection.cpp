@@ -141,6 +141,21 @@ TEST(AntiAliasingSelectionTest, EligibleTaaIsSelectedThroughTheSharedPredicate) 
     EXPECT_EQ(fallback.rejected[0].reason, RenderModuleSelectionFailureReason::NotInitialized);
 }
 
+TEST(AntiAliasingSelectionTest, CompiledTaaIsSelectedOnAPresentationFrameAndNeverOnCanonical) {
+    ASSERT_TRUE(FindAntiAliasingBackend("taa")->compiled);
+    // The result points into the candidate list, so the lists outlive it.
+    const auto presentationCandidates = BuildAntiAliasingCandidates("taa", PresentationFrame());
+    const auto presentation = SelectRenderModuleProviderForInitialization(presentationCandidates);
+    ASSERT_NE(presentation.selected, nullptr);
+    EXPECT_EQ(presentation.selected->id, "taa");
+    auto canonical = PresentationFrame();
+    canonical.presentationSampling = false;
+    const auto canonicalCandidates = BuildAntiAliasingCandidates("taa", canonical);
+    const auto raw = SelectRenderModuleProviderForInitialization(canonicalCandidates);
+    ASSERT_NE(raw.selected, nullptr);
+    EXPECT_EQ(raw.selected->id, "none");
+}
+
 TEST(AntiAliasingSelectionTest, ProviderSystemsRunOnlyWhenTheirProviderIsSelected) {
     const auto* taa = FindAntiAliasingBackend("taa");
     ASSERT_NE(taa, nullptr);

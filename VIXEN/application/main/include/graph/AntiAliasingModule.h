@@ -64,10 +64,10 @@ inline constexpr AntiAliasingContract kTaaAntiAliasingContract{
 };
 
 // Provider ids are R676.5's. Post providers (cmaa2, smaa1x, fxaa-lite) and supersample join this
-// table with their slices; `none` stays last as the terminal fallback. `taa`'s kernel system is in
-// the composition; it stays uncompiled until its host wiring (history, sampler, jitter) lands.
+// table with their slices; `none` stays last as the terminal fallback. `taa` is the composition's
+// TemporalAntiAliasingSystem, run by the generated-system runner (history pair, sampled view).
 inline constexpr std::array<AntiAliasingBackendDescriptor, 2> kAntiAliasingBackends{{
-    {"taa", &kTaaAntiAliasingContract, false, false, "TemporalAntiAliasingSystem"},
+    {"taa", &kTaaAntiAliasingContract, true, false, "TemporalAntiAliasingSystem"},
     {"none", &kNoneAntiAliasingContract, true, true, {}},
 }};
 

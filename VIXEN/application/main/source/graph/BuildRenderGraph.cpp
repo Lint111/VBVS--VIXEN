@@ -555,16 +555,66 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
-    const bool jitterEnabled = (renderPathConfig.temporalJitter ||
-        renderPathConfig.upscaler == UpscalerKind::Fsr3) &&
-        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
-    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
 #else
     constexpr bool exposureReference = false;
 #endif
+    // Anti-aliasing module (R676): the same selection predicate as the upscaler, over the AA
+    // backend table. `none` is the terminal pass-through and adds no work. It is chosen before the
+    // generated systems are instantiated because a provider's work is one of them. The temporal
+    // upscaler gate (M3) reads the requested upscaler: FSR 3 is the only history-holding one.
+    const RenderModuleFrameInput antiAliasingInputs[] = {
+        RenderModuleFrameInput::Color, RenderModuleFrameInput::Depth,
+        RenderModuleFrameInput::MotionVectors, RenderModuleFrameInput::Jitter};
+    const bool interactiveSampling =
+        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
+    // Jittered sampling and its motion inputs exist only where the temporal path does (the
+    // same conditions the temporal-sampling guard below enforces). The capture-test hand tone-map
+    // reference replaces the generated systems, so it has no temporal resolve either.
+    const bool temporalInputsAvailable = interactiveSampling && hdrExposureEnabled && !exposureReference &&
+        !envFlagEnabled("VIXEN_B1_OCCLUSION_CULL") && !envFlagEnabled("VIXEN_B2_PROXY_PREPASS") &&
+        !envFlagEnabled("VIXEN_DEBUG_CAPTURE");
+    const AntiAliasingFrameDescription antiAliasingFrame{
+        .presentationSampling = interactiveSampling,
+        .temporalUpscalerSelected = renderPathConfig.upscaler == UpscalerKind::Fsr3,
+        .colorSpace = hdrExposureEnabled ? AntiAliasingColorSpace::LinearHdr
+                                         : AntiAliasingColorSpace::DisplayReferred,
+        .colorFormat = hdrExposureEnabled ? RenderModuleImageFormat::Rgba16Float
+                                          : RenderModuleImageFormat::Rgba8Unorm,
+        // The interactive path can jitter and produce depth and motion for a provider that needs them.
+        .availableFrameInputs = temporalInputsAvailable ? std::span<const RenderModuleFrameInput>(antiAliasingInputs)
+                                                        : std::span<const RenderModuleFrameInput>(antiAliasingInputs, 1),
+    };
+    const auto antiAliasingCandidates =
+        BuildAntiAliasingCandidates(renderPathConfig.antiAliasing, antiAliasingFrame);
+    const RenderModuleSelectionResult antiAliasingSelection =
+        SelectRenderModuleProviderForInitialization(antiAliasingCandidates);
+    for (const auto& rejected : antiAliasingSelection.rejected) {
+        const auto* backend = FindAntiAliasingBackend(rejected.id);
+        const std::string_view passRefusal =
+            backend ? AntiAliasingPassRefusal(*backend, antiAliasingFrame) : std::string_view{};
+        if (mainLogger) {
+            mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider '" + std::string(rejected.id) +
+                             "' rejected: " +
+                             std::string(RenderModuleSelectionFailureText(rejected.reason)) +
+                             (rejected.reason == RenderModuleSelectionFailureReason::NotPermittedByPass &&
+                                      !passRefusal.empty()
+                                  ? " (" + std::string(passRefusal) + ")"
+                                  : std::string{}));
+        }
+    }
+    selectedAntiAliasingProviderId_ = antiAliasingSelection.selected
+        ? std::string(antiAliasingSelection.selected->id) : std::string("none");
+    // The TAA resolves jittered samples through the engine motion vectors (R676.1).
+    const bool taaSelected = selectedAntiAliasingProviderId_ == "taa";
+    if (mainLogger) mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider: " + selectedAntiAliasingProviderId_);
+
+    const bool jitterEnabled = (renderPathConfig.temporalJitter || taaSelected ||
+        renderPathConfig.upscaler == UpscalerKind::Fsr3) &&
+        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
+    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
     // The capture executable is the only binary that registers this test module.
     // Keep its explicit opt-in out of every ordinary/default graph build.
     const bool testIndirectLightingEnabled =
@@ -767,6 +817,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    // The stage the exposure chain (meter, else reduce) waits on: the scene radiance's writer, or
+    // the AA provider's resolve when one runs.
+    NodeHandle exposureInputProducer = spatialReuseNode;
     SubGraphProviderSelection testIndirectLightingProvider;
     if (testIndirectLightingEnabled) {
         Vixen::CapabilityGraph testModuleCapabilities;
@@ -795,47 +848,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle exposureReduceShaderLib{};
     NodeHandle exposureReduceNode{};
     NodeHandle exposureMeterBuffer{};
-    // Anti-aliasing module (R676): the same selection predicate as the upscaler, over the AA
-    // backend table. `none` is the terminal pass-through and adds no work. It is chosen before the
-    // generated systems are instantiated because a provider's work is one of them. The temporal
-    // upscaler gate (M3) reads the requested upscaler: FSR 3 is the only history-holding one.
-    const RenderModuleFrameInput antiAliasingInputs[] = {
-        RenderModuleFrameInput::Color, RenderModuleFrameInput::Depth,
-        RenderModuleFrameInput::MotionVectors, RenderModuleFrameInput::Jitter};
-    const bool interactiveSampling =
-        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
-    const AntiAliasingFrameDescription antiAliasingFrame{
-        .presentationSampling = interactiveSampling,
-        .temporalUpscalerSelected = renderPathConfig.upscaler == UpscalerKind::Fsr3,
-        .colorSpace = hdrExposureEnabled ? AntiAliasingColorSpace::LinearHdr
-                                         : AntiAliasingColorSpace::DisplayReferred,
-        .colorFormat = hdrExposureEnabled ? RenderModuleImageFormat::Rgba16Float
-                                          : RenderModuleImageFormat::Rgba8Unorm,
-        // The interactive path can jitter and produce depth and motion for a provider that needs them.
-        .availableFrameInputs = interactiveSampling ? std::span<const RenderModuleFrameInput>(antiAliasingInputs)
-                                                    : std::span<const RenderModuleFrameInput>(antiAliasingInputs, 1),
-    };
-    const auto antiAliasingCandidates =
-        BuildAntiAliasingCandidates(renderPathConfig.antiAliasing, antiAliasingFrame);
-    const RenderModuleSelectionResult antiAliasingSelection =
-        SelectRenderModuleProviderForInitialization(antiAliasingCandidates);
-    for (const auto& rejected : antiAliasingSelection.rejected) {
-        const auto* backend = FindAntiAliasingBackend(rejected.id);
-        const std::string_view passRefusal =
-            backend ? AntiAliasingPassRefusal(*backend, antiAliasingFrame) : std::string_view{};
-        if (mainLogger) {
-            mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider '" + std::string(rejected.id) +
-                             "' rejected: " +
-                             std::string(RenderModuleSelectionFailureText(rejected.reason)) +
-                             (rejected.reason == RenderModuleSelectionFailureReason::NotPermittedByPass &&
-                                      !passRefusal.empty()
-                                  ? " (" + std::string(passRefusal) + ")"
-                                  : std::string{}));
-        }
-    }
-    selectedAntiAliasingProviderId_ = antiAliasingSelection.selected
-        ? std::string(antiAliasingSelection.selected->id) : std::string("none");
-
     generatedSystems_ = {};
     if (hdrExposureEnabled) {
         // The vixen: frame-targets composition's generated systems (today the tone map) come from
@@ -9616,11 +9628,59 @@ void VulkanGraphApplication::BuildRenderGraph() {
         &sdiCensusExclusions);
 
     if (hdrExposureEnabled) {
+    // Hand passes register the resources the generated systems read under their schema
+    // identity (R680.4); the runner allocates the rest from the manifest's allocations, then
+    // binds, orders and dispatches every manifest system.
+    const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
+    const SchemaIdentity resolvedRadiance{"state:frame-targets", "ResolvedRadiance"};
+    const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
+    const SchemaIdentity exposureMeter{"Vixen.Codegen.Gpu.ExposureMeterState", "*"};
+    SchemaResourceRegistry frameResources;
+    // The exposure meter reads the resolved radiance: the scene radiance itself with `none`, the
+    // TAA's current resolve with `taa` (R676.1: the TAA resolves before the exposure meter).
+    SdiProviderRegistry meterProviders = sceneProviders;
+    if (!exposureReference) {
+        frameResources.Provide(sceneRadiance, sceneRadianceNode,
+                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        frameResources.ProvideImage(sceneRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
+        frameResources.ProvideProducer(sceneRadiance, spatialReuseNode);
+        if (!taaSelected) {
+            // With the `none` AA provider the resolve the meter and tone map read is the scene radiance.
+            frameResources.Provide(resolvedRadiance, sceneRadianceNode,
+                                   SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+            frameResources.ProvideImage(resolvedRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
+        }
+        if (reconstructionMotionModule) {
+            frameResources.ProvideSubGraph({"state:frame-targets", "MotionVectors"}, *reconstructionMotionModule,
+                                           ReconstructionMotionPorts::MOTION_VIEW.index,
+                                           ReconstructionMotionPorts::MOTION.index, SlotRole::Execute);
+        }
+        frameResources.Provide({"PrevCameraConfig", "*"}, prevCameraConfigNode,
+                               PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
+        frameResources.Provide(outputImage, renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+        frameResources.ProvideImage(outputImage, renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
+        frameResources.Provide(exposureMeter, exposureMeterBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                               SlotRole::Execute);
+        // With `taa` the exposure chain itself waits on the resolve, so the tone map waits on the chain.
+        frameResources.ProvideProducer(exposureMeter, exposureReduceNode, taaSelected);
+        frameResources.Provide({"LightingConfig", "*"}, lightingConfigNode,
+                               LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+        frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                                     renderExtent.width);
+        frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                                     renderExtent.height);
+        frameResources.ProvideExtentTarget("presentation", renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
+        generatedSystems_.Allocate(renderGraph, batch, lightingCommon, frameResources);
+        if (taaSelected) {
+            meterProviders.Provide("sceneRadianceHistoryOutput", *generatedSystems_.Allocation(resolvedRadiance),
+                                   AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        }
+    }
     if (!hdrExposureFixed) {
         const auto meterSynth = SynthesizeComputeStage<ShaderInterface::ExposureMeter::Metadata,
                                                          ShaderInterface::ExposureMeter::MEMBERS>(
             renderGraph, batch, "exposure_meter", exposureMeterShaderLib, exposureMeterNode,
-            lightingCommon, sceneProviders, {});
+            lightingCommon, meterProviders, {});
         (void)meterSynth;
         auto* meterStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureMeterNode));
         meterStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
@@ -9652,34 +9712,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 7u) / 8u);
         exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     } else {
-        // Hand passes register the resources the generated systems read under their schema
-        // identity (R680.4); the runner binds, orders and dispatches every manifest system.
-        const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
-        const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
-        const SchemaIdentity exposureMeter{"Vixen.Codegen.Gpu.ExposureMeterState", "*"};
-        SchemaResourceRegistry frameResources;
-        frameResources.Provide(sceneRadiance, sceneRadianceNode,
-                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
-        frameResources.ProvideImage(sceneRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
-        // With the `none` AA provider the resolve the meter and tone map read is the scene radiance.
-        const SchemaIdentity resolvedRadiance{"state:frame-targets", "ResolvedRadiance"};
-        frameResources.Provide(resolvedRadiance, sceneRadianceNode,
-                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
-        frameResources.ProvideImage(resolvedRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
-        frameResources.Provide(outputImage, renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-        frameResources.ProvideImage(outputImage, renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
-        frameResources.Provide(exposureMeter, exposureMeterBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                               SlotRole::Execute);
-        frameResources.ProvideProducer(exposureMeter, exposureReduceNode);
-        frameResources.Provide({"LightingConfig", "*"}, lightingConfigNode,
-                               LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
-        frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                                     renderExtent.width);
-        frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                                     renderExtent.height);
         generatedSystems_.Wire(renderGraph, batch, lightingCommon, frameResources);
         // Hand consumers of the display image order after its last generated writer.
         exposureNode = *generatedSystems_.LastWriter(outputImage);
+        // The exposure chain reads the resolve: with `taa` it starts after the TAA stage.
+        if (taaSelected) exposureInputProducer = *generatedSystems_.LastWriter(resolvedRadiance);
     }
     }
 
@@ -10819,10 +10856,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (the composite is its own gated tail — no standalone resolve stage).
     if (hdrExposureEnabled) {
         if (hdrExposureFixed) {
-            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+            batch.Connect(exposureInputProducer, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                           exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         } else {
-            batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+            batch.Connect(exposureInputProducer, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                           exposureMeterNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE)
                  .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                           exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
