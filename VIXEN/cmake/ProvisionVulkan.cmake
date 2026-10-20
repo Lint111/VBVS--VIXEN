@@ -19,6 +19,7 @@
 #                                      worktrees; a dedicated dir the provisioner owns)
 #   -DVIXEN_VULKAN_VALIDATION=ON|OFF    force validation on/off (default: from build type)
 #   -DVIXEN_UNINSTALL_VULKAN=ON         remove this SDK version's cache entry and stop (the uninstall flag)
+#   -DVIXEN_CONFIRM_UNINSTALL_VULKAN=ON explicitly confirm deletion of the shared cache entry
 #   build target  vixen-uninstall-vulkan   same, as an explicit build step
 
 include_guard(GLOBAL)
@@ -58,6 +59,8 @@ if(UNIX AND DEFINED CACHE{VIXEN_VULKAN_CACHE_DIR} AND
 endif()
 set(VIXEN_VULKAN_CACHE_DIR "${_vixen_vulkan_cache_default}" CACHE PATH "Persistent Vulkan provisioning cache")
 option(VIXEN_UNINSTALL_VULKAN "Remove the provisioned Vulkan cache and stop" OFF)
+option(VIXEN_CONFIRM_UNINSTALL_VULKAN
+       "Explicitly confirm deletion of the shared Vulkan SDK cache entry" OFF)
 
 function(_vixen_sdk_version_from_root _root _out)
     set(_version "")
@@ -102,9 +105,21 @@ endif()
 
 # --- uninstall (flag form; the target form is defined at the bottom) ---
 if(VIXEN_UNINSTALL_VULKAN)
-    if(EXISTS "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}")
-        file(REMOVE_RECURSE "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}")
-        message(STATUS "VIXEN: removed provisioned Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION} from ${VIXEN_VULKAN_CACHE_DIR}")
+    if(NOT VIXEN_CONFIRM_UNINSTALL_VULKAN)
+        message(FATAL_ERROR
+            "VIXEN: refusing to remove shared Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION}; "
+            "set -DVIXEN_CONFIRM_UNINSTALL_VULKAN=ON explicitly to confirm deletion.")
+    endif()
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DVIXEN_VULKAN_CACHE_DIR=${VIXEN_VULKAN_CACHE_DIR}"
+            "-DVIXEN_VULKAN_SDK_VERSION=${VIXEN_VULKAN_SDK_VERSION}"
+            "-DVIXEN_CONFIRM_UNINSTALL_VULKAN=ON"
+            -P "${CMAKE_CURRENT_LIST_DIR}/UninstallVulkan.cmake"
+        RESULT_VARIABLE _vixen_uninstall_rc)
+    if(NOT _vixen_uninstall_rc EQUAL 0)
+        message(FATAL_ERROR
+            "VIXEN: Vulkan uninstall refused or failed (exit ${_vixen_uninstall_rc}).")
     endif()
     message(FATAL_ERROR "VIXEN: Vulkan uninstalled. Re-run cmake without -DVIXEN_UNINSTALL_VULKAN=ON.")
 endif()
@@ -401,6 +416,10 @@ message(STATUS "VIXEN: Vulkan validation layers: ${VIXEN_VULKAN_VALIDATION} "
 # --- uninstall as an explicit build step ---
 if(NOT TARGET vixen-uninstall-vulkan)
     add_custom_target(vixen-uninstall-vulkan
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION}"
+        COMMAND ${CMAKE_COMMAND}
+            "-DVIXEN_VULKAN_CACHE_DIR=${VIXEN_VULKAN_CACHE_DIR}"
+            "-DVIXEN_VULKAN_SDK_VERSION=${VIXEN_VULKAN_SDK_VERSION}"
+            "-DVIXEN_CONFIRM_UNINSTALL_VULKAN=${VIXEN_CONFIRM_UNINSTALL_VULKAN}"
+            -P "${CMAKE_CURRENT_LIST_DIR}/UninstallVulkan.cmake"
         COMMENT "VIXEN: removing provisioned Vulkan SDK ${VIXEN_VULKAN_SDK_VERSION} (${VIXEN_VULKAN_CACHE_DIR}/${VIXEN_VULKAN_SDK_VERSION})")
 endif()
