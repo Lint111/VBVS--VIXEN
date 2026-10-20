@@ -48,12 +48,10 @@ inline constexpr double kProbeLead = 2000.0;
 inline constexpr double kPatchCameraHeight = 1.7;
 inline constexpr double kPatchSunElevation = 14.0 * kDegrees;
 inline constexpr float kSunLightRadiance = 1.0f;     // 1.0 = solar irradiance at 1 AU (planetref D7)
-// The scene pins a net exposure of 3 (planetref D7/D8): a white diffuse surface in full sun (radiance
-// 1/pi) sits near display white whatever the frame holds. Compensating by minus the meter's settled
-// reading plus the target keeps that net exposure under the auto meter.
-inline constexpr double kExposureTargetEV = 1.585;    // exposure 3
-// log2(0.18) - (-8 - 3): the default meter's reading for a frame below its EV100 floor.
-inline constexpr double kFloorMeterLog2Exposure = 8.52607;
+// The scene pins an exposure of 3 (planetref D7/D8): a white diffuse surface in full sun (radiance
+// 1/pi) sits near display white whatever the frame holds. Fixed mode (R670.1) exposes by
+// key / 2^(EV100 - 3), so EV100 = log2(0.18) + 3 - 1.585 gives log2 exposure 1.585 (exposure 3).
+inline constexpr float kFixedExposureEV100 = -1.05893f;
 // Scene-declared look (R507.3): an airless world under a black sky with the T-1138 starfield, and a
 // cel profile whose dim band keeps a grazing sun from rendering black. Each number below names the
 // reference or principle it follows (details and the swatch arithmetic: sn-planetsky-report.md).
@@ -89,9 +87,11 @@ inline SceneLook SceneLookDeclaration() {
     //  A 14 degree sun gives flat ground N.L = 0.242, ramp 0.117, which is band 0: without the floor
     //  C7 ground rendered black.
     look.cel.dimBandFloor = 0.2f;
+    // Exposure: fixed, not metered (R670.1); a physical scene keeps one exposure in every state.
+    look.exposure.mode = ExposureDeclaration::Mode::Fixed;
+    look.exposure.fixedEV100 = kFixedExposureEV100;
     return look;
 }
-inline float ExposureFor(double meterLog2Exposure) { return static_cast<float>(kExposureTargetEV - meterLog2Exposure); }
 inline constexpr float kSunEmission = 1.5e4f;        // scene-unit radiance, planetref 3.1
 inline constexpr float kStationLampEmission = 6.0f;
 inline constexpr float kPlanetAlbedo = 0.30f;
@@ -294,7 +294,6 @@ struct ResolvedState {
     uint32_t width = kCaptureExtent;
     uint32_t height = kCaptureExtent;
     float verticalFovDegrees = 45.0f;
-    float exposureCompensationEV = 0.0f;  // set by ResolveState from the meter's expected reading
     glm::dvec3 camera{0.0};
     glm::dvec3 forward{0.0, 0.0, -1.0};
     std::string focus;                  // body the directional light's lit mask is evaluated at
@@ -422,17 +421,6 @@ inline std::optional<ResolvedState> ResolveState(const std::string& name) {
         return std::nullopt;
     }
 
-    // Settled log2 exposure of the default meter (key 0.18, 50-95 % window, EV100 floor -8), measured
-    // on Dozen per state (lane exposure round 2). Frames that are mostly black sky meter below the
-    // floor and read the floor's 8.526; the planet-filled frames read about 1.4.
-    const double meterLog2Exposure = name == "C1" ? 1.41179
-                                   : name == "C1-epic" ? 1.50085
-                                   : name == "C2-term" ? 1.65107
-                                   : name == "C7" ? 1.37306
-                                   : name == "C7-60" ? 6.94330
-                                   : name == "C7-60-1p5au" ? 6.94458
-                                   : kFloorMeterLog2Exposure;  // C2, C4a-c, C5a-moon, C9
-    s.exposureCompensationEV = ExposureFor(meterLog2Exposure);
     s.timeSeconds = timeSeconds;
     s.stationPhaseDegrees = stationPhase / kDegrees;
     s.moonPhaseDegrees = moonPhase / kDegrees;

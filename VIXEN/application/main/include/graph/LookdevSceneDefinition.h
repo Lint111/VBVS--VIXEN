@@ -31,6 +31,9 @@ inline SceneLook SceneLookDeclaration() {
     look.cel.litThreshold = 0.86f;
     look.cel.rampSoftness = 0.08f;
     look.cel.dimBandFloor = 0.0f;       // black shadow step: indoor and night look-dev lights fill by ambient
+    // An ordinary lit scene: the meter adapts with the default preset's -8 EV100 floor (R670.2).
+    look.exposure.mode = ExposureDeclaration::Mode::Auto;
+    look.exposure.preset = "default";
     return look;
 }
 

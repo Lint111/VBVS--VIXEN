@@ -189,6 +189,7 @@ static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[1].set == 0u);
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
 #include "Nodes/SkySphereNode.h"            // T-1138: procedural background cache
+#include "graph/SceneLook.h"                // R670: the built-in scenes' exposure declaration
 #include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
 #include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
@@ -281,40 +282,43 @@ bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     return envFlagEnabled(name);
 }
 
-// Dynamic exposure config: VIXEN_HDR_EXPOSURE_PRESET picks a LightingConfigNodeConfig preset
-// (default when unset). Offscreen captures pin the adaptation step to 1/60 s so repeat runs are
-// pixel-identical; VIXEN_HDR_EXPOSURE_DT=<seconds> overrides it (0 = graph frame time).
+// Dynamic exposure config: the built-in scenes are the default SceneLook, so they take its exposure
+// declaration (the space preset); VIXEN_HDR_EXPOSURE_PRESET=<name> picks another preset. Offscreen
+// captures pin the adaptation step to 1/60 s so repeat runs are pixel-identical;
+// VIXEN_HDR_EXPOSURE_DT=<seconds> overrides it (0 = graph frame time). Scenes with their own SceneLook
+// (look-dev, planet) replace the preset when they apply it.
 void ConfigureExposure(LightingConfigNode& lighting, bool offscreenPresentation, Vixen::Log::Logger& logger) {
     using Config = LightingConfigNodeConfig;
-    const Config::ExposurePreset* preset = &Config::EXPOSURE_PRESETS[0];
+    Config::ExposurePreset preset = Vixen::App::ExposureSettings(Vixen::App::SceneLook{}.exposure);
     if (const char* name = std::getenv("VIXEN_HDR_EXPOSURE_PRESET"); name && *name) {
-        const auto found = std::find_if(std::begin(Config::EXPOSURE_PRESETS), std::end(Config::EXPOSURE_PRESETS),
-            [name](const Config::ExposurePreset& candidate) { return std::string_view(candidate.name) == name; });
-        if (found != std::end(Config::EXPOSURE_PRESETS)) {
-            preset = &*found;
+        if (const Config::ExposurePreset* found = Config::FindExposurePreset(name)) {
+            preset = *found;
         } else {
+            std::string known;
+            for (const Config::ExposurePreset& candidate : Config::EXPOSURE_PRESETS)
+                known += (known.empty() ? "" : ", ") + std::string(candidate.name);
             logger.Warning(std::string("[BuildRenderGraph] unknown VIXEN_HDR_EXPOSURE_PRESET '") + name +
-                           "'; using 'default' (known: default, dark, bright)");
+                           "'; using '" + preset.name + "' (known: " + known + ")");
         }
     }
+    Vixen::App::ApplyExposureSettings(lighting, preset);
     // VIXEN_HDR_EXPOSURE_<PARAMETER>=<value> overrides one preset value (the node clamps it).
-    const auto setExposure = [&lighting](const char* parameter, const char* env, float presetValue) {
-        const char* raw = std::getenv(env);
-        lighting.SetParameter(parameter, raw && *raw ? std::strtof(raw, nullptr) : presetValue);
+    const auto overrideExposure = [&lighting](const char* parameter, const char* env) {
+        if (const char* raw = std::getenv(env); raw && *raw) lighting.SetParameter(parameter, std::strtof(raw, nullptr));
     };
-    setExposure(Config::PARAM_EXPOSURE_KEY_VALUE, "VIXEN_HDR_EXPOSURE_KEY_VALUE", preset->keyValue);
-    setExposure(Config::PARAM_EXPOSURE_MIN_EV100, "VIXEN_HDR_EXPOSURE_MIN_EV100", preset->minEV100);
-    setExposure(Config::PARAM_EXPOSURE_MAX_EV100, "VIXEN_HDR_EXPOSURE_MAX_EV100", preset->maxEV100);
-    setExposure(Config::PARAM_EXPOSURE_LOW_PERCENT, "VIXEN_HDR_EXPOSURE_LOW_PERCENT", preset->lowPercent);
-    setExposure(Config::PARAM_EXPOSURE_HIGH_PERCENT, "VIXEN_HDR_EXPOSURE_HIGH_PERCENT", preset->highPercent);
-    setExposure(Config::PARAM_EXPOSURE_SPEED_UP, "VIXEN_HDR_EXPOSURE_SPEED_UP", preset->speedUp);
-    setExposure(Config::PARAM_EXPOSURE_SPEED_DOWN, "VIXEN_HDR_EXPOSURE_SPEED_DOWN", preset->speedDown);
+    overrideExposure(Config::PARAM_EXPOSURE_KEY_VALUE, "VIXEN_HDR_EXPOSURE_KEY_VALUE");
+    overrideExposure(Config::PARAM_EXPOSURE_MIN_EV100, "VIXEN_HDR_EXPOSURE_MIN_EV100");
+    overrideExposure(Config::PARAM_EXPOSURE_MAX_EV100, "VIXEN_HDR_EXPOSURE_MAX_EV100");
+    overrideExposure(Config::PARAM_EXPOSURE_LOW_PERCENT, "VIXEN_HDR_EXPOSURE_LOW_PERCENT");
+    overrideExposure(Config::PARAM_EXPOSURE_HIGH_PERCENT, "VIXEN_HDR_EXPOSURE_HIGH_PERCENT");
+    overrideExposure(Config::PARAM_EXPOSURE_SPEED_UP, "VIXEN_HDR_EXPOSURE_SPEED_UP");
+    overrideExposure(Config::PARAM_EXPOSURE_SPEED_DOWN, "VIXEN_HDR_EXPOSURE_SPEED_DOWN");
     float fixedDeltaSeconds = offscreenPresentation ? 1.0f / 60.0f : 0.0f;
     if (const char* raw = std::getenv("VIXEN_HDR_EXPOSURE_DT"); raw && *raw) {
         fixedDeltaSeconds = std::strtof(raw, nullptr);
     }
     lighting.SetParameter(Config::PARAM_EXPOSURE_FIXED_DELTA_SECONDS, fixedDeltaSeconds);
-    logger.Info("[BuildRenderGraph] HDR exposure preset '" + std::string(preset->name) +
+    logger.Info("[BuildRenderGraph] HDR exposure preset '" + std::string(preset.name) +
                 "', adaptation step " + (fixedDeltaSeconds > 0.0f
                     ? std::to_string(fixedDeltaSeconds) + " s (pinned)" : std::string("frame time")));
 }

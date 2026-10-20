@@ -1,14 +1,18 @@
+#include "Data/Nodes/LightingConfigNodeConfig.h"
+
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 // CPU mirror of ExposureMeter.comp (luminance histogram) and ExposureReduce.comp
 // (percentile-window metering, EV100 clamp, frame-rate independent adaptation).
 // The constants and arithmetic follow ExposureHistogram.glsl line for line.
-// Fixtures contain single-channel radiance; no GPU readback participates.
+// Fixtures contain single-channel radiance; no GPU readback participates. The preset
+// and fixed-mode tests read the engine's own LightingConfigNodeConfig table.
 namespace {
 
 constexpr uint32_t kBins = 128u;
@@ -109,6 +113,19 @@ MeterState Adapt(MeterState state, const Histogram& histogram, const ExposureSet
 }
 
 bool Near(float a, float b, float tolerance) { return std::fabs(a - b) <= tolerance; }
+
+using Config = Vixen::RenderGraph::LightingConfigNodeConfig;
+
+ExposureSettings FromPreset(const Config::ExposurePreset& preset) {
+    return {preset.keyValue, preset.minEV100, preset.maxEV100, preset.lowPercent,
+            preset.highPercent, preset.speedUp, preset.speedDown};
+}
+
+ExposureSettings NamedPreset(const char* name) {
+    const Config::ExposurePreset* preset = Config::FindExposurePreset(name);
+    assert(preset != nullptr);
+    return FromPreset(*preset);
+}
 
 void FirstFrameSnapsAndUniformSceneMetersItsLuminance() {
     // A uniform 0.18 frame meters EV100 = log2(0.18) + 3 to within half a bin and
@@ -235,6 +252,69 @@ void EmptyHistogramHoldsTheAdaptedValue() {
     assert(held.log2Exposure == settled.log2Exposure);
 }
 
+void PresetTableNamesSpaceAndInterior() {
+    // R670.2: "dark" became "interior" (it lifts the most); "space" is distinct and lifts least.
+    assert(Config::FindExposurePreset("dark") == nullptr);
+    assert(Config::FindExposurePreset("nonexistent") == nullptr);
+    const ExposureSettings ordinary = NamedPreset("default");
+    const ExposureSettings interior = NamedPreset("interior");
+    const ExposureSettings bright = NamedPreset("bright");
+    const ExposureSettings space = NamedPreset("space");
+    assert(interior.minEV100 < ordinary.minEV100 && ordinary.minEV100 < bright.minEV100);
+    assert(bright.minEV100 < space.minEV100);
+    assert(std::string_view(Config::EXPOSURE_PRESETS[0].name) == "default");
+}
+
+void SpacePresetLimitsTheLift() {
+    // A near-black frame and a HUD-like frame (bodies on a navy sky, meters about -1.8 EV100).
+    std::vector<float> navy(100 * 100, 0.03f);
+    std::fill(navy.begin(), navy.begin() + 1500, 0.25f);
+    const std::vector<float> nearBlack(64 * 64, 1.0e-5f);
+    const ExposureSettings space = NamedPreset("space");
+    const ExposureSettings ordinary = NamedPreset("default");
+    const ExposureSettings interior = NamedPreset("interior");
+    // Space never brightens beyond log2(key) - (floor - 3) = +0.026 EV: at most 1.02x.
+    const float spaceCap = std::log2(space.keyValue) - (space.minEV100 - 3.0f);
+    assert(spaceCap < 0.03f);
+    const std::vector<float>* darkFrames[] = {&navy, &nearBlack};
+    for (const std::vector<float>* frame : darkFrames) {
+        const MeterState settled = Settle(*frame, space);
+        assert(settled.meteredEV100 < space.minEV100);
+        assert(Near(settled.log2Exposure, spaceCap, 1e-5f));
+    }
+    // The ordinary and interior presets lift the same frames far more (the round-2 HUD look).
+    assert(Settle(navy, ordinary).log2Exposure > spaceCap + 1.5f);
+    assert(Settle(nearBlack, ordinary).log2Exposure > spaceCap + 8.0f);
+    assert(Settle(nearBlack, interior).log2Exposure > Settle(nearBlack, ordinary).log2Exposure + 3.0f);
+    // Space only limits the lift: a frame above its floor meters exactly as the default does.
+    const std::vector<float> lit(64 * 64, 0.5f);
+    assert(Settle(lit, space).log2Exposure == Settle(lit, ordinary).log2Exposure);
+}
+
+void FixedExposureBypassesTheMeter() {
+    // R670.1: a fixed EV100 exposes by key / 2^(EV100 - 3) whatever the frame holds, from the
+    // first frame and with no adaptation lag after a scene change.
+    const float fixedEV100 = -1.05893f;  // the planet scene's declaration: exposure 3
+    const ExposureSettings fixed = FromPreset(Config::FixedExposure(fixedEV100));
+    const float expected = std::log2(fixed.keyValue) - (fixedEV100 - 3.0f);
+    assert(Near(expected, 1.585f, 1e-4f));
+    std::vector<float> sun(100 * 100, 0.05f);
+    std::fill(sun.begin(), sun.begin() + 200, 2048.0f);
+    const std::vector<std::vector<float>> frames = {
+        std::vector<float>(64 * 64, 1.0e-5f), std::vector<float>(64 * 64, 0.18f),
+        std::vector<float>(64 * 64, 4096.0f), sun};
+    for (const auto& frame : frames) {
+        const MeterState first = Settle(frame, fixed);
+        assert(first.log2Exposure == expected);
+        for (const auto& next : frames) {
+            const MeterState after = MirrorReduce(MirrorHistogram(next), fixed, first, 1.0f / 60.0f);
+            assert(after.log2Exposure == expected);
+        }
+    }
+    // The meter still reads the frame (for diagnostics); only its effect is bypassed.
+    assert(Settle(frames[0], fixed).meteredEV100 < Settle(frames[2], fixed).meteredEV100);
+}
+
 }  // namespace
 
 int main() {
@@ -247,5 +327,8 @@ int main() {
     AdaptationIsFrameRateIndependent();
     BrightenAndDarkenUseTheirOwnSpeeds();
     EmptyHistogramHoldsTheAdaptedValue();
+    PresetTableNamesSpaceAndInterior();
+    SpacePresetLimitsTheLift();
+    FixedExposureBypassesTheMeter();
     return 0;
 }
