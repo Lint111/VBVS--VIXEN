@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <cstddef>
 namespace Yeroket::Sdf::Generated {
-inline constexpr std::int32_t SegmentCapacity = 64;
-
+#ifndef YEROKET__SDF__GENERATED_PATHPOINT_CPP
+#define YEROKET__SDF__GENERATED_PATHPOINT_CPP
 struct PathPoint {
     float X;
     float Y;
@@ -15,6 +15,13 @@ static_assert(sizeof(PathPoint) == 12, "PathPoint std430 size");
 static_assert(offsetof(PathPoint, X) == 0, "X@0");
 static_assert(offsetof(PathPoint, Y) == 4, "Y@4");
 static_assert(offsetof(PathPoint, Z) == 8, "Z@8");
+#endif // YEROKET__SDF__GENERATED_PATHPOINT_CPP
+#ifndef YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
+#define YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
+inline constexpr std::uint32_t Line = 0u;
+inline constexpr std::uint32_t QuadraticBezier = 1u;
+inline constexpr std::uint32_t CubicBezier = 2u;
+
 struct PathSegment {
     PathPoint P0;
     PathPoint P1;
@@ -30,6 +37,11 @@ static_assert(offsetof(PathSegment, P2) == 24, "P2@24");
 static_assert(offsetof(PathSegment, P3) == 36, "P3@36");
 static_assert(offsetof(PathSegment, Kind) == 48, "Kind@48");
 static_assert(offsetof(PathSegment, ContourStart) == 52, "ContourStart@52");
+#endif // YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
+#ifndef YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
+#define YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
+inline constexpr std::int32_t SegmentCapacity = 64;
+
 struct GlyphOutlineInstance {
     uint32_t SegmentCount;
     PathSegment Segments[64];
@@ -45,4 +57,5 @@ static_assert(offsetof(GlyphOutlineInstance, BoundsMax) == 3600, "BoundsMax@3600
 static_assert(offsetof(GlyphOutlineInstance, FillRule) == 3612, "FillRule@3612");
 
 inline constexpr char GlyphOutlineInstanceLayoutHash[] = "240e48fe5b3a9a80323271c7083ee932a32439c4a3f64513f210138def963d07";
+#endif // YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
 } // namespace Yeroket::Sdf::Generated

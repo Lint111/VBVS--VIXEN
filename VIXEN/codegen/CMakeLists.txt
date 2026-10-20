@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "38da3fa122d4801b73125dd43bfffae25b20a732")
+set(_vixen_tracked_yeroket_kernel_sha "b1576418a1ca4cf29dd22853ff3cd1aba6372c83")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -319,13 +319,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp" _out_path_instance_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl" _out_path_instance_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256" _out_path_instance_layout_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/UnityMathematicsTypes.cs" _recipe_math_types_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
@@ -421,13 +423,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
         set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
         set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
+        set(_out_path_instance_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp")
+        set(_out_path_instance_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl")
+        set(_out_path_instance_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
         set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
-        set(_recipe_math_types_run "${VIXEN_ROOT}/codegen/UnityMathematicsTypes.cs")
         set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
         set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
@@ -665,6 +669,24 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
+    # The general path instance shares PathPoint/PathSegment with the glyph bucket; the kernel
+    # guards each shared struct per block, so both headers can be included together.
+    set(_path_instance_args
+        "${_yk_dll_run}"
+        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block PathInstance
+        --out-cpp "${_out_path_instance_cpp_run}"
+        --out-glsl "${_out_path_instance_glsl_run}"
+        --out-layout-hash "${_out_path_instance_layout_run}")
+    vixen_add_codegen_check(path_instance_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args} --check
+        COMMENT "[codegen] golden check: PathInstance bucket layout and std430 fingerprint"
+        VERBATIM)
+    add_custom_target(path_instance_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args}
+        COMMENT "[codegen] regenerate PathInstance C++/GLSL faces and layout fingerprint"
+        JOB_POOL msbuild
+        VERBATIM)
+
     # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
     # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
     set(_recipe_simd_args
@@ -676,7 +698,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
-        --recipe-kernels-extra "${_recipe_math_types_run}"
         --out-header "${_out_recipe_simd_run}"
         --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
         --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}"
