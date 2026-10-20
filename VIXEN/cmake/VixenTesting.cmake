@@ -57,8 +57,13 @@ endfunction()
 function(vixen_gtest_discover_tests suite target)
     cmake_parse_arguments(PARSE_ARGV 2 VGT
         "NO_PRETTY_TYPES;NO_PRETTY_VALUES;GPU"
-        "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;FIXTURES_REQUIRED"
+        "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;PROCESSORS;FIXTURES_REQUIRED"
         "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
+
+    # CMake's default discovery timeout is 5 s, which a test binary can miss while the box is loaded.
+    if(NOT DEFINED VGT_DISCOVERY_TIMEOUT)
+        set(VGT_DISCOVERY_TIMEOUT 60)
+    endif()
 
     set(_gtest_arguments)
     foreach(_option NO_PRETTY_TYPES NO_PRETTY_VALUES)
@@ -92,7 +97,12 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     vixen_test_class_environment_modification(_class_modification)
 
-    set(_properties LABELS "${suite}")
+    # The exe: label names the registering executable so a changed target selects its own cases;
+    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$).
+    # GoogleTest re-expands the property list in a second script: escape the label separator.
+    set(_labels "${suite};exe:${target}")
+    string(REPLACE ";" "\\\\;" _labels "${_labels}")
+    set(_properties LABELS "${_labels}")
     set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
     if(_environment)
         string(JOIN ";" _environment_value ${_environment})
@@ -113,6 +123,11 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     if(VGT_TIMEOUT)
         list(APPEND _properties TIMEOUT "${VGT_TIMEOUT}")
+    endif()
+    # CPUs the suite needs to run truly concurrent work. tools/run-tests-split.sh reads it from the
+    # CTest metadata and passes it to the queue as --cpu-tokens.
+    if(VGT_PROCESSORS)
+        list(APPEND _properties PROCESSORS "${VGT_PROCESSORS}")
     endif()
     if(VGT_GPU)
         list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")

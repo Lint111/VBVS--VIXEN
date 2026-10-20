@@ -662,6 +662,8 @@ public:
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
     GLFWwindow* GetWindowHandle() const;
+    // Window (and therefore swapchain) aspect, width / height, for hosts that frame content before the graph compiles.
+    float GetWindowAspect() const { return height > 0 ? static_cast<float>(width) / static_cast<float>(height) : 1.0f; }
     // Expose the composite HUD node so the host can push live sim data (SetHudData) each frame. LIVE
     // lookup (like GetWindowHandle) — the node persists across recompiles; returns nullptr if unset
     // (e.g. the VIXEN_UI_DEMO path, which has no composite UI node).

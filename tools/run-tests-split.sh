@@ -139,6 +139,10 @@ select_args=("${exclude_args[@]}")
 
 cpu_selected="$(ctest_count -L '^cpu$' "${select_args[@]}")" || exit 2
 gpu_selected="$(ctest_count -L '^gpu$' "${select_args[@]}")" || exit 2
+if (( cpu_selected + gpu_selected == 0 )); then
+  echo "[run-tests-split] selection matches no tests (label='${suite_label:-<all>}' regex='${regex:-<all>}'): refusing to report a pass" >&2
+  exit 2
+fi
 
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
@@ -146,22 +150,49 @@ gpu_env=()
 witness_env=()
 (( witness )) && witness_env=(VIXEN_GPU_WITNESS_DIR="$out_dir/witness")
 
+# CPU pair-tokens (two CPUs each) the largest PROCESSORS declaration among the part's selected tests needs;
+# 0 when none declares one. The queue reserves them via --cpu-tokens, so a suite that needs concurrent
+# CPUs is not admitted with fewer.
+declared_cpu_tokens() {
+  local part="$1"
+  ctest --test-dir "$build_dir" --show-only=json-v1 -L "^${part}\$" "${select_args[@]}" | python3 -c '
+import json, sys
+tests = json.load(sys.stdin).get("tests", [])
+need = 0
+for test in tests:
+    for prop in test.get("properties", []):
+        if prop.get("name") == "PROCESSORS":
+            need = max(need, int(prop.get("value", 0)))
+print((need + 1) // 2)
+'
+}
+
 queue() {
-  local resource="$1" label="$2"; shift 2
+  local resource="$1" label="$2" cpu_tokens="$3"; shift 3
   if (( use_queue )); then
-    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
+    local token_args=()
+    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
+      ${token_args[@]+"${token_args[@]}"} -- "$@"
   else
     "$@"
   fi
 }
 
 run_part() {
-  local part="$1" resource="$2" jobs="$3"; shift 3
-  local started=$SECONDS
-  queue "$resource" "split-$part" \
+  local part="$1" resource="$2" jobs="$3" selected="$4"; shift 4
+  local started=$SECONDS cpu_tokens
+  if (( selected == 0 )); then
+    : >"$out_dir/$part.log"
+    echo "0 0" >"$out_dir/$part.status"
+    return 0
+  fi
+  cpu_tokens="$(declared_cpu_tokens "$part")" || cpu_tokens=0
+  (( cpu_tokens > 0 )) && echo "[run-tests-split] $part: PROCESSORS declaration needs cpu-tokens=$cpu_tokens"
+  queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
     ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
-          --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
+          --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?
   echo "$status $((SECONDS - started))" >"$out_dir/$part.status"
@@ -177,9 +208,9 @@ for label in "${suite_labels[@]}"; do
 done
 
 wall_start=$SECONDS
-run_part cpu test "$cpu_jobs" &
+run_part cpu test "$cpu_jobs" "$cpu_selected" &
 cpu_pid=$!
-run_part gpu gpu "$gpu_jobs" ${gpu_env[@]+"${gpu_env[@]}"} &
+run_part gpu gpu "$gpu_jobs" "$gpu_selected" ${gpu_env[@]+"${gpu_env[@]}"} &
 gpu_pid=$!
 wait "$cpu_pid"; cpu_rc=$?
 wait "$gpu_pid"; gpu_rc=$?

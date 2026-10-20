@@ -1,0 +1,25 @@
+if(NOT DEFINED VIXEN_LAUNCHER_TEST_ROOT)
+    message(FATAL_ERROR "VIXEN_LAUNCHER_TEST_ROOT must be inside the caller's build tree")
+endif()
+get_filename_component(vixen_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+include("${vixen_root}/cmake/VixenChecks.cmake")
+set(apps "${VIXEN_LAUNCHER_TEST_ROOT}/WindowsApps")
+file(REMOVE_RECURSE "${VIXEN_LAUNCHER_TEST_ROOT}")
+file(MAKE_DIRECTORY "${apps}")
+
+function(expect_launcher input expected)
+    vixen_ninja_visible_launcher("${input}" "${apps}" actual)
+    if(NOT actual STREQUAL "${expected}")
+        message(FATAL_ERROR "launcher '${input}' resolved to '${actual}', expected '${expected}'")
+    endif()
+endfunction()
+
+# No alias installed: the System32 path is the only candidate.
+expect_launcher("C:/Windows/System32/wsl.exe" "C:/Windows/System32/wsl.exe")
+file(WRITE "${apps}/wsl.exe" "")
+expect_launcher("C:/Windows/System32/wsl.exe" "${apps}/wsl.exe")
+expect_launcher("c:/windows/system32/wsl.exe" "${apps}/wsl.exe")
+# A launcher outside System32 (an explicit -DWSL_EXE=, another install) is kept.
+expect_launcher("D:/tools/wsl.exe" "D:/tools/wsl.exe")
+expect_launcher("${apps}/wsl.exe" "${apps}/wsl.exe")
+message(STATUS "Only a System32 launcher is replaced by the WindowsApps alias")

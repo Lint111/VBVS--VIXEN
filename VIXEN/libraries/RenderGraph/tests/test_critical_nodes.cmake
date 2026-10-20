@@ -307,6 +307,21 @@ add_test(NAME test_body_instance_raymarch_rtquery_compile
 )
 vixen_set_suite_properties(RenderGraph TESTS test_body_instance_raymarch_rtquery_compile)
 
+# VIXEN_SHELL_NORMALS gates StoredSdf.glsl/MipFallback.glsl code that no default-off
+# compile reaches, so a syntax error there only surfaced at runtime with the env flag on.
+set(_brm_spv_shell_normals "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch_shell_normals.spv")
+add_test(NAME test_body_instance_raymarch_shell_normals_compile
+    COMMAND "${VIXEN_GLSLC}"
+        -fshader-stage=compute
+        -I "${_brm_shader_dir}"
+        -I "${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+        --target-env=vulkan1.3
+        -DVIXEN_SHELL_NORMALS=1
+        "${_brm_src}"
+        -o "${_brm_spv_shell_normals}"
+)
+vixen_set_suite_properties(RenderGraph TESTS test_body_instance_raymarch_shell_normals_compile)
+
 # ===========================================================================
 # Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
 # tests sharing body_instance_raymarch_spv, SVO + (conditional) stb, single

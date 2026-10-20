@@ -94,7 +94,7 @@ def load_manifest(path):
 def run_ctest(build_dir, selection, jobs, witness_dir, junit, timeout, exclude=None):
     env = dict(os.environ)
     env["VIXEN_GPU_WITNESS_DIR"] = witness_dir
-    cmd = ["ctest", "-j", str(jobs), "--output-junit", junit, "--timeout", str(timeout)]
+    cmd = ["ctest", "-j", str(jobs), "--output-junit", junit, "--timeout", str(timeout), "--no-tests=error"]
     if selection:
         cmd += ["-L", selection]
     if exclude:

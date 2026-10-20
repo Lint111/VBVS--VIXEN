@@ -1,0 +1,47 @@
+if(NOT DEFINED VIXEN_PIN_TEST_ROOT)
+    message(FATAL_ERROR "VIXEN_PIN_TEST_ROOT must be inside the caller's build tree")
+endif()
+get_filename_component(vixen_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(source "${VIXEN_PIN_TEST_ROOT}/src")
+set(binary "${VIXEN_PIN_TEST_ROOT}/bin")
+file(REMOVE_RECURSE "${VIXEN_PIN_TEST_ROOT}")
+file(MAKE_DIRECTORY "${source}")
+file(WRITE "${source}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.15)
+project(pin_override NONE)
+include([==[${vixen_root}/cmake/VixenKernelSnapshot.cmake]==])
+vixen_select_kernel_sha(\"\${TRACKED_PIN}\" selected)
+message(STATUS \"selected=\${selected}\")
+")
+set(pin_a "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+set(pin_b "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+set(override "cccccccccccccccccccccccccccccccccccccccc")
+
+function(configure_tree expected_selected expected_note)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${binary}" ${ARGN}
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "configure failed: ${output}${error}")
+    endif()
+    if(NOT output MATCHES "selected=${expected_selected}\n")
+        message(FATAL_ERROR "expected selected=${expected_selected}: ${output}")
+    endif()
+    if(expected_note AND NOT output MATCHES "${expected_note}")
+        message(FATAL_ERROR "expected '${expected_note}' in: ${output}")
+    endif()
+    if(NOT expected_note AND output MATCHES "clearing stale")
+        message(FATAL_ERROR "unexpected stale clearing: ${output}")
+    endif()
+endfunction()
+
+configure_tree("${pin_a}" "using tracked Yeroket kernel pin" -DTRACKED_PIN=${pin_a})
+configure_tree("${override}" "using per-build-tree kernel pin override"
+    -DTRACKED_PIN=${pin_a} -DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=${override})
+# Same tracked pin: the recorded override stays in force.
+configure_tree("${override}" "" -DTRACKED_PIN=${pin_a})
+# The tracked pin moved: the carried-over override is dropped.
+configure_tree("${pin_b}" "clearing stale kernel pin override ${override}" -DTRACKED_PIN=${pin_b})
+# Cleared for good, and an override set afresh against the new pin is honoured.
+configure_tree("${pin_b}" "using tracked Yeroket kernel pin" -DTRACKED_PIN=${pin_b})
+configure_tree("${override}" "using per-build-tree kernel pin override"
+    -DTRACKED_PIN=${pin_b} -DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=${override})
+message(STATUS "A stale kernel pin override is cleared when the tracked pin moves")

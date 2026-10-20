@@ -619,8 +619,11 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // first complete generation is produced and re-emitted by ExecuteImpl.
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,         shellLookupBuffer_);
-    // W-RTQUERY Slice A: compile-time placeholder — VK_NULL_HANDLE until
-    // EnsureRtQueryTlasBuilt runs (ExecuteImpl, once instances_ is known); re-emitted there.
+    // W-RTQUERY Slice A: consumers write this handle into their descriptor sets as
+    // Compile returns, like the shell handles above, so build it here from the staged
+    // instances. A null handle is an invalid descriptor (no nullDescriptor feature),
+    // so a scene with nothing to instance gets an empty TLAS. ExecuteImpl rebuilds on change.
+    EnsureRtQueryTlasBuilt(devicePtr);
     ctx.Out(BodyOctreeSceneNodeConfig::RTQUERY_TLAS,                rtQueryTlas_);
     // Raster-proxy B2 binder publishes the exact live count beside its buffer.
     ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,            proxyAabbBuffer_);
@@ -2107,10 +2110,6 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         return;
     }
 
-    if (instances_.empty() || concatenated_.count == 0u) {
-        return;  // nothing to build yet (pre-SetInstances / pre-EnsureOctreesBuilt)
-    }
-
     NODE_LOG_INFO("[BodyOctreeSceneNode] RayQueryLighting: (re)building proxy-AABB "
                    "TLAS (" + std::to_string(concatenated_.count) + " octrees, " +
                    std::to_string(instances_.size()) + " instances)");
@@ -2318,21 +2317,19 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
 
     }
 
-    if (vkInstances.empty()) {
-        vkDestroyCommandPool(vkDevice, buildPool, nullptr);
-        NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting: no proxy-AABB instances "
-                          "with occupied bricks -- TLAS not built");
-        return;
-    }
-
+    // No Stored-SDF instance (an empty or all-procedural scene) still gets a TLAS:
+    // binding 40 is statically used by the ray-query shaders, and a null handle is an
+    // invalid descriptor without nullDescriptor. Zero primitives means no ray-query hits.
     CreateDeviceAddressBuffer(device,
-        static_cast<VkDeviceSize>(vkInstances.size() * sizeof(VkAccelerationStructureInstanceKHR)),
+        static_cast<VkDeviceSize>(std::max<size_t>(vkInstances.size(), 1u) *
+                                  sizeof(VkAccelerationStructureInstanceKHR)),
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         rtQueryInstanceAllocation_, "RTAccelStructures TLAS instances");
     void* mappedInst = device->MapBuffer(rtQueryInstanceAllocation_);
     if (!mappedInst) throw std::runtime_error("[BodyOctreeSceneNode] failed to map tracked TLAS instances");
-    std::memcpy(mappedInst, vkInstances.data(), vkInstances.size() * sizeof(VkAccelerationStructureInstanceKHR));
+    if (!vkInstances.empty())
+        std::memcpy(mappedInst, vkInstances.data(), vkInstances.size() * sizeof(VkAccelerationStructureInstanceKHR));
     device->UnmapBuffer(rtQueryInstanceAllocation_);
 
     VkAccelerationStructureGeometryInstancesDataKHR instancesData{};

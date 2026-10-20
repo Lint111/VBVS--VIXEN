@@ -1,14 +1,11 @@
 /**
  * @file test_view_editor_layers_golden.cpp
- * @brief Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md) golden-mirror gate. Mirrors
- * test_view_hud_golden.cpp exactly, for the editor layer view instead of the HUD: proves the
- * generated Generated/EditorLayers.g.h RmlUi data-model registration block (a) compiles + binds
- * against a real Rml::DataModelConstructor, and (b) matches, as a normalized ordered call
- * sequence, the CANONICAL EditorLayers [View] schema field order (codegen/view-schemas/
- * EditorLayers.cs: name, op, isChecked, elementId). The human truth is the schema itself plus its
- * native consumer, EditorLayersView::Register (application/editor/include/EditorLayersView.h).
- * Do NOT parse either at runtime — the expected sequence below is a maintained literal; the
- * pinning comment tells a future editor to update both sides together.
+ * @brief Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md) gate. Mirrors test_view_hud_golden.cpp
+ * for the editor layer view: proves the generated Generated/EditorLayers.g.h RmlUi data-model
+ * registration block compiles and binds against a real Rml::DataModelConstructor with no RmlUi
+ * error. That the header matches the EditorLayers [View] schema (codegen/view-schemas/
+ * EditorLayers.cs) is NOT asserted here: the view_editor_layers_check codegen target regenerates
+ * the header from the schema and fails the build on any difference.
  */
 #include <gtest/gtest.h>
 #include <RmlUi/Core.h>
@@ -17,14 +14,11 @@
 #include <RmlUi/Core/SystemInterface.h>
 
 #include <bit>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
-#include <regex>
 
 #include "Generated/EditorLayers.g.h"   // the artifact under test
-#include "Ui/VixenRmlSystemInterface.h"
+
 #include "Text/RmlFontEngine.h"
 
 // Inc-Ovr Override proof: this TU only sees the forward-declared
@@ -53,78 +47,23 @@ public:
     void ReleaseTexture(Rml::TextureHandle) override {}
 };
 
-// Canonical EditorLayers schema field order (codegen/view-schemas/EditorLayers.cs), mirrored by
-// the native consumer's EditorLayersView::Register (application/editor/include/EditorLayersView.h).
-// activeLayerCount (Inc-Ovr Override proof) has NO RegisterMember/RegisterArray entry -- it's a
-// top-level scalar bound via c.BindFunc(name, [b](Variant&){ out = Bind<V>Model_<Field>Override(b.field); }),
-// a getter-only computed binding (RmlUi's c.Bind(name, T*) only accepts addressable storage, not a
-// computed-by-value result -- BindFunc is the correct idiom for a value derived at bind time).
-const std::vector<std::string> kExpected = {
-    "RegisterStruct<EditorLayerRow>",
-    "RegisterMember(name,&EditorLayerRow::name)",
-    "RegisterMember(op,&EditorLayerRow::op)",
-    "RegisterMember(isChecked,&EditorLayerRow::isChecked)",
-    "RegisterMember(elementId,&EditorLayerRow::elementId)",
-    "RegisterMember(moveUpId,&EditorLayerRow::moveUpId)",
-    "RegisterMember(moveDownId,&EditorLayerRow::moveDownId)",
-    "RegisterMember(deleteId,&EditorLayerRow::deleteId)",
-    "RegisterMember(programUpId,&EditorLayerRow::programUpId)",
-    "RegisterMember(programDownId,&EditorLayerRow::programDownId)",
-    "RegisterMember(programFieldValue,&EditorLayerRow::programFieldValue)",
-    "RegisterStruct<EditorParameterRow>",
-    "RegisterMember(name,&EditorParameterRow::name)",
-    "RegisterMember(unit,&EditorParameterRow::unit)",
-    "RegisterMember(upId,&EditorParameterRow::upId)",
-    "RegisterMember(downId,&EditorParameterRow::downId)",
-    "RegisterMember(value,&EditorParameterRow::value)",
-    "RegisterMember(minimum,&EditorParameterRow::minimum)",
-    "RegisterMember(maximum,&EditorParameterRow::maximum)",
-    "RegisterArray<std::vector<EditorLayerRow>",   // regex [^>]+ stops at the first '>', so the
-                                                     // captured token intentionally omits '>>'
-    "RegisterArray<std::vector<EditorParameterRow>",
-    "Bind(layers)",
-    "Bind(parameters)",
-    "BindFunc(activeLayerCount)",
-};
-
-std::string ReadGeneratedHeader() {
-    std::ifstream f(VIEW_EDITOR_LAYERS_G_H);
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
-
-std::vector<std::string> ExtractSequence(const std::string& src) {
-    std::vector<std::string> seq;
-    // Custom delimiter "re(...)re" — same rationale as test_view_hud_golden.cpp's identical regex.
-    // Extended with a BindFunc alternative (Inc-Ovr Override proof: computed getter-only bindings
-    // use c.BindFunc, not c.Bind, since there is no addressable storage for the computed value).
-    static const std::regex re(
-        R"re(RegisterStruct<(\w+)>|RegisterMember\("(\w+)",\s*&(\w+::\w+)\)|RegisterArray<([^>]+)>|c\.Bind\("(\w+)",|c\.BindFunc\("(\w+)",)re");
-    for (std::sregex_iterator it(src.begin(), src.end(), re), end; it != end; ++it) {
-        const std::smatch& m = *it;
-        if (m[1].matched)      seq.push_back("RegisterStruct<" + m[1].str() + ">");
-        else if (m[2].matched) seq.push_back("RegisterMember(" + m[2].str() + ",&" + m[3].str() + ")");
-        else if (m[4].matched) seq.push_back("RegisterArray<" + m[4].str() + ">");
-        else if (m[5].matched) seq.push_back("Bind(" + m[5].str() + ")");
-        else if (m[6].matched) seq.push_back("BindFunc(" + m[6].str() + ")");
+// Records RmlUi errors/warnings (RmlUi logs a failed Bind or an unregistered type through the
+// SystemInterface and keeps going, so the log is where a broken registration shows up).
+class RecordingSystemInterface final : public Rml::SystemInterface {
+public:
+    double GetElapsedTime() override { return 0.0; }
+    bool LogMessage(Rml::Log::Type type, const Rml::String& message) override {
+        if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_WARNING || type == Rml::Log::LT_ASSERT)
+            problems.push_back(message);
+        return Rml::SystemInterface::LogMessage(type, message);
     }
-    return seq;
-}
+    std::vector<std::string> problems;
+};
 
 }  // namespace
 
-TEST(ViewEditorLayersGolden, GeneratedSequenceMatchesCanonicalSchema) {
-    const std::string src = ReadGeneratedHeader();
-    ASSERT_FALSE(src.empty()) << "could not read " << VIEW_EDITOR_LAYERS_G_H;
-    const std::vector<std::string> got = ExtractSequence(src);
-    EXPECT_EQ(got, kExpected)
-        << "generated EditorLayers.g.h registration sequence diverged from the canonical "
-           "EditorLayers [View] schema (codegen/view-schemas/EditorLayers.cs) / "
-           "EditorLayersView::Register truth — regenerate the header or re-transcribe kExpected.";
-}
-
 TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
-    Vixen::Ui::VixenRmlSystemInterface sysIface;
+    RecordingSystemInterface sysIface;
     NullRenderInterface renderIface;
     Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sysIface);
@@ -143,6 +82,9 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     ASSERT_TRUE(static_cast<bool>(c));
     Vixen::Views::BindEditorLayersModel(c, bind);
     EXPECT_TRUE(static_cast<bool>(c.GetModelHandle()));
+    EXPECT_TRUE(sysIface.problems.empty())
+        << "RmlUi reported a problem while binding the generated EditorLayers model: "
+        << (sysIface.problems.empty() ? "" : sysIface.problems.front());
 
     Rml::RemoveContext("view-editor-layers-golden");
     Rml::Shutdown();

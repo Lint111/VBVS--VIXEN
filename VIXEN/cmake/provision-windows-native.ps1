@@ -351,6 +351,43 @@ function Install-VisualStudio($Inventory) {
     return $true
 }
 
+# Downloads to a unique partial name beside $Path and moves it into place only after the SHA-256
+# matches, so an interrupted run never leaves a partial file at the final name. An exclusive lock
+# file serialises concurrent runs: a second run waits here instead of hashing or deleting a
+# download that is still being written.
+function Save-VerifiedDownload([string]$Url, [string]$Path, [string]$ExpectedSha) {
+    $lockPath = "$Path.lock"
+    $deadline = (Get-Date).AddMinutes(60)
+    $lock = $null
+    while (-not $lock) {
+        try {
+            $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
+        } catch [System.IO.IOException] {
+            if ((Get-Date) -gt $deadline) { throw "Timed out waiting for the download lock $lockPath" }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $partial = "$Path.$([guid]::NewGuid().ToString('N')).partial"
+    try {
+        if (Test-Path $Path) {
+            if ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -eq $ExpectedSha.ToLowerInvariant()) { return }
+            Remove-Item -LiteralPath $Path -Force
+        }
+        Invoke-WebRequest -Uri $Url -OutFile $partial
+        if (-not (Test-Path $partial) -or (Get-Item -LiteralPath $partial).Length -eq 0) {
+            throw "Download produced no data: $Url"
+        }
+        $actualHash = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $ExpectedSha.ToLowerInvariant()) {
+            throw "Download hash mismatch for $Url. Expected $ExpectedSha, got $actualHash"
+        }
+        Move-Item -LiteralPath $partial -Destination $Path -Force
+    } finally {
+        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+        $lock.Dispose()
+    }
+}
+
 function Install-Vulkan($Inventory) {
     $vulkanRow = $Inventory | Where-Object Tool -eq 'Vulkan SDK'
     if ($vulkanRow.Status -eq 'present') { Write-Step "Vulkan SDK $($vulkanRow.Actual) is compatible with expected $VulkanVersion; skipping."; return $true }
@@ -373,21 +410,8 @@ function Install-Vulkan($Inventory) {
     $installerDir = Join-Path $DownloadRoot "LunarG.VulkanSDK\$VulkanVersion"
     New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
     $installer = Join-Path $installerDir 'vulkan_sdk.exe'
-    if (Test-Path $installer) {
-        $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -ne $metadata.sha.ToLowerInvariant()) {
-            Remove-Item -LiteralPath $installer -Force
-        }
-    }
-    if (-not (Test-Path $installer)) {
-        Write-Step "Downloading LunarG Vulkan SDK $VulkanVersion to the project cache."
-        Invoke-WebRequest -Uri $installerUrl -OutFile $installer
-        $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -ne $metadata.sha.ToLowerInvariant()) {
-            Remove-Item -LiteralPath $installer -Force
-            throw "LunarG Vulkan SDK download hash mismatch. Expected $($metadata.sha), got $actualHash"
-        }
-    }
+    Write-Step "Ensuring LunarG Vulkan SDK $VulkanVersion is in the project cache."
+    Save-VerifiedDownload -Url $installerUrl -Path $installer -ExpectedSha $metadata.sha
     if (-not (Require-Administrator "Vulkan SDK $VulkanVersion")) { return $false }
     $installer = Get-LocalInstaller $installer
     $sdkRoot = "${env:SystemDrive}\VulkanSDK\$VulkanVersion"

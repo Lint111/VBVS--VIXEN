@@ -162,6 +162,15 @@ constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
 constexpr uint32_t kSdfFilterNonTextRecipeId = 0x5344464eu; // SDFN
 constexpr uint32_t kExposureRoomRecipeId = 0x524f4f4du; // ROOM
 constexpr uint32_t kExposureRoomPadRecipeId = 0x524f4f50u; // ROOP
+constexpr float kCaptureFovDegrees = 45.0f;
+// World scale of an analytic recipe instance; the stored twin is derived from it, never hand-tuned.
+constexpr float kAnalyticInstanceScale = 0.30f;
+constexpr float kFrameMargin = 1.25f;            // framing slack around the content bounds
+constexpr float kCompareCenterX = 5.25f;         // analytic at -x, stored at +x
+constexpr float kSceneCenterZ = 5.0f;
+constexpr float kPlaqueHalfWidth = 14.0f;        // recipe units
+constexpr float kPlaqueHalfHeight = 10.0f;
+constexpr float kPlaqueHalfDepth = 1.8f;
 
 using CaptureClock = std::chrono::steady_clock;
 
@@ -422,12 +431,41 @@ struct GlyphSdfSceneBundle {
     Vixen::SVO::ConcatenatedOctrees pool;
     std::vector<Vixen::SVO::BodyInstanceGpu> instances;
     std::vector<std::pair<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry>> proceduralRecipes;
+    glm::vec3 frameMin{std::numeric_limits<float>::max()};
+    glm::vec3 frameMax{std::numeric_limits<float>::lowest()};
 };
+
+void IncludeInFrame(GlyphSdfSceneBundle& scene, const glm::vec3& worldCenter,
+                    const glm::vec3& worldHalfExtent) {
+    scene.frameMin = glm::min(scene.frameMin, worldCenter - worldHalfExtent);
+    scene.frameMax = glm::max(scene.frameMax, worldCenter + worldHalfExtent);
+}
+
+// A stored octree spans the normalized [0,10]^3 body frame over its whole bake grid, so the scale
+// that matches an analytic instance and the origin that puts the bake centre on worldCenter both
+// follow from the grid; call sites never compensate by hand.
+glm::mat4 StoredInstanceModel(float analyticScale, int bakeResolution, float recipeUnitsPerVoxel,
+                              float bakeCenterCoordinate, const glm::vec3& worldCenter) {
+    const float storedScale = analyticScale * static_cast<float>(bakeResolution) *
+        recipeUnitsPerVoxel / 10.0f;
+    const glm::vec3 storedOrigin = worldCenter - glm::vec3(
+        10.0f * bakeCenterCoordinate / static_cast<float>(bakeResolution) * storedScale);
+    return glm::translate(glm::mat4(1.0f), storedOrigin) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(storedScale));
+}
+
+// Distance from which the frame's xy extent fits the vertical FOV and the window aspect.
+float FitOrbitDistance(const GlyphSdfSceneBundle& scene, float aspect) {
+    const float tanHalfFov = std::tan(glm::radians(kCaptureFovDegrees) * 0.5f);
+    const glm::vec3 halfExtent = (scene.frameMax - scene.frameMin) * 0.5f;
+    return kFrameMargin * std::max(halfExtent.y / tanHalfFov, halfExtent.x / (tanHalfFov * aspect));
+}
 
 struct GlyphSdfRecipe {
     std::string label;
     std::vector<Vixen::SVO::Recipe::SdfInstruction> instructions;
     glm::vec3 bodyCenter{0.0f};
+    glm::vec3 halfExtent{0.0f}; // recipe units, the plaques' union
     glm::vec3 color{1.0f};
     bool carved = false;
 };
@@ -677,10 +715,13 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 result.instructions.push_back(panelTransform);
             }
             SdfInstruction plaque = instruction(SdfOpCode::BoxRounded);
-            plaque.data[0] = 14.0f;
-            plaque.data[1] = 10.0f;
-            plaque.data[2] = 1.8f;
+            plaque.data[0] = kPlaqueHalfWidth;
+            plaque.data[1] = kPlaqueHalfHeight;
+            plaque.data[2] = kPlaqueHalfDepth;
             plaque.data[3] = 0.9f;
+            result.halfExtent = glm::max(result.halfExtent,
+                glm::vec3(std::abs(placement.offsetX) + kPlaqueHalfWidth, kPlaqueHalfHeight,
+                          kPlaqueHalfDepth));
             result.instructions.push_back(plaque);
             if (placements.size() > 1) {
                 result.instructions.push_back(instruction(SdfOpCode::RestorePos));
@@ -780,9 +821,8 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     auto makeAnalyticInstance = [&](const glm::vec3& center, uint32_t recipeId,
                                     const glm::vec3& color) {
         Vixen::SVO::BodyInstanceGpu instance{};
-        constexpr float instanceScale = 0.30f;
         const glm::mat4 model = glm::translate(glm::mat4(1.0f), center) *
-            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+            glm::scale(glm::mat4(1.0f), glm::vec3(kAnalyticInstanceScale));
         Vixen::SVO::SetInstanceTransform(instance, model);
         instance.material.color[0] = color.r;
         instance.material.color[1] = color.g;
@@ -794,8 +834,9 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
 
     for (const auto& [recipeId, recipe] : recipes) {
         const glm::vec3 center = compareAnalyticAndVoxel
-            ? glm::vec3(-5.25f, 0.0f, 5.0f) : recipe.bodyCenter;
+            ? glm::vec3(-kCompareCenterX, 0.0f, kSceneCenterZ) : recipe.bodyCenter;
         scene.instances.push_back(makeAnalyticInstance(center, recipeId, recipe.color));
+        IncludeInFrame(scene, center, recipe.halfExtent * kAnalyticInstanceScale);
     }
     if (!compareAnalyticAndVoxel) return true;
 
@@ -887,17 +928,11 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     const std::vector<const Vixen::SVO::SdfBodyOctree*> bodyPointers{&bakedBody};
     scene.pool = Vixen::SVO::ConcatenateSdf(bodyPointers);
     Vixen::SVO::BodyInstanceGpu storedInstance{};
-    // Stored octrees render in the existing normalized [0,1]^3 -> [0,10]^3
-    // body frame. Undo that normalization here so the baked glyph has the same
-    // world-space scale as the analytic recipe instance above.
-    const float instanceScale = 0.30f * static_cast<float>(bakeResolution) *
-        recipeUnitsPerVoxel / 10.0f;
-    const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
-    const glm::vec3 storedOrigin = storedCenter - glm::vec3(
-        10.0f * bakeCenterCoordinate / static_cast<float>(bakeResolution) * instanceScale);
-    const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
-    Vixen::SVO::SetInstanceTransform(storedInstance, storedModel);
+    const glm::vec3 storedCenter{kCompareCenterX, 0.0f, kSceneCenterZ};
+    Vixen::SVO::SetInstanceTransform(storedInstance, StoredInstanceModel(
+        kAnalyticInstanceScale, bakeResolution, recipeUnitsPerVoxel, bakeCenterCoordinate,
+        storedCenter));
+    IncludeInFrame(scene, storedCenter, recipe.halfExtent * kAnalyticInstanceScale);
     storedInstance.material.color[0] = recipe.color.r;
     storedInstance.material.color[1] = recipe.color.g;
     storedInstance.material.color[2] = recipe.color.b;
@@ -931,7 +966,6 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
         bakeBandDistance += 8.0f * recipeUnitsPerVoxel;
     }
     constexpr float sphereRadius = 16.0f;
-    constexpr float instanceScale = 0.30f;
     const int bakeRegionSide = CenteredBakeRegionSide(
         bakeResolution, sphereRadius, bakeBandDistance, recipeUnitsPerVoxel);
     const float bakeCenterCoordinate = static_cast<float>(bakeRegionSide) * 0.5f;
@@ -967,7 +1001,7 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     auto makeInstance = [&](const glm::vec3& center) {
         Vixen::SVO::BodyInstanceGpu instance{};
         const glm::mat4 model = glm::translate(glm::mat4(1.0f), center) *
-            glm::scale(glm::mat4(1.0f), glm::vec3(instanceScale));
+            glm::scale(glm::mat4(1.0f), glm::vec3(kAnalyticInstanceScale));
         Vixen::SVO::SetInstanceTransform(instance, model);
         instance.material.color[0] = hullColor.r;
         instance.material.color[1] = hullColor.g;
@@ -975,20 +1009,19 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
         return instance;
     };
 
-    auto analytic = makeInstance(glm::vec3(-5.25f, 0.0f, 5.0f));
+    auto analytic = makeInstance(glm::vec3(-kCompareCenterX, 0.0f, kSceneCenterZ));
     analytic.material.providerKind = 1U;
     analytic.material.recipeId = kSdfFilterNonTextRecipeId;
     scene.instances.push_back(analytic);
+    IncludeInFrame(scene, glm::vec3(-kCompareCenterX, 0.0f, kSceneCenterZ),
+                   glm::vec3(sphereRadius * kAnalyticInstanceScale));
 
     Vixen::SVO::BodyInstanceGpu stored{};
-    const float storedScale = instanceScale * static_cast<float>(bakeResolution) *
-        recipeUnitsPerVoxel / 10.0f;
-    const glm::vec3 storedCenter{5.25f, 0.0f, 5.0f};
-    const glm::vec3 storedOrigin = storedCenter - glm::vec3(
-        10.0f * bakeCenterCoordinate / static_cast<float>(bakeResolution) * storedScale);
-    const glm::mat4 storedModel = glm::translate(glm::mat4(1.0f), storedOrigin) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(storedScale));
-    Vixen::SVO::SetInstanceTransform(stored, storedModel);
+    const glm::vec3 storedCenter{kCompareCenterX, 0.0f, kSceneCenterZ};
+    Vixen::SVO::SetInstanceTransform(stored, StoredInstanceModel(
+        kAnalyticInstanceScale, bakeResolution, recipeUnitsPerVoxel, bakeCenterCoordinate,
+        storedCenter));
+    IncludeInFrame(scene, storedCenter, glm::vec3(sphereRadius * kAnalyticInstanceScale));
     stored.material.color[0] = hullColor.r;
     stored.material.color[1] = hullColor.g;
     stored.material.color[2] = hullColor.b;
@@ -1061,9 +1094,6 @@ public:
         const bool glyphSdfScene = std::getenv("VIXEN_GLYPHSDF_SCENE") != nullptr;
         const bool glyphSdfCompare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr;
         const bool sdfFilterNonText = std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
-        const char* glyphSdfVariant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
-        const bool glyphSdfRtlProofPair = glyphSdfVariant &&
-            std::string_view(glyphSdfVariant) == "rtl-proof-pair";
         GlyphSdfSceneBundle glyphScene;
         if (glyphSdfScene || sdfFilterNonText) {
             const bool sceneBuilt = glyphSdfScene
@@ -1116,7 +1146,7 @@ public:
         // requested, keep its six FORMAT_STORED_SDF instances and frame the
         // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
-        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, 45.0f);
+        camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, kCaptureFovDegrees);
         if (exposureRoom) {
             // Posed per frame in Render(); no orbit parameter is set, so the camera stays fixed.
         } else if (storedSdfScene) {
@@ -1126,12 +1156,15 @@ public:
             camera_->SetPositionForTest(glm::vec3(64.0f, 64.0f, 88.0f));
             camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
         } else {
-            const float orbitCenterX = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
-            const float orbitCenterY = (glyphSdfScene || sdfFilterNonText) ? 0.0f : 5.0f;
-            const float orbitCenterZ = 5.0f;
-            const float orbitDistance = (glyphSdfScene || sdfFilterNonText)
-                ? ((glyphSdfCompare || sdfFilterNonText) ? 16.0f
-                    : (glyphSdfRtlProofPair ? 13.5f : 9.5f))
+            const bool framedScene = glyphSdfScene || sdfFilterNonText;
+            const glm::vec3 orbitCenter = framedScene
+                ? (glyphScene.frameMin + glyphScene.frameMax) * 0.5f
+                : glm::vec3(5.0f);
+            const float orbitCenterX = orbitCenter.x;
+            const float orbitCenterY = orbitCenter.y;
+            const float orbitCenterZ = orbitCenter.z;
+            const float orbitDistance = framedScene
+                ? FitOrbitDistance(glyphScene, GetWindowAspect())
                 : 14.0f;
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);

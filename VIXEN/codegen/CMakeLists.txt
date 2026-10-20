@@ -106,40 +106,15 @@ else()
 endif()
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
-# Resolve YEROKET_ROOT from the first home candidate that actually contains the repo,
-# so a Windows configure with USERPROFILE (or a mounted WSL home) still finds it.
-# -DYEROKET_ROOT= overrides the probe entirely.
-if(NOT DEFINED YEROKET_ROOT)
-    set(_yk_root "")
-    foreach(_h IN LISTS _home_candidates)
-        if(_h AND EXISTS "${_h}/Github/Yeroket-Fantasy/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj")
-            set(_yk_root "${_h}/Github/Yeroket-Fantasy")
-            break()
-        endif()
-    endforeach()
-    # Fall back to the WSL-home default even if the probe missed, so the not-found
-    # WARNING below reports a meaningful path rather than an empty string.
-    if(NOT _yk_root)
-        set(_yk_root "$ENV{HOME}/Github/Yeroket-Fantasy")
-    endif()
-    set(YEROKET_ROOT "${_yk_root}" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
-endif()
-
 # Every drift guard consumes the reviewed, immutable kernel pin. Reuse a locked
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
+# Not cached: a cached root would hide a later YEROKET_ROOT environment value.
+vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 set(_vixen_tracked_yeroket_kernel_sha "b1576418a1ca4cf29dd22853ff3cd1aba6372c83")
 unset(YEROKET_KERNEL_SHA CACHE)
-set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
-    "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
-if(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE)
-    set(YEROKET_KERNEL_SHA "${VIXEN_YEROKET_KERNEL_SHA_OVERRIDE}")
-    message(STATUS "[codegen] using per-build-tree kernel pin override: ${YEROKET_KERNEL_SHA}")
-else()
-    set(YEROKET_KERNEL_SHA "${_vixen_tracked_yeroket_kernel_sha}")
-    message(STATUS "[codegen] using tracked Yeroket kernel pin: ${YEROKET_KERNEL_SHA}")
-endif()
+vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
@@ -190,6 +165,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
                 "Windows configure; committed generated artifacts are used as-is. Install the "
                 "'Windows Subsystem for Linux' feature (wsl.exe on PATH) or run the WSL-side configure.")
             return()
+        endif()
+        if(WIN32 AND NOT "$ENV{LOCALAPPDATA}" STREQUAL "")
+            file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" _local_app_data)
+            vixen_ninja_visible_launcher("${WSL_EXE}" "${_local_app_data}/Microsoft/WindowsApps" _wsl_exe)
+            if(NOT _wsl_exe STREQUAL "${WSL_EXE}")
+                message(STATUS "[codegen] using ${_wsl_exe} as the WSL launcher: Ninja cannot stat ${WSL_EXE}")
+                set(WSL_EXE "${_wsl_exe}" CACHE FILEPATH "WSL launcher for codegen checks" FORCE)
+            endif()
         endif()
         # Resolve the WSL-side dotnet by asking WSL itself, rather than trying to reverse-parse
         # VIXEN_DOTNET's UNC form — deterministic and survives whatever hint matched above.
@@ -526,6 +509,22 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             "${VIXEN_DOTNET}" exec
             --runtimeconfig "${_codegen_dotnet_cli_runtimeconfig_path}"
             "${_codegen_dotnet_cli_dll}" build)
+        # Shared direct-run launcher: `dotnet-invariant restore|build <CodegenTool.csproj> ...` outside CMake
+        # gets the same invariant CLI runtimeconfig as the target build, without -p: or DOTNET_* overrides.
+        set(_codegen_dotnet_wrapper_stage "${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant.stage")
+        vixen_write_if_different("${_codegen_dotnet_wrapper_stage}/dotnet-invariant" "#!/bin/sh
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimeconfig_path}\" \"${_codegen_dotnet_cli_dll}\" \"$@\"
+")
+        file(COPY "${_codegen_dotnet_wrapper_stage}/dotnet-invariant"
+            DESTINATION "${CMAKE_CURRENT_BINARY_DIR}"
+            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        message(STATUS "[codegen] direct-run dotnet launcher: ${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant")
+        add_test(NAME Codegen.DirectDotnetLauncher
+            COMMAND "${CMAKE_CURRENT_BINARY_DIR}/dotnet-invariant" --version)
+        set_tests_properties(Codegen.DirectDotnetLauncher PROPERTIES
+            LABELS "Codegen;cpu" PASS_REGULAR_EXPRESSION "^[0-9]+\\.[0-9]+\\.[0-9]+")
     endif()
     # Isolate SDK intermediates as well as binaries. The cache key includes the
     # kernel pin, host/SDK identity and build recipe, not the client build path.
@@ -707,6 +706,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
         COMMENT "[codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations"
         VERBATIM)
+    # libraries/ is configured before codegen/, so SVO (and everything linking it) is ordered here.
+    if(TARGET SVO)
+        add_dependencies(SVO recipe_simd_check)
+    endif()
     add_custom_target(recipe_simd_regen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
         COMMENT "[codegen] regenerate recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator from merged declarations"

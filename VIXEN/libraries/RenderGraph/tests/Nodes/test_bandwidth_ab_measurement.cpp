@@ -48,6 +48,7 @@
 #include "Data/Core/CompileTimeResourceSystem.h"  // Resource
 #include "Core/NodeContext.h"
 #include "VulkanDevice.h"
+#include "TestVulkanDeviceShell.h"
 #include "Memory/BatchedUploader.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/DirectAllocator.h"
@@ -134,12 +135,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
 
-        deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
-        deviceShell_->device             = logicalDevice_;
-        deviceShell_->queue              = queue_;
-        deviceShell_->graphicsQueueIndex = queueFamily_;
-        vkGetPhysicalDeviceProperties(physicalDevice_, &deviceShell_->gpuProperties);
-        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
+        deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
 
         auto allocator = std::make_shared<ResourceManagement::DirectAllocator>(
             physicalDevice_, logicalDevice_);

@@ -15,6 +15,36 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         ${VIXEN_CTEST_GPU_ENVIRONMENT}
         "VIXEN_HDR_EXPOSURE=1"
         "VIXEN_HUD_SUPPRESS=1")
+    set(_lookdev_test_environment_modification
+        "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+    # One state per test is the default registration: a state is two fresh processes (about 10 minutes
+    # on Dozen), so the four-state run exceeds any single timeout there. Each state keeps the 1200 s
+    # bound on its own, and a stalled state costs the queue one state, not four.
+    set(_lookdev_states midday late-afternoon overcast night-service)
+    set(_lookdev_state_tests)
+    foreach(_state IN LISTS _lookdev_states)
+        set(_test Application.LookdevCapture.State.${_state})
+        add_test(NAME ${_test}
+            COMMAND ${CMAKE_COMMAND}
+                "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
+                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev"
+                "-DLOOKDEV_CAPTURE_STATES=${_state}"
+                -DLOOKDEV_CAPTURE_BUDGET_S=900
+                -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
+        set_tests_properties(${_test}
+            PROPERTIES
+                LABELS "Application"
+                TIMEOUT 1200
+                ENVIRONMENT "${_lookdev_test_environment}"
+                ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
+        list(APPEND _lookdev_state_tests ${_test})
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_lookdev_state_tests})
+
+    # The four-state aggregate keeps its name for the capture tooling that selects it. It carries only
+    # the `native` label, which the split runner excludes by default (`ctest -L native` selects it).
+    list(LENGTH _lookdev_states _lookdev_state_count)
+    math(EXPR _lookdev_aggregate_timeout "${_lookdev_state_count} * 1200")
     add_test(NAME Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         COMMAND ${CMAKE_COMMAND}
             "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
@@ -23,13 +53,12 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
     set_tests_properties(Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         PROPERTIES
-            LABELS "Application"
-            TIMEOUT 1200
+            LABELS "native"
+            TIMEOUT ${_lookdev_aggregate_timeout}
             ENVIRONMENT "${_lookdev_test_environment}"
-            ENVIRONMENT_MODIFICATION
-                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
+            ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
-    message(STATUS "[Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)")
+    message(STATUS "[Application Tests] Added: vixen_lookdev_capture (${_lookdev_state_count} per-state tests of 4 angles, repeat-pixel witness; aggregate under label native)")
 
     foreach(_depth_case IN ITEMS native reduced-odd fixed-exposure)
         set(_depth_scale 1.0)
@@ -59,6 +88,36 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     set_tests_properties("${_temporal_test}" PROPERTIES LABELS "Application" TIMEOUT 900
         ENVIRONMENT "${_lookdev_test_environment};VIXEN_RECONSTRUCTION_DEPTH=1;VIXEN_LOOKDEV_DEPTH_READBACK=1;VIXEN_LOOKDEV_READBACK=1;VIXEN_LOOKDEV_MOTION_PROBE=1;VIXEN_LOOKDEV_HISTORY_PROBE=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=501;VIXEN_WINDOW_HEIGHT=333;VIXEN_LOOKDEV_CAPTURE_DIR=${_temporal_dir};VIXEN_HDR_EXPOSURE_FIXED=1")
     vixen_lock_gpu_tests(TESTS "${_temporal_test}")
+
+    # T-2883: one look-dev state under the Khronos validation layer. Fails when a
+    # descriptor or dispatch uses a null ray-query TLAS (only reachable on a device
+    # with RayQueryLighting; Dozen compiles the binding out).
+    set(_validation_layer_path "${VIXEN_VULKAN_LAYER_PATH}")
+    if(WIN32 AND NOT _validation_layer_path AND DEFINED ENV{VULKAN_SDK})
+        set(_validation_layer_path "$ENV{VULKAN_SDK}/Bin")
+    endif()
+    if(_validation_layer_path)
+        set(_validation_test "Application.LookdevCapture.NoNullAccelerationStructure")
+        set(_validation_dir "${CMAKE_BINARY_DIR}/runtime-captures/lookdev-validation")
+        add_test(NAME "${_validation_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+            "--render-scale=1.0" "--upscaler=none")
+        set_tests_properties("${_validation_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+            ENVIRONMENT "${_lookdev_test_environment};VK_LAYER_PATH=${_validation_layer_path};VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_WINDOW_WIDTH=500;VIXEN_WINDOW_HEIGHT=500;VIXEN_LOOKDEV_CAPTURE_DIR=${_validation_dir};VIXEN_HDR_EXPOSURE_FIXED=1"
+            FAIL_REGULAR_EXPRESSION "pAccelerationStructures-03580;acceleration structure descriptor .* is using acceleration structure VkAccelerationStructureKHR 0x0")
+        vixen_lock_gpu_tests(TESTS "${_validation_test}")
+
+        # Every ring image the march binds must already be in its descriptor's layout:
+        # the first frame of each of the four images is where an undeclared binding fails.
+        set(_layout_test "Application.LookdevCapture.StorageImageLayoutsMatchDescriptors")
+        add_test(NAME "${_layout_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
+            "--render-scale=1.0" "--upscaler=none")
+        set_tests_properties("${_layout_test}" PROPERTIES LABELS "Application" TIMEOUT 900
+            ENVIRONMENT "${_lookdev_test_environment};VK_LAYER_PATH=${_validation_layer_path};VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=8;VIXEN_WINDOW_WIDTH=500;VIXEN_WINDOW_HEIGHT=500;VIXEN_LOOKDEV_CAPTURE_DIR=${_validation_dir}-layouts;VIXEN_HDR_EXPOSURE_FIXED=1"
+            FAIL_REGULAR_EXPRESSION "None-09600")
+        vixen_lock_gpu_tests(TESTS "${_layout_test}")
+    endif()
 
     foreach(_jitter_scale IN ITEMS 1.0 0.5)
         set(_jitter_test "Application.ReconstructionInputs.Jitter.${_jitter_scale}")

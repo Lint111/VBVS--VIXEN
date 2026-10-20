@@ -331,6 +331,8 @@ message(STATUS "SheenBidi configured for Unicode bidirectional runs (Apache-2.0 
 # libunibreak has no CMake project. Fetch its tagged source with FetchContent's
 # explicit-population form and build the same source list as upstream's
 # Makefile.gcc; the boundary owns the language class and this provides UAX #14/#29.
+# The explicit-population form clones into this directory's binary dir, not FETCHCONTENT_BASE_DIR.
+vixen_trust_wsl_git_directory("${CMAKE_CURRENT_BINARY_DIR}" CHILDREN)
 FetchContent_Populate(libunibreak
     GIT_REPOSITORY https://github.com/adah1972/libunibreak.git
     GIT_TAG        libunibreak_5_1

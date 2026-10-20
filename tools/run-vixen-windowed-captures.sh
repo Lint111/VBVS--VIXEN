@@ -10,14 +10,16 @@ vixen_runtime_dir="$(cd -- "$1" && pwd -P)"
 vixen_name="$2"
 editor_runtime_dir="$(cd -- "$3" && pwd -P)"
 editor_name="$4"
-capture_root="$5"
+mkdir -p -- "$5"
+capture_root="$(cd -- "$5" && pwd -P)"
 hud_dir="$capture_root/hud"
 editor_dir="$capture_root/editor"
 mkdir -p "$hud_dir" "$editor_dir"
 
-# Match the runtime library environment configured for CTest in
+# Match the runtime environment configured for CTest in
 # VIXEN/cmake/VixenTesting.cmake. This script launches the applications directly,
-# so CTest's LD_LIBRARY_PATH property is not inherited automatically.
+# so CTest's ENVIRONMENT properties (library path, VK_ICD_FILENAMES, VK_LAYER_PATH)
+# are not inherited automatically.
 build_dir="$(dirname -- "$vixen_runtime_dir")"
 cache_file="$build_dir/CMakeCache.txt"
 cache_value() {
@@ -40,6 +42,8 @@ if [[ -z "$windowing_cache" ]]; then
     windowing_cache="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../VIXEN" && pwd -P)/.windowing-deps"
 fi
 dzn_library_dir="$(cache_value VIXEN_WSL_DZN_LIBRARY_DIR)"
+dzn_icd="$(cache_value VIXEN_WSL_DZN_ICD)"
+vulkan_layer_path="$(cache_value VIXEN_VULKAN_LAYER_PATH)"
 vulkan_sdk_root="$(cache_value VULKAN_PATH)"
 if [[ -z "$vulkan_sdk_root" ]]; then
     vulkan_cache="$(cache_value VIXEN_VULKAN_CACHE_DIR)"
@@ -70,6 +74,13 @@ fi
 if [[ ${#runtime_library_dirs[@]} -gt 0 ]]; then
     printf -v capture_library_path '%s:' "${runtime_library_dirs[@]}"
     export LD_LIBRARY_PATH="${capture_library_path%:}"
+fi
+# An ICD or layer path inherited from the caller's shell must not replace the provisioned driver.
+if [[ -n "$dzn_icd" ]]; then
+    export VK_ICD_FILENAMES="$dzn_icd"
+fi
+if [[ -n "$vulkan_layer_path" ]]; then
+    export VK_LAYER_PATH="$vulkan_layer_path"
 fi
 
 DISPLAY="${DISPLAY:-:0}"
