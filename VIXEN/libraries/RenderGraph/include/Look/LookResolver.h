@@ -51,6 +51,7 @@ struct ResolvedLook {
     float exposureSpeedDown = 1.0f;
     float exposureCompensationEV = 0.0f;
     float saturation = 1.0f;
+    uint32_t presentationMode = 0;
     float celShadowThreshold = 0.16f;
     float celLitThreshold = 0.86f;
     float celRampSoftness = 0.08f;
@@ -66,7 +67,7 @@ struct PartialLook {
     std::optional<float> exposureKeyValue, exposureMinEV100, exposureMaxEV100, exposureLowPercent,
         exposureHighPercent, exposureSpeedUp, exposureSpeedDown, exposureCompensationEV, saturation,
         celShadowThreshold, celLitThreshold, celRampSoftness, dimBandFloor, skyGradientSlope;
-    std::optional<uint32_t> skyMode;
+    std::optional<uint32_t> presentationMode, skyMode;
     std::optional<std::array<float, 3>> skyColor;
     std::optional<LookLightSet> lights;
 };
@@ -182,6 +183,7 @@ private:
         Linear(out.exposureSpeedDown, p.exposureSpeedDown, w, rel);
         Ev(out.exposureCompensationEV, p.exposureCompensationEV, w, rel);
         Linear(out.saturation, p.saturation, w, rel);
+        Discrete(out.presentationMode, p.presentationMode, w);
         Linear(out.celShadowThreshold, p.celShadowThreshold, w, rel);
         Linear(out.celLitThreshold, p.celLitThreshold, w, rel);
         Linear(out.celRampSoftness, p.celRampSoftness, w, rel);

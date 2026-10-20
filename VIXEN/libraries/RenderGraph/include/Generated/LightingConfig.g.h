@@ -50,8 +50,8 @@ struct LightingConfig {
     float exposureSpeedDown;
     float exposureDeltaSeconds;
     float lookSaturation;
-    float _envTailPadding1;
-    float _envTailPadding2;
+    uint32_t presentationMode;
+    uint32_t frameSeed;
 };
 static_assert(sizeof(LightingConfig) == 272, "LightingConfig std430 size");
 static_assert(offsetof(LightingConfig, lightCount) == 0, "lightCount@0");
@@ -82,6 +82,6 @@ static_assert(offsetof(LightingConfig, exposureSpeedUp) == 248, "exposureSpeedUp
 static_assert(offsetof(LightingConfig, exposureSpeedDown) == 252, "exposureSpeedDown@252");
 static_assert(offsetof(LightingConfig, exposureDeltaSeconds) == 256, "exposureDeltaSeconds@256");
 static_assert(offsetof(LightingConfig, lookSaturation) == 260, "lookSaturation@260");
-static_assert(offsetof(LightingConfig, _envTailPadding1) == 264, "_envTailPadding1@264");
-static_assert(offsetof(LightingConfig, _envTailPadding2) == 268, "_envTailPadding2@268");
+static_assert(offsetof(LightingConfig, presentationMode) == 264, "presentationMode@264");
+static_assert(offsetof(LightingConfig, frameSeed) == 268, "frameSeed@268");
 } // namespace Vixen::Gpu

@@ -44,8 +44,8 @@ struct LightingConfig {
     float exposureSpeedDown;
     float exposureDeltaSeconds;
     float lookSaturation;
-    float _envTailPadding1;
-    float _envTailPadding2;
+    uint presentationMode;
+    uint frameSeed;
 };
 #endif // LIGHTINGCONFIG_GLSL
 
@@ -89,6 +89,16 @@ void ExposureTonemapSystem_Body(in float meter, in LightingConfig LightingConfig
     float blueLinear = 12.92 * blue;
     float blueEncoded = 1.055 * pow(max(blue, 0.0), 1.0 / 2.4) - 0.055;
     blue = (blue <= 0.0031308 ? blueLinear : blueEncoded);
+    uint pixelSeed = uint(i) ^ (LightingConfigSSBO.frameSeed * 0x9e3779b9u);
+    pixelSeed ^= pixelSeed >> 16;
+    pixelSeed *= 0x85ebca6bu;
+    pixelSeed ^= pixelSeed >> 13;
+    pixelSeed *= 0xc2b2ae35u;
+    pixelSeed ^= pixelSeed >> 16;
+    float ditherStep = (LightingConfigSSBO.presentationMode == 1u ? 8.0 / 255.0 : 0.0);
+    red += (float((pixelSeed & 0xffu)) / 255.0 - 0.5) * ditherStep;
+    green += (float(((pixelSeed >> 8) & 0xffu)) / 255.0 - 0.5) * ditherStep;
+    blue += (float(((pixelSeed >> 16) & 0xffu)) / 255.0 - 0.5) * ditherStep;
     imageStore(outputImage_current, ivec2(int(i) % imageSize(outputImage_current).x, int(i) / imageSize(outputImage_current).x), vec4(red, green, blue, 1.0));
 }
 void main()

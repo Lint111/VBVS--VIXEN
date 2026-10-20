@@ -84,7 +84,10 @@ public struct LightingConfig
     // 0 = greyscale, 1 = unchanged (the neutral value), 2 = doubled chroma.
     // LightingConfigNode clamps this to [0, 2].
     public float lookSaturation;
-    // Round the struct size to std430's 16-byte structure alignment.
-    public float _envTailPadding1;
-    public float _envTailPadding2;
+    // 0 = canonical capture/parity (dither off), 1 = presentation (dither on).
+    // This is the resolved value of SceneLook.presentationMode and reuses the
+    // existing LightingConfig upload consumed by the generated tone-map system.
+    public uint presentationMode;
+    // Scheduler-derived frame seed, carried in the existing per-frame lighting ring.
+    public uint frameSeed;
 }

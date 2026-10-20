@@ -40,7 +40,7 @@ struct LightingConfig {
     float exposureSpeedDown;
     float exposureDeltaSeconds;
     float lookSaturation;
-    float _envTailPadding1;
-    float _envTailPadding2;
+    uint presentationMode;
+    uint frameSeed;
 };
 #endif // LIGHTINGCONFIG_GLSL

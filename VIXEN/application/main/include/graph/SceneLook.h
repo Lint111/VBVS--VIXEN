@@ -46,6 +46,11 @@ struct ExposureDeclaration {
     float compensationEV = 0.0f;    // artistic bias added after metering (either mode)
 };
 
+enum class PresentationMode : uint32_t {
+    Canonical = 0,
+    Presentation = 1,
+};
+
 // The default SceneLook is the application's built-in scenes (HUD, editor, starfield, Cornell):
 // the node defaults above and the space exposure preset.
 struct SceneLook {
@@ -53,6 +58,7 @@ struct SceneLook {
     CelProfile cel;
     ExposureDeclaration exposure;
     float saturation = 1.0f;        // linear chroma scale before the tone curve: 0 greyscale, 1 unchanged, 2 doubled
+    PresentationMode presentationMode = PresentationMode::Canonical;
 };
 
 // The exposure parameters a declaration resolves to; an unknown preset name falls back to
@@ -85,6 +91,7 @@ inline Vixen::RenderGraph::PartialLook ExposureLook(const ExposureDeclaration& e
 inline Vixen::RenderGraph::PartialLook SceneLookPartial(const SceneLook& look) {
     Vixen::RenderGraph::PartialLook partial = ExposureLook(look.exposure);
     partial.saturation = look.saturation;
+    partial.presentationMode = static_cast<uint32_t>(look.presentationMode);
     partial.skyMode = static_cast<uint32_t>(look.environment.background);
     partial.skyColor = std::array<float, 3>{look.environment.color[0], look.environment.color[1],
                                             look.environment.color[2]};

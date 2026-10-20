@@ -5245,11 +5245,16 @@ namespace Vixen.Codegen.Gpu
     }
 
     /// <summary>Schema path for state:frame-targets; lowered before native dispatch.</summary>
-    public readonly struct StateFrameTargetsRef
+    public struct StateFrameTargetsRef
     {
         public const string SchemaKind = "state:frame-targets";
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> SceneRadianceHistoryOutput => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba8> OutputImage => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public uint PresentationMode
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
     }
 
     /// <summary>Schema path for state:knowledge; lowered before native dispatch.</summary>
@@ -5539,13 +5544,13 @@ namespace Vixen.Codegen.Gpu
         public static CoarseArrears CoarseArrears(int body = default, double amount = default, FactionRef holder = default) => new CoarseArrears { body = body, amount = amount };
         public static ConceptIdRow ConceptIdRow(uint concept = default) => new ConceptIdRow { concept = concept };
         public static ConceptOwnerRow ConceptOwnerRow(FactionRef faction = default) => new ConceptOwnerRow {  };
-        public static DealDecision DealDecision(ulong id = default, ulong dealId = default, int partyOrdinal = default, byte decision = default, long decidedAtTick = default) => new DealDecision { id = id, dealId = dealId, partyOrdinal = partyOrdinal, decision = decision, decidedAtTick = decidedAtTick };
-        public static DealParty DealParty(ulong id = default, ulong dealId = default, int partyOrdinal = default, ulong actor = default, byte role = default) => new DealParty { id = id, dealId = dealId, partyOrdinal = partyOrdinal, actor = actor, role = role };
-        public static DealPolicyCadence DealPolicyCadence(ulong id = default, string policy = "", long lastNegotiationTick = default, FactionRef faction = default) => new DealPolicyCadence { id = id, policy = policy, lastNegotiationTick = lastNegotiationTick };
-        public static DealRequirement DealRequirement(ulong id = default, ulong dealId = default, int partyOrdinal = default, int nodeOrdinal = default, int parentOrdinal = default, int childOrder = default, string node = "") => new DealRequirement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, nodeOrdinal = nodeOrdinal, parentOrdinal = parentOrdinal, childOrder = childOrder, node = node };
+        public static DealDecision DealDecision(ulong dealId = default, int partyOrdinal = default, byte decision = default, long decidedAtTick = default) => new DealDecision { dealId = dealId, partyOrdinal = partyOrdinal, decision = decision, decidedAtTick = decidedAtTick };
+        public static DealParty DealParty(ulong dealId = default, int partyOrdinal = default, ulong actor = default, byte role = default) => new DealParty { dealId = dealId, partyOrdinal = partyOrdinal, actor = actor, role = role };
+        public static DealPolicyCadence DealPolicyCadence(string policy = "", long lastNegotiationTick = default, FactionRef faction = default) => new DealPolicyCadence { policy = policy, lastNegotiationTick = lastNegotiationTick };
+        public static DealRequirement DealRequirement(ulong dealId = default, int partyOrdinal = default, int nodeOrdinal = default, int parentOrdinal = default, int childOrder = default, string node = "") => new DealRequirement { dealId = dealId, partyOrdinal = partyOrdinal, nodeOrdinal = nodeOrdinal, parentOrdinal = parentOrdinal, childOrder = childOrder, node = node };
         public static DealSession DealSession(ulong id = default, ulong session = default, ulong firstDealId = default, int stepCount = default, long openedAtTick = default, string policy = "", ulong policyRevision = default) => new DealSession { id = id, session = session, firstDealId = firstDealId, stepCount = stepCount, openedAtTick = openedAtTick, policy = policy, policyRevision = policyRevision };
-        public static DealSettlement DealSettlement(ulong id = default, ulong dealId = default, int partyOrdinal = default, int effectOrdinal = default, int paramOrdinal = default, string effect = "", string param = "", string value = "", byte binding = default, int bindingPartyOrdinal = default, double scale = default) => new DealSettlement { id = id, dealId = dealId, partyOrdinal = partyOrdinal, effectOrdinal = effectOrdinal, paramOrdinal = paramOrdinal, effect = effect, param = param, value = value, binding = binding, bindingPartyOrdinal = bindingPartyOrdinal, scale = scale };
-        public static DealStep DealStep(ulong id = default, int stepOrdinal = default, ulong dealId = default, ulong parentDealId = default, ulong rootProposer = default, ulong proposer = default, byte stepKind = default, byte status = default, long proposedAtTick = default, long earliestReplyTick = default, long expiresAtTick = default, ulong templatePriceId = default, ulong templateRevision = default, byte subjectKind = default, ulong subjectEntity = default, string subjectRef = "", byte scopeKind = default, ulong scopeA = default, ulong scopeB = default, double unit = default, double quantity = default, byte executionKind = default, long recurrenceTicks = default, DealSessionRef session = default) => new DealStep { id = id, stepOrdinal = stepOrdinal, dealId = dealId, parentDealId = parentDealId, rootProposer = rootProposer, proposer = proposer, stepKind = stepKind, status = status, proposedAtTick = proposedAtTick, earliestReplyTick = earliestReplyTick, expiresAtTick = expiresAtTick, templatePriceId = templatePriceId, templateRevision = templateRevision, subjectKind = subjectKind, subjectEntity = subjectEntity, subjectRef = subjectRef, scopeKind = scopeKind, scopeA = scopeA, scopeB = scopeB, unit = unit, quantity = quantity, executionKind = executionKind, recurrenceTicks = recurrenceTicks };
+        public static DealSettlement DealSettlement(ulong dealId = default, int partyOrdinal = default, int effectOrdinal = default, int paramOrdinal = default, string effect = "", string param = "", string value = "", byte binding = default, int bindingPartyOrdinal = default, double scale = default) => new DealSettlement { dealId = dealId, partyOrdinal = partyOrdinal, effectOrdinal = effectOrdinal, paramOrdinal = paramOrdinal, effect = effect, param = param, value = value, binding = binding, bindingPartyOrdinal = bindingPartyOrdinal, scale = scale };
+        public static DealStep DealStep(int stepOrdinal = default, ulong dealId = default, ulong parentDealId = default, ulong rootProposer = default, ulong proposer = default, byte stepKind = default, byte status = default, long proposedAtTick = default, long earliestReplyTick = default, long expiresAtTick = default, ulong templatePriceId = default, ulong templateRevision = default, byte subjectKind = default, ulong subjectEntity = default, string subjectRef = "", byte scopeKind = default, ulong scopeA = default, ulong scopeB = default, double unit = default, double quantity = default, byte executionKind = default, long recurrenceTicks = default, DealSessionRef session = default) => new DealStep { stepOrdinal = stepOrdinal, dealId = dealId, parentDealId = parentDealId, rootProposer = rootProposer, proposer = proposer, stepKind = stepKind, status = status, proposedAtTick = proposedAtTick, earliestReplyTick = earliestReplyTick, expiresAtTick = expiresAtTick, templatePriceId = templatePriceId, templateRevision = templateRevision, subjectKind = subjectKind, subjectEntity = subjectEntity, subjectRef = subjectRef, scopeKind = scopeKind, scopeA = scopeA, scopeB = scopeB, unit = unit, quantity = quantity, executionKind = executionKind, recurrenceTicks = recurrenceTicks };
         public static DeepFieldCell DeepFieldCell(int cellX = default, int cellY = default, string recipe = "", float presence = default, float wM = default, float wK = default, float wG = default, float wF = default, float wA = default, float wB = default, float wO = default, float wWhiteDwarf = default, float wNeutronStar = default, ulong rowId = default, string address = "", byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default) => new DeepFieldCell { cellX = cellX, cellY = cellY, recipe = recipe, presence = presence, wM = wM, wK = wK, wG = wG, wF = wF, wA = wA, wB = wB, wO = wO, wWhiteDwarf = wWhiteDwarf, wNeutronStar = wNeutronStar, rowId = rowId, address = address, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
         public static DepletionBodyRow DepletionBodyRow(int index = default, double massKg = default) => new DepletionBodyRow { index = index, massKg = massKg };
         public static DepletionLayerRow DepletionLayerRow(double massKg = default) => new DepletionLayerRow { massKg = massKg };
@@ -6814,6 +6819,7 @@ namespace Vixen.Codegen.Gpu
 
     public struct FrameTargetsState
     {
+        public uint presentationMode;
     }
 
     public struct DealSession
@@ -6829,7 +6835,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealStep
     {
-        public ulong id;
         public int stepOrdinal;
         public ulong dealId;
         public ulong parentDealId;
@@ -6857,7 +6862,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealParty
     {
-        public ulong id;
         public ulong dealId;
         public int partyOrdinal;
         public ulong actor;
@@ -6866,7 +6870,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealRequirement
     {
-        public ulong id;
         public ulong dealId;
         public int partyOrdinal;
         public int nodeOrdinal;
@@ -6877,7 +6880,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealSettlement
     {
-        public ulong id;
         public ulong dealId;
         public int partyOrdinal;
         public int effectOrdinal;
@@ -6892,7 +6894,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealDecision
     {
-        public ulong id;
         public ulong dealId;
         public int partyOrdinal;
         public byte decision;
@@ -6901,7 +6902,6 @@ namespace Vixen.Codegen.Gpu
 
     public struct DealPolicyCadence
     {
-        public ulong id;
         public string policy;
         public long lastNegotiationTick;
         public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef> faction;

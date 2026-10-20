@@ -80,9 +80,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             foreach(_mode IN ITEMS reference system)
                 set(_test "Application.ExposureTonemapParity.${_mode}.${_state}.angle${_angle}")
                 set(_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/exposure-parity/${_state}-angle-${_angle}/${_mode}")
-                set(_mode_flag "0")
+                set(_mode_environment "")
                 if(_mode STREQUAL "reference")
-                    set(_mode_flag "1")
+                    set(_mode_environment ";VIXEN_EXPOSURE_TONEMAP_REFERENCE=1")
                 endif()
                 add_test(NAME "${_test}"
                     COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
@@ -91,7 +91,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
                     LABELS "Application"
                     TIMEOUT 900
                     ENVIRONMENT
-                        "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=${_state};VIXEN_LOOKDEV_CAPTURE_ANGLE=${_angle};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_DIR=${_capture_dir};VIXEN_EXPOSURE_TONEMAP_REFERENCE=${_mode_flag}"
+                        "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=${_state};VIXEN_LOOKDEV_CAPTURE_ANGLE=${_angle};VIXEN_LOOKDEV_CAPTURE_FRAMES=1;VIXEN_LOOKDEV_CAPTURE_DIR=${_capture_dir}${_mode_environment}"
                     ENVIRONMENT_MODIFICATION
                         "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
                 list(APPEND _exposure_parity_tests "${_test}")
@@ -105,9 +105,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     # system tone map and its reference shader are captured separately so the lane can compare the pair.
     foreach(_mode IN ITEMS system reference)
         set(_test "Application.LookdevCapture.SaturationChannel.${_mode}")
-        set(_mode_flag "0")
+        set(_mode_environment "")
         if(_mode STREQUAL "reference")
-            set(_mode_flag "1")
+            set(_mode_environment ";VIXEN_EXPOSURE_TONEMAP_REFERENCE=1")
         endif()
         add_test(NAME "${_test}"
             COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" "--gtest_filter=LookdevCapture.SaturationChannel")
@@ -115,7 +115,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             LABELS "Application"
             TIMEOUT 900
             ENVIRONMENT
-                "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/saturation/${_mode};VIXEN_EXPOSURE_TONEMAP_REFERENCE=${_mode_flag}"
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/saturation/${_mode}${_mode_environment}"
             ENVIRONMENT_MODIFICATION
                 "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
         vixen_lock_gpu_tests(TESTS "${_test}")

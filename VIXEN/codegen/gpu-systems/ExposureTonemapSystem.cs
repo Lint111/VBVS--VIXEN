@@ -61,6 +61,23 @@ public static class ExposureTonemapSystem
         float blueEncoded = 1.055f * math.pow(math.max(blue, 0.0f), 1.0f / 2.4f) - 0.055f;
         blue = math.select(blueEncoded, blueLinear, blue <= 0.0031308f);
 
+        // Dither is presentation-only and is applied in encoded space immediately before the
+        // Rgba8 UNORM store. The avalanche is the MurmurHash3 finalizer shape (link-only prior art):
+        // https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+        // FrameSync's existing frame seed keeps the sequence deterministic without another upload.
+        uint pixelSeed = (uint)i ^ (LightingConfigSSBO[0].frameSeed * 0x9e3779b9u);
+        pixelSeed ^= pixelSeed >> 16;
+        pixelSeed *= 0x85ebca6bu;
+        pixelSeed ^= pixelSeed >> 13;
+        pixelSeed *= 0xc2b2ae35u;
+        pixelSeed ^= pixelSeed >> 16;
+        // Eight half-LSB spans give the low-gradient sky enough code values to avoid
+        // visible plateaus while the zero-mean hash keeps the average luma unchanged.
+        float ditherStep = math.select(0.0f, 8.0f / 255.0f, LightingConfigSSBO[0].presentationMode == 1u);
+        red += ((float)(pixelSeed & 0xffu) / 255.0f - 0.5f) * ditherStep;
+        green += ((float)((pixelSeed >> 8) & 0xffu) / 255.0f - 0.5f) * ditherStep;
+        blue += ((float)((pixelSeed >> 16) & 0xffu) / 255.0f - 0.5f) * ditherStep;
+
         outputImage.Current[i] = new Rgba8(red, green, blue, 1.0f);
     }
 }

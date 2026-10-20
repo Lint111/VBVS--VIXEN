@@ -71,6 +71,7 @@ inline SceneLook SceneLookDeclaration() {
     look.environment.starfield = true;
     look.environment.starfieldSeed = 0x5a17f13du;
     look.environment.starfieldBrightness = 0.45f;
+    look.presentationMode = PresentationMode::Presentation;
     // Thresholds keep the R432 defaults (3 bands, softness 0.08): the references fix band VALUES,
     // not the N.L edges, and nothing in them argues for moving the edges.
     look.cel.shadowThreshold = 0.16f;

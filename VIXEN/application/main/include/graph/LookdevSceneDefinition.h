@@ -27,6 +27,7 @@ inline SceneLook SceneLookDeclaration() {
     look.environment.color[2] = 0.06f;
     look.environment.gradientSlope = 0.4f;
     look.environment.starfield = false;
+    look.presentationMode = PresentationMode::Presentation;
     look.cel.shadowThreshold = 0.16f;   // R432 cel defaults
     look.cel.litThreshold = 0.86f;
     look.cel.rampSoftness = 0.08f;

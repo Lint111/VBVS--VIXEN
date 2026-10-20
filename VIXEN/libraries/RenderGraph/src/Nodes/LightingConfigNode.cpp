@@ -203,6 +203,8 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.exposureSpeedUp = ClampFinite(look.exposureSpeedUp, exposureDefaults.speedUp, 0.0f, 100.0f);
     cfg.exposureSpeedDown = ClampFinite(look.exposureSpeedDown, exposureDefaults.speedDown, 0.0f, 100.0f);
     cfg.lookSaturation = ClampFinite(look.saturation, 1.0f, 0.0f, 2.0f);
+    cfg.presentationMode = look.presentationMode == 1u ? 1u : 0u;
+    cfg.frameSeed = frameIndex;
     // Adaptation advances by this frame's step: a pinned step keeps captures
     // deterministic, otherwise the graph's frame time keeps it rate independent.
     const float fixedDeltaSeconds = ReadClampedFloat(
