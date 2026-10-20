@@ -1859,8 +1859,14 @@ void VulkanGraphApplication::PostTick() {
     if (auto* exposureReduce = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_reduce"))) {
         passes.push_back({"exposure_reduce", exposureReduce->GetGPUPerformanceLogger()});
     }
+    // The hand reference tone map (capture-test hook) or the composition's generated systems.
     if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
         passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
+    for (const auto& generated : generatedSystems_.Stages()) {
+        if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(generated.stage))) {
+            passes.push_back({generated.entry->className, stage->GetGPUPerformanceLogger()});
+        }
     }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});

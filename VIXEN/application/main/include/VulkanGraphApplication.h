@@ -18,6 +18,7 @@
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
+#include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -577,6 +578,8 @@ private:
         Vixen::RenderGraph::NodeHandle node;
     };
     std::vector<UpscalerPassMetric> upscalerPerfPasses_;
+    // The vixen: composition's generated GPU systems (BuildRenderGraph); each stage is a perf column.
+    Vixen::RenderGraph::GeneratedSystemStages generatedSystems_;
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
