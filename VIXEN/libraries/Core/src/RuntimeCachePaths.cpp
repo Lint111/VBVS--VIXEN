@@ -1,11 +1,18 @@
 #include "RuntimeCachePaths.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <string>
+#include <cctype>
+#include <cerrno>
+#include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -17,10 +24,146 @@
 #ifdef _WIN32
 #include <process.h>
 #else
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
 namespace Vixen {
+
+namespace {
+
+constexpr auto kStaleTemporaryDirectoryAge = std::chrono::hours(24);
+
+bool IsProcessAlive(std::uint64_t processId) noexcept {
+    if (processId == 0) return false;
+
+#ifdef _WIN32
+    if (processId > std::numeric_limits<DWORD>::max()) return false;
+    HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                                   static_cast<DWORD>(processId));
+    if (!process) {
+        return ::GetLastError() == ERROR_ACCESS_DENIED;
+    }
+
+    DWORD exitCode = 0;
+    const bool queried = ::GetExitCodeProcess(process, &exitCode) != FALSE;
+    ::CloseHandle(process);
+    return queried && exitCode == STILL_ACTIVE;
+#else
+    if (processId > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
+        return false;
+    }
+    if (::kill(static_cast<pid_t>(processId), 0) == 0) return true;
+    return errno == EPERM;
+#endif
+}
+
+bool ParseTemporaryDirectoryName(
+    const std::filesystem::path& path,
+    std::uint64_t& processId
+) {
+    const std::string name = path.filename().string();
+    constexpr std::string_view prefix = "vixen_";
+    if (name.size() <= prefix.size() || name.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+
+    const std::size_t separator = name.rfind('_');
+    if (separator <= prefix.size() || separator + 1 >= name.size()) return false;
+
+    const std::string_view processIdText(name.data() + separator + 1,
+                                         name.size() - separator - 1);
+    for (const char digit : processIdText) {
+        if (!std::isdigit(static_cast<unsigned char>(digit))) return false;
+    }
+
+    try {
+        processId = std::stoull(std::string(processIdText));
+    } catch (...) {
+        return false;
+    }
+    return processId != 0;
+}
+
+void SweepStaleTemporaryDirectories() noexcept {
+    std::error_code ec;
+    const auto temporaryRoot = std::filesystem::temp_directory_path(ec);
+    if (ec) return;
+
+    const auto now = std::filesystem::file_time_type::clock::now();
+    std::filesystem::directory_iterator entries(temporaryRoot, ec);
+    const std::filesystem::directory_iterator end;
+    for (; !ec && entries != end; entries.increment(ec)) {
+        const auto& entry = *entries;
+        std::error_code entryError;
+        if (entry.is_symlink(entryError) || entryError || !entry.is_directory(entryError) || entryError) {
+            continue;
+        }
+
+        const auto modifiedAt = entry.last_write_time(entryError);
+        if (entryError || now - modifiedAt < kStaleTemporaryDirectoryAge) continue;
+
+        std::uint64_t processId = 0;
+        if (!ParseTemporaryDirectoryName(entry.path(), processId) || IsProcessAlive(processId)) {
+            continue;
+        }
+
+        std::filesystem::remove_all(entry.path(), entryError);
+    }
+}
+
+const char* ExplicitTemporaryRoot(std::string_view applicationName) noexcept {
+    const char* environmentName = nullptr;
+    if (applicationName == "main") {
+        environmentName = "VIXEN_HUD_CAPTURE_DIR";
+    } else if (applicationName == "editor") {
+        environmentName = "VIXEN_EDITOR_CAPTURE_DIR";
+    }
+    if (!environmentName) return nullptr;
+
+    const char* root = std::getenv(environmentName);
+    return root && *root ? root : nullptr;
+}
+
+class TemporaryDirectoryLifetime {
+public:
+    TemporaryDirectoryLifetime() noexcept {
+        SweepStaleTemporaryDirectories();
+    }
+
+    ~TemporaryDirectoryLifetime() noexcept {
+        for (const auto& directory : ownedDirectories_) {
+            std::error_code ec;
+            std::filesystem::remove_all(directory, ec);
+        }
+    }
+
+    std::filesystem::path Acquire(std::string_view applicationName) {
+        if (const char* explicitRoot = ExplicitTemporaryRoot(applicationName)) {
+            return std::filesystem::path(explicitRoot);
+        }
+
+        const auto directory = std::filesystem::temp_directory_path() /
+            ("vixen_" + std::string(applicationName) + "_" + std::to_string(CurrentProcessId()));
+        std::error_code createError;
+        std::filesystem::create_directories(directory, createError);
+        if (std::find(ownedDirectories_.begin(), ownedDirectories_.end(), directory) ==
+            ownedDirectories_.end()) {
+            ownedDirectories_.push_back(directory);
+        }
+        return directory;
+    }
+
+private:
+    std::vector<std::filesystem::path> ownedDirectories_;
+};
+
+TemporaryDirectoryLifetime& ProcessTemporaryDirectoryLifetime() {
+    static TemporaryDirectoryLifetime lifetime;
+    return lifetime;
+}
+
+} // namespace
 
 std::filesystem::path RuntimeCacheDirectory() {
     if (const char* overridePath = std::getenv("VIXEN_CACHE_DIR");
@@ -43,8 +186,7 @@ std::uint64_t CurrentProcessId() noexcept {
 }
 
 std::filesystem::path ProcessTemporaryDirectory(std::string_view applicationName) {
-    return std::filesystem::temp_directory_path() /
-        ("vixen_" + std::string(applicationName) + "_" + std::to_string(CurrentProcessId()));
+    return ProcessTemporaryDirectoryLifetime().Acquire(applicationName);
 }
 
 std::uint64_t Checksum64(const void* data, std::size_t size) noexcept {

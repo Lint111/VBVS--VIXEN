@@ -26,6 +26,11 @@ std::filesystem::path RuntimeCacheDirectory();
 std::uint64_t CurrentProcessId() noexcept;
 
 /// Return an application-specific temporary directory unique to this process.
+///
+/// The default /tmp directory is created on first use, removed at normal process exit, and stale
+/// directories from dead processes are swept on the next use after a bounded grace period. The main and editor
+/// capture callers keep their artifacts by setting VIXEN_HUD_CAPTURE_DIR or
+/// VIXEN_EDITOR_CAPTURE_DIR, respectively; those explicit roots are returned unchanged.
 std::filesystem::path ProcessTemporaryDirectory(std::string_view applicationName);
 
 /// Write bytes to a unique sibling file and atomically replace the destination.
