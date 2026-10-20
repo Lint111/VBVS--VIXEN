@@ -23,14 +23,20 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -44,6 +50,15 @@ struct SchemaIdentity {
     std::string Text() const { return kind + "." + member; }
 };
 
+struct GpuComponentRegion {
+    std::string member;
+    uint32_t offset = 0;        // byte offset of this region's base-address word in the buffer header
+    uint32_t sourceOffset = 0;  // byte offset when the changed cursor exposes an AoS singleton
+    uint32_t stride = 0;
+    uint32_t size = 0;
+    uint32_t alignment = 1;
+};
+
 struct GpuSystemArgument {
     std::string name;  // diagnostics only; binding is by identity
     SchemaIdentity identity;
@@ -51,6 +66,7 @@ struct GpuSystemArgument {
     uint32_t binding = 0;
     bool read = true;
     bool write = false;
+    std::vector<GpuComponentRegion> regions;
 };
 
 struct GpuSystemPushField {
@@ -58,6 +74,7 @@ struct GpuSystemPushField {
     uint32_t offset = 0;
     uint32_t size = 0;
     bool extent = false;
+    bool frame = false;
     SchemaIdentity identity;  // when !extent
 };
 
@@ -77,10 +94,26 @@ struct GpuSystemBarrier {
     std::string after;
 };
 
+enum class GpuTransferDirection { CpuToGpu, GpuToCpu };
+enum class GpuTransferClass { Hot, Cold };
+
+struct GpuTransferPlanRow {
+    std::string before;
+    std::string after;
+    GpuTransferDirection direction = GpuTransferDirection::CpuToGpu;
+    SchemaIdentity identity;
+    std::string system;
+    std::string argument;
+    int32_t binding = -1;
+    GpuTransferClass transferClass = GpuTransferClass::Hot;
+    std::vector<GpuComponentRegion> regions;
+};
+
 /// The parsed `yeroket-gpu-system-manifest/v1` of one composition.
 struct GpuSystemManifest {
     std::vector<GpuSystemEntry> systems;
     std::vector<GpuSystemBarrier> barriers;
+    std::vector<GpuTransferPlanRow> transferPlan;
 
     static GpuSystemManifest Parse(const std::string& text) {
         const auto json = nlohmann::json::parse(text);
@@ -103,7 +136,8 @@ struct GpuSystemManifest {
                 push.offset = field.at("offset").get<uint32_t>();
                 push.size = field.at("size").get<uint32_t>();
                 push.extent = field.at("source").get<std::string>() == "extent";
-                if (!push.extent) {
+                push.frame = field.at("source").get<std::string>() == "frame";
+                if (!push.extent && !push.frame) {
                     push.identity = {field.at("kind").get<std::string>(), field.at("member").get<std::string>()};
                 }
                 entry.push.push_back(std::move(push));
@@ -116,6 +150,14 @@ struct GpuSystemManifest {
                 arg.binding = argument.at("binding").get<uint32_t>();
                 arg.read = argument.value("read", argument.at("access").get<std::string>() == "in" || arg.form == "storage");
                 arg.write = argument.value("write", argument.at("access").get<std::string>() == "ref");
+                for (const auto& region : argument.value("regions", nlohmann::json::array())) {
+                    arg.regions.push_back({region.at("member").get<std::string>(),
+                                           region.at("offset").get<uint32_t>(),
+                                           region.value("sourceOffset", 0u),
+                                           region.at("stride").get<uint32_t>(),
+                                           region.at("size").get<uint32_t>(),
+                                           region.at("alignment").get<uint32_t>()});
+                }
                 if (arg.identity.kind.empty()) {
                     throw std::runtime_error("GpuSystemManifest: " + entry.className + " argument '" + arg.name +
                                              "' has no schema identity; declare its element as a kind or [GpuStruct]");
@@ -126,6 +168,30 @@ struct GpuSystemManifest {
         }
         for (const auto& barrier : json.at("barriers")) {
             manifest.barriers.push_back({barrier.at("before").get<std::string>(), barrier.at("after").get<std::string>()});
+        }
+        for (const auto& transfer : json.value("transferPlan", nlohmann::json::array())) {
+            GpuTransferPlanRow row;
+            row.before = transfer.at("before").get<std::string>();
+            row.after = transfer.at("after").get<std::string>();
+            row.direction = transfer.at("direction").get<std::string>() == "cpuToGpu"
+                                ? GpuTransferDirection::CpuToGpu
+                                : GpuTransferDirection::GpuToCpu;
+            row.identity = {transfer.at("kind").get<std::string>(), transfer.at("member").get<std::string>()};
+            row.system = transfer.at("system").get<std::string>();
+            row.argument = transfer.at("argument").get<std::string>();
+            row.binding = transfer.at("binding").get<int32_t>();
+            row.transferClass = transfer.at("class").get<std::string>() == "cold"
+                                    ? GpuTransferClass::Cold
+                                    : GpuTransferClass::Hot;
+            for (const auto& region : transfer.at("regions")) {
+                row.regions.push_back({region.at("member").get<std::string>(),
+                                       region.at("offset").get<uint32_t>(),
+                                       region.value("sourceOffset", 0u),
+                                       region.at("stride").get<uint32_t>(),
+                                       region.at("size").get<uint32_t>(),
+                                       region.at("alignment").get<uint32_t>()});
+            }
+            manifest.transferPlan.push_back(std::move(row));
         }
         return manifest;
     }
@@ -143,6 +209,138 @@ struct GpuSystemManifest {
         for (const auto& path : candidates) tried += " " + path.string();
         throw std::runtime_error("GpuSystemManifest: no manifest found; tried" + tried);
     }
+};
+
+/// One observation of a typed `.changed<T>()` cursor. Component returns a contiguous SoA
+/// plane for the requested generated region; singleton helpers expose the corresponding field
+/// directly, so Fill always performs one span copy per region and never an AoS transpose.
+struct TransferChangedSnapshot {
+    uint32_t rowCount = 0;
+    uint64_t generation = 0;
+    bool writerRan = false;
+    std::function<std::span<const std::byte>(const GpuComponentRegion&)> component;
+};
+
+class TransferSourceRegistry {
+public:
+    using ChangedCursor = std::function<TransferChangedSnapshot()>;
+
+    void ProvideChanged(const SchemaIdentity& identity, ChangedCursor cursor) {
+        changed_[identity] = std::move(cursor);
+    }
+
+    /// A one-row settings record is already a one-element component span. Its generation is
+    /// normally advanced by the owning `.changed<T>()` cursor.
+    template<typename T>
+    void ProvideSingleton(const SchemaIdentity& identity, const T* value,
+                          std::function<uint64_t()> generation,
+                          std::function<bool()> writerRan = [] { return false; }) {
+        static_assert(std::is_trivially_copyable_v<T>);
+        ProvideChanged(identity, [value, generation = std::move(generation),
+                                  writerRan = std::move(writerRan)] {
+            TransferChangedSnapshot snapshot;
+            snapshot.rowCount = 1;
+            snapshot.generation = generation();
+            snapshot.writerRan = writerRan();
+            snapshot.component = [value](const GpuComponentRegion& region) {
+                const auto bytes = std::as_bytes(std::span<const T>(value, 1));
+                if (static_cast<size_t>(region.sourceOffset) + region.size > bytes.size()) {
+                    throw std::runtime_error("TransferPlan: singleton component region exceeds its record");
+                }
+                return bytes.subspan(region.sourceOffset, region.size);
+            };
+            return snapshot;
+        });
+    }
+
+    /// The type-erased runtime face of `.changed<T>()`; generated Fill invokes it once per row.
+    TransferChangedSnapshot changed(const SchemaIdentity& identity) const {
+        auto it = changed_.find(identity);
+        if (it == changed_.end()) {
+            throw std::runtime_error("TransferPlan: no .changed<T>() cursor registered for " + identity.Text());
+        }
+        return it->second();
+    }
+
+private:
+    std::map<SchemaIdentity, ChangedCursor> changed_;
+};
+
+struct TransferFillLedger {
+    uint64_t steady_state_bytes_uploaded = 0;
+    uint32_t buffersUploaded = 0;
+};
+
+/// Runtime projection of the generated transfer-plan rows. Cold settings are stamped per
+/// destination ring slot; a generation change refreshes each of the four slots once. Hot rows
+/// upload only when their CPU writer ran in this schedule execution.
+class TransferPlan {
+public:
+    static constexpr uint32_t GenerationSlots = 4;
+    using Upload = std::function<void(const GpuTransferPlanRow&, uint32_t,
+                                      std::span<const std::byte>)>;
+
+    explicit TransferPlan(std::vector<GpuTransferPlanRow> rows) : rows_(std::move(rows)) {}
+    explicit TransferPlan(const GpuSystemManifest& manifest) : TransferPlan(manifest.transferPlan) {}
+
+    TransferFillLedger Fill(uint64_t frame, const TransferSourceRegistry& sources,
+                            const Upload& upload) {
+        TransferFillLedger ledger;
+        const uint32_t slot = static_cast<uint32_t>(frame % GenerationSlots);
+        std::map<std::string, bool> filled;
+        for (const auto& row : rows_) {
+            if (row.direction != GpuTransferDirection::CpuToGpu || row.binding < 0 || row.regions.empty()) continue;
+            const std::string key = row.system + "\n" + row.argument;
+            if (filled.contains(key)) continue;
+
+            TransferChangedSnapshot snapshot = sources.changed(row.identity);
+            auto [stampIt, inserted] = generations_.try_emplace(key);
+            if (inserted) stampIt->second.fill(std::numeric_limits<uint64_t>::max());
+            if (row.transferClass == GpuTransferClass::Hot && !snapshot.writerRan) continue;
+            if (row.transferClass == GpuTransferClass::Cold && stampIt->second[slot] == snapshot.generation) continue;
+
+            size_t cursor = row.regions.size() * sizeof(uint32_t);
+            std::vector<uint32_t> offsets;
+            offsets.reserve(row.regions.size());
+            for (const auto& region : row.regions) {
+                cursor = AlignUp(cursor, region.alignment);
+                offsets.push_back(static_cast<uint32_t>(cursor));
+                cursor += static_cast<size_t>(region.stride) * snapshot.rowCount;
+            }
+            std::vector<std::byte> buffer(cursor);
+            for (size_t regionIndex = 0; regionIndex < row.regions.size(); ++regionIndex) {
+                const auto& region = row.regions[regionIndex];
+                if (static_cast<size_t>(region.offset) + sizeof(uint32_t) > row.regions.size() * sizeof(uint32_t)) {
+                    throw std::runtime_error("TransferPlan: component-region header offset is out of range");
+                }
+                std::memcpy(buffer.data() + region.offset, &offsets[regionIndex], sizeof(uint32_t));
+                const auto source = snapshot.component(region);
+                const size_t expected = static_cast<size_t>(region.stride) * snapshot.rowCount;
+                if (source.size() != expected) {
+                    throw std::runtime_error("TransferPlan: .changed<T>() component span for " +
+                                             row.identity.Text() + "." + region.member + " is " +
+                                             std::to_string(source.size()) + " bytes; expected " +
+                                             std::to_string(expected));
+                }
+                std::memcpy(buffer.data() + offsets[regionIndex], source.data(), expected);
+                ledger.steady_state_bytes_uploaded += expected;
+            }
+            upload(row, slot, buffer);
+            ++ledger.buffersUploaded;
+            filled[key] = true;
+            stampIt->second[slot] = snapshot.generation;
+        }
+        return ledger;
+    }
+
+private:
+    static size_t AlignUp(size_t value, size_t alignment) {
+        if (alignment == 0) throw std::runtime_error("TransferPlan: component-region alignment is zero");
+        return (value + alignment - 1) / alignment * alignment;
+    }
+
+    std::vector<GpuTransferPlanRow> rows_;
+    std::map<std::string, std::array<uint64_t, GenerationSlots>> generations_;
 };
 
 /**
@@ -248,6 +446,7 @@ public:
 
     void Instantiate(RenderGraph* graph, GpuSystemManifest manifest) {
         manifest_ = std::move(manifest);
+        transferPlan_.emplace(manifest_);
         stages_.clear();
         lastWriters_.clear();
         for (const auto& entry : manifest_.systems) {
@@ -297,6 +496,9 @@ public:
                     const auto& [connect, value] = registry.Extent(entry.extentSource, axis, entry.className);
                     connect(batch, pushGatherer, ordinal);
                     extent[axis++] = value;
+                } else if (field.frame) {
+                    batch.Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                                  pushGatherer, ordinal, SlotRoleModifier(SlotRole::Execute));
                 } else {
                     registry.ApplyDescriptor(field.identity, entry.className, batch, pushGatherer, ordinal);
                 }
@@ -349,10 +551,17 @@ public:
         return it == lastWriters_.end() ? std::nullopt : std::optional<NodeHandle>(it->second);
     }
 
+    TransferFillLedger Fill(uint64_t frame, const TransferSourceRegistry& sources,
+                            const TransferPlan::Upload& upload) {
+        if (!transferPlan_) throw std::runtime_error("GeneratedSystemStages::Fill called before Instantiate");
+        return transferPlan_->Fill(frame, sources, upload);
+    }
+
     const std::vector<Stage>& Stages() const { return stages_; }
 
 private:
     GpuSystemManifest manifest_;
+    std::optional<TransferPlan> transferPlan_;
     std::vector<Stage> stages_;
     std::map<SchemaIdentity, NodeHandle> lastWriters_;
 };
