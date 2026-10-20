@@ -7,8 +7,9 @@
 //   • MipPoolBuffer (binding 13): float mipPool[]
 //
 // mipPool layout (MipBake.h SerializeMipPool, MipSample.h):
-//   mipPool[mipPoolBase + (nodeIdx*channelCount + channelIdx)*2 + {0,1}]
+//   mipPool[(mipPoolBase + nodeIdx*channelCount + channelIdx)*2 + {0,1}]
 //     -> {value, coverage} — one packed MipSample (2 floats) per (node, channel).
+// mipPoolBase counts MipSample units (MipBake.h), so it scales by 2 floats with the rest.
 // nodeIdx is the SAME global ESVO node ordinal used by esvoNodes[]/state.parentPtr/
 // leafDescriptorIndex — no separate addressing scheme (direction doc "same
 // ordinal in the other dataset").
@@ -66,7 +67,7 @@ vec2 readMipSample(uint nodeIdx, uint sem, float missingValue) {
     uint ch = mipChannelIndex(sem);
     if (ch == 0xFFFFFFFFu) return vec2(missingValue, 0.0);
 
-    uint base = octreeConfig.mipPoolBase + (nodeIdx * octreeConfig.channelCount + ch) * 2u;
+    uint base = (octreeConfig.mipPoolBase + nodeIdx * octreeConfig.channelCount + ch) * 2u;
     if (base + 1u >= mipPool.length()) return vec2(missingValue, 0.0);
 
     recordMipSampleRead(uint(max(g_octreeIdx, 0)), g_mipSampleLevel);
