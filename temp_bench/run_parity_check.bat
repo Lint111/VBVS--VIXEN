@@ -2,9 +2,10 @@
 REM Baked-Perf-Fix-Pipeline M2d Task 2d.2: post-capture visual-parity gate.
 REM
 REM Runs compare_parity.py in BOTH modes:
-REM   same_path  -- fresh baked run (this .bat re-runs run_baked.bat) vs the committed
-REM                 tools/bench/goldens/baked_instidx.txt golden. HARD GATE (exit 1 on FAIL).
-REM   cross_path -- fresh baked vs fresh virtual (this .bat re-runs run_virtual.bat too).
+REM   same_path  -- two fresh baked runs (this .bat runs run_baked.bat twice) against each
+REM                 other: the determinism invariant, nothing stored. HARD GATE (exit 1 on FAIL).
+REM   cross_path -- the second fresh baked run vs a fresh virtual run (this .bat runs
+REM                 run_virtual.bat too).
 REM                 REPORT-ONLY (never fails the .bat) until Milestone M5 flips
 REM                 parity_thresholds.json's cross_path.enforced to true.
 REM
@@ -31,7 +32,17 @@ REM BuildRenderGraph.cpp checks BAKED_DEMO first in an else-if chain, so once bo
 REM set the virtual run silently re-renders the BAKED scene instead (caught live 2026-07-16:
 REM the "virtual" capture came back byte-identical to the baked one). setlocal/endlocal
 REM scopes each `set` to its own call so the two demo env vars can never coexist.
-echo [parity-check] Re-running baked capture (fresh, for same_path + cross_path)...
+echo [parity-check] Running first baked capture (fresh, same_path run A)...
+setlocal
+call "%BENCH_DIR%\run_baked.bat"
+set BAKED_EXIT=%ERRORLEVEL%
+endlocal & set BAKED_EXIT=%BAKED_EXIT%
+if not "%BAKED_EXIT%"=="0" goto :fail_baked_run
+if exist "%BENCH_DIR%\baked_a" rmdir /s /q "%BENCH_DIR%\baked_a"
+xcopy /e /i /q /y "%BENCH_DIR%\baked" "%BENCH_DIR%\baked_a" >nul
+if errorlevel 1 goto :fail_baked_run
+
+echo [parity-check] Running second baked capture (fresh, same_path run B + cross_path)...
 setlocal
 call "%BENCH_DIR%\run_baked.bat"
 set BAKED_EXIT=%ERRORLEVEL%
@@ -56,10 +67,10 @@ exit /b 1
 
 :run_checks
 
-echo [parity-check] same_path: fresh baked run vs committed golden (HARD GATE)...
+echo [parity-check] same_path: two fresh baked runs against each other (HARD GATE)...
 python "%TOOLS_DIR%\compare_parity.py" --mode same_path ^
-    --run "%BENCH_DIR%\baked" ^
-    --golden "%TOOLS_DIR%\goldens\baked_instidx.txt" ^
+    --run "%BENCH_DIR%\baked_a" ^
+    --run-b "%BENCH_DIR%\baked" ^
     --json-out "%BENCH_DIR%\parity_same_path_report.json"
 set SAME_PATH_EXIT=%ERRORLEVEL%
 

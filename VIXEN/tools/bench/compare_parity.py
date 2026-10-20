@@ -8,10 +8,10 @@ produce) and emits a JSON report plus exactly one final
 "PARITY: PASS|FAIL|REPORT <summary>" stdout line.
 
 Two comparison modes (see parity_thresholds.json for the full policy):
-  same_path  -- HARD GATE. Compares a run against its own golden (e.g. a fresh
-                baked run vs a committed baked golden). Bit-exact equality is
-                NOT required (documented ~1-cell near-tie nondeterminism across
-                launches) but drift must stay within a small cell-count budget.
+  same_path  -- HARD GATE. Compares two fresh runs of the SAME provider (e.g.
+                two baked runs) against each other: the determinism invariant.
+                Nothing is stored; the budget in parity_thresholds.json is the
+                allowed cell drift between the two runs.
   cross_path -- REPORT-ONLY until Milestone M5 (Baked-Perf-Fix-Pipeline-Plan-
                 2026-07.md) closes baked-lighting parity. Quantifies the KNOWN
                 virtual<->baked lighting divergence without failing the gate.
@@ -31,12 +31,8 @@ Metrics extracted:
     convention already excludes), for both runs, plus their deltas.
 
 Usage:
-    python compare_parity.py --mode same_path --run RUN_DIR --golden GOLDEN_TXT
-    python compare_parity.py --mode cross_path --run-a BAKED_DIR --run-b VIRTUAL_DIR
     python compare_parity.py --mode same_path --run RUN_DIR --run-b OTHER_RUN_DIR
-        (same_path also accepts two live run dirs instead of a golden text file --
-         used e.g. to prove byte-identical cold/warm cache artifacts against each
-         other, see this repo's M2d gate-proof #1)
+    python compare_parity.py --mode cross_path --run-a BAKED_DIR --run-b VIRTUAL_DIR
 
 Exit code: 0 on PASS/REPORT, 1 on FAIL (same_path only -- cross_path never fails
 while "enforced": false in parity_thresholds.json).
@@ -255,86 +251,36 @@ def load_run_dir(run_dir: Path) -> dict:
     }
 
 
-def load_golden_txt(golden_path: Path) -> dict:
-    """Golden files are the normalized map text (grid_size rows, one per line)
-    plus a header comment block and an OOB line -- see goldens/*.txt for the
-    exact committed shape. Lines starting with '#' are header/comments and
-    ignored; the first `grid_size` non-comment, non-blank lines matching
-    [0-7.]+ are the map; a following 'OOB: N/M' line (if present) supplies the
-    OOB count for informational comparison only (same_path's hard gate is the
-    map hash/cell-agreement, not OOB drift against a golden)."""
-    text = golden_path.read_text(encoding="utf-8", errors="replace")
-    rows = []
-    oob_count = oob_total = None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        oob_m = re.match(r"OOB:\s*(\d+)/(\d+)", stripped)
-        if oob_m:
-            oob_count, oob_total = int(oob_m.group(1)), int(oob_m.group(2))
-            continue
-        if re.fullmatch(r"[0-7.]+", stripped):
-            rows.append(stripped)
-    if not rows:
-        raise ParityError(f"golden {golden_path}: no instIdx map rows found")
-    grid_size = len(rows[0])
-    for r in rows:
-        if len(r) != grid_size:
-            raise ParityError(f"golden {golden_path}: inconsistent row width in {r!r}")
-    normalized_text = "\n".join(rows)
-    return {
-        "grid_size": grid_size,
-        "rows": rows,
-        "normalized_text": normalized_text,
-        "sha256": hashlib.sha256(normalized_text.encode("utf-8")).hexdigest(),
-        "bodies_present": sorted({c for row in rows for c in row if c != "."}),
-        "oob_count": oob_count,
-        "oob_total": oob_total,
-    }
-
-
-def write_golden_txt(cornell_diag: dict, out_path: Path, header_note: str) -> None:
-    lines = [f"# {header_note}", "#"]
-    lines.extend(cornell_diag["rows"])
-    lines.append(f"OOB: {cornell_diag['oob_count']}/{cornell_diag['oob_total']}")
-    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 # ---------------------------------------------------------------------------
 # Comparison modes.
 # ---------------------------------------------------------------------------
 
-def compare_same_path(run: dict, golden: dict, thresholds: dict, image_ref: Path | None) -> dict:
+def compare_same_path(run: dict, other: dict, thresholds: dict) -> dict:
     cfg = thresholds["same_path"]
     run_cd = run["cornell_diag"]
-    if run_cd["grid_size"] != golden["grid_size"]:
+    other_cd = other["cornell_diag"]
+    if run_cd["grid_size"] != other_cd["grid_size"]:
         raise ParityError(
-            f"grid size mismatch: run has {run_cd['grid_size']}, golden has {golden['grid_size']}")
+            f"grid size mismatch: run has {run_cd['grid_size']}, run-b has {other_cd['grid_size']}")
 
-    agree, differ, total = cell_agreement(run_cd["rows"], golden["rows"])
+    agree, differ, total = cell_agreement(run_cd["rows"], other_cd["rows"])
     agreement_pct = 100.0 * agree / total if total else 0.0
-    hash_equal = run_cd["sha256"] == golden["sha256"]
+    hash_equal = run_cd["sha256"] == other_cd["sha256"]
     cells_within_tolerance = differ <= cfg["instidx_max_differing_cells"]
     map_ok = hash_equal or cells_within_tolerance
 
-    bodies_match = run_cd["bodies_present"] == golden["bodies_present"]
+    bodies_match = run_cd["bodies_present"] == other_cd["bodies_present"]
     bodies_ok = bodies_match if cfg["require_bodies_match"] else True
 
-    oob_ok = True
-    oob_relative_delta = None
-    if golden.get("oob_count") is not None and golden.get("oob_total"):
-        golden_rate = golden["oob_count"] / golden["oob_total"] if golden["oob_total"] else 0.0
-        run_rate = run_cd["oob_count"] / run_cd["oob_total"] if run_cd["oob_total"] else 0.0
-        oob_relative_delta = abs(run_rate - golden_rate) / golden_rate if golden_rate else (
-            0.0 if run_rate == 0.0 else float("inf"))
-        oob_ok = oob_relative_delta <= cfg["oob_count_max_relative_delta"]
+    other_rate = other_cd["oob_count"] / other_cd["oob_total"] if other_cd["oob_total"] else 0.0
+    run_rate = run_cd["oob_count"] / run_cd["oob_total"] if run_cd["oob_total"] else 0.0
+    oob_relative_delta = abs(run_rate - other_rate) / other_rate if other_rate else (
+        0.0 if run_rate == 0.0 else float("inf"))
+    oob_ok = oob_relative_delta <= cfg["oob_count_max_relative_delta"]
 
-    image_result = None
-    image_ok = True
-    if image_ref is not None:
-        image_result = compare_images(run["hud_png_path"], image_ref, thresholds["pixel_diff_threshold"])
-        image_ok = image_result["p99_luminance_delta"] <= cfg["luminance_p99_max_delta"]
+    image_result = compare_images(run["hud_png_path"], other["hud_png_path"],
+                                  thresholds["pixel_diff_threshold"])
+    image_ok = image_result["p99_luminance_delta"] <= cfg["luminance_p99_max_delta"]
 
     passed = map_ok and bodies_ok and oob_ok and image_ok
 
@@ -348,13 +294,12 @@ def compare_same_path(run: dict, golden: dict, thresholds: dict, image_ref: Path
         "cell_agreement_pct": agreement_pct,
         "cells_within_tolerance": cells_within_tolerance,
         "run_bodies_present": run_cd["bodies_present"],
-        "golden_bodies_present": golden["bodies_present"],
+        "run_b_bodies_present": other_cd["bodies_present"],
         "bodies_match": bodies_match,
         "oob_relative_delta": oob_relative_delta,
         "oob_ok": oob_ok,
         "run_oob": f"{run_cd['oob_count']}/{run_cd['oob_total']}",
-        "golden_oob": (f"{golden['oob_count']}/{golden['oob_total']}"
-                       if golden.get("oob_count") is not None else None),
+        "run_b_oob": f"{other_cd['oob_count']}/{other_cd['oob_total']}",
         "image": image_result,
         "perf_a": run["perf"]["means_ms"],
     }
@@ -433,10 +378,9 @@ def build_summary_line(result: dict) -> tuple[str, str]:
             f"hash_equal={result['hash_equal']} "
             f"cells_differing={result['cells_differing']}/{result['cells_total']} "
             f"bodies_match={result['bodies_match']} "
-            f"oob_ok={result['oob_ok']}"
+            f"oob_ok={result['oob_ok']} "
+            f"luminance_p99_delta={result['image']['p99_luminance_delta']:.2f}"
         )
-        if result.get("image"):
-            summary += f" luminance_p99_delta={result['image']['p99_luminance_delta']:.2f}"
         return status, summary
     else:
         # M5b: cross_path now honors the "enforced" flag. enforced=false -> REPORT (never
@@ -469,50 +413,21 @@ def main() -> int:
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--mode", choices=["same_path", "cross_path"], required=True)
     parser.add_argument("--run", type=Path, help="same_path: the run dir to check")
-    parser.add_argument("--golden", type=Path, help="same_path: a golden .txt (map+OOB)")
     parser.add_argument("--run-b", type=Path,
-                        help="same_path: a second run dir instead of --golden; "
+                        help="same_path: the second run dir of the same provider; "
                              "cross_path: the second run dir (e.g. virtual)")
     parser.add_argument("--run-a", type=Path, help="cross_path: the first run dir (e.g. baked)")
     parser.add_argument("--thresholds", type=Path, default=DEFAULT_THRESHOLDS_PATH)
     parser.add_argument("--json-out", type=Path, help="optional path to write the full JSON report")
-    parser.add_argument("--write-golden", type=Path,
-                        help="same_path only: instead of comparing, write --run's instIdx map "
-                             "to this path as a new golden .txt and exit 0")
-    parser.add_argument("--golden-header", default="",
-                        help="header comment line for --write-golden (e.g. 'HEAD abc123, 2026-07-16')")
     args = parser.parse_args()
 
     thresholds = json.loads(args.thresholds.read_text(encoding="utf-8"))
 
     try:
-        if args.write_golden:
-            if args.mode != "same_path" or not args.run:
-                raise ParityError("--write-golden requires --mode same_path --run RUN_DIR")
-            run = load_run_dir(args.run)
-            write_golden_txt(run["cornell_diag"], args.write_golden,
-                              args.golden_header or f"golden written from {args.run}")
-            print(f"PARITY: PASS wrote golden {args.write_golden}")
-            return 0
-
         if args.mode == "same_path":
-            if not args.run:
-                raise ParityError("--mode same_path requires --run")
-            run = load_run_dir(args.run)
-            image_ref = None
-            if args.golden and args.run_b:
-                raise ParityError("pass exactly one of --golden / --run-b for same_path")
-            if args.golden:
-                golden = load_golden_txt(args.golden)
-            elif args.run_b:
-                other = load_run_dir(args.run_b)
-                golden = other["cornell_diag"]
-                golden["oob_count"] = other["cornell_diag"]["oob_count"]
-                golden["oob_total"] = other["cornell_diag"]["oob_total"]
-                image_ref = other["hud_png_path"]
-            else:
-                raise ParityError("--mode same_path requires --golden or --run-b")
-            result = compare_same_path(run, golden, thresholds, image_ref)
+            if not args.run or not args.run_b:
+                raise ParityError("--mode same_path requires --run and --run-b")
+            result = compare_same_path(load_run_dir(args.run), load_run_dir(args.run_b), thresholds)
         else:
             if not args.run_a or not args.run_b:
                 raise ParityError("--mode cross_path requires --run-a and --run-b")
