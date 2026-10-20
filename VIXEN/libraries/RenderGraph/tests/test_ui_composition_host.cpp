@@ -22,6 +22,7 @@
 #include "graph/BuildingInspectorView.h"
 #include "graph/HudView.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 class NullRenderInterface2 final : public Rml::RenderInterface {
 public:
@@ -40,6 +41,7 @@ protected:
     void SetUp() override {
         Rml::SetSystemInterface(&sysIface_);
         Rml::SetRenderInterface(&renderIface_);
+        Rml::SetFontEngineInterface(&fontEngine_);
         ASSERT_TRUE(Rml::Initialise());
         Rml::LoadFontFace("assets/ui/LatoLatin-Regular.ttf");
         ctx_ = Rml::CreateContext("composition_host", Rml::Vector2i(1280, 720));
@@ -52,6 +54,7 @@ protected:
     }
     Vixen::Ui::VixenRmlSystemInterface sysIface_;
     NullRenderInterface2 renderIface_;
+    Vixen::Text::RmlFontEngine fontEngine_;
     Rml::Context* ctx_ = nullptr;
 };
 
