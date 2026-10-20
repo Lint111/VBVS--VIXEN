@@ -497,7 +497,7 @@ public:
                     connect(batch, pushGatherer, ordinal);
                     extent[axis++] = value;
                 } else if (field.frame) {
-                    batch.Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                    batch.Connect(common.frameSync, FrameSyncNodeConfig::FRAME_COUNTER,
                                   pushGatherer, ordinal, SlotRoleModifier(SlotRole::Execute));
                 } else {
                     registry.ApplyDescriptor(field.identity, entry.className, batch, pushGatherer, ordinal);

@@ -9,10 +9,9 @@
 // clears the histogram for the next frame.
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, binding = 1) buffer ExposureMeterResult {
-    ExposureMeterState meterState;
-    uint histogram[];
-} result;
+layout(std430, binding = 1) buffer ExposureMeterResult { uint words[]; } result;
+#define VIXEN_SOA_ExposureMeterState_BUFFER result
+#include "Generated/ExposureMeterState.glsl"
 layout(std430, binding = 2) readonly buffer LightingConfigSSBO { LightingConfig lightingConfig; };
 
 shared uint binCount[kExposureHistogramBins];
@@ -23,19 +22,19 @@ const float kLog2HundredOverK = 3.0;
 void main() {
 #ifdef VIXEN_HDR_EXPOSURE_FIXED
     // The default meter's settled reading for look-dev midday, angle 0 (round-2 measure run).
-    if (gl_LocalInvocationIndex == 0u) result.meterState.log2Exposure = 1.508;
+    if (gl_LocalInvocationIndex == 0u) ExposureMeterState_log2Exposure_Store(0u, 1.508);
 #else
     uint lane = gl_LocalInvocationIndex;
-    binCount[lane] = result.histogram[lane];
+    binCount[lane] = ExposureMeterState_histogram_Load(0u, lane);
     barrier();
 
     if (lane == 0u) {
         uint total = 0u;
         for (uint b = 0u; b < kExposureHistogramBins; ++b) total += binCount[b];
 
-        float previous = result.meterState.log2Exposure;
-        bool adapted = result.meterState.state == kExposureStateAdapted && !isnan(previous) && !isinf(previous);
-        float target = adapted ? result.meterState.targetLog2Exposure : 0.0;
+        float previous = ExposureMeterState_log2Exposure_Load(0u);
+        bool adapted = ExposureMeterState_state_Load(0u) == kExposureStateAdapted && !isnan(previous) && !isinf(previous);
+        float target = adapted ? ExposureMeterState_targetLog2Exposure_Load(0u) : 0.0;
         if (total != 0u) {
             float lowPercent = clamp(lightingConfig.exposureLowPercent, 0.0, 100.0);
             float highPercent = clamp(lightingConfig.exposureHighPercent, lowPercent, 100.0);
@@ -62,7 +61,7 @@ void main() {
             float clampedEV100 = clamp(metered, minEV100, maxEV100);
             float key = max(lightingConfig.exposureKeyValue, 1.0e-4);
             target = log2(key) - (clampedEV100 - kLog2HundredOverK);
-            result.meterState.meteredEV100 = metered;
+            ExposureMeterState_meteredEV100_Store(0u, metered);
         }
 
         float next = target;
@@ -74,11 +73,11 @@ void main() {
             float step = max(lightingConfig.exposureDeltaSeconds, 0.0) * max(rate, 0.0);
             next = step > 0.0 ? previous + (target - previous) * (1.0 - exp(-step)) : target;
         }
-        result.meterState.log2Exposure = next;
-        result.meterState.targetLog2Exposure = target;
-        result.meterState.state = kExposureStateAdapted;
+        ExposureMeterState_log2Exposure_Store(0u, next);
+        ExposureMeterState_targetLog2Exposure_Store(0u, target);
+        ExposureMeterState_state_Store(0u, kExposureStateAdapted);
     }
     barrier();
-    result.histogram[lane] = 0u;
+    ExposureMeterState_histogram_Store(0u, lane, 0u);
 #endif
 }

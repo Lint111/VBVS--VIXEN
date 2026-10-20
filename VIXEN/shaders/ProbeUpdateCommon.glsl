@@ -47,10 +47,10 @@ uint ProbeUpdateProbeCount() {
 // `max(amortizationFactor, 1u)` guards divide/mod-by-zero defensively —
 // upstream never produces 0, but the shader assumes nothing about CPU code
 // it cannot see at compile time.
-uint ProbeUpdateProbeIndex() {
+uint ProbeUpdateProbeIndex(uint frame) {
     uint amortizationFactor = max(probeGridConfig.amortizationFactor, 1u);
     return gl_WorkGroupID.x * amortizationFactor +
-           (probeGridConfig.frameCounter % amortizationFactor);
+           (frame % amortizationFactor);
 }
 
 // Probe grid indexing: X fastest, then Y, then Z (matches

@@ -9,10 +9,9 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistoryOutput;
 
-layout(std430, binding = 1) buffer ExposureMeterResult {
-    ExposureMeterState meterState;
-    uint histogram[];
-} result;
+layout(std430, binding = 1) buffer ExposureMeterResult { uint words[]; } result;
+#define VIXEN_SOA_ExposureMeterState_BUFFER result
+#include "Generated/ExposureMeterState.glsl"
 
 shared uint tileHistogram[kExposureHistogramBins];
 
@@ -37,5 +36,5 @@ void main() {
     barrier();
 
     if (i < kExposureHistogramBins && tileHistogram[i] != 0u)
-        atomicAdd(result.histogram[i], tileHistogram[i]);
+        atomicAdd(result.words[ExposureMeterState_histogram_Word(0u, i)], tileHistogram[i]);
 }

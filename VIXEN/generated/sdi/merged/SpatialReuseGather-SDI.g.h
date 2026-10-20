@@ -273,16 +273,26 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    struct _Frame {
+        static constexpr const char* NAME = "_Frame";
+        static constexpr uint32_t INDEX = 2;
+        static constexpr uint32_t OFFSET = 8;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
 } // namespace Push
 
 struct PushBlock {
     uint32_t imgWidth;
     uint32_t imgHeight;
-    uint8_t _tail[8];
+    uint32_t _Frame;
+    uint8_t _tail[4];
 };
 
 static_assert(offsetof(PushBlock, imgWidth) == Push::imgWidth::OFFSET, "PushBlock.imgWidth is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, imgHeight) == Push::imgHeight::OFFSET, "PushBlock.imgHeight is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
 static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
 
 // ============================================================================
@@ -310,6 +320,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitRecordBuffer", false, 0, 5, 0, Access::ReadOnly, 0, nullptr},
     {"imgWidth", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"imgHeight", true, 0, 0, 4, Access::ReadOnly, 0, nullptr},
+    {"_Frame", true, 0, 0, 8, Access::ReadOnly, 0, nullptr},
 };
 
 /**
@@ -331,7 +342,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseGather";
-    static constexpr uint32_t NUM_MEMBERS = 8;
+    static constexpr uint32_t NUM_MEMBERS = 9;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 

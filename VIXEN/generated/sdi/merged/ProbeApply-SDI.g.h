@@ -211,6 +211,28 @@ using ShadowRayResultBuffer = Set0::Binding38;
 using ProbeRayPayloadBuffer = Set0::Binding39;
 } // namespace Bind
 
+namespace Push {
+
+    static constexpr uint32_t SIZE = 16;
+
+    struct _Frame {
+        static constexpr const char* NAME = "_Frame";
+        static constexpr uint32_t INDEX = 0;
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+} // namespace Push
+
+struct PushBlock {
+    uint32_t _Frame;
+    uint8_t _tail[12];
+};
+
+static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
+static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
+
 // ============================================================================
 // Member table (bindings + push members) for the semantic connect walk
 // ============================================================================
@@ -234,6 +256,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"DDGILeakGateDebugSSBO", false, 0, 31, 0, Access::ReadWrite, 0, nullptr},
     {"ShadowRayResultBuffer", false, 0, 38, 0, Access::ReadOnly, 0, nullptr},
     {"ProbeRayPayloadBuffer", false, 0, 39, 0, Access::ReadOnly, 0, nullptr},
+    {"_Frame", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
 };
 
 /**
@@ -255,7 +278,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ProbeApply";
-    static constexpr uint32_t NUM_MEMBERS = 6;
+    static constexpr uint32_t NUM_MEMBERS = 7;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 

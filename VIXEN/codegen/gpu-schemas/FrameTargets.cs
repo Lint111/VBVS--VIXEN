@@ -93,7 +93,8 @@ public static class ExposureMeterKinds
         F<Float>("log2Exposure"),
         F<UInt>("state"),
         F<Float>("meteredEV100"),
-        F<Float>("targetLog2Exposure"));
+        F<Float>("targetLog2Exposure"),
+        F<UInt>("histogram").Bucketed(128).Dynamic());
 }
 
 public static class CameraKinds
@@ -175,6 +176,21 @@ public static class KindSchemas
             "state:probe-grid-settings.countY", "state:probe-grid-settings.countZ",
             "state:probe-grid-settings.raysPerProbe", "state:probe-grid-settings.hysteresisRate",
             "state:probe-grid-settings.amortizationFactor" }),
+        new SystemSchema("vixen:exposure-meter", reads: new[] {
+            "state:frame-targets.SceneRadianceHistoryOutput" }, writes: new[] {
+            "state:exposure-meter.histogram" }),
+        new SystemSchema("vixen:exposure-reduce", reads: new[] {
+            "state:exposure-meter.histogram",
+            "state:scene-look-settings.exposureKeyValue",
+            "state:scene-look-settings.exposureMinEV100",
+            "state:scene-look-settings.exposureMaxEV100",
+            "state:scene-look-settings.exposureLowPercent",
+            "state:scene-look-settings.exposureHighPercent",
+            "state:scene-look-settings.exposureSpeedUp",
+            "state:scene-look-settings.exposureSpeedDown",
+            "state:scene-look-settings.exposureDeltaSeconds" }, writes: new[] {
+            "state:exposure-meter.log2Exposure", "state:exposure-meter.state",
+            "state:exposure-meter.meteredEV100", "state:exposure-meter.targetLog2Exposure" }),
         new SystemSchema("vixen:direct-lighting", reads: new[] {
             "state:lighting-settings.lightCount", "state:lighting-settings.lights",
             "state:shadow-settings.enabled", "state:shadow-settings.raysPerLight",

@@ -264,6 +264,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ExposureMeterState.glsl" _out_exposuremeterstate_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h" _out_accumulationconfig_cpp_run)
@@ -371,6 +372,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
         set(_out_lightingconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl")
+        set(_out_exposuremeterstate_glsl_run "${VIXEN_ROOT}/shaders/Generated/ExposureMeterState.glsl")
         set(_out_shadowconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
         set(_out_shadowconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl")
         set(_out_accumulationconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h")
@@ -774,6 +776,20 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     add_custom_target(lightingconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args}
         COMMENT "[codegen] regenerate LightingConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    set(_exposure_meter_state_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct ExposureMeterState
+        --out-glsl "${_out_exposuremeterstate_glsl_run}")
+    vixen_add_codegen_check(exposure_meter_state_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_exposure_meter_state_args} --check
+        COMMENT "[codegen] golden check: ExposureMeterState.glsl matches canonical (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(exposure_meter_state_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_exposure_meter_state_args}
+        COMMENT "[codegen] regenerate ExposureMeterState.glsl (Yeroket tool)"
         JOB_POOL msbuild
         VERBATIM)
 

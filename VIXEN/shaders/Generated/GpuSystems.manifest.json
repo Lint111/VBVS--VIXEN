@@ -79,6 +79,14 @@
               "stride": 4,
               "size": 4,
               "alignment": 4
+            },
+            {
+              "member": "histogram",
+              "offset": 16,
+              "sourceOffset": 16,
+              "stride": 512,
+              "size": 512,
+              "alignment": 4
             }
           ]
         },
@@ -369,7 +377,68 @@
       ]
     }
   ],
-  "barriers": [],
+  "barriers": [
+    {
+      "before": "vixen:ExposureTonemapSystem",
+      "after": "vixen:exposure-meter",
+      "resource": "state:exposure-meter.histogram",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
+    },
+    {
+      "before": "vixen:ExposureTonemapSystem",
+      "after": "vixen:exposure-reduce",
+      "resource": "state:exposure-meter.log2Exposure",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
+    },
+    {
+      "before": "vixen:ExposureTonemapSystem",
+      "after": "vixen:exposure-reduce",
+      "resource": "state:exposure-meter.meteredEV100",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
+    },
+    {
+      "before": "vixen:ExposureTonemapSystem",
+      "after": "vixen:exposure-reduce",
+      "resource": "state:exposure-meter.state",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
+    },
+    {
+      "before": "vixen:ExposureTonemapSystem",
+      "after": "vixen:exposure-reduce",
+      "resource": "state:exposure-meter.targetLog2Exposure",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
+    },
+    {
+      "before": "vixen:exposure-meter",
+      "after": "vixen:exposure-reduce",
+      "resource": "state:exposure-meter.histogram",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT"
+    }
+  ],
   "transfers": [
     {
       "before": "vixen:accumulation-settings-write",
@@ -514,6 +583,54 @@
       "after": "vixen:direct-lighting",
       "direction": "cpuToGpu",
       "resource": "state:reservoir-settings.temporalCap"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureDeltaSeconds"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureHighPercent"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureKeyValue"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureLowPercent"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureMaxEV100"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureMinEV100"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureSpeedDown"
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureSpeedUp"
     },
     {
       "before": "vixen:shadow-settings-write",
@@ -2935,6 +3052,886 @@
           "member": "lightTreeCutThreshold",
           "offset": 24,
           "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureDeltaSeconds",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureDeltaSeconds",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureHighPercent",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureHighPercent",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureKeyValue",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureKeyValue",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureLowPercent",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureLowPercent",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureMaxEV100",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureMaxEV100",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureMinEV100",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureMinEV100",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureSpeedDown",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureSpeedDown",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        }
+      ]
+    },
+    {
+      "before": "vixen:scene-look-settings-write",
+      "after": "vixen:exposure-reduce",
+      "direction": "cpuToGpu",
+      "resource": "state:scene-look-settings.exposureSpeedUp",
+      "system": "vixen:exposure-reduce",
+      "argument": "state:scene-look-settings",
+      "kind": "state:scene-look-settings",
+      "member": "exposureSpeedUp",
+      "binding": -1,
+      "class": "cold",
+      "regions": [
+        {
+          "member": "exposureCompensationEV",
+          "offset": 0,
+          "sourceOffset": 0,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureKeyValue",
+          "offset": 4,
+          "sourceOffset": 4,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMinEV100",
+          "offset": 8,
+          "sourceOffset": 8,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureMaxEV100",
+          "offset": 12,
+          "sourceOffset": 12,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureLowPercent",
+          "offset": 16,
+          "sourceOffset": 16,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureHighPercent",
+          "offset": 20,
+          "sourceOffset": 20,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedUp",
+          "offset": 24,
+          "sourceOffset": 24,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureSpeedDown",
+          "offset": 28,
+          "sourceOffset": 28,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "exposureDeltaSeconds",
+          "offset": 32,
+          "sourceOffset": 32,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "lookSaturation",
+          "offset": 36,
+          "sourceOffset": 36,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "presentationMode",
+          "offset": 40,
+          "sourceOffset": 40,
+          "stride": 4,
+          "size": 4,
+          "alignment": 4
+        },
+        {
+          "member": "frameSeed",
+          "offset": 44,
+          "sourceOffset": 44,
           "stride": 4,
           "size": 4,
           "alignment": 4

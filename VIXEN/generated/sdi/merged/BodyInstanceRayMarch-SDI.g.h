@@ -1516,18 +1516,26 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct cosmicK {
-        static constexpr const char* NAME = "cosmicK";
+    struct _Frame {
+        static constexpr const char* NAME = "_Frame";
         static constexpr uint32_t INDEX = 13;
         static constexpr uint32_t OFFSET = 92;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct proxyAabbCount {
-        static constexpr const char* NAME = "proxyAabbCount";
+    struct cosmicK {
+        static constexpr const char* NAME = "cosmicK";
         static constexpr uint32_t INDEX = 14;
         static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct proxyAabbCount {
+        static constexpr const char* NAME = "proxyAabbCount";
+        static constexpr uint32_t INDEX = 15;
+        static constexpr uint32_t OFFSET = 100;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 1;
         static constexpr const char* FEATURES[1] = {"VIXEN_B2_PROXY_PREPASS"};
@@ -1550,6 +1558,7 @@ struct alignas(16) PushBlock {
     uint8_t _pad76[4];
     glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
+    uint32_t _Frame;
     float cosmicK;
 #if defined(VIXEN_B2_PROXY_PREPASS)
     uint32_t proxyAabbCount;
@@ -1569,6 +1578,7 @@ static_assert(offsetof(PushBlock, raySizeBias) == Push::raySizeBias::OFFSET, "Pu
 static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET, "PushBlock.instanceCount is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, debugTargetPixel) == Push::debugTargetPixel::OFFSET, "PushBlock.debugTargetPixel is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, accumFrameCount) == Push::accumFrameCount::OFFSET, "PushBlock.accumFrameCount is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, cosmicK) == Push::cosmicK::OFFSET, "PushBlock.cosmicK is not at its SDI OFFSET");
 #if defined(VIXEN_B2_PROXY_PREPASS)
 static_assert(offsetof(PushBlock, proxyAabbCount) == Push::proxyAabbCount::OFFSET, "PushBlock.proxyAabbCount is not at its SDI OFFSET");
@@ -1645,8 +1655,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
-    {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
-    {"proxyAabbCount", true, 0, 0, 96, Access::ReadOnly, 1, kFeatures_Push_proxyAabbCount},
+    {"_Frame", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"cosmicK", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
+    {"proxyAabbCount", true, 0, 0, 100, Access::ReadOnly, 1, kFeatures_Push_proxyAabbCount},
 };
 
 /**
@@ -1668,7 +1679,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 45;
+    static constexpr uint32_t NUM_MEMBERS = 46;
     static constexpr uint32_t NUM_FEATURES = 7;
 };
 

@@ -8999,6 +8999,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // undeclared binding is a validation error).
     SdiProviderRegistry sceneProviders;
     const auto kSceneRoles = SlotRole::Dependency | SlotRole::Execute;
+    sceneProviders.Provide("_Frame", frameSyncNode, FrameSyncNodeConfig::FRAME_COUNTER,
+                           SlotRole::Execute);
     sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
     sceneProviders.Provide("BrickBuffer", bodyOctreeSceneNode,
@@ -9460,6 +9462,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
                           directLightingPushConstantGatherer, 12,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::FRAME_COUNTER,
+                          directLightingPushConstantGatherer, DirectSdi::Push::_Frame::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
 
     // ===================================================================
     // Sampled Lighting Inc3 M5: SpatialReuseNode wiring — the second half of the pass
@@ -10357,6 +10362,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           probeGatherPushConstantGatherer, GatherSdi::Push::raySizeBias::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::FRAME_COUNTER,
+                          probeGatherPushConstantGatherer, GatherSdi::Push::_Frame::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
                           shadowRayTracePushConstantGatherer, ShadowSdi::Push::instanceCount::INDEX,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
@@ -10422,6 +10430,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       SlotRoleModifier(SlotRole::Execute));
         batch.Connect(gatherHeightConstant, ConstantNodeConfig::OUTPUT,
                       spatialReuseGatherPushGatherer, SrgSdi::Push::imgHeight::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::FRAME_COUNTER,
+                      spatialReuseGatherPushGatherer, SrgSdi::Push::_Frame::INDEX,
                       SlotRoleModifier(SlotRole::Execute));
         // The reservoir-phase wave traces — same three live SceneBindings pc
         // fields as every tracing stage (the M4/M4b findings, a fourth time).

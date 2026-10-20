@@ -240,11 +240,11 @@ void main() {
     // PREVIOUS (last frame's reservoir, read for temporal reuse) — see ReservoirConfig.cs's
     // own doc comment. Both buffers are always bound; only the ROLE each plays this frame
     // changes.
-    bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
+    bool parityEven = (pc._Frame & 1u) == 0u;
 
     // RNG seed: per-pixel XOR'd with frameParity — see this file's earlier RIS-section
     // comment for why (fresh candidate set every frame, not a repeated one).
-    uint rngState = pcgHash(reservoirIdx ^ (reservoirConfig.frameParity * 2654435761u));
+    uint rngState = pcgHash(reservoirIdx ^ (pc._Frame * 2654435761u));
 
     ReservoirRecord current = reservoirBuildFromLightTree(bestWorldPos, rngState);
 
