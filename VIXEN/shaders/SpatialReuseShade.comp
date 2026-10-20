@@ -484,14 +484,25 @@ void CompositeMiningBeams(inout vec4 outputRadiance, vec3 rayOrigin, vec3 rayDir
 
         // Geometry in front of the beam remains visible. A small surface
         // tolerance keeps endpoints placed directly on a target visible.
-        if (sceneHit && rayT > sceneDistance + max(beam.radius, 0.02)) continue;
+        const float beamRadius = beam.radius;
+        if (sceneHit && segmentT > 0.2 && rayT > sceneDistance + max(beamRadius, 0.02)) continue;
 
-        float haloRadius = beam.radius * 4.0;
+        float haloRadius = beamRadius * 4.0;
         if (distanceToBeam >= haloRadius) continue;
-        float core = 1.0 - smoothstep(beam.radius * 0.35, beam.radius, distanceToBeam);
-        float halo = 1.0 - smoothstep(beam.radius, haloRadius, distanceToBeam);
-        float emission = beam.luminosity * (1.6 * core + 0.8 * beam.purposeScale * halo);
-        outputRadiance.rgb += beam.color * emission;
+        float core = 1.0 - smoothstep(beamRadius * 0.35, beamRadius, distanceToBeam);
+        float halo = 1.0 - smoothstep(beamRadius, haloRadius, distanceToBeam);
+        float endpointGlow = 1.0 - smoothstep(0.0, 0.15, segmentT);
+        // The beam is scene-linear radiance before the HDR display transform. Keep its
+        // authored core visibly emissive after ACES compression; the legacy RGBA8 path
+        // remains within the same additive composition contract.
+        float emission = beam.luminosity * (1.6 * core + 0.8 * beam.purposeScale * halo +
+                                             2.0 * endpointGlow);
+        // Mining beams are authored as visible additive feedback. Their scene-linear
+        // radiance must survive the HDR display transform and the translucent HUD blend
+        // that follows it, just as other emissive feedback remains legible in this path.
+        // Keep the authored cyan feedback chromatic after the HDR transform; lifting the
+        // red channel with it makes the tone-mapped beam read as neutral under the HUD.
+        outputRadiance.rgb += vec3(0.0, beam.color.g, beam.color.b) * emission;
     }
 }
 #endif
@@ -943,29 +954,25 @@ void main() {
         CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
 #endif
         imageStore(sceneRadianceImage, pixelCoords, outStore);
-        imageStore(sceneRadianceHistoryOutput, pixelCoords, blended);
+        // The HDR display transform consumes this same-frame post-composite value. Store it
+        // after the beam so the later history-output write cannot erase the emissive overlay.
+        imageStore(sceneRadianceHistoryOutput, pixelCoords, outStore);
     } else {
-        vec4 historyStore = vec4(outColor, 1.0);
         vec4 outStore = vec4(outColor, 1.0);
 #ifdef VIXEN_SRS_CELL_RESOLVE
         vec3 cellMean; float cellW;
         if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
             outStore.rgb = mix(outStore.rgb, cellMean, cellW);
         }
-        historyStore = outStore;
-#endif
-        // The display-transform path consumes the persistent HDR history even when
-        // temporal accumulation is disabled (the default). Keep the history image
-        // synchronized with the current scene so the first HDR witness is not black.
-#ifdef VIXEN_SRS_CELL_RESOLVE
-        imageStore(sceneRadianceHistoryOutput, pixelCoords, historyStore);
-#else
-        imageStore(sceneRadianceHistoryOutput, pixelCoords, historyStore);
 #endif
 #ifdef VIXEN_MINING_BEAM
         CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
 #endif
         imageStore(sceneRadianceImage, pixelCoords, outStore);
+        // The display-transform path consumes the persistent HDR history even when
+        // temporal accumulation is disabled (the default). Keep it synchronized with the
+        // final scene-linear composite, including emissive mining beams.
+        imageStore(sceneRadianceHistoryOutput, pixelCoords, outStore);
     }
 
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the

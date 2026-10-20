@@ -2,10 +2,13 @@
 
 #include "Data/Nodes/LightingConfigNodeConfig.h"
 #include "Data/Nodes/SkySphereNodeConfig.h"
+#include "Look/LookResolver.h"
 #include "Nodes/LightingConfigNode.h"
 #include "Nodes/SkySphereNode.h"
 
+#include <array>
 #include <cstdint>
+#include <utility>
 
 namespace Vixen::App {
 
@@ -40,6 +43,7 @@ struct ExposureDeclaration {
     Mode mode = Mode::Auto;
     const char* preset = "space";   // Auto only
     float fixedEV100 = 0.0f;        // Fixed only
+    float compensationEV = 0.0f;    // artistic bias added after metering (either mode)
 };
 
 // The default SceneLook is the application's built-in scenes (HUD, editor, starfield, Cornell):
@@ -48,6 +52,7 @@ struct SceneLook {
     EnvironmentDeclaration environment;
     CelProfile cel;
     ExposureDeclaration exposure;
+    float saturation = 1.0f;        // linear chroma scale before the tone curve: 0 greyscale, 1 unchanged, 2 doubled
 };
 
 // The exposure parameters a declaration resolves to; an unknown preset name falls back to
@@ -60,31 +65,57 @@ inline Vixen::RenderGraph::LightingConfigNodeConfig::ExposurePreset ExposureSett
     return preset ? *preset : Cfg::EXPOSURE_PRESETS[0];
 }
 
-inline void ApplyExposureSettings(Vixen::RenderGraph::LightingConfigNode& lighting,
-                                  const Vixen::RenderGraph::LightingConfigNodeConfig::ExposurePreset& settings) {
-    using Cfg = Vixen::RenderGraph::LightingConfigNodeConfig;
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_KEY_VALUE, settings.keyValue);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_MIN_EV100, settings.minEV100);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_MAX_EV100, settings.maxEV100);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_LOW_PERCENT, settings.lowPercent);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_HIGH_PERCENT, settings.highPercent);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_SPEED_UP, settings.speedUp);
-    lighting.SetParameter(Cfg::PARAM_EXPOSURE_SPEED_DOWN, settings.speedDown);
+// The exposure channels a declaration contributes. Fixed sets only the window: the speeds come from the
+// layers below, and the resolver applies the meter's snap when the resolved window has zero width.
+inline Vixen::RenderGraph::PartialLook ExposureLook(const ExposureDeclaration& exposure) {
+    const auto settings = ExposureSettings(exposure);
+    Vixen::RenderGraph::PartialLook look;
+    look.exposureMinEV100 = settings.minEV100;
+    look.exposureMaxEV100 = settings.maxEV100;
+    look.exposureCompensationEV = exposure.compensationEV;
+    if (exposure.mode == ExposureDeclaration::Mode::Fixed) return look;
+    look.exposureKeyValue = settings.keyValue;
+    look.exposureLowPercent = settings.lowPercent;
+    look.exposureHighPercent = settings.highPercent;
+    look.exposureSpeedUp = settings.speedUp;
+    look.exposureSpeedDown = settings.speedDown;
+    return look;
+}
+
+inline Vixen::RenderGraph::PartialLook SceneLookPartial(const SceneLook& look) {
+    Vixen::RenderGraph::PartialLook partial = ExposureLook(look.exposure);
+    partial.saturation = look.saturation;
+    partial.skyMode = static_cast<uint32_t>(look.environment.background);
+    partial.skyColor = std::array<float, 3>{look.environment.color[0], look.environment.color[1],
+                                            look.environment.color[2]};
+    partial.skyGradientSlope = look.environment.gradientSlope;
+    partial.celShadowThreshold = look.cel.shadowThreshold;
+    partial.celLitThreshold = look.cel.litThreshold;
+    partial.celRampSoftness = look.cel.rampSoftness;
+    partial.dimBandFloor = look.cel.dimBandFloor;
+    return partial;
+}
+
+// Scene layer slots: the declared look and the scene's lights are separate contributions.
+inline constexpr uint32_t kSceneLookSlot = 0;
+inline constexpr uint32_t kSceneLightsSlot = 1;
+
+inline void SetSceneLookLayer(Vixen::RenderGraph::LightingConfigNode& lighting, const SceneLook& look) {
+    Vixen::RenderGraph::LookContribution contribution;
+    contribution.look = SceneLookPartial(look);
+    lighting.Look().SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLookSlot, std::move(contribution));
+}
+
+inline void SetSceneLightsLayer(Vixen::RenderGraph::LightingConfigNode& lighting,
+                                Vixen::RenderGraph::LookLightSet lights) {
+    Vixen::RenderGraph::LookContribution contribution;
+    contribution.look.lights = std::move(lights);
+    lighting.Look().SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLightsSlot, std::move(contribution));
 }
 
 inline void ApplySceneLook(Vixen::RenderGraph::LightingConfigNode& lighting,
                            Vixen::RenderGraph::SkySphereNode* skySphere, const SceneLook& look) {
-    using Cfg = Vixen::RenderGraph::LightingConfigNodeConfig;
-    lighting.SetParameter(Cfg::PARAM_SKY_MODE, static_cast<uint32_t>(look.environment.background));
-    lighting.SetParameter(Cfg::PARAM_SKY_COLOR_R, look.environment.color[0]);
-    lighting.SetParameter(Cfg::PARAM_SKY_COLOR_G, look.environment.color[1]);
-    lighting.SetParameter(Cfg::PARAM_SKY_COLOR_B, look.environment.color[2]);
-    lighting.SetParameter(Cfg::PARAM_SKY_GRADIENT_SLOPE, look.environment.gradientSlope);
-    lighting.SetParameter(Cfg::PARAM_CEL_SHADOW_THRESHOLD, look.cel.shadowThreshold);
-    lighting.SetParameter(Cfg::PARAM_CEL_LIT_THRESHOLD, look.cel.litThreshold);
-    lighting.SetParameter(Cfg::PARAM_CEL_RAMP_SOFTNESS, look.cel.rampSoftness);
-    lighting.SetParameter(Cfg::PARAM_DIM_BAND_FLOOR, look.cel.dimBandFloor);
-    ApplyExposureSettings(lighting, ExposureSettings(look.exposure));
+    SetSceneLookLayer(lighting, look);
     if (skySphere) {
         using Sky = Vixen::RenderGraph::SkySphereNodeConfig;
         skySphere->SetParameter(Sky::PARAM_ENABLED, look.environment.starfield ? 1u : 0u);

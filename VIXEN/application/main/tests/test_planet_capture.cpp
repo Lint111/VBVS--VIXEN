@@ -156,7 +156,8 @@ public:
         camera_->SetLookTargetNoOrbitForTest(glm::vec3(state_.forward));
         shadow->SetReachAndBias(state_.shadowMaxDistance, state_.shadowBias);
 
-        lighting_->SetLights(Planet::Lights(state_), Planet::kAmbient, Planet::CelSpillPurposeScales());
+        Vixen::App::SetSceneLightsLayer(*lighting_, Vixen::RenderGraph::LookLightSet::From(
+            Planet::Lights(state_), Planet::kAmbient, Planet::CelSpillPurposeScales()));
         Vixen::App::ApplySceneLook(
             *lighting_, dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")),
             Planet::SceneLookDeclaration());

@@ -137,10 +137,11 @@ enum class SdfOpCode : uint8_t {
     ReadParamU32           = 180,
     ReadParamQ16           = 181,
     GlyphOutline           = 182,
+    PathDistance           = 183,
 };
 struct StackArity { std::int8_t vPop, vPush, pPop, pPush; };
 struct RecipeOpcodeStackInfo { std::uint8_t opcode; std::int8_t vPop, vPush, pPop, pPush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; };
-inline constexpr std::array<RecipeOpcodeStackInfo, 123> RecipeOpcodeStackTable{{
+inline constexpr std::array<RecipeOpcodeStackInfo, 124> RecipeOpcodeStackTable{{
     {0, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {1, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {2, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
@@ -264,6 +265,7 @@ inline constexpr std::array<RecipeOpcodeStackInfo, 123> RecipeOpcodeStackTable{{
     {180, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable},
     {181, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable},
     {182, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
+    {183, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
 }};
 inline const RecipeOpcodeStackInfo* FindRecipeOpcodeStackInfo(std::uint8_t raw) {
     for (const auto& entry : RecipeOpcodeStackTable) if (entry.opcode == raw) return &entry;

@@ -2,6 +2,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode — the exact opcode set this emitter must cover
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include <cassert>
 #include <algorithm>
 #include "Recipe/generated/RecipeGlslLiterals.g.h"
@@ -61,7 +62,8 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     uint32_t recipeId,
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
-    std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {})
+    std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
+    std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {})
 {
     std::vector<std::string> stk;
     std::string body;
@@ -99,6 +101,36 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 const auto emitPoint = [&](const char* name, const auto& point) {
                     body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
                     body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
+                };
+                emitPoint("P0", segment.P0);
+                emitPoint("P1", segment.P1);
+                emitPoint("P2", segment.P2);
+                emitPoint("P3", segment.P3);
+                body += "  " + prefix + ".Kind = " + std::to_string(segment.Kind) + "u;\n";
+                body += "  " + prefix + ".ContourStart = " + std::to_string(segment.ContourStart) + "u;\n";
+            }
+        }
+    }
+
+    // A PathDistance instruction indexes this fixed local array, laid out like the glyph rows.
+    if (!pathInstances.empty()) {
+        body += "  PathInstance pathInstances[" + std::to_string(pathInstances.size()) + "];\n";
+        for (std::size_t pathIndex = 0; pathIndex < pathInstances.size(); ++pathIndex) {
+            const auto& path = pathInstances[pathIndex];
+            const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
+            const std::uint32_t segmentCount = std::min<std::uint32_t>(
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
+            body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
+            body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
+            body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
+            body += "  " + row + ".FillRule = " + std::to_string(path.FillRule) + "u;\n";
+            for (std::uint32_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+                const auto& segment = path.Segments[segmentIndex];
+                const std::string prefix = row + ".Segments[" + std::to_string(segmentIndex) + "]";
+                const auto emitPoint = [&](const char* name, const auto& point) {
+                    body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
+                    body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
+                    body += "  " + prefix + "." + name + ".Z = " + f(point.Z) + ";\n";
                 };
                 emitPoint("P0", segment.P0);
                 emitPoint("P1", segment.P1);

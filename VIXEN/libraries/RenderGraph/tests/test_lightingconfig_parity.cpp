@@ -84,6 +84,7 @@ TEST(LightingConfigParity, LightingConfigStd430Layout) {
     EXPECT_EQ(offsetof(LightingConfig, exposureSpeedUp), 248u);
     EXPECT_EQ(offsetof(LightingConfig, exposureSpeedDown), 252u);
     EXPECT_EQ(offsetof(LightingConfig, exposureDeltaSeconds), 256u);
+    EXPECT_EQ(offsetof(LightingConfig, lookSaturation), 260u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {

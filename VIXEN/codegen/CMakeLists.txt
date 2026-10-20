@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "96570e48d607bc6f1fa23d0007e5f27eb3f5d472")
+set(_vixen_tracked_yeroket_kernel_sha "b1576418a1ca4cf29dd22853ff3cd1aba6372c83")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -302,6 +302,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp" _out_path_instance_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl" _out_path_instance_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256" _out_path_instance_layout_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
@@ -403,6 +406,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
         set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
         set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
+        set(_out_path_instance_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp")
+        set(_out_path_instance_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl")
+        set(_out_path_instance_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
@@ -662,6 +668,24 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
+    # The general path instance shares PathPoint/PathSegment with the glyph bucket; the kernel
+    # guards each shared struct per block, so both headers can be included together.
+    set(_path_instance_args
+        "${_yk_dll_run}"
+        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block PathInstance
+        --out-cpp "${_out_path_instance_cpp_run}"
+        --out-glsl "${_out_path_instance_glsl_run}"
+        --out-layout-hash "${_out_path_instance_layout_run}")
+    vixen_add_codegen_check(path_instance_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args} --check
+        COMMENT "[codegen] golden check: PathInstance bucket layout and std430 fingerprint"
+        VERBATIM)
+    add_custom_target(path_instance_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args}
+        COMMENT "[codegen] regenerate PathInstance C++/GLSL faces and layout fingerprint"
+        JOB_POOL msbuild
+        VERBATIM)
+
     # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
     # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
     set(_recipe_simd_args
@@ -774,13 +798,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         if(IS_DIRECTORY "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
             list(APPEND _gpu_schema_excluded_sources
                 "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-        endif()
-        # Likewise the Substrate fixture kinds: they use the schema field `.Rate`
-        # facet, which the pinned kernel's source reader does not parse, and
-        # FrameTargets references none of them.
-        if(EXISTS "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
-            list(APPEND _gpu_schema_excluded_sources
-                "${_undertow_core_src}/Undertow.Content.Core.Declarations/SubstrateKinds.cs")
         endif()
         set(_gpu_schema_source_files)
         if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")

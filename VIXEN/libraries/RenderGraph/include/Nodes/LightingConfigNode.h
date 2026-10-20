@@ -5,6 +5,7 @@
 #include "Core/PerFrameResources.h"
 #include "Data/Nodes/LightingConfigNodeConfig.h"
 #include "Generated/LightingConfig.g.h"
+#include "Look/LookResolver.h"
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -29,8 +30,8 @@ public:
  * DynamicInstanceBufferNode's PerFrameResources ring pattern).
  *
  * The default content is a single directional light matching Lighting.glsl's
- * previously-hardcoded default. Hosts can replace the shared light set through
- * SetLights() without graph rewiring; the fixed generated capacity remains four.
+ * previously-hardcoded default. Hosts replace the shared light set (and every other look
+ * channel) through a Look() layer without graph rewiring; the light capacity remains four.
  *
  * Lifecycle: the ring buffers persist across graph recompile; released on
  * FinalTeardown (see CleanupImpl).
@@ -42,11 +43,10 @@ public:
     LightingConfigNode(const std::string& instanceName, NodeType* nodeType);
     ~LightingConfigNode() override = default;
 
-    // Replace the shared light set. Excess entries are clipped to the generated
-    // four-light capacity; an empty list is valid and leaves ambient lighting.
-    // Missing purpose scales default to 1.0; excess scales are ignored.
-    void SetLights(const std::vector<Vixen::Gpu::Light>& lights, float ambientIntensity = 0.3f,
-                   const std::vector<float>& celSpillPurposeScales = {});
+    // The only source of look values (exposure, saturation, cel profile, sky, lights): hosts add layers
+    // here and the node uploads the resolved result every frame.
+    LookResolver& Look() { return look_; }
+    const LookResolver& Look() const { return look_; }
 
 protected:
     void TypedSetupImpl(TypedSetupContext&    ctx) override;
@@ -60,8 +60,7 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
-    Vixen::Gpu::LightingConfig customLighting_{};
-    bool hasCustomLighting_ = false;
+    LookResolver look_;
 };
 
 } // namespace Vixen::RenderGraph

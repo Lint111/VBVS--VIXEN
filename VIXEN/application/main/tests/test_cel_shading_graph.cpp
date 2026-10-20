@@ -1,6 +1,7 @@
 #include "VulkanGraphApplication.h"
 #include "Core/NodeInstance.h"
 #include "Data/Nodes/LightingConfigNodeConfig.h"
+#include "Nodes/LightingConfigNode.h"
 #include <stb_image.h>
 
 #include <gtest/gtest.h>
@@ -83,8 +84,9 @@ public:
                     action_ == CaptureAction::BandCount ? CaptureBandCount() : 5u);
                 float rampSoftness = 0.0f;
                 if (action_ == CaptureAction::BandCount && CaptureRampSoftness(rampSoftness)) {
-                    lighting->SetParameter(LightingConfigNodeConfig::PARAM_CEL_RAMP_SOFTNESS,
-                        rampSoftness);
+                    Vixen::RenderGraph::PartialLook look;
+                    look.celRampSoftness = rampSoftness;
+                    SetFixtureLook(*lighting, look);
                 }
                 if (action_ == CaptureAction::Bounds) SetBoundaryParameters(*lighting);
             }
@@ -112,16 +114,25 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    static void SetFixtureLook(Vixen::RenderGraph::NodeInstance& lighting, const Vixen::RenderGraph::PartialLook& look) {
+        Vixen::RenderGraph::LookContribution contribution;
+        contribution.look = look;
+        dynamic_cast<Vixen::RenderGraph::LightingConfigNode&>(lighting).Look().SetSlot(
+            Vixen::RenderGraph::LookLayer::DevOverride, 1, std::move(contribution));
+    }
+
     static void SetBoundaryParameters(Vixen::RenderGraph::NodeInstance& lighting) {
-        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_SHADOW_THRESHOLD, 0.0f);
-        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIT_THRESHOLD, 1.0f);
-        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_RAMP_SOFTNESS, 0.5f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIT_HUE_SHIFT_DEGREES, 180.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_SHADOW_HUE_SHIFT_DEGREES, -180.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_START, 0.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_END, 1000000.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE, 0.25f);
-        lighting.SetParameter(LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV, 100.0f);
+        Vixen::RenderGraph::PartialLook look;
+        look.celShadowThreshold = 0.0f;
+        look.celLitThreshold = 1.0f;
+        look.celRampSoftness = 0.5f;
+        look.exposureCompensationEV = 100.0f;
+        SetFixtureLook(lighting, look);
     }
 
     bool Capture(const std::string& suffix) {

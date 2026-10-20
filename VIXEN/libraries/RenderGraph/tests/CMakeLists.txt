@@ -49,6 +49,7 @@ add_executable(test_rendergraph_core
     Nodes/test_reconstruction_jitter.cpp
     Nodes/test_reconstruction_history.cpp
     Nodes/test_texture_loader_node.cpp
+    Look/test_look_resolver.cpp
     Selection/test_pick_vote.cpp
 )
 

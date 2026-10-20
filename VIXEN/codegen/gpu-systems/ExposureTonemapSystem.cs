@@ -35,18 +35,27 @@ public static class ExposureTonemapSystem
         float exposure = math.pow(2.0f, meter[0] + LightingConfigSSBO[0].exposureCompensationEV);
 
         float red = math.max(source.x * exposure, 0.0f);
+        float green = math.max(source.y * exposure, 0.0f);
+        float blue = math.max(source.z * exposure, 0.0f);
+
+        // Look saturation in linear space before the curve; the neutral value skips the mix so default output is bit-exact.
+        float saturation = LightingConfigSSBO[0].lookSaturation;
+        bool neutral = saturation == 1.0f;
+        float luma = 0.2126f * red + 0.7152f * green + 0.0722f * blue;
+        red = math.select(math.max(red * saturation + luma * (1.0f - saturation), 0.0f), red, neutral);
+        green = math.select(math.max(green * saturation + luma * (1.0f - saturation), 0.0f), green, neutral);
+        blue = math.select(math.max(blue * saturation + luma * (1.0f - saturation), 0.0f), blue, neutral);
+
         red = math.clamp((red * (2.51f * red + 0.03f)) / (red * (2.43f * red + 0.59f) + 0.14f), 0.0f, 1.0f);
         float redLinear = 12.92f * red;
         float redEncoded = 1.055f * math.pow(math.max(red, 0.0f), 1.0f / 2.4f) - 0.055f;
         red = math.select(redEncoded, redLinear, red <= 0.0031308f);
 
-        float green = math.max(source.y * exposure, 0.0f);
         green = math.clamp((green * (2.51f * green + 0.03f)) / (green * (2.43f * green + 0.59f) + 0.14f), 0.0f, 1.0f);
         float greenLinear = 12.92f * green;
         float greenEncoded = 1.055f * math.pow(math.max(green, 0.0f), 1.0f / 2.4f) - 0.055f;
         green = math.select(greenEncoded, greenLinear, green <= 0.0031308f);
 
-        float blue = math.max(source.z * exposure, 0.0f);
         blue = math.clamp((blue * (2.51f * blue + 0.03f)) / (blue * (2.43f * blue + 0.59f) + 0.14f), 0.0f, 1.0f);
         float blueLinear = 12.92f * blue;
         float blueEncoded = 1.055f * math.pow(math.max(blue, 0.0f), 1.0f / 2.4f) - 0.055f;

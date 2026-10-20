@@ -2,6 +2,7 @@
 
 #include "Text/AtlasFormat.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
+#include "Recipe/generated/PathInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"
 
 #include FT_OUTLINE_H
@@ -34,7 +35,7 @@ msdfgen::Point2 ToPoint(const FT_Vector& point) {
             static_cast<double>(point.y) * kFreeTypePixelScale};
 }
 
-msdfgen::Point2 ToPoint(const GlyphOutlinePoint& point, float pointsToPixels) {
+msdfgen::Point2 ToPoint(const PathPoint& point, float pointsToPixels) {
     return {static_cast<double>(point.X) * static_cast<double>(pointsToPixels),
             static_cast<double>(point.Y) * static_cast<double>(pointsToPixels)};
 }
@@ -84,7 +85,7 @@ std::unique_ptr<msdfgen::Shape> BuildMsdfShapeFromBucket(const GlyphOutlineInsta
     auto shape = std::make_unique<msdfgen::Shape>();
     msdfgen::Contour* contour = nullptr;
     for (std::uint32_t index = 0; index < glyph.SegmentCount; ++index) {
-        const GlyphOutlineSegment& segment = glyph.Segments[index];
+        const PathSegment& segment = glyph.Segments[index];
         if (segment.ContourStart != 0U)
             contour = &shape->addContour();
         if (!contour)
