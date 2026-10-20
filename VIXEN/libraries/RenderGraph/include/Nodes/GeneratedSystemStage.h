@@ -246,7 +246,11 @@ public:
         size_t imageReadCount = 0;
     };
 
-    void Instantiate(RenderGraph* graph, GpuSystemManifest manifest) {
+    /// `enabled` lets a module host leave out the systems of providers it did not select (an
+    /// anti-aliasing provider's resolve when `none` won); every other system is instantiated.
+    void Instantiate(RenderGraph* graph, GpuSystemManifest manifest,
+                     const std::function<bool(const GpuSystemEntry&)>& enabled = {}) {
+        if (enabled) std::erase_if(manifest.systems, [&](const GpuSystemEntry& entry) { return !enabled(entry); });
         manifest_ = std::move(manifest);
         stages_.clear();
         lastWriters_.clear();

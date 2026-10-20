@@ -5249,6 +5249,8 @@ namespace Vixen.Codegen.Gpu
     {
         public const string SchemaKind = "state:frame-targets";
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> SceneRadianceHistoryOutput => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rg32f> MotionVectors => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> ResolvedRadiance => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba8> OutputImage => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public uint PresentationMode
         {

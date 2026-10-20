@@ -97,6 +97,8 @@ public:
         // Requested anti-aliasing provider id (AntiAliasingModule.h); selection falls back to
         // the `none` pass-through wherever the pass or the frame does not admit it.
         std::string_view antiAliasing = "taa";
+        // The TAA history-weight ceiling: the blend ramps 1/N and stops at this weight.
+        float antiAliasingHistoryWeight = 0.9f;
         bool temporalJitter = false;
         Vixen::RenderGraph::ReconstructionSamplingPath samplingPath =
             Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;

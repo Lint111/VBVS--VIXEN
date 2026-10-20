@@ -10,6 +10,8 @@ namespace Vixen.Codegen.Gpu;
 internal static class math
 {
     public static float max(float left, float right) => throw new NotSupportedException();
+    public static float min(float left, float right) => throw new NotSupportedException();
+    public static float frac(float value) => throw new NotSupportedException();
     public static float pow(float value, float exponent) => throw new NotSupportedException();
     public static float clamp(float value, float minimum, float maximum) => throw new NotSupportedException();
     public static float select(float whenFalse, float whenTrue, bool condition) => throw new NotSupportedException();
@@ -20,18 +22,18 @@ public static class ExposureTonemapSystem
 {
     [GaiaQuery]
     public static QuerySpec Select() => Gaia.Query()
-        .All<StateFrameTargetsRef, Rgba16f>(row => row.SceneRadianceHistoryOutput)
+        .All<StateFrameTargetsRef, Rgba16f>(row => row.ResolvedRadiance)
         .All<StateFrameTargetsRef, Rgba8>(row => row.OutputImage);
 
     [Update]
     public static void Run(
-        in Texture2D<Rgba16f> sceneRadianceHistoryOutput,
+        in Texture2D<Rgba16f> resolvedRadiance,
         ref Texture2D<Rgba8> outputImage,
         in ExposureMeterState[] meter,
         in LightingConfig[] LightingConfigSSBO,
         int i)
     {
-        Rgba16f source = sceneRadianceHistoryOutput.Current[i];
+        Rgba16f source = resolvedRadiance.Current[i];
         float exposure = math.pow(2.0f, meter[0].log2Exposure + LightingConfigSSBO[0].exposureCompensationEV);
 
         float red = math.max(source.x * exposure, 0.0f);

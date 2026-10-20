@@ -78,6 +78,9 @@ void PrevCameraConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.reconstructionSamplingX = jitter.x;
     cfg.reconstructionSamplingY = jitter.y;
     cfg.reconstructionSamplingZ = 0.0f;  // unused since the second pick trace was removed
+    cfg.inputWidth = GetParameterValue<uint32_t>(PrevCameraConfigNodeConfig::PARAM_INPUT_WIDTH, 0u);
+    cfg.inputHeight = GetParameterValue<uint32_t>(PrevCameraConfigNodeConfig::PARAM_INPUT_HEIGHT, 0u);
+    cfg.historyWeight = GetParameterValue<float>(PrevCameraConfigNodeConfig::PARAM_HISTORY_WEIGHT, 0.0f);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

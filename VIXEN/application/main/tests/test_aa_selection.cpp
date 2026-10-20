@@ -141,5 +141,16 @@ TEST(AntiAliasingSelectionTest, EligibleTaaIsSelectedThroughTheSharedPredicate) 
     EXPECT_EQ(fallback.rejected[0].reason, RenderModuleSelectionFailureReason::NotInitialized);
 }
 
+TEST(AntiAliasingSelectionTest, ProviderSystemsRunOnlyWhenTheirProviderIsSelected) {
+    const auto* taa = FindAntiAliasingBackend("taa");
+    ASSERT_NE(taa, nullptr);
+    ASSERT_FALSE(taa->generatedSystem.empty());
+    EXPECT_TRUE(AntiAliasingSystemEnabled(taa->generatedSystem, "taa"));
+    EXPECT_FALSE(AntiAliasingSystemEnabled(taa->generatedSystem, "none"));
+    // A system no AA provider claims (the tone map) is never gated by the module.
+    EXPECT_TRUE(AntiAliasingSystemEnabled("ExposureTonemapSystem", "none"));
+    EXPECT_TRUE(FindAntiAliasingBackend("none")->generatedSystem.empty());
+}
+
 } // namespace
 } // namespace Vixen::RenderGraph

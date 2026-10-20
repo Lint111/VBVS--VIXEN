@@ -773,17 +773,17 @@ struct AccumulationConfigSSBO {
  * @brief PrevCameraConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x1177bc19aa02887c (for runtime discovery)
+ * Layout VixenHash: 0x5945e7414a2c742c (for runtime discovery)
  */
 struct PrevCameraConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x1177bc19aa02887cULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x5945e7414a2c742cULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "PrevCameraConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 80;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 

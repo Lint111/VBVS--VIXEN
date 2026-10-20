@@ -47,6 +47,12 @@ CONSTEXPR_NODE_CONFIG(PrevCameraConfigNodeConfig,
                       PrevCameraConfigNodeCounts::OUTPUTS,
                       PrevCameraConfigNodeCounts::ARRAY_MODE) {
 
+    // The input extent the jitter and motion are measured against, and the anti-aliasing
+    // module's history-weight ceiling (0 when no AA provider resolves), copied into the record.
+    static constexpr const char* PARAM_INPUT_WIDTH = "inputWidth";
+    static constexpr const char* PARAM_INPUT_HEIGHT = "inputHeight";
+    static constexpr const char* PARAM_HISTORY_WEIGHT = "historyWeight";
+
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,

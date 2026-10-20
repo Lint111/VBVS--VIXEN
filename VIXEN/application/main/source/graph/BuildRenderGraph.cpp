@@ -795,6 +795,47 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle exposureReduceShaderLib{};
     NodeHandle exposureReduceNode{};
     NodeHandle exposureMeterBuffer{};
+    // Anti-aliasing module (R676): the same selection predicate as the upscaler, over the AA
+    // backend table. `none` is the terminal pass-through and adds no work. It is chosen before the
+    // generated systems are instantiated because a provider's work is one of them. The temporal
+    // upscaler gate (M3) reads the requested upscaler: FSR 3 is the only history-holding one.
+    const RenderModuleFrameInput antiAliasingInputs[] = {
+        RenderModuleFrameInput::Color, RenderModuleFrameInput::Depth,
+        RenderModuleFrameInput::MotionVectors, RenderModuleFrameInput::Jitter};
+    const bool interactiveSampling =
+        renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
+    const AntiAliasingFrameDescription antiAliasingFrame{
+        .presentationSampling = interactiveSampling,
+        .temporalUpscalerSelected = renderPathConfig.upscaler == UpscalerKind::Fsr3,
+        .colorSpace = hdrExposureEnabled ? AntiAliasingColorSpace::LinearHdr
+                                         : AntiAliasingColorSpace::DisplayReferred,
+        .colorFormat = hdrExposureEnabled ? RenderModuleImageFormat::Rgba16Float
+                                          : RenderModuleImageFormat::Rgba8Unorm,
+        // The interactive path can jitter and produce depth and motion for a provider that needs them.
+        .availableFrameInputs = interactiveSampling ? std::span<const RenderModuleFrameInput>(antiAliasingInputs)
+                                                    : std::span<const RenderModuleFrameInput>(antiAliasingInputs, 1),
+    };
+    const auto antiAliasingCandidates =
+        BuildAntiAliasingCandidates(renderPathConfig.antiAliasing, antiAliasingFrame);
+    const RenderModuleSelectionResult antiAliasingSelection =
+        SelectRenderModuleProviderForInitialization(antiAliasingCandidates);
+    for (const auto& rejected : antiAliasingSelection.rejected) {
+        const auto* backend = FindAntiAliasingBackend(rejected.id);
+        const std::string_view passRefusal =
+            backend ? AntiAliasingPassRefusal(*backend, antiAliasingFrame) : std::string_view{};
+        if (mainLogger) {
+            mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider '" + std::string(rejected.id) +
+                             "' rejected: " +
+                             std::string(RenderModuleSelectionFailureText(rejected.reason)) +
+                             (rejected.reason == RenderModuleSelectionFailureReason::NotPermittedByPass &&
+                                      !passRefusal.empty()
+                                  ? " (" + std::string(passRefusal) + ")"
+                                  : std::string{}));
+        }
+    }
+    selectedAntiAliasingProviderId_ = antiAliasingSelection.selected
+        ? std::string(antiAliasingSelection.selected->id) : std::string("none");
+
     generatedSystems_ = {};
     if (hdrExposureEnabled) {
         // The vixen: frame-targets composition's generated systems (today the tone map) come from
@@ -810,7 +851,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 "shaders/Generated/GpuSystems.manifest.json",
                 "../shaders/Generated/GpuSystems.manifest.json",
             };
-            generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(manifestPaths));
+            generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(manifestPaths),
+                [this](const GpuSystemEntry& entry) {
+                    return AntiAliasingSystemEnabled(entry.className, selectedAntiAliasingProviderId_);
+                });
         }
         exposureReduceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_reduce_shader_lib");
         exposureReduceNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_reduce");
@@ -8693,6 +8737,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   prevCameraConfigNode, PrevCameraConfigNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(cameraNode, CameraNodeConfig::PREV_VIEW_PROJ,
                   prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_VIEW_PROJ);
+    // The resolve inputs ride this per-frame record (R674.2): the extent the jitter and motion are
+    // measured against, and the selected AA provider's history-weight ceiling (0: no resolve).
+    {
+        auto* prevCamera = static_cast<PrevCameraConfigNode*>(renderGraph->GetInstance(prevCameraConfigNode));
+        prevCamera->SetParameter(PrevCameraConfigNodeConfig::PARAM_INPUT_WIDTH, renderExtent.width);
+        prevCamera->SetParameter(PrevCameraConfigNodeConfig::PARAM_INPUT_HEIGHT, renderExtent.height);
+        prevCamera->SetParameter(PrevCameraConfigNodeConfig::PARAM_HISTORY_WEIGHT,
+                                 selectedAntiAliasingProviderId_ == "taa"
+                                     ? renderPathConfig.antiAliasingHistoryWeight : 0.0f);
+    }
 
     // Sampled Lighting Inc3 M3: reservoir config node connections (same ring pattern as
     // shadowConfigNode above). M3 scaffolding only — no shader consumes this buffer yet.
@@ -9607,6 +9661,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         frameResources.Provide(sceneRadiance, sceneRadianceNode,
                                SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
         frameResources.ProvideImage(sceneRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
+        // With the `none` AA provider the resolve the meter and tone map read is the scene radiance.
+        const SchemaIdentity resolvedRadiance{"state:frame-targets", "ResolvedRadiance"};
+        frameResources.Provide(resolvedRadiance, sceneRadianceNode,
+                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        frameResources.ProvideImage(resolvedRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
         frameResources.Provide(outputImage, renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
         frameResources.ProvideImage(outputImage, renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
         frameResources.Provide(exposureMeter, exposureMeterBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
@@ -9930,40 +9989,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
         ? std::string(selectedUpscalerBackend->id) : std::string("native");
     selectedUpscalerHasRealContext_ = selectedUpscalerBackend &&
         selectedUpscalerBackend->nativeFallback;
-
-    // Anti-aliasing module (R676): the same selection predicate as the upscaler, over the AA
-    // backend table. `none` is the terminal pass-through and adds no work.
-    const AntiAliasingFrameDescription antiAliasingFrame{
-        .presentationSampling =
-            renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual,
-        .temporalUpscalerSelected = selectedUpscalerBackend && selectedUpscalerBackend->contract &&
-            selectedUpscalerBackend->contract->retainsHistory,
-        .colorSpace = hdrExposureEnabled ? AntiAliasingColorSpace::LinearHdr
-                                         : AntiAliasingColorSpace::DisplayReferred,
-        .colorFormat = hdrExposureEnabled ? RenderModuleImageFormat::Rgba16Float
-                                          : RenderModuleImageFormat::Rgba8Unorm,
-        .availableFrameInputs = availableUpscalerInputs,
-    };
-    const auto antiAliasingCandidates =
-        BuildAntiAliasingCandidates(renderPathConfig.antiAliasing, antiAliasingFrame);
-    const RenderModuleSelectionResult antiAliasingSelection =
-        SelectRenderModuleProviderForInitialization(antiAliasingCandidates);
-    for (const auto& rejected : antiAliasingSelection.rejected) {
-        const auto* backend = FindAntiAliasingBackend(rejected.id);
-        const std::string_view passRefusal =
-            backend ? AntiAliasingPassRefusal(*backend, antiAliasingFrame) : std::string_view{};
-        if (mainLogger) {
-            mainLogger->Info("[BuildRenderGraph] Anti-aliasing provider '" + std::string(rejected.id) +
-                             "' rejected: " +
-                             std::string(RenderModuleSelectionFailureText(rejected.reason)) +
-                             (rejected.reason == RenderModuleSelectionFailureReason::NotPermittedByPass &&
-                                      !passRefusal.empty()
-                                  ? " (" + std::string(passRefusal) + ")"
-                                  : std::string{}));
-        }
-    }
-    selectedAntiAliasingProviderId_ = antiAliasingSelection.selected
-        ? std::string(antiAliasingSelection.selected->id) : std::string("none");
 
     if (selectedUpscalerBackend && !selectedUpscalerBackend->nativeFallback) {
         UpscalerModuleBuildContext params;

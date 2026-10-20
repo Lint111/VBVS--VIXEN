@@ -70,6 +70,8 @@
   "runtimeStates": [
     { "owner": "vixen:frame-targets", "clrType": "Vixen.Codegen.Gpu.FrameTargets", "root": true, "order": 122, "kind": "state:frame-targets", "singleton": true, "fields": [
       { "name": "SceneRadianceHistoryOutput", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba16f", "representation": "image", "format": "VK_FORMAT_R16G16B16A16_SFLOAT", "imageFormat": "rgba16f", "extent": { "source": "presentation" } } },
+      { "name": "MotionVectors", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rg32f", "representation": "image", "format": "VK_FORMAT_R32G32_SFLOAT", "imageFormat": "rg32f", "extent": { "source": "presentation" } } },
+      { "name": "ResolvedRadiance", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba16f", "representation": "image", "format": "VK_FORMAT_R16G16B16A16_SFLOAT", "imageFormat": "rgba16f", "extent": { "source": "presentation" } } },
       { "name": "OutputImage", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba8", "representation": "image", "format": "VK_FORMAT_R8G8B8A8_UNORM", "imageFormat": "rgba8", "extent": { "source": "presentation" } } },
       { "name": "PresentationMode", "storage": "uint", "default": 0 }
     ] },

@@ -24,6 +24,12 @@ public static class FrameKinds
 {
     public static readonly KindSchema FrameTargets = Simple(
         F<Texture2D<Rgba16f>>("SceneRadianceHistoryOutput").Dynamic(),
+        // Engine motion vectors (previous UV minus current UV, unjittered cameras), written by
+        // the march from camera and instance transforms (ReconstructionMotion.glsl).
+        F<Texture2D<Rg32f>>("MotionVectors").Dynamic(),
+        // The anti-aliasing module's linear-HDR resolve: the exposure meter and the tone map read
+        // it. With the `none` provider it is the scene radiance itself.
+        F<Texture2D<Rgba16f>>("ResolvedRadiance").Dynamic(),
         F<Texture2D<Rgba8>>("OutputImage").Dynamic(),
         F<UInt>("PresentationMode").Default(0).Dynamic()).Singleton();
 }

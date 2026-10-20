@@ -9,10 +9,18 @@ struct PrevCameraConfig {
     float reconstructionSamplingX;
     float reconstructionSamplingY;
     float reconstructionSamplingZ;
-    uint32_t _samplingPadding;
+    uint32_t inputWidth;
+    uint32_t inputHeight;
+    float historyWeight;
+    uint32_t _tailPadding1;
+    uint32_t _tailPadding2;
 };
-static_assert(sizeof(PrevCameraConfig) == 80, "PrevCameraConfig std430 size");
+static_assert(sizeof(PrevCameraConfig) == 96, "PrevCameraConfig std430 size");
 static_assert(offsetof(PrevCameraConfig, prevViewProj) == 0, "prevViewProj@0");
 static_assert(offsetof(PrevCameraConfig, reconstructionSamplingX) == 64, "reconstructionSamplingX@64");
-static_assert(offsetof(PrevCameraConfig, _samplingPadding) == 76, "_samplingPadding@76");
+static_assert(offsetof(PrevCameraConfig, inputWidth) == 76, "inputWidth@76");
+static_assert(offsetof(PrevCameraConfig, inputHeight) == 80, "inputHeight@80");
+static_assert(offsetof(PrevCameraConfig, historyWeight) == 84, "historyWeight@84");
+static_assert(offsetof(PrevCameraConfig, _tailPadding1) == 88, "_tailPadding1@88");
+static_assert(offsetof(PrevCameraConfig, _tailPadding2) == 92, "_tailPadding2@92");
 } // namespace Vixen::Gpu

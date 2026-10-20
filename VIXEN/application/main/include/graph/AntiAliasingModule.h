@@ -36,6 +36,9 @@ struct AntiAliasingBackendDescriptor {
     bool compiled = false;
     // The terminal fallback: adds no work and leaves the frame's colour untouched.
     bool passThrough = false;
+    // The generated GPU system (manifest class name) that is this provider's work; empty for the
+    // pass-through. The host instantiates it only when the provider is selected (R677).
+    std::string_view generatedSystem{};
 };
 
 namespace AntiAliasingDetail {
@@ -61,11 +64,11 @@ inline constexpr AntiAliasingContract kTaaAntiAliasingContract{
 };
 
 // Provider ids are R676.5's. Post providers (cmaa2, smaa1x, fxaa-lite) and supersample join this
-// table with their slices; `none` stays last as the terminal fallback. `taa` is not compiled
-// until its kernel system lands (slice S4).
+// table with their slices; `none` stays last as the terminal fallback. `taa`'s kernel system is in
+// the composition; it stays uncompiled until its host wiring (history, sampler, jitter) lands.
 inline constexpr std::array<AntiAliasingBackendDescriptor, 2> kAntiAliasingBackends{{
-    {"taa", &kTaaAntiAliasingContract, false, false},
-    {"none", &kNoneAntiAliasingContract, true, true},
+    {"taa", &kTaaAntiAliasingContract, false, false, "TemporalAntiAliasingSystem"},
+    {"none", &kNoneAntiAliasingContract, true, true, {}},
 }};
 
 inline std::span<const AntiAliasingBackendDescriptor> GetAntiAliasingBackendDescriptors() noexcept {
@@ -76,6 +79,15 @@ inline const AntiAliasingBackendDescriptor* FindAntiAliasingBackend(std::string_
     const auto found = std::find_if(kAntiAliasingBackends.begin(), kAntiAliasingBackends.end(),
                                     [id](const auto& backend) { return backend.id == id; });
     return found == kAntiAliasingBackends.end() ? nullptr : &*found;
+}
+
+// False for a generated system that belongs to an AA provider other than the selected one.
+inline bool AntiAliasingSystemEnabled(std::string_view generatedSystem,
+                                      std::string_view selectedProvider) noexcept {
+    for (const auto& backend : kAntiAliasingBackends)
+        if (!backend.generatedSystem.empty() && backend.generatedSystem == generatedSystem)
+            return backend.id == selectedProvider;
+    return true;
 }
 
 // What the frame offers the module.
