@@ -119,11 +119,17 @@ TEST_F(TimerTest, ConsecutiveDeltaTimesAreIndependent) {
     SleepMs(30);
     double dt2 = timer->GetDeltaTime();
 
-    // Both should be ~30ms, not 30ms and 60ms
-    EXPECT_TRUE(IsWithinTolerance(dt1, 0.030))
-        << "First delta: expected ~30ms, got " << (dt1 * 1000.0) << "ms";
-    EXPECT_TRUE(IsWithinTolerance(dt2, 0.030))
-        << "Second delta: expected ~30ms, got " << (dt2 * 1000.0) << "ms";
+    // OS sleep overshoots and host scheduling varies, so assert the contract instead of wall-clock
+    // ceilings: each delta spans at least its own sleep, and the second delta is not cumulative
+    // since Reset() (a cumulative value would equal the total elapsed time).
+    double totalElapsed = timer->GetElapsedTime();
+    EXPECT_GE(dt1, 0.025)
+        << "First delta: expected at least ~30ms, got " << (dt1 * 1000.0) << "ms";
+    EXPECT_GE(dt2, 0.025)
+        << "Second delta: expected at least ~30ms, got " << (dt2 * 1000.0) << "ms";
+    EXPECT_GT(totalElapsed, dt2 + 0.025)
+        << "Second delta must not include the first sleep: dt2 " << (dt2 * 1000.0)
+        << "ms, total " << (totalElapsed * 1000.0) << "ms";
 }
 
 TEST_F(TimerTest, DeltaTimePrecision) {

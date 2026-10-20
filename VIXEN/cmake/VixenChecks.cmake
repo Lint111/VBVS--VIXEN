@@ -26,6 +26,7 @@ function(vixen_add_checked_target name)
         set(_all ALL)
     endif()
     add_custom_target(${name} ${_all} DEPENDS "${_stamp}")
+    set_property(GLOBAL APPEND PROPERTY VIXEN_CHECK_TARGETS ${name})
 endfunction()
 
 # Working directories and launcher options are command identity, not schema
