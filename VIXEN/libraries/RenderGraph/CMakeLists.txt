@@ -258,6 +258,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/RenderTargetExtentNode.cpp
+    src/Nodes/SamplerNode.cpp  # taarunner: the separate sampler of a generated system's sampled view
     src/Nodes/ReconstructionHistoryStateNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp

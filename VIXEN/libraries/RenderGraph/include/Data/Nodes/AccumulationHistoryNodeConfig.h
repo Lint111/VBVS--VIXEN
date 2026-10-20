@@ -41,7 +41,9 @@ namespace AccumulationHistoryNodeCounts {
  *
  * Layout: the compute shader will use the image as a STORAGE image (VK_IMAGE_LAYOUT_GENERAL). The
  * node performs a one-time UNDEFINED -> GENERAL transition at Compile (storage images stay GENERAL
- * thereafter), mirroring PickIdTargetNode's own transition pattern.
+ * thereafter), mirroring PickIdTargetNode's own transition pattern, and clears both images to zero
+ * so a reader of a fresh pair (first frame, or after a resize) sees zero, never stale memory.
+ * Usage is STORAGE plus whatever the connected consumers derive (a sampled view adds SAMPLED).
  *
  * Lifecycle: both images persist across graph recompile (same extent); released only on
  * FinalTeardown. A genuine resize recreates the pair at the new extent. The accumulation config
@@ -99,6 +101,10 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(CURRENT_HISTORY_TARGET, Vixen::Vulkan::Resources::IRenderTarget*, 5,
         SlotNullability::Required, SlotMutability::WriteOnly);
+
+    // VkFormat stored as uint32_t; defaults to the scene-linear HDR R16G16B16A16_SFLOAT. A
+    // generated system's history pair (manifest `allocations`, slots 2) sets its declared format.
+    static constexpr const char* PARAM_FORMAT = "format";
 
     // ----- Constructor: runtime descriptor initialization -----
     AccumulationHistoryNodeConfig() {

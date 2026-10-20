@@ -95,6 +95,8 @@ vixen_generate_node_manifest(
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp
+        # The generated-system runner adds its own nodes (allocations, the sampled-view sampler).
+        ${VIXEN_ROOT}/libraries/RenderGraph/include/Nodes/GeneratedSystemStage.h
 )
 
 # Application include dir is PUBLIC so consumers get VulkanGraphApplication.h, Headers.h, etc.

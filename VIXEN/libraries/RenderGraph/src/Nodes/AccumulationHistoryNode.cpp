@@ -70,10 +70,24 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(width_) + "x" + std::to_string(height_) + ")");
     }
 
+    // Consumers decide the usage beyond storage (a generated system's sampled view adds SAMPLED);
+    // a change of format or usage recreates the pair like a resize does.
+    const VkFormat format = static_cast<VkFormat>(GetParameterValue<uint32_t>(
+        AccumulationHistoryNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(kFormat)));
+    const VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+        GetOwningGraph()->DeriveImageUsage(this, {AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW.index,
+                                                  AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW.index,
+                                                  AccumulationHistoryNodeConfig::HISTORY_TARGET.index,
+                                                  AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET.index});
+    const bool contractChanged = format != format_ || usage != usage_;
+    format_ = format;
+    usage_ = usage;
+
     // The image pair is persistent across a same-size recompile, but MUST follow the render extent --
     // stale images left at the startup size would be out of bounds after a resize (mirrors
     // PickIdTargetNode's own followSwapchainExtent discipline).
-    if (images_[0] == VK_NULL_HANDLE || images_[1] == VK_NULL_HANDLE) {
+    if (images_[0] == VK_NULL_HANDLE || images_[1] == VK_NULL_HANDLE || contractChanged) {
         DestroyImages();
         CreateImage(GetDevice(), commandPool, 0);
         CreateImage(GetDevice(), commandPool, 1);
@@ -98,9 +112,9 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     for (uint32_t i = 0; i < 2; ++i) {
         targets_[i].buffers = {{images_[i], memories_[i], views_[i], VK_IMAGE_LAYOUT_GENERAL}};
-        targets_[i].format = kFormat;
+        targets_[i].format = format_;
         targets_[i].extent = {width_, height_};
-        targets_[i].imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        targets_[i].imageUsageFlags = usage_;
     }
 
     const uint32_t currentIndex = nextWriteImageIndex_;
@@ -115,7 +129,7 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
             static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[currentIndex]));
 
     NODE_LOG_INFO("[AccumulationHistoryNode] History image pair published (" + std::to_string(width_) + "x" +
-                  std::to_string(height_) + ", R16G16B16A16_SFLOAT storage images)");
+                  std::to_string(height_) + ", format " + std::to_string(format_) + ")");
 }
 
 void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -161,13 +175,13 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     VkImageCreateInfo imgInfo{};
     imgInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imgInfo.imageType     = VK_IMAGE_TYPE_2D;
-    imgInfo.format        = kFormat;
+    imgInfo.format        = format_;
     imgInfo.extent        = {width_, height_, 1u};
     imgInfo.mipLevels     = 1;
     imgInfo.arrayLayers   = 1;
     imgInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
     imgInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imgInfo.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    imgInfo.usage         = usage_;
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -186,7 +200,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
         memProps,
         req.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        "AccumulationHistoryNode R16G16B16A16_SFLOAT image"
+        "AccumulationHistoryNode history image"
     );
 
     if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
@@ -202,7 +216,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     viewInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image            = image;
     viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format           = kFormat;
+    viewInfo.format           = format_;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
     if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
@@ -213,7 +227,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     // this single transition makes the descriptor (always GENERAL) correct for every frame.
     TransitionToGeneral(commandPool, image);
 
-    NODE_LOG_INFO("[AccumulationHistoryNode] Created R16G16B16A16_SFLOAT storage image at " +
+    NODE_LOG_INFO("[AccumulationHistoryNode] Created history image at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +
                   " (transitioned UNDEFINED->GENERAL)");
 }
@@ -252,15 +266,18 @@ void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkI
     barrier.image               = image;
     barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                         0, nullptr, 0, nullptr, 1, &barrier);
+
+    // A fresh image holds zero: a reader that counts valid history sees none.
+    const VkClearColorValue zero{};
+    vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &barrier.subresourceRange);
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                         0, nullptr, 0, nullptr, 1, &barrier);
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
         vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
