@@ -45,7 +45,10 @@ void ReconstructionHistoryModule::Build(GraphScope& scope, const Params& params)
         const auto writes = scope.AddNode<ImageSyncGathererNodeType>("seed_writes");
         const auto reads = scope.AddNode<ImageSyncGathererNodeType>("seed_reads");
         scope.GetInstance<ImageSyncGathererNode>(writes)->PreRegisterImageSlots(2);
-        scope.GetInstance<ImageSyncGathererNode>(reads)->PreRegisterImageSlots(1);
+        // SpatialReuse writes the current scene-radiance target while its temporal input
+        // remains the previous target. Gather both pair members on the existing producer
+        // connection so reconstruction graphs retain one IMAGE_WRITE_ARRAY owner.
+        scope.GetInstance<ImageSyncGathererNode>(reads)->PreRegisterImageSlots(2);
         params.registerShaderFamily(shader, params.makeShaderFamily("ReconstructionHistory.comp", "ReconstructionHistory"));
         SdiProviderRegistry providers;
         providers.Provide("sceneRadianceImage", params.sceneRadiance,
@@ -65,6 +68,8 @@ void ReconstructionHistoryModule::Build(GraphScope& scope, const Params& params)
              .Connect(writes, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       stage, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute))
              .Connect(params.sceneRadiance, SceneRadianceNodeConfig::HISTORY_TARGET, reads, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+             .Connect(params.sceneRadiance, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET, reads, 1,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
              .Connect(reads, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       params.sceneProducer, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute))

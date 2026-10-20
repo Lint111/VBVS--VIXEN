@@ -11,6 +11,6 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_gtest_discover_tests(Application test_headless_cornell_graph
         GPU
         TEST_ENVIRONMENT "VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX=${CMAKE_BINARY_DIR}/headless-cornell-frame"
-        TEST_ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_HDR_EXPOSURE=set:0")
+        TEST_ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_HDR_EXPOSURE=set:1")
     message(STATUS "[Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)")
 endif()

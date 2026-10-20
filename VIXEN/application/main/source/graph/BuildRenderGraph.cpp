@@ -953,6 +953,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // scheduler bake a real probeUpdateNode(write)->spatialReuseNode(read) SyncEdge on each
     // atlas's own constituent Resource*.
     NodeHandle spatialReuseProbeAtlasReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("spatial_reuse_probe_atlas_read_gatherer");
+    // HDR exposure reads the post-composite scene-radiance image that SpatialReuseShade writes
+    // through its descriptor provider. Keep separate gatherers on the write and read sides so
+    // ResourceAccessTracker can derive the same-frame storage-image hazard.
+    NodeHandle spatialReuseSceneRadianceWriteGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("spatial_reuse_scene_radiance_write_gatherer");
+    NodeHandle exposureSceneRadianceReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("exposure_scene_radiance_read_gatherer");
 
     // Sampled Lighting Inc4 M3: ProbeUpdateNode — the probe-update compute pass itself
     // (ProbeUpdate.comp). Own shaderLib/gatherer/pushConstantGatherer/descSet/pipeline
@@ -3237,6 +3242,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Read-side image gatherer: two DDGI atlases and the sky cache, all read by SpatialReuseShade.
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(3);
+    if (hdrExposureEnabled && !reconstructionInputsEnabled) {
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseSceneRadianceWriteGatherer))->PreRegisterImageSlots(1);
+    }
+    if (hdrExposureEnabled) {
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(exposureSceneRadianceReadGatherer))->PreRegisterImageSlots(1);
+    }
 
     // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
     // buffer entry on the cull's write side.
@@ -9017,17 +9028,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // it is also the image declared by IMAGE_WRITE and consumed by BlitNode.
     if (hdrExposureEnabled) {
         sceneProviders.Provide("sceneRadianceImage", sceneRadianceNode,
-                               SceneRadianceNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
     } else {
         sceneProviders.Provide("sceneRadianceImage", renderTargetNode,
                                RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     }
     sceneProviders.Provide("sceneRadianceHistory", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
-                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("sceneRadianceHistoryOutput_current", accumulationHistoryNode,
-                           AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    // ExposureMeter consumes the complete post-accumulation scene-linear signal, including
+    // beams. ExposureTonemapSystem consumes the matching current scene-radiance image so the
+    // same-frame beam is displayed without feeding the beam into temporal history input.
+    if (hdrExposureEnabled) {
+        sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
+                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                               SlotRole::Execute);
+        sceneProviders.Provide("sceneRadianceHistoryOutput_current", sceneRadianceNode,
+                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    } else {
+        sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
+                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                               SlotRole::Execute);
+        sceneProviders.Provide("sceneRadianceHistoryOutput_current", accumulationHistoryNode,
+                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                               SlotRole::Execute);
+    }
     sceneProviders.Provide("_ExtentX", renderTargetNode,
                            RenderTargetNodeConfig::WIDTH_OUT, SlotRole::Execute);
     sceneProviders.Provide("_ExtentY", renderTargetNode,
@@ -10053,6 +10077,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled) {
         batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                       exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+        if (!reconstructionInputsEnabled) {
+            batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
+                          spatialReuseSceneRadianceWriteGatherer, 0,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 .Connect(spatialReuseSceneRadianceWriteGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                          spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY,
+                          SlotRoleModifier(SlotRole::Execute));
+        }
+        batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
+                      exposureSceneRadianceReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+             .Connect(exposureSceneRadianceReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      exposureNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
     }
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
     // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
