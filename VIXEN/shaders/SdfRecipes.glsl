@@ -36,9 +36,11 @@ vec3 sdfGradient(uint recipeId, vec3 p, vec3 center, vec3 params) {
 // Sphere-trace within the bounding sphere. Writes hitNormal/hitT on success.
 bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 rd,
                          float conservativeStepScale,
-                         out vec3 hitNormal, out float hitT) {
+                         float pixelAngle,
+                         out vec3 hitNormal, out float hitT, out float hitCoverage) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
+    hitCoverage = 1.0;
 
     float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? params.y : 0.0;
     float boundR  = params.x + maxDisp + 0.01;
@@ -59,17 +61,51 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
     // Step factor = 1/Lipschitz (see SdfRecipes.h): L = 1 + maxDisp*freq*sqrt(3).
     float stepScale = 1.0 / (1.0 + maxDisp * params.z * 1.7320508);
     stepScale *= clamp(conservativeStepScale, 0.0, 1.0);
+#ifdef VIXEN_REGIME3_COMPOSITE
+    float closestDistance = 1e30;
+    float closestFootprint = 1e-6;
+    float closestT = tNear;
+    vec3 closestP = ro + rd * tNear;
+#endif
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3  p = ro + rd * t;
         float d = evalSdf(recipeId, p, center, params);
+#ifdef VIXEN_REGIME3_COMPOSITE
+        float footprint = max(max(t, 0.0) * max(pixelAngle, 0.0), 1e-6);
+        if (d / footprint < closestDistance / closestFootprint) {
+            closestDistance = d;
+            closestFootprint = footprint;
+            closestT = t;
+            closestP = p;
+        }
+#endif
         if (d < EPS) {
             hitNormal = sdfGradient(recipeId, p, center, params);
             hitT      = t;
             return true;
         }
         t += d * stepScale;
-        if (t > tFar) return false;
+        if (t > tFar) {
+#ifdef VIXEN_REGIME3_COMPOSITE
+            break;
+#else
+            return false;
+#endif
+        }
     }
+#ifdef VIXEN_REGIME3_COMPOSITE
+    if (closestDistance < 1e30) {
+        float coverageWidth = max(closestFootprint, 1e-6);
+        float coverage = SdfCore_MathClamp(
+            0.5 - 0.5 * closestDistance / coverageWidth, 0.0, 1.0);
+        if (coverage > 1e-6) {
+            hitNormal = sdfGradient(recipeId, closestP, center, params);
+            hitT = closestT;
+            hitCoverage = coverage;
+            return true;
+        }
+    }
+#endif
     return false;
 }
 
@@ -153,10 +189,12 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
                          float params[6],
-                         out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+                         out vec3 hitNormal, out float hitT, out uint stepsUsed,
+                         out float hitCoverage) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
     stepsUsed = 0u;
+    hitCoverage = 1.0;
 
     vec3  oc   = ro - boundCenter;
     float b    = dot(oc, rd);
@@ -195,6 +233,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
     float lastRefinementT = -1e30;
+#ifdef VIXEN_REGIME3_COMPOSITE
+    float closestDistance = 1e30;
+    float closestFootprint = 1e-6;
+    float closestT = tNear;
+    vec3 closestP = ro + rd * tNear;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
     float traceLastD = 1e30;
     float traceLastT = tNear;
@@ -206,6 +250,15 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p, params);
+#ifdef VIXEN_REGIME3_COMPOSITE
+        float footprint = max(max(t, 0.0) * max(pixelAngle, 0.0), 1e-6);
+        if (d / footprint < closestDistance / closestFootprint) {
+            closestDistance = d;
+            closestFootprint = footprint;
+            closestT = t;
+            closestP = p;
+        }
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
         traceLastD = d;
         traceLastT = t;
@@ -350,6 +403,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #endif
         t += step;
         if (t > tFar) {
+#ifdef VIXEN_REGIME3_COMPOSITE
+            break;
+#else
 #ifdef VIXEN_RIMLEAK_TRACE
             vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
@@ -357,8 +413,22 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                                   traceLastGridBound, tNear, tFar, traceLastStep);
 #endif
             return false;
+#endif
         }
     }
+#ifdef VIXEN_REGIME3_COMPOSITE
+    if (closestDistance < 1e30) {
+        float coverageWidth = max(closestFootprint, 1e-6);
+        float coverage = SdfCore_MathClamp(
+            0.5 - 0.5 * closestDistance / coverageWidth, 0.0, 1.0);
+        if (coverage > 1e-6) {
+            hitNormal = normalize(recipeFieldGradient(recipeId, closestP, params));
+            hitT = closestT;
+            hitCoverage = coverage;
+            return true;
+        }
+    }
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
     vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
     rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 3u, recipeId, gridDim,

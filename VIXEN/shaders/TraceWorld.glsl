@@ -298,6 +298,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
             vec3 pNormal;
             float pT;
+            float pCoverage = 1.0;
             bool pHit = false;
 
             // recipeId 0/1 stay on the hand-written legacy analytic path (RECIPE_SPHERE /
@@ -312,11 +313,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
-                                               pNormal, pT);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT,
+                                               pCoverage);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT,
+                                               pCoverage);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -385,7 +388,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT,
+                                               pSteps, pCoverage);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -416,6 +420,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 bestInstIdx    = uint(instIdx);
+#ifdef VIXEN_REGIME3_COMPOSITE
+                bestResidualT = 1.0 - clamp(pCoverage, 0.0, 1.0);
+#endif
                 // M11.2: recipeParams[3..5] are unused by every registered Cornell recipe
                 // (recipeId>=2 bodies sample world p directly, see BuildRenderGraph.cpp's
                 // VIXEN_DDGI_CORNELL_VIRTUAL_DEMO seeding comment) and recipeId<2's legacy
@@ -426,6 +433,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestFootprintRegime = 1u;
                 anyHit         = true;
             }
+#ifdef VIXEN_REGIME3_COMPOSITE
+            else if (pHit && isCloserHit(pT, instanceIndex, secondT, secondInstIdx)) {
+                secondT = pT;
+                secondInstIdx = instanceIndex;
+                secondColor = inst.color;
+            }
+#endif
             continue;  // procedural body fully handled; skip the ESVO path
         }
 
@@ -951,6 +965,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
             vec3 pNormal;
             float pT;
+            float shadowCoverage;
             bool pHit = false;
 
             if (inst.recipeId < 2u) {
@@ -958,11 +973,13 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
-                                               pNormal, pT);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT,
+                                               shadowCoverage);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT,
+                                               shadowCoverage);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -978,7 +995,8 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
-                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT,
+                                           pSteps, shadowCoverage);
                 g_recipeProvenStepOnly = false;
             }
 #endif
