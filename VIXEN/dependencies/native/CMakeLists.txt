@@ -16,8 +16,19 @@ if(TARGET glm)
     set_target_properties(glm PROPERTIES FOLDER "Dependencies")
 endif()
 
-# This is the single Gaia revision shared by VIXEN and the native loader.
-set(VIXEN_GAIA_UPSTREAM_REVISION "a2e62491b56a8589c31da97128f0658088050a70")
+# The single Gaia pin shared by VIXEN, the native loader, undertow and the kernel lives in gaia.pin.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/gaia.pin")
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/gaia.pin" _vixen_gaia_pin_lines REGEX "^(sha|remote):")
+foreach(_vixen_gaia_pin_line IN LISTS _vixen_gaia_pin_lines)
+    if(_vixen_gaia_pin_line MATCHES "^sha:[ \t]*([0-9a-f]+)")
+        set(VIXEN_GAIA_UPSTREAM_REVISION "${CMAKE_MATCH_1}")
+    elseif(_vixen_gaia_pin_line MATCHES "^remote:[ \t]*([^ \t]+)")
+        set(VIXEN_GAIA_REPOSITORY "${CMAKE_MATCH_1}")
+    endif()
+endforeach()
+if(NOT VIXEN_GAIA_UPSTREAM_REVISION MATCHES "^[0-9a-f]+$" OR NOT VIXEN_GAIA_REPOSITORY)
+    message(FATAL_ERROR "VIXEN: ${CMAKE_CURRENT_LIST_DIR}/gaia.pin needs 'sha:' and 'remote:' lines")
+endif()
 if((NOT DEFINED FETCHCONTENT_SOURCE_DIR_GAIA OR "${FETCHCONTENT_SOURCE_DIR_GAIA}" STREQUAL "")
    AND DEFINED FETCHCONTENT_BASE_DIR)
     string(SUBSTRING "${VIXEN_GAIA_UPSTREAM_REVISION}" 0 8 _vixen_gaia_revision_prefix)
@@ -31,7 +42,7 @@ if((NOT DEFINED FETCHCONTENT_SOURCE_DIR_GAIA OR "${FETCHCONTENT_SOURCE_DIR_GAIA}
 endif()
 FetchContent_Declare(
     gaia
-    GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
+    GIT_REPOSITORY "${VIXEN_GAIA_REPOSITORY}"
     GIT_TAG        "${VIXEN_GAIA_UPSTREAM_REVISION}"
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
