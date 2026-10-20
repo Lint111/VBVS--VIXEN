@@ -202,6 +202,18 @@ Priority is inferred from fan-in, critical-section breadth and active call paths
 
 RG3/RG4/RG5 are comparatively small ownership cleanups once the host update/read phases are explicit. RG7/C2 are diagnostic-only and should not displace measured shipping work. SH2–SH5/SH8 and SVO1/SVO2/SVO4/EB4/GA1 need activation evidence before being called runtime hotspots. Kernel's error collection (KD1) is a useful small pattern demonstration, but not a throughput priority on successful dispatch.
 
+## Addendum 2026-10-20 — families added after the audited base
+
+The audited base (`178b838b`) predates the native `TaskExecutor` rewrite and the env-gated phase-timing store. The counts above are the 2026-09-08 snapshot and are not recomputed; these rows classify the declarations that `scripts/check-no-new-mutex.sh` reported as UNCLASSIFIED. KD1 (`RunWave::errMutex`) no longer exists: the rewritten executor has no error mutex. Acquisition evidence is `libraries/KernelDispatch/src/TaskExecutor.cpp` at this revision.
+
+| ID / lock object / declaration | Protects / acquisition evidence | Contention shape | Primary class / removal condition | Kernel analog |
+|---|---|---|---|---|
+| KD2 `CompletionHandle::State::mutex`, `libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h:101` | One completion result slot and its condition variable; `src/TaskExecutor.cpp:46,57,68,80,123,145,174,229`. | One writer (worker, cancellation callback or executor stop) and any waiters, once per submitted blocking task. | **ORDER-able** — the result is a one-shot slot published once; an owner-written slot read after the join removes the guard. Keep cancel-vs-complete precedence (first terminal status wins). | K1/K2. |
+| KD3 `TaskExecutor::blockingMutex_`, `TaskExecutor.h:217` | Blocking-work deque, worker pool lifecycle, stopping flag and outstanding count; `src/TaskExecutor.cpp:94,120,200,213,261`. | Submitters vs blocking workers, per blocking item (cache I/O admission). | **PARTITION-able** — producer mailboxes plus one consumer or a sanctioned arena. Keep stop/drain and submission-order semantics. | K2; same shape as EB4. |
+| KD4 `TaskExecutor::asyncMutex_`, `TaskExecutor.h:226` | Outstanding async-task count and idle condition; `src/TaskExecutor.cpp:90,383,411`. | Submit and completion of each async batch vs the destructor-side idle wait. | **DELTA-able** — outstanding count as an atomic delta with a join-time idle wait. Keep the destructor drain. | K1/K3. |
+| KD5 `TaskExecutor::BatchState::mutex`, `src/TaskExecutor.cpp:34` | Batch success AND and remaining count, promise resolution; `src/TaskExecutor.cpp:128,184`. | Parallel completions of one blocking batch, per task. | **DELTA-able** — per-task result slots, AND-reduced after the join; promise resolved by the last completion. | K2/K3. |
+| RG8 `PhaseTiming::Store::mutex`, `libraries/RenderGraph/include/Core/PhaseTiming.h:37` | Per-node execute and per-site wait sample series; `PhaseTiming.h:49,77`. | Per node Execute and blocking wait **only with `VIXEN_PHASE_TIMING=1`**; off by default. | **DELTA-able** — per-worker sample buffers merged at the summary print. Diagnostic only; not a shipping hotspot. | K2/K3. |
+
 ## Findings, uncertainty and limits
 
 ### Correctness constraints exposed by the inventory

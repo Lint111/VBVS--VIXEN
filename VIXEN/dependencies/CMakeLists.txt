@@ -29,9 +29,9 @@ endif()
 FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
-    # stb_image v2.30 tree; pin the exact source revision for reproducible decodes.
-    GIT_TAG        2c980bb59875b0d32144a71867fbdebb2f77cd20
-    GIT_SHALLOW    TRUE
+    # Pinned: upstream master moved stb_image_resize2.h to deprecated/ (db69a229, 2026-10-19); FrameCapture.cpp needs the root header.
+    # No GIT_SHALLOW: a shallow clone only holds the branch tip and cannot check out a pinned SHA.
+    GIT_TAG        2b2e64bc4778df6a06fbea3a5dbe61f7a76ecf19
 )
 
 FetchContent_MakeAvailable(stb)
