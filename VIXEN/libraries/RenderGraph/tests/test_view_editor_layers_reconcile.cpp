@@ -24,6 +24,7 @@
 #include "EditorLayersView.h"
 #include "GaiaLayerReconcileTestBridge.h"
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 namespace {
 
@@ -45,11 +46,13 @@ public:
 struct RmlUiFixture {
     Vixen::Ui::VixenRmlSystemInterface sysIface;
     NullRenderInterface renderIface;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::Context* ctx = nullptr;
 
     RmlUiFixture() {
         Rml::SetSystemInterface(&sysIface);
         Rml::SetRenderInterface(&renderIface);
+        Rml::SetFontEngineInterface(&fontEngine);
         Rml::Initialise();
         ctx = Rml::CreateContext("view-editor-layers-reconcile", Rml::Vector2i(64, 64));
     }

@@ -25,6 +25,7 @@
 
 #include "Generated/EditorLayers.g.h"   // the artifact under test
 #include "Ui/VixenRmlSystemInterface.h"
+#include "Text/RmlFontEngine.h"
 
 // Inc-Ovr Override proof: this TU only sees the forward-declared
 // Bind{V}Model_{Field}Override hook (Generated/EditorLayers.g.h emits no body for it, by design
@@ -125,8 +126,10 @@ TEST(ViewEditorLayersGolden, GeneratedSequenceMatchesCanonicalSchema) {
 TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     Vixen::Ui::VixenRmlSystemInterface sysIface;
     NullRenderInterface renderIface;
+    Vixen::Text::RmlFontEngine fontEngine;
     Rml::SetSystemInterface(&sysIface);
     Rml::SetRenderInterface(&renderIface);
+    Rml::SetFontEngineInterface(&fontEngine);
     ASSERT_TRUE(Rml::Initialise());
     Rml::Context* ctx = Rml::CreateContext("view-editor-layers-golden", Rml::Vector2i(64, 64));
     ASSERT_NE(ctx, nullptr);
