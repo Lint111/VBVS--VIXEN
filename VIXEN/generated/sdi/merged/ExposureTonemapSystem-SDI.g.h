@@ -53,11 +53,11 @@ struct meterBlock {
  * @brief LightingConfigSSBOBlock
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xd749cf4e845d9cfd (for runtime discovery)
+ * Layout VixenHash: 0xd881302cd7c6504 (for runtime discovery)
  */
 struct LightingConfigSSBOBlock {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xd749cf4e845d9cfdULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xd881302cd7c6504ULL;
 
     // Member metadata structs
     struct pc_0 {
