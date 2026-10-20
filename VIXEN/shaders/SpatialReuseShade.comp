@@ -524,12 +524,15 @@ void CompositeMiningBeams(inout vec4 outputRadiance, vec3 rayOrigin, vec3 rayDir
 // exactly. Arithmetic below is UNTOUCHED from the merged shader (bit-exact:
 // shadowFactor is the same 0.0/1.0 the inline trace produced).
 vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos,
-                                   LightingConfig lighting, uint visBits);
+                                   LightingConfig lighting, uint visBits,
+                                   ivec2 pixelCoords, ivec2 imageExtent);
 
 vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
-                                float roughness, LightingConfig lighting, uint visBits) {
+                                float roughness, LightingConfig lighting, uint visBits,
+                                ivec2 pixelCoords, ivec2 imageExtent) {
     if (lighting.shadingMode != 0u) {
-        return computeCelLightingWithShadows(color, normal, worldPos, lighting, visBits);
+        return computeCelLightingWithShadows(color, normal, worldPos, lighting, visBits,
+                                             pixelCoords, imageExtent);
     }
 
     vec3 viewDir = normalize(-rayDir);
@@ -596,21 +599,60 @@ uint celBandCountAtDistance(LightingConfig lighting, float cameraDistance) {
     return clamp(uint(floor(mix(float(maximumBands), 2.0, falloff) + 0.5)), 2u, maximumBands);
 }
 
-float celBandValue(float NdotL, uint bandCount, LightingConfig lighting) {
+float celNeighborNdotL(ivec2 pixelCoords, ivec2 imageExtent, vec3 fallbackNormal,
+                       Light light, float centerNdotL) {
+    if (any(lessThan(pixelCoords, ivec2(0))) || any(greaterThanEqual(pixelCoords, imageExtent))) {
+        return centerNdotL;
+    }
+    uint neighborIndex = uint(pixelCoords.y) * uint(imageExtent.x) + uint(pixelCoords.x);
+    HitRecord neighbor = hitRecords[neighborIndex];
+    if ((neighbor.flags & HITRECORD_FLAG_HIT) == 0u) return centerNdotL;
+
+    float distanceToLight;
+    vec3 lightDir = lightDirectionAt(light, neighbor.worldPos, distanceToLight);
+    vec3 neighborNormal = neighbor.worldNormal;
+    if (dot(neighborNormal, neighborNormal) <= 1e-8) neighborNormal = fallbackNormal;
+    return max(dot(neighborNormal, lightDir), 0.0);
+}
+
+float celNdotLFootprint(ivec2 pixelCoords, ivec2 imageExtent, vec3 normal,
+                        Light light, float centerNdotL) {
+    // R677 stopgap: this legacy SSBO shade pass has no KernelSystem/callable lowering
+    // seam yet. Keep the finite-difference footprint local until that pass is converted.
+    float footprint = 0.0;
+    footprint = max(footprint, abs(celNeighborNdotL(pixelCoords + ivec2(-1, 0), imageExtent,
+                                                     normal, light, centerNdotL)
+                                   - centerNdotL));
+    footprint = max(footprint, abs(celNeighborNdotL(pixelCoords + ivec2(1, 0), imageExtent,
+                                                     normal, light, centerNdotL)
+                                   - centerNdotL));
+    footprint = max(footprint, abs(celNeighborNdotL(pixelCoords + ivec2(0, -1), imageExtent,
+                                                     normal, light, centerNdotL)
+                                   - centerNdotL));
+    footprint = max(footprint, abs(celNeighborNdotL(pixelCoords + ivec2(0, 1), imageExtent,
+                                                     normal, light, centerNdotL)
+                                   - centerNdotL));
+    return footprint;
+}
+
+float celBandValue(float NdotL, float pixelFootprint, uint bandCount, LightingConfig lighting) {
     float thresholdSpan = max(lighting.celLitThreshold - lighting.celShadowThreshold, 1e-4);
     float ramp = clamp((NdotL - lighting.celShadowThreshold) / thresholdSpan, 0.0, 1.0);
     float bandPosition = ramp * float(bandCount - 1u);
     float lowerBand = floor(bandPosition);
     float withinBand = fract(bandPosition);
     float softness = clamp(lighting.celRampSoftness, 0.0, 0.5);
-    float transition = softness <= 0.0
+    float footprintWidth = pixelFootprint * float(bandCount - 1u) / thresholdSpan;
+    float transitionWidth = clamp(max(softness, footprintWidth), 0.0, 0.5);
+    float transition = transitionWidth <= 0.0
         ? step(0.5, withinBand)
-        : smoothstep(0.5 - softness * 0.5, 0.5 + softness * 0.5, withinBand);
+        : smoothstep(0.5 - transitionWidth * 0.5,
+                     0.5 + transitionWidth * 0.5, withinBand);
     return clamp((lowerBand + transition) / float(bandCount - 1u), 0.0, 1.0);
 }
 
 vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, LightingConfig lighting,
-                                   uint visBits) {
+                                   uint visBits, ivec2 pixelCoords, ivec2 imageExtent) {
     vec3 shadowColor = celHueShiftRgb(color, lighting.celShadowHueShiftDegrees);
     vec3 Lo = lighting.ambientIntensity * shadowColor;
     uint bandCount = celBandCountAtDistance(lighting, length(worldPos - pc.cameraPos));
@@ -641,11 +683,16 @@ vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, Light
         float spill = clamp(luminosity * purposeScale * lighting.celLightSpillScale * attenuation,
                             0.0, 1.0);
         float spilledNdotL = clamp(NdotL + spill * (1.0 - NdotL), 0.0, 1.0);
-        float band = celBandValue(spilledNdotL, bandCount, lighting);
-        float shift = spilledNdotL >= litSideThreshold
-            ? lighting.celLitHueShiftDegrees
-            : lighting.celShadowHueShiftDegrees;
-        vec3 sideColor = celHueShiftRgb(color, shift);
+        float pixelFootprint = celNdotLFootprint(pixelCoords, imageExtent, normal, light, NdotL);
+        float band = celBandValue(spilledNdotL, pixelFootprint, bandCount, lighting);
+        float hueTransition = pixelFootprint <= 0.0
+            ? step(litSideThreshold, spilledNdotL)
+            : smoothstep(litSideThreshold - 0.5 * pixelFootprint,
+                         litSideThreshold + 0.5 * pixelFootprint,
+                         spilledNdotL);
+        vec3 shadowSideColor = celHueShiftRgb(color, lighting.celShadowHueShiftDegrees);
+        vec3 litSideColor = celHueShiftRgb(color, lighting.celLitHueShiftDegrees);
+        vec3 sideColor = mix(shadowSideColor, litSideColor, hueTransition);
         // dimBandFloor lifts band 0 to a dim band; geometric ramp so a floor of 0 stays a no-op.
         float celValue = lighting.dimBandFloor > 0.0 ? pow(lighting.dimBandFloor, 1.0 - band) : band;
         Lo += sideColor * celLightColor * celValue * shadowFactor * attenuation;
@@ -700,7 +747,7 @@ void main() {
     if (anyHitRT) {
         outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
                                                bestRoughness, lightingConfig,
-                                               recReadback._pad0[2]);
+                                               recReadback._pad0[2], pixelCoords, imgSize);
 
         // M11.2: self-lit emissive term at the PRIMARY (camera) hit. Without this the
         // ceiling light panel only ever acts as a light SOURCE (via the light-tree/DDGI
