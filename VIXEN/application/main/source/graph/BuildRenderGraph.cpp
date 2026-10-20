@@ -9601,7 +9601,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // identity (R680.4); the runner binds, orders and dispatches every manifest system.
         const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
         const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
-        const SchemaIdentity exposureMeter{"Vixen.Codegen.Gpu.ExposureMeterState", "*"};
+        const SchemaIdentity exposureMeter{"state:exposure-meter", "*"};
         SchemaResourceRegistry frameResources;
         frameResources.Provide(sceneRadiance, sceneRadianceNode,
                                SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);

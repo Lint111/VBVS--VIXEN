@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "503baffd844b9a7705802ea3a1e8b77cba81067f")
+set(_vixen_tracked_yeroket_kernel_sha "8e0a690d4daa44c61533965f005c5853b3264ef4")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -121,17 +121,8 @@ set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenT
 set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
 set(_schema_gpu_generated "${_cg}/generated/gpu")
-set(_schema_gpu_staged "${CMAKE_CURRENT_BINARY_DIR}/gpu-schema-source")
 set(_schema_kernel_runtime "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime")
 set(_schema_kernel_schema "${_schema_kernel_runtime}/Schema")
-set(_undertow_core_src "")
-if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
-    set(_undertow_core_src "$ENV{UNDERTOW_ROOT}/core/src")
-elseif(_schema_catalog_source)
-    get_filename_component(_undertow_schema_dir "${_schema_catalog_source}" DIRECTORY)
-    get_filename_component(_undertow_core_src "${_undertow_schema_dir}/../.." ABSOLUTE)
-endif()
-set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
 set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
 set(_out_gpu_kind_cs "${_schema_gpu_generated}/FrameTargets.g.cs")
 # The vixen: frame-targets GPU composition: one manifest the GeneratedSystemStage runner reads,
@@ -252,15 +243,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
-        _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
+        _codegen_to_wsl_path("${_schema_gpu_source}" _schema_gpu_source_run)
         _codegen_to_wsl_path("${_schema_gpu_systems}" _schema_gpu_systems_run)
         _codegen_to_wsl_path("${_schema_gpu_generated}" _schema_gpu_generated_run)
         _codegen_to_wsl_path("${_schema_kernel_runtime}" _schema_kernel_runtime_run)
         _codegen_to_wsl_path("${_schema_kernel_schema}" _schema_kernel_schema_run)
-        set(_schema_sim_framework_run "")
-        if(_undertow_core_src)
-            _codegen_to_wsl_path("${_schema_sim_framework}" _schema_sim_framework_run)
-        endif()
         _codegen_to_wsl_path("${_out_gpu_schema_json}" _out_gpu_schema_json_run)
         _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
         _codegen_to_wsl_path("${_out_gpu_systems_manifest}" _out_gpu_systems_manifest_run)
@@ -367,12 +354,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
-        set(_schema_gpu_staged_run "${_schema_gpu_staged}")
+        set(_schema_gpu_source_run "${_schema_gpu_source}")
         set(_schema_gpu_systems_run "${_schema_gpu_systems}")
         set(_schema_gpu_generated_run "${_schema_gpu_generated}")
         set(_schema_kernel_runtime_run "${_schema_kernel_runtime}")
         set(_schema_kernel_schema_run "${_schema_kernel_schema}")
-        set(_schema_sim_framework_run "${_schema_sim_framework}")
         set(_out_gpu_schema_json_run "${_out_gpu_schema_json}")
         set(_out_gpu_kind_cs_run "${_out_gpu_kind_cs}")
         set(_out_gpu_systems_manifest_run "${_out_gpu_systems_manifest}")
@@ -794,50 +780,22 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # The vixen: GPU-domain [KernelSystem]s (gpu-systems/) form one composition. Its
     # manifest names every system, its schema-identity arguments and its schedule; the
     # GeneratedSystemStage runner instantiates them from it, so no system is named here.
-    if(EXISTS "${_schema_sim_framework}/SystemDeclarations.cs"
-        AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
-        # SchemaJsonSourceEmitter resolves every declaration referenced by the
-        # local schema, including Undertow runtime schema declarations. Stage the
-        # authored source roots together in the build tree so the checked input
-        # remains isolated from both source checkouts.
-        set(_gpu_schema_stage_script "${_cg}/StageGpuSchemaSource.cmake")
-        # The VIXEN artifact does not consume Undertow's Faction AI message
-        # kinds. Their newer named visibility argument is outside this pinned
-        # source reader's supported Message syntax; keep that unrelated pack
-        # source out of this local schema overlay.
-        set(_gpu_schema_excluded_sources)
-        if(IS_DIRECTORY "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-            list(APPEND _gpu_schema_excluded_sources
-                "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-        endif()
+    if(EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
+        # The renderer contributes only its own authored roots. Prefix metadata is
+        # carried by the composition instead of being inferred from a staged source
+        # tree, so this drift guard remains enabled without an Undertow checkout.
         set(_gpu_schema_source_files)
-        if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")
-            file(GLOB_RECURSE _undertow_gpu_schema_sources CONFIGURE_DEPENDS
-                "${_undertow_core_src}/*.cs")
-            foreach(_source IN LISTS _undertow_gpu_schema_sources)
-                if(NOT _source MATCHES "/(obj|bin)/")
-                    list(APPEND _gpu_schema_source_files "${_source}")
-                endif()
-            endforeach()
-        endif()
         file(GLOB_RECURSE _vixen_gpu_schema_sources CONFIGURE_DEPENDS
-            "${_schema_gpu_source}/*.cs")
+            "${_schema_gpu_source}/*.cs"
+            "${_schema_gpu_systems}/*.cs"
+            "${_cg}/config-schemas/*.cs")
         list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
-
-        add_custom_target(frame_targets_schema_source_stage
-            COMMAND "${CMAKE_COMMAND}"
-                "-DSOURCE_ROOT=${_undertow_core_src}"
-                "-DLOCAL_ROOT=${_schema_gpu_source}"
-                "-DEXCLUDED_SOURCES=${_gpu_schema_excluded_sources}"
-                "-DOUTPUT_ROOT=${_schema_gpu_staged}"
-                -P "${_gpu_schema_stage_script}"
-            DEPENDS ${_gpu_schema_source_files} "${_gpu_schema_stage_script}"
-            COMMENT "[codegen] stage Undertow and VIXEN GPU schema sources"
-            VERBATIM)
 
         set(_frame_targets_schema_args
             "${_yk_dll_run}" --schema-json-source
-            --schema-source "${_schema_gpu_staged_run}"
+            --schema-source "vixen=${_schema_gpu_source_run}"
+            --schema-source "vixen=${_schema_gpu_systems_run}"
+            --schema-source "vixen=${_schema_config_run}"
             --schema-kernel-source "${_schema_kernel_schema_run}"
             --out-json "${_out_gpu_schema_json_run}")
         vixen_add_checked_target(frame_targets_schema_check ALL
@@ -847,13 +805,12 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             COMMENT "[codegen] golden check: FrameTargets schema JSON matches its source declaration"
             JOB_POOL vixen_codegen
             VERBATIM)
-        add_dependencies(frame_targets_schema_check frame_targets_schema_source_stage)
         add_custom_target(frame_targets_schema_regen
             COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args}
             COMMENT "[codegen] regenerate FrameTargets schema JSON"
             JOB_POOL msbuild
             VERBATIM)
-        add_dependencies(frame_targets_schema_regen engine_codegen_tool frame_targets_schema_source_stage)
+        add_dependencies(frame_targets_schema_regen engine_codegen_tool)
 
         set(_frame_targets_ref_args
             "${_yk_dll_run}" --gaia-kind-cs
@@ -874,11 +831,10 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
 
         set(_gpu_systems_args
             "${_yk_dll_run}"
-            --schema "${_schema_gpu_systems_run}"
-            --schema "${_schema_gpu_generated_run}"
+            --schema "vixen=${_schema_gpu_systems_run}"
+            --schema "vixen=${_schema_gpu_generated_run}"
             --schema "${_schema_kernel_runtime_run}"
-            --schema "${_schema_sim_framework_run}"
-            --schema "${_schema_config_run}"
+            --schema "vixen=${_schema_config_run}"
             --schema-json "${_out_gpu_schema_json_run}"
             --gaia-gpu-schedule --stack-hash "${_gpu_systems_stack_hash}"
             --out-header "${_out_gpu_systems_schedule_run}"
@@ -904,7 +860,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     else()
         message(WARNING
             "[codegen] vixen: GPU-system drift guard DISABLED: "
-            "the pinned kernel schema or Undertow.Sim.Framework/SystemDeclarations.cs is unavailable")
+            "the pinned kernel schema is unavailable")
     endif()
 
     # --- ShadowConfig via the same Yeroket tool (Sampled Lighting Inc1 M4: shadow-pass
