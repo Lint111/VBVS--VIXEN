@@ -1,7 +1,7 @@
 # ProvisionWslVulkan.cmake
 #
 # Auto-provision Mesa Dozen (Vulkan-over-D3D12) so VIXEN renders on the GPU under WSL2.
-# No-op off WSL (no /dev/dxg) or when disabled. Provisioning failure is non-fatal, but the runtime
+# No-op off WSL (non-Unix host, no /dev/dxg) or when disabled. Provisioning failure is non-fatal, but the runtime
 # selector remains strict: use an explicit VK_ICD_FILENAMES or VIXEN_ALLOW_SOFTWARE_VULKAN=1 for
 # software Vulkan.
 #
@@ -18,7 +18,9 @@ option(VIXEN_AUTO_PROVISION_WSL_VULKAN "Build Mesa Dozen for GPU Vulkan on WSL2"
 set(VIXEN_WSL_DZN_ICD "" CACHE INTERNAL "Path to the provisioned Dozen ICD json (empty = none)")
 set(VIXEN_WSL_DZN_LIBRARY_DIR "" CACHE INTERNAL "Directory containing the provisioned Dozen ICD library (empty = none)")
 
-if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
+# CMAKE_HOST_UNIX first: a Windows configure resolves "/dev/dxg" against the current drive, which is
+# the WSL filesystem when the worktree is reached through a mapped WSL share.
+if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND CMAKE_HOST_UNIX AND EXISTS "/dev/dxg")
     message(STATUS "[ProvisionWslVulkan] Vulkan SDK setting: expected ${VIXEN_VULKAN_SDK_VERSION} "
                    "(override with VIXEN_VULKAN_SDK_VERSION).")
     if(DEFINED ENV{XDG_CACHE_HOME})

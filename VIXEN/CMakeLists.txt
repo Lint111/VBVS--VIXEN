@@ -11,6 +11,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 # VIXEN works both standalone AND when add_subdirectory'd into a super-build (e.g. the UNDERTOW
 # vixen/ build that also builds the render host). Standalone, this equals CMAKE_SOURCE_DIR.
 set(VIXEN_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+include("${VIXEN_ROOT}/cmake/VixenWindowsGitTrust.cmake")
 
 set(Recipe_Name "VIXEN")
 
@@ -25,6 +26,8 @@ if(VIXEN_NATIVE_DEPENDENCIES_ONLY)
     set(CMAKE_CXX_EXTENSIONS OFF)
     set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
         "Build-tree FetchContent sources for the native dependency provider")
+    file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
+    vixen_trust_wsl_git_directory("${FETCHCONTENT_BASE_DIR}" CHILDREN)
     set(USE_PRECOMPILED_HEADERS OFF CACHE BOOL
         "Keep the native dependency provider independent of VIXEN library PCH settings")
     add_subdirectory(dependencies/native)
@@ -608,6 +611,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
     unset(_vixen_fetchcontent_existing)
     unset(_vixen_legacy_fetchcontent_default)
+    file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
+    vixen_trust_wsl_git_directory("${FETCHCONTENT_BASE_DIR}" CHILDREN)
     message(STATUS "FetchContent base directory: ${FETCHCONTENT_BASE_DIR}")
 endif()
 
