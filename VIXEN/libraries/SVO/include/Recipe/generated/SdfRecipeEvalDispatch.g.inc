@@ -925,3 +925,10 @@ case SdfOpCode::GlyphOutline: {
     sp = recipeStackBase;
     stack[sp++] = recipeValue;
 } break;
+case SdfOpCode::PathDistance: {
+    assert(sp - 0 + 1 <= 64 && "PathDistance: value stack overflow");
+    const int recipeStackBase = sp - 0;
+    float recipeValue = SdfCore_PathDistance(pos, pathInstances[std::bit_cast<std::uint32_t>(in.data[0])]);
+    sp = recipeStackBase;
+    stack[sp++] = recipeValue;
+} break;

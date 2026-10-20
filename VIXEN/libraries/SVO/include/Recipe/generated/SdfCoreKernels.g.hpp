@@ -17,7 +17,7 @@ inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
     {
         if (segmentIndex < segmentCount)
         {
-            GlyphOutlineSegment segment = glyph.Segments[segmentIndex];
+            PathSegment segment = glyph.Segments[segmentIndex];
             glm::vec2 p0 = glm::vec2(segment.P0.X, segment.P0.Y);
             glm::vec2 p1 = glm::vec2(segment.P1.X, segment.P1.Y);
             glm::vec2 p2 = glm::vec2(segment.P2.X, segment.P2.Y);
@@ -74,6 +74,214 @@ inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
         }
     }
     bool inside = checkWinding && ((glyph.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0));
+    return (inside ? -minimumDistance : minimumDistance);
+}
+
+inline float SdfCore_PathDistance(glm::vec3 p, PathInstance path) {
+    glm::vec3 query = p;
+    if (path.Dimension == 2u)
+    {
+        query.z = 0.0f;
+    }
+    int32_t segmentCount = (int32_t)path.SegmentCount;
+    if (segmentCount > static_cast<int32_t>(256))
+    {
+        segmentCount = static_cast<int32_t>(256);
+    }
+    float bestDistanceSquared = 1.0e20f;
+    glm::vec3 bestPoint = glm::vec3(0.0f, 0.0f, 0.0f);
+    for (int32_t segmentIndex = 0; segmentIndex < static_cast<int32_t>(256); ++segmentIndex)
+    {
+        if (segmentIndex < segmentCount)
+        {
+            PathSegment segment = path.Segments[segmentIndex];
+            glm::vec3 p0 = glm::vec3(segment.P0.X, segment.P0.Y, segment.P0.Z);
+            glm::vec3 p1 = glm::vec3(segment.P1.X, segment.P1.Y, segment.P1.Z);
+            glm::vec3 p2 = glm::vec3(segment.P2.X, segment.P2.Y, segment.P2.Z);
+            glm::vec3 p3 = glm::vec3(segment.P3.X, segment.P3.Y, segment.P3.Z);
+            for (int32_t seedIndex = 0; seedIndex < 5; ++seedIndex)
+            {
+                float t = (float)seedIndex * 0.25f;
+                for (int32_t iteration = 0; iteration < 8; ++iteration)
+                {
+                    float u = 1.0f - t;
+                    glm::vec3 point = glm::vec3(0.0f, 0.0f, 0.0f);
+                    glm::vec3 tangent = glm::vec3(0.0f, 0.0f, 0.0f);
+                    glm::vec3 secondDerivative = glm::vec3(0.0f, 0.0f, 0.0f);
+                    if (segment.Kind == static_cast<uint32_t>(0))
+                    {
+                        point = p0 * u + p1 * t;
+                        tangent = p1 - p0;
+                        secondDerivative = glm::vec3(0.0f, 0.0f, 0.0f);
+                    }
+                    else
+                    {
+                        if (segment.Kind == static_cast<uint32_t>(1))
+                        {
+                            point = p0 * (u * u) + p1 * (2.0f * u * t) + p2 * (t * t);
+                            tangent = (p1 - p0) * (2.0f * u) + (p2 - p1) * (2.0f * t);
+                            secondDerivative = (p0 - p1 * 2.0f + p2) * 2.0f;
+                        }
+                        else
+                        {
+                            point = p0 * (u * u * u) + p1 * (3.0f * u * u * t) + p2 * (3.0f * u * t * t) + p3 * (t * t * t);
+                            tangent = (p1 - p0) * (3.0f * u * u) + (p2 - p1) * (6.0f * u * t) + (p3 - p2) * (3.0f * t * t);
+                            secondDerivative = (p0 - p1 * 2.0f + p2) * (6.0f * u) + (p1 - p2 * 2.0f + p3) * (6.0f * t);
+                        }
+                    }
+                    glm::vec3 offset = point - query;
+                    float numerator = offset.x * tangent.x + offset.y * tangent.y + offset.z * tangent.z;
+                    float denominator = tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z + offset.x * secondDerivative.x + offset.y * secondDerivative.y + offset.z * secondDerivative.z;
+                    if (denominator > 1.0e-12f || denominator < -1.0e-12f)
+                    {
+                        float nextT = t - numerator / denominator;
+                        if (nextT < 0.0f)
+                        {
+                            nextT = 0.0f;
+                        }
+                        if (nextT > 1.0f)
+                        {
+                            nextT = 1.0f;
+                        }
+                        t = nextT;
+                    }
+                }
+                float oneMinusT = 1.0f - t;
+                glm::vec3 candidate = glm::vec3(0.0f, 0.0f, 0.0f);
+                if (segment.Kind == static_cast<uint32_t>(0))
+                {
+                    candidate = p0 * oneMinusT + p1 * t;
+                }
+                else
+                {
+                    if (segment.Kind == static_cast<uint32_t>(1))
+                    {
+                        candidate = p0 * (oneMinusT * oneMinusT) + p1 * (2.0f * oneMinusT * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        candidate = p0 * (oneMinusT * oneMinusT * oneMinusT) + p1 * (3.0f * oneMinusT * oneMinusT * t) + p2 * (3.0f * oneMinusT * t * t) + p3 * (t * t * t);
+                    }
+                }
+                glm::vec3 difference = query - candidate;
+                float distanceSquared = difference.x * difference.x + difference.y * difference.y + difference.z * difference.z;
+                if (distanceSquared < bestDistanceSquared)
+                {
+                    bestDistanceSquared = distanceSquared;
+                    bestPoint = candidate;
+                }
+            }
+        }
+    }
+    if (path.Closed != 0u && segmentCount > 0)
+    {
+        PathSegment firstSegment = path.Segments[0];
+        PathSegment lastSegment = path.Segments[segmentCount - 1];
+        glm::vec3 firstPoint = glm::vec3(firstSegment.P0.X, firstSegment.P0.Y, firstSegment.P0.Z);
+        glm::vec3 lastPoint = glm::vec3(0.0f, 0.0f, 0.0f);
+        if (lastSegment.Kind == static_cast<uint32_t>(0))
+        {
+            lastPoint = glm::vec3(lastSegment.P1.X, lastSegment.P1.Y, lastSegment.P1.Z);
+        }
+        else
+        {
+            if (lastSegment.Kind == static_cast<uint32_t>(1))
+            {
+                lastPoint = glm::vec3(lastSegment.P2.X, lastSegment.P2.Y, lastSegment.P2.Z);
+            }
+            else
+            {
+                lastPoint = glm::vec3(lastSegment.P3.X, lastSegment.P3.Y, lastSegment.P3.Z);
+            }
+        }
+        glm::vec3 closingEdge = firstPoint - lastPoint;
+        float edgeLengthSquared = closingEdge.x * closingEdge.x + closingEdge.y * closingEdge.y + closingEdge.z * closingEdge.z;
+        float projection = (edgeLengthSquared > 0.0f ? ((query.x - lastPoint.x) * closingEdge.x + (query.y - lastPoint.y) * closingEdge.y + (query.z - lastPoint.z) * closingEdge.z) / edgeLengthSquared : 0.0f);
+        if (projection < 0.0f)
+        {
+            projection = 0.0f;
+        }
+        if (projection > 1.0f)
+        {
+            projection = 1.0f;
+        }
+        glm::vec3 closingPoint = lastPoint + closingEdge * projection;
+        glm::vec3 closingDifference = query - closingPoint;
+        float closingDistanceSquared = closingDifference.x * closingDifference.x + closingDifference.y * closingDifference.y + closingDifference.z * closingDifference.z;
+        if (closingDistanceSquared < bestDistanceSquared)
+        {
+            bestDistanceSquared = closingDistanceSquared;
+            bestPoint = closingPoint;
+        }
+    }
+    glm::vec3 nearestDifference = query - bestPoint;
+    float minimumDistance = glm::length(nearestDifference);
+    if (path.Dimension != 2u || path.Closed == 0u)
+    {
+        return minimumDistance;
+    }
+    uint32_t crossings = 0u;
+    int32_t winding = 0;
+    for (int32_t segmentIndex = 0; segmentIndex < static_cast<int32_t>(256); ++segmentIndex)
+    {
+        if (segmentIndex < segmentCount)
+        {
+            PathSegment segment = path.Segments[segmentIndex];
+            glm::vec2 p0 = glm::vec2(segment.P0.X, segment.P0.Y);
+            glm::vec2 p1 = glm::vec2(segment.P1.X, segment.P1.Y);
+            glm::vec2 p2 = glm::vec2(segment.P2.X, segment.P2.Y);
+            glm::vec2 p3 = glm::vec2(segment.P3.X, segment.P3.Y);
+            glm::vec2 previous = p0;
+            for (int32_t sampleIndex = 1; sampleIndex <= 16; ++sampleIndex)
+            {
+                float t = (float)sampleIndex / 16.0f;
+                float u = 1.0f - t;
+                glm::vec2 current = glm::vec2(0.0f, 0.0f);
+                if (segment.Kind == static_cast<uint32_t>(0))
+                {
+                    current = p0 * u + p1 * t;
+                }
+                else
+                {
+                    if (segment.Kind == static_cast<uint32_t>(1))
+                    {
+                        current = p0 * (u * u) + p1 * (2.0f * u * t) + p2 * (t * t);
+                    }
+                    else
+                    {
+                        current = p0 * (u * u * u) + p1 * (3.0f * u * u * t) + p2 * (3.0f * u * t * t) + p3 * (t * t * t);
+                    }
+                }
+                if ((previous.y <= query.y && current.y > query.y) || (previous.y > query.y && current.y <= query.y))
+                {
+                    float crossingX = previous.x + (query.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+                    if (crossingX > query.x)
+                    {
+                        crossings += 1u;
+                        winding += (current.y > previous.y ? 1 : -1);
+                    }
+                }
+                previous = current;
+            }
+        }
+    }
+    if (segmentCount > 0)
+    {
+        PathSegment firstSegment = path.Segments[0];
+        PathSegment lastSegment = path.Segments[segmentCount - 1];
+        glm::vec2 previous = glm::vec2((lastSegment.Kind == static_cast<uint32_t>(0) ? lastSegment.P1.X : (lastSegment.Kind == static_cast<uint32_t>(1) ? lastSegment.P2.X : lastSegment.P3.X)), (lastSegment.Kind == static_cast<uint32_t>(0) ? lastSegment.P1.Y : (lastSegment.Kind == static_cast<uint32_t>(1) ? lastSegment.P2.Y : lastSegment.P3.Y)));
+        glm::vec2 current = glm::vec2(firstSegment.P0.X, firstSegment.P0.Y);
+        if ((previous.y <= query.y && current.y > query.y) || (previous.y > query.y && current.y <= query.y))
+        {
+            float crossingX = previous.x + (query.y - previous.y) * (current.x - previous.x) / (current.y - previous.y);
+            if (crossingX > query.x)
+            {
+                crossings += 1u;
+                winding += (current.y > previous.y ? 1 : -1);
+            }
+        }
+    }
+    bool inside = (path.FillRule == 1u ? (crossings & 1u) != 0u : winding != 0);
     return (inside ? -minimumDistance : minimumDistance);
 }
 
