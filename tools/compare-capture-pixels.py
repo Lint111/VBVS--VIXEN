@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Compare paired PNG captures by file bytes and decoded pixels."""
+"""Compare paired PNG captures by file bytes and decoded pixels.
+
+Pure standard library (no Pillow or NumPy). Optional outputs: --crops writes the changed region
+of each differing pair as before|after|diff, and --contact-sheet writes one before|after|diff row
+per compared pair.
+"""
 
 from __future__ import annotations
 
@@ -147,6 +152,87 @@ def decode_png(path: Path) -> tuple[int, int, bytes]:
     return width, height, bytes(rgba)
 
 
+def encode_png(width: int, height: int, rgba: bytes) -> bytes:
+    if len(rgba) != width * height * 4:
+        raise PngError("pixel buffer does not match the image size")
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(payload, zlib.crc32(kind)) & 0xFFFFFFFF
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", crc)
+
+    rows = b"".join(b"\x00" + rgba[y * width * 4 : (y + 1) * width * 4] for y in range(height))
+    return (
+        PNG_SIGNATURE
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+Image = tuple[int, int, bytes]
+
+
+def crop_image(image: Image, left: int, top: int, right: int, bottom: int) -> Image:
+    width, _, rgba = image
+    rows = [rgba[(y * width + left) * 4 : (y * width + right + 1) * 4] for y in range(top, bottom + 1)]
+    return right - left + 1, bottom - top + 1, b"".join(rows)
+
+
+def diff_image(before: Image, after: Image, tolerance: int) -> Image:
+    """Changed pixels in red scaled by the largest channel delta; unchanged pixels dimmed grey."""
+    width, height, before_pixels = before
+    after_pixels = after[2]
+    out = bytearray(width * height * 4)
+    for offset in range(0, len(before_pixels), 4):
+        delta = max(abs(before_pixels[offset + c] - after_pixels[offset + c]) for c in range(4))
+        if delta > tolerance:
+            out[offset : offset + 4] = bytes((255, 255 - min(delta, 255) // 2, 0, 255))
+        else:
+            grey = before_pixels[offset] // 4
+            out[offset : offset + 4] = bytes((grey, grey, grey, 255))
+    return width, height, bytes(out)
+
+
+def scale_to_height(image: Image, height: int) -> Image:
+    width, source_height, rgba = image
+    if source_height == height:
+        return image
+    out_width = max(1, width * height // source_height)
+    out = bytearray()
+    for y in range(height):
+        source_y = y * source_height // height
+        for x in range(out_width):
+            source = (source_y * width + x * width // out_width) * 4
+            out += rgba[source : source + 4]
+    return out_width, height, bytes(out)
+
+
+def stack_horizontal(tiles: list[Image], gap: int = 2) -> Image:
+    height = max(tile[1] for tile in tiles)
+    width = sum(tile[0] for tile in tiles) + gap * (len(tiles) - 1)
+    out = bytearray(bytes((32, 32, 32, 255)) * (width * height))
+    x_origin = 0
+    for tile_width, tile_height, rgba in tiles:
+        for y in range(tile_height):
+            target = (y * width + x_origin) * 4
+            out[target : target + tile_width * 4] = rgba[y * tile_width * 4 : (y + 1) * tile_width * 4]
+        x_origin += tile_width + gap
+    return width, height, bytes(out)
+
+
+def stack_vertical(rows: list[Image], gap: int = 4) -> Image:
+    width = max(row[0] for row in rows)
+    height = sum(row[1] for row in rows) + gap * (len(rows) - 1)
+    out = bytearray(bytes((0, 0, 0, 255)) * (width * height))
+    y_origin = 0
+    for row_width, row_height, rgba in rows:
+        for y in range(row_height):
+            target = ((y_origin + y) * width) * 4
+            out[target : target + row_width * 4] = rgba[y * row_width * 4 : (y + 1) * row_width * 4]
+        y_origin += row_height + gap
+    return width, height, bytes(out)
+
+
 def png_files(directory: Path) -> dict[str, Path]:
     return {
         path.relative_to(directory).as_posix(): path
@@ -193,6 +279,10 @@ def compare_directory_pair(
     max_different_pixels: int,
     channel_tolerance: int,
     require_byte_identical: bool,
+    crops_dir: Path | None = None,
+    crop_padding: int = 8,
+    sheet_path: Path | None = None,
+    sheet_row_height: int = 160,
 ) -> int:
     before_files = png_files(before_root)
     after_files = png_files(after_root)
@@ -201,6 +291,7 @@ def compare_directory_pair(
 
     failed = False
     had_error = False
+    sheet_rows: list[Image] = []
     for relative in sorted(before_files.keys() | after_files.keys()):
         before_path = before_files.get(relative)
         after_path = after_files.get(relative)
@@ -234,12 +325,35 @@ def compare_directory_pair(
             failed = True
             continue
 
-        different_pixels, max_delta, bounds = compare_pixels(
+        different_pixels, max_delta, box = compare_pixels(
             before_pixels, after_pixels, before_width, channel_tolerance
         )
-        bounds = "none" if bounds is None else (
-            f"x={bounds[0]}..{bounds[2]},y={bounds[1]}..{bounds[3]}"
-        )
+        bounds = "none" if box is None else f"x={box[0]}..{box[2]},y={box[1]}..{box[3]}"
+        before_image = (before_width, before_height, before_pixels)
+        after_image = (after_width, after_height, after_pixels)
+        if crops_dir is not None and box is not None:
+            left = max(0, box[0] - crop_padding)
+            top = max(0, box[1] - crop_padding)
+            right = min(before_width - 1, box[2] + crop_padding)
+            bottom = min(before_height - 1, box[3] + crop_padding)
+            tiles = [
+                crop_image(before_image, left, top, right, bottom),
+                crop_image(after_image, left, top, right, bottom),
+                crop_image(
+                    diff_image(before_image, after_image, channel_tolerance),
+                    left, top, right, bottom,
+                ),
+            ]
+            crops_dir.mkdir(parents=True, exist_ok=True)
+            crop_path = crops_dir / (Path(relative).with_suffix("").as_posix().replace("/", "__") + ".crop.png")
+            crop_path.write_bytes(encode_png(*stack_horizontal(tiles)))
+            bounds += f" crop={crop_path}"
+        if sheet_path is not None:
+            sheet_rows.append(stack_horizontal([
+                scale_to_height(tile, sheet_row_height)
+                for tile in (before_image, after_image,
+                             diff_image(before_image, after_image, channel_tolerance))
+            ]))
         print(
             f"{relative}: byte_equal={'yes' if byte_equal else 'no'} "
             f"byte_diff={byte_diff} pixels={before_width}x{before_height} "
@@ -248,6 +362,10 @@ def compare_directory_pair(
         if different_pixels > max_different_pixels or (require_byte_identical and not byte_equal):
             failed = True
 
+    if sheet_path is not None and sheet_rows:
+        sheet_path.parent.mkdir(parents=True, exist_ok=True)
+        sheet_path.write_bytes(encode_png(*stack_vertical(sheet_rows)))
+        print(f"contact sheet: {sheet_path} rows={len(sheet_rows)}")
     if had_error:
         return 2
     return 1 if failed else 0
@@ -276,8 +394,34 @@ def main() -> int:
         action="store_true",
         help="also fail when PNG file bytes differ, even if decoded pixels match",
     )
+    parser.add_argument(
+        "--crops",
+        type=Path,
+        metavar="DIR",
+        help="write a before|after|diff crop of each differing pair's changed region into DIR",
+    )
+    parser.add_argument(
+        "--crop-padding",
+        type=int,
+        default=8,
+        help="pixels of context around the changed region in --crops (default: 8)",
+    )
+    parser.add_argument(
+        "--contact-sheet",
+        type=Path,
+        metavar="FILE",
+        help="write one before|after|diff row per same-size pair into a single PNG",
+    )
+    parser.add_argument(
+        "--sheet-row-height",
+        type=int,
+        default=160,
+        help="height in pixels of each --contact-sheet row (default: 160)",
+    )
     args = parser.parse_args()
 
+    if args.crop_padding < 0 or args.sheet_row_height < 1:
+        parser.error("--crop-padding must be non-negative and --sheet-row-height positive")
     if args.max_differing_pixels < 0:
         parser.error("--max-differing-pixels must be non-negative")
     if not 0 <= args.channel_tolerance <= 255:
@@ -293,6 +437,10 @@ def main() -> int:
             args.max_differing_pixels,
             args.channel_tolerance,
             args.require_byte_identical,
+            args.crops,
+            args.crop_padding,
+            args.contact_sheet,
+            args.sheet_row_height,
         )
     except ValueError as error:
         print(f"ERROR: {error}", file=sys.stderr)
