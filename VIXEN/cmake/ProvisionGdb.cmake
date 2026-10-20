@@ -5,8 +5,9 @@
 # builds itself, so this only detects it by default; auto-provisioning (no sudo, via apt-get
 # download) is opt-in since it fetches into a project-local cache rather than touching the system.
 #
-# Dependency scope: gdb's DIRECT package deps only (~18 packages: libbabeltrace1, libpython3.12t64,
-# libreadline8t64, etc.) — NOT the full recursive closure (~70 packages once libdebuginfod1t64 drags
+# Dependency scope: gdb's DIRECT package deps only (~18 packages: libbabeltrace1, libpython3.x,
+# libreadline8t64, etc.), read from the host's apt metadata (`apt-cache depends gdb`) so the package
+# names follow the host Ubuntu release (libpython3.12t64 on 24.04, libpython3.14 on 26.04) — NOT the full recursive closure (~70 packages once libdebuginfod1t64 drags
 # in a curl+gnutls+krb5 stack for a debuginfo-server feature this project never uses). Direct deps
 # are almost always already satisfied by a normal Ubuntu base install; a genuinely bare-minimum
 # machine may still be missing one, in which case the extracted gdb binary fails to run (ldd
@@ -22,6 +23,8 @@
 #   build target  vixen-uninstall-gdb   remove the cache
 
 include_guard(GLOBAL)
+
+include("${CMAKE_CURRENT_LIST_DIR}/VixenGdbDeps.cmake")
 
 # Convenience debug-run targets: `cmake --build <dir> --target gdb-<exe-target>` runs that
 # executable under gdb. Call vixen_add_gdb_target(<exe-target>) after add_executable(<exe-target>);
@@ -64,26 +67,34 @@ else()
     #    gdb yourself, or accept no debugger integration).
     if(NOT EXISTS "${_vixen_gdb_cache_bin}" AND VIXEN_AUTO_PROVISION_GDB)
         find_program(_vixen_apt apt-get)
+        find_program(_vixen_apt_cache apt-cache)
         find_program(_vixen_dpkg dpkg-deb)
-        if(_vixen_apt AND _vixen_dpkg)
-            message(STATUS "VIXEN: gdb not found — provisioning (no sudo) into ${VIXEN_GDB_CACHE_DIR} ...")
-            file(MAKE_DIRECTORY "${VIXEN_GDB_CACHE_DIR}/_dl")
+        if(_vixen_apt AND _vixen_apt_cache AND _vixen_dpkg)
             execute_process(
-                COMMAND ${_vixen_apt} download
-                    gdb libbabeltrace1 libdebuginfod1t64 libipt2 libmpfr6 libncursesw6
-                    libpython3.12t64 libreadline8t64 libsource-highlight4t64 libxxhash0 libzstd1
-                    libgmp10 liblzma5 libexpat1 zlib1g libc6 libgcc-s1 libstdc++6
-                WORKING_DIRECTORY "${VIXEN_GDB_CACHE_DIR}/_dl"
-                RESULT_VARIABLE _vixen_gdb_dlrc OUTPUT_QUIET ERROR_QUIET)
-            file(GLOB _vixen_gdb_debs "${VIXEN_GDB_CACHE_DIR}/_dl/*.deb")
-            foreach(_deb ${_vixen_gdb_debs})
-                # dpkg-deb shells out to tar internally — requires tar on PATH (present on any
-                # normal Debian/Ubuntu install; absence is the one realistic way this step fails
-                # even though the direct-deps download above succeeded).
-                execute_process(COMMAND ${_vixen_dpkg} -x "${_deb}" "${VIXEN_GDB_CACHE_DIR}" OUTPUT_QUIET ERROR_QUIET)
-            endforeach()
+                COMMAND ${_vixen_apt_cache} depends --no-recommends --no-suggests --no-conflicts
+                        --no-breaks --no-replaces --no-enhances gdb
+                OUTPUT_VARIABLE _vixen_gdb_depends_out RESULT_VARIABLE _vixen_gdb_depends_rc ERROR_QUIET)
+            vixen_gdb_direct_dependency_packages(_vixen_gdb_dep_packages "${_vixen_gdb_depends_out}")
+            if(NOT _vixen_gdb_depends_rc EQUAL 0 OR NOT _vixen_gdb_dep_packages)
+                message(STATUS "VIXEN: apt-cache has no dependency list for gdb on this host (run "
+                               "apt-get update, or install gdb yourself) — cannot auto-provision gdb.")
+            else()
+                message(STATUS "VIXEN: gdb not found — provisioning (no sudo) into ${VIXEN_GDB_CACHE_DIR} ...")
+                file(MAKE_DIRECTORY "${VIXEN_GDB_CACHE_DIR}/_dl")
+                execute_process(
+                    COMMAND ${_vixen_apt} download gdb ${_vixen_gdb_dep_packages}
+                    WORKING_DIRECTORY "${VIXEN_GDB_CACHE_DIR}/_dl"
+                    RESULT_VARIABLE _vixen_gdb_dlrc OUTPUT_QUIET ERROR_QUIET)
+                file(GLOB _vixen_gdb_debs "${VIXEN_GDB_CACHE_DIR}/_dl/*.deb")
+                foreach(_deb ${_vixen_gdb_debs})
+                    # dpkg-deb shells out to tar internally — requires tar on PATH (present on any
+                    # normal Debian/Ubuntu install; absence is the one realistic way this step fails
+                    # even though the direct-deps download above succeeded).
+                    execute_process(COMMAND ${_vixen_dpkg} -x "${_deb}" "${VIXEN_GDB_CACHE_DIR}" OUTPUT_QUIET ERROR_QUIET)
+                endforeach()
+            endif()
         else()
-            message(STATUS "VIXEN: no apt-get/dpkg-deb — cannot auto-provision gdb. Install it yourself "
+            message(STATUS "VIXEN: no apt-get/apt-cache/dpkg-deb — cannot auto-provision gdb. Install it yourself "
                            "(apt-get install gdb), or accept no debugger integration.")
         endif()
     endif()

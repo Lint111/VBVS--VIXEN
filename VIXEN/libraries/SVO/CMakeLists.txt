@@ -72,16 +72,38 @@ if(MSVC)
     target_compile_definitions(SVO PUBLIC _ENABLE_EXTENDED_ALIGNED_STORAGE)
 endif()
 
-# Enable SSE/AVX optimizations on x64
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+# Native SIMD ISA policy (owner ruling R645.4): ONE compile-time x86-64-v3 floor (AVX2, FMA, F16C,
+# BMI1/2, LZCNT), no runtime multiversioning. The UndersetLoader detects the machine and selects
+# environment-specific handling, so a pre-v3 host gets a loader-selected launcher variant instead
+# of an illegal-instruction crash here. Non-x86 targets keep the portable SIMD4 scalar path of the
+# generated RecipeSimd header. MSVC has no finer switch than /arch:AVX2, which covers the v3 set.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64)$")
     if(MSVC)
         target_compile_options(SVO PRIVATE /arch:AVX2)
+    else()
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag(-march=x86-64-v3 VIXEN_SVO_COMPILER_HAS_X86_64_V3)
+        if(NOT VIXEN_SVO_COMPILER_HAS_X86_64_V3)
+            message(FATAL_ERROR "SVO: the native ISA floor is x86-64-v3, but ${CMAKE_CXX_COMPILER_ID} "
+                "${CMAKE_CXX_COMPILER_VERSION} does not accept -march=x86-64-v3 (needs GCC 11+ or Clang 12+)")
+        endif()
+        target_compile_options(SVO PRIVATE -march=x86-64-v3)
+    endif()
+endif()
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(MSVC)
         target_compile_options(SVO PUBLIC /fp:strict)
     else()
-        target_compile_options(SVO PRIVATE -mavx2 -mfma -mf16c)
         target_compile_options(SVO PUBLIC -fno-fast-math -ffp-contract=off)
     endif()
 endif()
+
+add_test(NAME SVO.IsaFloor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSVO_COMPILE_OPTIONS=$<TARGET_PROPERTY:SVO,COMPILE_OPTIONS>"
+        "-DPROCESSOR=${CMAKE_SYSTEM_PROCESSOR}" -DMSVC=${MSVC}
+        -P "${VIXEN_ROOT}/cmake/tests/test_svo_isa_floor.cmake")
+set_tests_properties(SVO.IsaFloor PROPERTIES LABELS "cpu")
 
 # Recipe hashes and the materialization evaluator are determinism boundaries: floating-point
 # contraction or fast-math assumptions must not alter raw uint32 float-slot payloads or canonical

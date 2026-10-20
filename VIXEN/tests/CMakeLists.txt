@@ -34,6 +34,10 @@ add_test(NAME Native.WindowsGitTrust
             -P "${VIXEN_ROOT}/cmake/tests/test_windows_git_trust.cmake")
 set_tests_properties(Native.WindowsGitTrust PROPERTIES LABELS "cpu")
 
+add_test(NAME Provision.GdbDependencyPackages
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
+set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)
