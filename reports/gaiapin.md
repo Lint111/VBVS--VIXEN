@@ -70,7 +70,7 @@ The boot does not take the VIXEN worktree. `check-native-boot.sh` requires `UNDE
 
 ## Landing order and SHAs
 
-VIXEN `<VIXEN_SHA>`, undertow `<UT_SHA>`, kernel `<K_SHA>`.
+VIXEN pin commit `2a2bc339` (branch tip is the commit that adds this report, see the final message), undertow `24c40f31c53640a608f94c08f23ddbaa0f077953`, kernel `f8d28a9967b2dc83a9b616b4d6b37f20791c72ba`.
 
 1. VIXEN with the wave push (it carries the fork pin).
 2. Undertow and kernel in the same batch (their pin copies must stay byte-identical, which the witness enforces).
