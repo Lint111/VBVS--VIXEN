@@ -97,7 +97,12 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     vixen_test_class_environment_modification(_class_modification)
 
-    set(_properties LABELS "${suite}")
+    # The exe: label names the registering executable so a changed target selects its own cases;
+    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$).
+    # GoogleTest re-expands the property list in a second script: escape the label separator.
+    set(_labels "${suite};exe:${target}")
+    string(REPLACE ";" "\\\\;" _labels "${_labels}")
+    set(_properties LABELS "${_labels}")
     set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
     if(_environment)
         string(JOIN ";" _environment_value ${_environment})
