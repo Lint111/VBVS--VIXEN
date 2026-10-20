@@ -1045,6 +1045,8 @@ public:
           framesPerScenario_(framesPerScenario) {
         SetPresentationTarget(PresentationTarget::Offscreen);
         auto config = gRenderPathConfig;
+        // The application constructor applied VIXEN_ANTI_ALIASING; keep that request.
+        config.antiAliasing = GetRenderPathConfig().antiAliasing;
         config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None
             ? Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture
             : Vixen::RenderGraph::ReconstructionSamplingPath::InteractiveVisual;
@@ -1292,6 +1294,11 @@ public:
         if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
             camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));
+        // A steady pan for temporal-resolve ghosting checks: frame n of a scenario sits n steps
+        // along, so the captured (last) frame of N sits at (N - 1) * step degrees.
+        if (const char* step = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN_STEP_DEGREES"); step && camera_)
+            camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians +
+                                   std::strtof(step, nullptr) * 0.017453292519943295f * float(framesInScenario_));
         if (scenarios_[scenarioIndex_].posed && camera_) {
             // Fixed-mode pose, re-applied every frame: graph compile re-reads the default
             // PARAM_CAMERA_* pose. On the walk, frame n shows simulated time (n + 1) * step, so
