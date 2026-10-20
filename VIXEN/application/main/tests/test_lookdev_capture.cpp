@@ -48,10 +48,13 @@
 #include <numeric>
 #include <memory>
 #include <sstream>
+#include <functional>
+#include <type_traits>
 #include <stdexcept>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <unordered_map>
 #include <vector>
@@ -156,6 +159,8 @@ constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile 
 constexpr float kPitchRadians = 0.45f;
 constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
 constexpr uint32_t kSdfFilterNonTextRecipeId = 0x5344464eu; // SDFN
+constexpr uint32_t kExposureRoomRecipeId = 0x524f4f4du; // ROOM
+constexpr uint32_t kExposureRoomPadRecipeId = 0x524f4f50u; // ROOP
 
 using CaptureClock = std::chrono::steady_clock;
 
@@ -211,7 +216,128 @@ struct CaptureScenario {
     Vixen::App::Lookdev::LightingPreset lighting;
     float yawRadians = 0.0f;
     std::string filename;
+    // Exposure-room scenarios place the camera directly (fixed mode) instead of orbiting.
+    bool posed = false;
+    glm::vec3 eye{0.0f};
+    glm::vec3 target{0.0f};
 };
+
+// Owner exposure acceptance scenes (2026-10-19): a closed room beside the look-dev stage, with a
+// doorway in its +Z wall and a window in its +X wall, on a pale stone pad. Midday sun lights the
+// exterior; the interior receives only what enters through the two openings.
+// VIXEN_LOOKDEV_EXPOSURE_ROOM=door  : adapted outside, looking into the room through the doorway.
+// VIXEN_LOOKDEV_EXPOSURE_ROOM=window: adapted inside, looking out of the window at the sunlit pad.
+// VIXEN_LOOKDEV_EXPOSURE_ROOM=walk  : outside -> through the doorway -> inside -> back out, one
+//                                     capture every 0.5 s of simulated time.
+enum class ExposureRoomMode { Off, Door, Window, Walk };
+
+ExposureRoomMode RequestedExposureRoom() {
+    const char* mode = std::getenv("VIXEN_LOOKDEV_EXPOSURE_ROOM");
+    if (!mode) return ExposureRoomMode::Off;
+    const std::string_view value(mode);
+    if (value == "door") return ExposureRoomMode::Door;
+    if (value == "window") return ExposureRoomMode::Window;
+    if (value == "walk") return ExposureRoomMode::Walk;
+    return ExposureRoomMode::Off;
+}
+
+// World units (the look-dev stage spans 0..10; its ground top is y = 1.8).
+constexpr glm::vec3 kRoomCenter{13.5f, 3.1f, 5.0f};
+constexpr glm::vec3 kRoomOuterHalf{2.2f, 1.3f, 2.2f};
+constexpr float kRoomWall = 0.15f;
+constexpr glm::vec3 kRoomDoorCenter{13.5f, 2.75f, 7.2f};
+constexpr glm::vec3 kRoomDoorHalf{0.6f, 0.95f, 0.4f};
+constexpr glm::vec3 kRoomWindowCenter{15.7f, 3.25f, 5.0f};
+constexpr glm::vec3 kRoomWindowHalf{0.4f, 0.5f, 0.8f};
+// Ground pad under the room and its doorway approach, flush with the stage ground.
+constexpr glm::vec3 kRoomPadCenter{14.5f, 1.65f, 7.0f};
+constexpr glm::vec3 kRoomPadHalf{4.5f, 0.15f, 5.0f};
+// The renderer's ambient term is an unoccluded sky fill, so the stage's midday ambient (0.14)
+// would light the closed interior as brightly as open ground. The room scenes keep the midday
+// sun and lower the fill to 0.01, about 6.8 EV under the sun (a real interior sits 5-8 EV under
+// its sunlit exterior), so the interior is lit mainly through its openings.
+constexpr float kRoomAmbient = 0.01f;
+// The stage's authored sky is a dark navy (0.02-0.06) that would make "outside" darker than the
+// room walls. The room scenes use a daylight sky at about a tenth of sunlit white, as a clear
+// sky is next to a sunlit white wall.
+constexpr glm::vec3 kRoomSkyColor{0.05f, 0.08f, 0.18f};
+constexpr glm::vec3 kRoomOutsideEye{13.5f, 3.6f, 12.0f};
+constexpr glm::vec3 kRoomOutsideTarget{13.5f, 2.5f, 5.0f};
+constexpr glm::vec3 kRoomInsideEye{13.5f, 3.0f, 4.2f};
+constexpr glm::vec3 kRoomInsideTarget{13.5f, 2.7f, -2.0f};
+constexpr glm::vec3 kRoomWindowEye{11.6f, 3.1f, 5.0f};
+constexpr glm::vec3 kRoomWindowTarget{20.0f, 2.4f, 5.0f};
+constexpr float kRoomWalkCaptureSeconds = 0.5f;
+constexpr float kRoomWalkSeconds = 13.0f;
+
+// Walk timeline: 0-2 s outside, 2-3 s through the doorway, 3-8 s inside, 8-9 s back out,
+// 9-13 s outside. Facing -Z throughout, so the inside hold looks at the dark back wall.
+std::pair<glm::vec3, glm::vec3> RoomWalkPose(float seconds) {
+    auto blend = [](float t) { return std::clamp(t, 0.0f, 1.0f); };
+    float inside = 0.0f;
+    if (seconds >= 2.0f && seconds < 3.0f) inside = blend(seconds - 2.0f);
+    else if (seconds >= 3.0f && seconds < 8.0f) inside = 1.0f;
+    else if (seconds >= 8.0f && seconds < 9.0f) inside = 1.0f - blend(seconds - 8.0f);
+    return {glm::mix(kRoomOutsideEye, kRoomInsideEye, inside),
+            glm::mix(kRoomOutsideTarget, kRoomInsideTarget, inside)};
+}
+
+float CaptureStepSeconds() {
+    // Matches BuildRenderGraph's offscreen exposure step (1/60 s unless VIXEN_HDR_EXPOSURE_DT).
+    const char* raw = std::getenv("VIXEN_HDR_EXPOSURE_DT");
+    const float step = raw && *raw ? std::strtof(raw, nullptr) : 0.0f;
+    return step > 0.0f ? step : 1.0f / 60.0f;
+}
+
+Vixen::SVO::Recipe::SdfInstruction RoomBox(const glm::vec3& center, const glm::vec3& half) {
+    Vixen::SVO::Recipe::SdfInstruction op{};
+    op.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RoundedBox);
+    op.data[0] = half.x;
+    op.data[1] = half.y;
+    op.data[2] = half.z;
+    op.data[4] = center.x;
+    op.data[5] = center.y;
+    op.data[6] = center.z;
+    return op;
+}
+
+// Outer box minus inner box (the shell), minus the doorway, minus the window.
+std::vector<Vixen::SVO::Recipe::SdfInstruction> ExposureRoomInstructions() {
+    Vixen::SVO::Recipe::SdfInstruction subtract{};
+    subtract.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Subtract);
+    return {RoomBox(kRoomCenter, kRoomOuterHalf), RoomBox(kRoomCenter, kRoomOuterHalf - glm::vec3(kRoomWall)),
+            subtract, RoomBox(kRoomDoorCenter, kRoomDoorHalf), subtract,
+            RoomBox(kRoomWindowCenter, kRoomWindowHalf), subtract};
+}
+
+std::vector<CaptureScenario> BuildExposureRoomScenarios(ExposureRoomMode mode) {
+    const auto& presets = Vixen::App::Lookdev::LightingPresets();
+    auto lighting = *std::find_if(presets.begin(), presets.end(),
+        [](const auto& preset) { return std::string_view(preset.name) == "midday"; });
+    lighting.ambient = kRoomAmbient;
+    std::vector<CaptureScenario> scenarios;
+    auto posed = [&](std::string filename, const glm::vec3& eye, const glm::vec3& target) {
+        CaptureScenario scenario{lighting, 0.0f, std::move(filename)};
+        scenario.posed = true;
+        scenario.eye = eye;
+        scenario.target = target;
+        scenarios.push_back(std::move(scenario));
+    };
+    if (mode == ExposureRoomMode::Door) posed("room-door-outside.png", kRoomOutsideEye, kRoomOutsideTarget);
+    if (mode == ExposureRoomMode::Window) posed("room-window-inside.png", kRoomWindowEye, kRoomWindowTarget);
+    if (mode == ExposureRoomMode::Walk) {
+        const int captures = static_cast<int>(kRoomWalkSeconds / kRoomWalkCaptureSeconds);
+        for (int i = 1; i <= captures; ++i) {
+            const float seconds = kRoomWalkCaptureSeconds * static_cast<float>(i);
+            const auto [eye, target] = RoomWalkPose(seconds);
+            std::ostringstream filename;
+            filename << "room-walk-t" << std::setfill('0') << std::setw(5) << std::fixed
+                     << std::setprecision(1) << seconds << ".png";
+            posed(filename.str(), eye, target);
+        }
+    }
+    return scenarios;
+}
 
 std::vector<CaptureScenario> BuildScenarios() {
     constexpr std::array<float, 4> yaws{{0.0f, 1.57079632679f, 3.14159265359f, 4.71238898038f}};
@@ -235,6 +361,8 @@ std::vector<CaptureScenario> BuildScenarios() {
             requestedAngle = static_cast<int>(parsed);
         }
     }
+    if (const ExposureRoomMode room = RequestedExposureRoom(); room != ExposureRoomMode::Off)
+        return BuildExposureRoomScenarios(room);
     std::vector<CaptureScenario> scenarios;
     if (std::getenv("VIXEN_GLYPHSDF_SCENE") || std::getenv("VIXEN_SDF_FILTER_NON_TEXT")) {
         const char* variant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
@@ -255,9 +383,22 @@ std::vector<CaptureScenario> BuildScenarios() {
     const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
     constexpr size_t kPanAngles = 24;
     const size_t angleCount = slowPan ? kPanAngles : yaws.size();
-    scenarios.reserve(presets.size() * angleCount);
-    for (const auto& preset : presets) {
-        if (requestedState && preset.name != std::string(requestedState)) continue;
+    // VIXEN_LOOKDEV_CAPTURE_STATE selects one state, or an ordered comma list
+    // (e.g. "night-service,midday") so one process witnesses exposure adaptation
+    // across a lighting switch.
+    std::vector<std::reference_wrapper<const std::decay_t<decltype(presets.front())>>> ordered;
+    if (requestedState && *requestedState != '\0') {
+        std::istringstream names(requestedState);
+        for (std::string name; std::getline(names, name, ',');) {
+            for (const auto& preset : presets)
+                if (preset.name == name) ordered.emplace_back(preset);
+        }
+    } else {
+        for (const auto& preset : presets) ordered.emplace_back(preset);
+    }
+    scenarios.reserve(ordered.size() * angleCount);
+    for (const auto& presetRef : ordered) {
+        const auto& preset = presetRef.get();
         for (size_t angle = 0; angle < angleCount; ++angle) {
             if (!slowPan && requestedAngle >= 0 && static_cast<int>(angle) != requestedAngle)
                 continue;
@@ -937,6 +1078,25 @@ public:
                 }
             }
         }
+        const bool exposureRoom = scenarios_.front().posed;
+        if (exposureRoom) {
+            Vixen::SVO::RecipeRegistry::RecipeEntry room{};
+            room.bytecode = ExposureRoomInstructions();
+            room.boundCenter = kRoomCenter;
+            room.boundRadius = glm::length(kRoomOuterHalf) + 0.1f;
+            room.stepRelaxation = 0.9f;
+            Vixen::SVO::RecipeRegistry::RecipeEntry pad{};
+            pad.bytecode = {RoomBox(kRoomPadCenter, kRoomPadHalf)};
+            pad.boundCenter = kRoomPadCenter;
+            pad.boundRadius = glm::length(kRoomPadHalf) + 0.1f;
+            pad.stepRelaxation = 0.9f;
+            for (auto& [recipeId, recipe] : {std::pair{kExposureRoomRecipeId, room}, std::pair{kExposureRoomPadRecipeId, pad}}) {
+                if (RegisterProceduralRecipe(recipeId, recipe) != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    captureError_ = "could not register exposure-room recipe " + std::to_string(recipeId);
+                    return;
+                }
+            }
+        }
 
         VulkanGraphApplication::BuildRenderGraph();
         auto* graph = GetRenderGraph();
@@ -955,7 +1115,9 @@ public:
         // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, 45.0f);
-        if (storedSdfScene) {
+        if (exposureRoom) {
+            // Posed per frame in Render(); no orbit parameter is set, so the camera stays fixed.
+        } else if (storedSdfScene) {
             // The brickmap scene is authored at world-space centers near (64,64,64).
             // Use an explicit fixed pose so this capture does not depend on the main
             // graph's preset camera or its orbit-mode setup.
@@ -991,17 +1153,38 @@ public:
                              Vixen::App::Lookdev::CelSpillPurposeScales(scenarios_.front().lighting));
         lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
                                 scenarios_.front().lighting.exposureCompensationEV);
+        auto sceneLook = Vixen::App::Lookdev::SceneLookDeclaration();
+        if (exposureRoom) {
+            sceneLook.environment.color[0] = kRoomSkyColor.r;
+            sceneLook.environment.color[1] = kRoomSkyColor.g;
+            sceneLook.environment.color[2] = kRoomSkyColor.b;
+        }
         Vixen::App::ApplySceneLook(
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
-            Vixen::App::Lookdev::SceneLookDeclaration());
+            sceneLook);
         if (glyphSdfScene || sdfFilterNonText) {
             if (glyphSdfCompare || sdfFilterNonText)
                 SetRecipePool(std::move(glyphScene.pool));
             SetBodyInstances(std::move(glyphScene.instances));
         } else if (!storedSdfScene) {
-            SetBodyInstances(Vixen::App::Lookdev::BodyInstances(
-                recipes, scenarios_.front().lighting));
+            auto instances = Vixen::App::Lookdev::BodyInstances(recipes, scenarios_.front().lighting);
+            if (exposureRoom) {
+                using Vixen::App::Lookdev::Material;
+                for (const auto& [recipeId, material] : {std::pair{kExposureRoomRecipeId, Material::Hull},
+                                                         std::pair{kExposureRoomPadRecipeId, Material::Rock}}) {
+                    Vixen::SVO::BodyInstanceGpu instance{};
+                    Vixen::SVO::SetInstanceTransform(instance, glm::mat4(1.0f));
+                    const glm::vec3 color = Vixen::App::Lookdev::MaterialColor(material);
+                    instance.material.color[0] = color.r;
+                    instance.material.color[1] = color.g;
+                    instance.material.color[2] = color.b;
+                    instance.material.providerKind = 1u;
+                    instance.material.recipeId = recipeId;
+                    instances.push_back(instance);
+                }
+            }
+            SetBodyInstances(std::move(instances));
         }
         if (std::getenv("VIXEN_LOOKDEV_READBACK")) {
             auto* records = dynamic_cast<Vixen::RenderGraph::StorageBufferNode*>(
@@ -1076,6 +1259,16 @@ public:
         if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
             camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));
+        if (scenarios_[scenarioIndex_].posed && camera_) {
+            // Fixed-mode pose, re-applied every frame: graph compile re-reads the default
+            // PARAM_CAMERA_* pose. On the walk, frame n shows simulated time (n + 1) * step, so
+            // the last frame of capture k lands on k * kRoomWalkCaptureSeconds.
+            auto [eye, target] = std::pair{scenarios_[scenarioIndex_].eye, scenarios_[scenarioIndex_].target};
+            if (RequestedExposureRoom() == ExposureRoomMode::Walk)
+                std::tie(eye, target) = RoomWalkPose(CaptureStepSeconds() * static_cast<float>(frameWallMs_.size() + 1));
+            camera_->SetPositionForTest(eye);
+            camera_->SetLookTargetNoOrbitForTest(target);
+        }
         const bool historyProbe = std::getenv("VIXEN_LOOKDEV_HISTORY_PROBE") != nullptr;
         if (historyProbe && framesInScenario_ == 1u) SetReconstructionViewportActive(false);
         if (historyProbe && framesInScenario_ == 2u) {
@@ -1169,8 +1362,10 @@ public:
             scenarioIndex_ = capturedCount_;
             framesInScenario_ = 0;
             const auto& next = scenarios_[scenarioIndex_];
-            camera_->SetYawForTest(next.yawRadians);
-            camera_->SetPitchForTest(kPitchRadians);
+            if (!next.posed) {
+                camera_->SetYawForTest(next.yawRadians);
+                camera_->SetPitchForTest(kPitchRadians);
+            }
             lighting_->SetLights(Vixen::App::Lookdev::Lights(next.lighting),
                                  next.lighting.ambient,
                                  Vixen::App::Lookdev::CelSpillPurposeScales(next.lighting));
@@ -1507,16 +1702,16 @@ private:
             captureError_ = "cannot read the whole-frame exposure meter";
             return false;
         }
-        float ev100, actualExposure;
-        std::memcpy(&ev100, mappedMeter, sizeof(ev100));
+        float log2Exposure, actualExposure;
+        std::memcpy(&log2Exposure, mappedMeter, sizeof(log2Exposure));
         std::memcpy(&actualExposure, exposureBytes.data(), sizeof(actualExposure));
         meter->UnmapReadback(device);
-        const float expectedExposure = std::exp2(ev100 + scenario.lighting.exposureCompensationEV);
+        const float expectedExposure = std::exp2(log2Exposure + scenario.lighting.exposureCompensationEV);
         std::ofstream exposureFile(stem.string() + ".exposure.f32", std::ios::binary);
         exposureFile.write(reinterpret_cast<const char*>(exposureBytes.data()), exposureBytes.size());
         std::ofstream exposureResult(stem.string() + ".exposure.json");
         exposureResult << "{\"exposure\":" << actualExposure << ",\"expected\":" << expectedExposure
-                       << ",\"ev100\":" << ev100 << ",\"pre_exposure\":1}\n";
+                       << ",\"log2Exposure\":" << log2Exposure << ",\"pre_exposure\":1}\n";
         if (!exposureFile || !exposureResult || !std::isfinite(actualExposure) || actualExposure <= 0.0f ||
             std::abs(actualExposure - expectedExposure) > expectedExposure * 2.0e-5f) {
             captureError_ = "reconstruction exposure does not match the scene-linear meter scale";
@@ -1737,12 +1932,34 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
     const bool slowPan = std::getenv("VIXEN_LOOKDEV_CAPTURE_PAN") != nullptr;
     const bool oneAngleRequested = std::getenv("VIXEN_LOOKDEV_CAPTURE_ANGLE") != nullptr;
-    ASSERT_EQ(scenarios.size(), slowPan ? 24u : (oneAngleRequested ? 1u : 4u))
-        << "CTest must select one supported look-dev lighting preset";
+    const char* stateList = std::getenv("VIXEN_LOOKDEV_CAPTURE_STATE");
+    const size_t requestedStates = stateList
+        ? 1u + static_cast<size_t>(std::count(stateList, stateList + std::strlen(stateList), ','))
+        : 1u;
+    ASSERT_EQ(scenarios.size(), requestedStates * (slowPan ? 24u : (oneAngleRequested ? 1u : 4u)))
+        << "CTest must select supported look-dev lighting presets";
     std::string error;
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+TEST(LookdevCapture, RendersExposureRoomAcceptance) {
+    const ExposureRoomMode mode = RequestedExposureRoom();
+    ASSERT_NE(mode, ExposureRoomMode::Off) << "CTest must set VIXEN_LOOKDEV_EXPOSURE_ROOM=door|window|walk";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_FALSE(scenarios.empty());
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    if (mode == ExposureRoomMode::Walk) {
+        // Each walk capture must land on its 0.5 s mark of simulated time.
+        ASSERT_NEAR(static_cast<float>(framesPerScenario) * CaptureStepSeconds(), kRoomWalkCaptureSeconds, 1.0e-4f)
+            << "set VIXEN_LOOKDEV_CAPTURE_FRAMES * VIXEN_HDR_EXPOSURE_DT to 0.5 s";
+    }
+    ASSERT_TRUE(CaptureSequence(std::filesystem::path(outputEnv), scenarios, framesPerScenario, error)) << error;
 }
 
 TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {

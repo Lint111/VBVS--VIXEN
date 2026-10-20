@@ -1,56 +1,84 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+#include "Generated/LightingConfig.glsl"
+#include "ExposureHistogram.glsl"
 
-// Completes the frame-wide exposure reduction after ExposureMeter.comp has
-// written one clamped log-luminance sum and valid-pixel count per 16x16 tile.
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
-layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistoryOutput;
-
-struct TileExposure {
-    float logLuminanceSum;
-    uint validPixelCount;
-};
+// Turns ExposureMeter.comp's frame histogram into the adapted exposure:
+// percentile-window log-average metering, middle-grey target, EV100 clamp and
+// frame-rate independent adaptation (separate brighten/darken rates). Then it
+// clears the histogram for the next frame.
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 1) buffer ExposureMeterResult {
-    float ev100;
-    uint reserved;
-    TileExposure tileStats[];
+    ExposureMeterState meterState;
+    uint histogram[];
 } result;
+layout(std430, binding = 2) readonly buffer LightingConfigSSBO { LightingConfig lightingConfig; };
 
-shared float logLuminanceSum[256];
-shared uint validPixelCount[256];
+shared uint binCount[kExposureHistogramBins];
+
+// Reflected-light meter calibration K = 12.5: EV100 = log2(L * 100 / K).
+const float kLog2HundredOverK = 3.0;
 
 void main() {
 #ifdef VIXEN_HDR_EXPOSURE_FIXED
-    if (gl_LocalInvocationIndex == 0u) result.ev100 = 4.66783;
+    // The default meter's settled reading for look-dev midday, angle 0 (round-2 measure run).
+    if (gl_LocalInvocationIndex == 0u) result.meterState.log2Exposure = 1.508;
 #else
     uint lane = gl_LocalInvocationIndex;
-    uvec2 extent = uvec2(imageSize(sceneRadianceHistoryOutput));
-    uint tilesX = (extent.x + 15u) / 16u;
-    uint tilesY = (extent.y + 15u) / 16u;
-    uint tileCount = tilesX * tilesY;
-
-    float laneLogSum = 0.0;
-    uint lanePixelCount = 0u;
-    for (uint tileIndex = lane; tileIndex < tileCount; tileIndex += 256u) {
-        laneLogSum += result.tileStats[tileIndex].logLuminanceSum;
-        lanePixelCount += result.tileStats[tileIndex].validPixelCount;
-    }
-
-    logLuminanceSum[lane] = laneLogSum;
-    validPixelCount[lane] = lanePixelCount;
+    binCount[lane] = result.histogram[lane];
     barrier();
-    for (uint stride = 128u; stride != 0u; stride >>= 1u) {
-        if (lane < stride) {
-            logLuminanceSum[lane] += logLuminanceSum[lane + stride];
-            validPixelCount[lane] += validPixelCount[lane + stride];
-        }
-        barrier();
-    }
 
     if (lane == 0u) {
-        result.ev100 = validPixelCount[0] == 0u
-            ? 0.0
-            : -logLuminanceSum[0] / float(validPixelCount[0]);
+        uint total = 0u;
+        for (uint b = 0u; b < kExposureHistogramBins; ++b) total += binCount[b];
+
+        float previous = result.meterState.log2Exposure;
+        bool adapted = result.meterState.state == kExposureStateAdapted && !isnan(previous) && !isinf(previous);
+        float target = adapted ? result.meterState.targetLog2Exposure : 0.0;
+        if (total != 0u) {
+            float lowPercent = clamp(lightingConfig.exposureLowPercent, 0.0, 100.0);
+            float highPercent = clamp(lightingConfig.exposureHighPercent, lowPercent, 100.0);
+            float lowCount = float(total) * lowPercent * 0.01;
+            float highCount = float(total) * highPercent * 0.01;
+            float below = 0.0;
+            float weightedLog = 0.0;
+            float weight = 0.0;
+            float lastBinLog = kExposureHistogramLog2Min;
+            for (uint b = 0u; b < kExposureHistogramBins; ++b) {
+                float count = float(binCount[b]);
+                float binLog = kExposureHistogramLog2Min + (float(b) + 0.5) / kExposureHistogramBinsPerEV;
+                float taken = clamp(min(below + count, highCount) - max(below, lowCount), 0.0, count);
+                weightedLog += taken * binLog;
+                weight += taken;
+                if (count > 0.0 && below < highCount) lastBinLog = binLog;
+                below += count;
+            }
+            // An empty window (low == high) meters the bin holding that percentile.
+            float meteredLog2 = weight > 0.0 ? weightedLog / weight : lastBinLog;
+            float metered = meteredLog2 + kLog2HundredOverK;
+            float minEV100 = lightingConfig.exposureMinEV100;
+            float maxEV100 = max(lightingConfig.exposureMaxEV100, minEV100);
+            float clampedEV100 = clamp(metered, minEV100, maxEV100);
+            float key = max(lightingConfig.exposureKeyValue, 1.0e-4);
+            target = log2(key) - (clampedEV100 - kLog2HundredOverK);
+            result.meterState.meteredEV100 = metered;
+        }
+
+        float next = target;
+        if (adapted) {
+            // Exponential approach in log2 space: the remaining error decays as
+            // exp(-rate * t), so N steps of dt/N equal one step of dt.
+            float rate = target < previous ? lightingConfig.exposureSpeedUp
+                                           : lightingConfig.exposureSpeedDown;
+            float step = max(lightingConfig.exposureDeltaSeconds, 0.0) * max(rate, 0.0);
+            next = step > 0.0 ? previous + (target - previous) * (1.0 - exp(-step)) : target;
+        }
+        result.meterState.log2Exposure = next;
+        result.meterState.targetLog2Exposure = target;
+        result.meterState.state = kExposureStateAdapted;
     }
+    barrier();
+    result.histogram[lane] = 0u;
 #endif
 }

@@ -3,14 +3,14 @@
 #include "Generated/LightingConfig.glsl"
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-layout(std430, binding = 0) readonly buffer ExposureMeterResult { float ev100; } meter;
+layout(std430, binding = 0) readonly buffer ExposureMeterResult { float log2Exposure; } meter;
 layout(std430, binding = 1) readonly buffer LightingConfigSSBO { LightingConfig lightingConfig; };
 layout(r32f, binding = 2) uniform writeonly image2D exposureImage;
 
 void main() {
     // Scene radiance is not pre-exposed. Match ExposureTonemapSystem's linear
     // multiplier, including authored compensation; adapters translate units.
-    float ev = meter.ev100 + lightingConfig.exposureCompensationEV;
+    float ev = meter.log2Exposure + lightingConfig.exposureCompensationEV;
     if (isnan(ev) || isinf(ev)) ev = 0.0;
     imageStore(exposureImage, ivec2(0), vec4(exp2(clamp(ev, -80.0, 80.0))));
 }

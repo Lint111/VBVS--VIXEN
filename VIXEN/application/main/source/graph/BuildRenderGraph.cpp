@@ -189,6 +189,7 @@ static_assert(Vixen::Gpu::ExposureTonemapSystemTextureDescriptors[1].set == 0u);
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
 #include "Nodes/SkySphereNode.h"            // T-1138: procedural background cache
+#include "graph/SceneLook.h"                // R670: the built-in scenes' exposure declaration
 #include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
 #include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
@@ -279,6 +280,47 @@ bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     bool explicitValue = false;
     if (envFlagIsSet(name, explicitValue)) return explicitValue;
     return envFlagEnabled(name);
+}
+
+// Dynamic exposure config: the built-in scenes are the default SceneLook, so they take its exposure
+// declaration (the space preset); VIXEN_HDR_EXPOSURE_PRESET=<name> picks another preset. Offscreen
+// captures pin the adaptation step to 1/60 s so repeat runs are pixel-identical;
+// VIXEN_HDR_EXPOSURE_DT=<seconds> overrides it (0 = graph frame time). Scenes with their own SceneLook
+// (look-dev, planet) replace the preset when they apply it.
+void ConfigureExposure(LightingConfigNode& lighting, bool offscreenPresentation, Vixen::Log::Logger& logger) {
+    using Config = LightingConfigNodeConfig;
+    Config::ExposurePreset preset = Vixen::App::ExposureSettings(Vixen::App::SceneLook{}.exposure);
+    if (const char* name = std::getenv("VIXEN_HDR_EXPOSURE_PRESET"); name && *name) {
+        if (const Config::ExposurePreset* found = Config::FindExposurePreset(name)) {
+            preset = *found;
+        } else {
+            std::string known;
+            for (const Config::ExposurePreset& candidate : Config::EXPOSURE_PRESETS)
+                known += (known.empty() ? "" : ", ") + std::string(candidate.name);
+            logger.Warning(std::string("[BuildRenderGraph] unknown VIXEN_HDR_EXPOSURE_PRESET '") + name +
+                           "'; using '" + preset.name + "' (known: " + known + ")");
+        }
+    }
+    Vixen::App::ApplyExposureSettings(lighting, preset);
+    // VIXEN_HDR_EXPOSURE_<PARAMETER>=<value> overrides one preset value (the node clamps it).
+    const auto overrideExposure = [&lighting](const char* parameter, const char* env) {
+        if (const char* raw = std::getenv(env); raw && *raw) lighting.SetParameter(parameter, std::strtof(raw, nullptr));
+    };
+    overrideExposure(Config::PARAM_EXPOSURE_KEY_VALUE, "VIXEN_HDR_EXPOSURE_KEY_VALUE");
+    overrideExposure(Config::PARAM_EXPOSURE_MIN_EV100, "VIXEN_HDR_EXPOSURE_MIN_EV100");
+    overrideExposure(Config::PARAM_EXPOSURE_MAX_EV100, "VIXEN_HDR_EXPOSURE_MAX_EV100");
+    overrideExposure(Config::PARAM_EXPOSURE_LOW_PERCENT, "VIXEN_HDR_EXPOSURE_LOW_PERCENT");
+    overrideExposure(Config::PARAM_EXPOSURE_HIGH_PERCENT, "VIXEN_HDR_EXPOSURE_HIGH_PERCENT");
+    overrideExposure(Config::PARAM_EXPOSURE_SPEED_UP, "VIXEN_HDR_EXPOSURE_SPEED_UP");
+    overrideExposure(Config::PARAM_EXPOSURE_SPEED_DOWN, "VIXEN_HDR_EXPOSURE_SPEED_DOWN");
+    float fixedDeltaSeconds = offscreenPresentation ? 1.0f / 60.0f : 0.0f;
+    if (const char* raw = std::getenv("VIXEN_HDR_EXPOSURE_DT"); raw && *raw) {
+        fixedDeltaSeconds = std::strtof(raw, nullptr);
+    }
+    lighting.SetParameter(Config::PARAM_EXPOSURE_FIXED_DELTA_SECONDS, fixedDeltaSeconds);
+    logger.Info("[BuildRenderGraph] HDR exposure preset '" + std::string(preset.name) +
+                "', adaptation step " + (fixedDeltaSeconds > 0.0f
+                    ? std::to_string(fixedDeltaSeconds) + " s (pinned)" : std::string("frame time")));
 }
 
 enum class RtLightingMode { Auto, Off, Force };
@@ -651,6 +693,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // default) uploaded per-frame through a PerFrameResources ring, mirroring
     // DynamicInstanceBufferNode's pattern.
     NodeHandle lightingConfigNode = renderGraph->AddNode<LightingConfigNodeType>("lighting_config");
+    if (hdrExposureEnabled) {
+        if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
+            ConfigureExposure(*lighting, offscreenPresentation, *mainLogger);
+        }
+    }
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     // The native capture witness compares the preserved Lambert+GGX path with the
     // lane's untouched baseline. Product hosts select this same mode through the
@@ -1632,10 +1679,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     if (hdrExposureEnabled) {
-        const uint32_t exposureTilesX = (renderExtent.width + 15u) / 16u;
-        const uint32_t exposureTilesY = (renderExtent.height + 15u) / 16u;
-        const uint64_t exposureMeterBytes = hdrExposureFixed
-            ? 8ull : 8ull + 8ull * exposureTilesX * exposureTilesY;
+        // ExposureHistogram.glsl: 16-byte ExposureMeterState, then 128 uint histogram bins.
+        constexpr uint64_t exposureMeterBytes = 16ull + 4ull * 128ull;
         static_cast<StorageBufferNode*>(renderGraph->GetInstance(exposureMeterBuffer))
             ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
                            static_cast<uint32_t>(exposureMeterBytes));

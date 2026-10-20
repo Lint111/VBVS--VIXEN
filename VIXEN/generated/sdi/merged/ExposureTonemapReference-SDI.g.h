@@ -33,11 +33,11 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ExposureMeterResult
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x7a82e00a809949e8 (for runtime discovery)
+ * Layout VixenHash: 0x2f9153042b2c9ae9 (for runtime discovery)
  */
 struct ExposureMeterResult {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7a82e00a809949e8ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x2f9153042b2c9ae9ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -53,17 +53,17 @@ struct ExposureMeterResult {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6f03924fb7e8818e (for runtime discovery)
+ * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6f03924fb7e8818eULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 240;
+        static constexpr uint32_t SIZE = 272;
         static constexpr uint32_t BINDING = 0;
     };
 

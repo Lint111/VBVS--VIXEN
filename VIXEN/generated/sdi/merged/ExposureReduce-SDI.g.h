@@ -33,49 +33,49 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ExposureMeterResult
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x31b43a45539be2e0 (for runtime discovery)
+ * Layout VixenHash: 0x80f7bced34979787 (for runtime discovery)
  */
 struct ExposureMeterResult {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x31b43a45539be2e0ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x80f7bced34979787ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "float";
+        static constexpr const char* TYPE = "ExposureMeterState";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t SIZE = 16;
         static constexpr uint32_t BINDING = 0;
     };
     struct pc_1 {
         static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 4;
+        static constexpr uint32_t OFFSET = 16;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 1;
     };
-    struct pc_2 {
-        static constexpr const char* TYPE = "TileExposure";
-        static constexpr uint32_t OFFSET = 8;
-        static constexpr uint32_t SIZE = 8;
-        static constexpr uint32_t BINDING = 2;
+
+};
+
+/**
+ * @brief LightingConfigSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
+ */
+struct LightingConfigSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "LightingConfig";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 272;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
 
 namespace Set0 {
-
-    /**
-     * @brief sceneRadianceHistoryOutput
-     * Type: STORAGE_IMAGE
-     */
-    struct Binding0 {
-        static constexpr const char* NAME = "sceneRadianceHistoryOutput";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 0;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
 
     /**
      * @brief result
@@ -92,12 +92,27 @@ namespace Set0 {
         using DataType = ExposureMeterResult;
     };
 
+    /**
+     * @brief LightingConfigSSBO
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding2 {
+        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 2;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = LightingConfigSSBO;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
-using sceneRadianceHistoryOutput = Set0::Binding0;
 using result = Set0::Binding1;
+using LightingConfigSSBO = Set0::Binding2;
 } // namespace Bind
 
 // ============================================================================
@@ -117,8 +132,8 @@ struct MemberInfo {
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"sceneRadianceHistoryOutput", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"result", false, 0, 1, 0, Access::ReadWrite, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
 };
 
 /**

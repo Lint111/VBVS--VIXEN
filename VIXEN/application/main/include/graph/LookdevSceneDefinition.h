@@ -31,6 +31,9 @@ inline SceneLook SceneLookDeclaration() {
     look.cel.litThreshold = 0.86f;
     look.cel.rampSoftness = 0.08f;
     look.cel.dimBandFloor = 0.0f;       // black shadow step: indoor and night look-dev lights fill by ambient
+    // An ordinary lit scene: the meter adapts with the default preset's -8 EV100 floor (R670.2).
+    look.exposure.mode = ExposureDeclaration::Mode::Auto;
+    look.exposure.preset = "default";
     return look;
 }
 
@@ -90,11 +93,14 @@ inline constexpr glm::vec3 kWorklightGridPosition{17.0f, 26.0f, 46.0f};
 inline const std::array<LightingPreset, 4>& LightingPresets() {
     // Directions point from the scene toward the light source. Colors are the
     // C16 time-of-day swatches; fill values are the only look-dev tuning values.
+    // Compensation is the look on top of the key-0.18 meter: the mean over the four
+    // review angles of the EV offset to the reviewed hdrmeter captures (the old
+    // key-1.0 meter needed about -2.9 EV more; reports/exposure.md round 2).
     static const std::array<LightingPreset, 4> presets{{
-        {"midday",          {-0.35f, 0.88f, 0.32f}, {0xfc/255.0f, 0xc6/255.0f, 0x64/255.0f}, 1.10f, 0.14f, -3.25f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
-        {"late-afternoon",  {-0.78f, 0.38f, 0.22f}, {0xe9/255.0f, 0xb1/255.0f, 0x63/255.0f}, 1.00f, 0.13f, -3.25f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
-        {"overcast",        {-0.18f, 0.96f, 0.16f}, {0xd6/255.0f, 0xdf/255.0f, 0xe7/255.0f}, 0.78f, 0.24f, -3.50f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
-        {"night-service",   {-0.28f, 0.78f, 0.38f}, {0x99/255.0f, 0xb5/255.0f, 0xca/255.0f}, 0.10f, 0.05f, -5.10f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 8.0f},
+        {"midday",          {-0.35f, 0.88f, 0.32f}, {0xfc/255.0f, 0xc6/255.0f, 0x64/255.0f}, 1.10f, 0.14f, -0.38f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
+        {"late-afternoon",  {-0.78f, 0.38f, 0.22f}, {0xe9/255.0f, 0xb1/255.0f, 0x63/255.0f}, 1.00f, 0.13f, -0.41f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
+        {"overcast",        {-0.18f, 0.96f, 0.16f}, {0xd6/255.0f, 0xdf/255.0f, 0xe7/255.0f}, 0.78f, 0.24f, -0.50f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
+        {"night-service",   {-0.28f, 0.78f, 0.38f}, {0x99/255.0f, 0xb5/255.0f, 0xca/255.0f}, 0.10f, 0.05f, -2.34f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 8.0f},
     }};
     return presets;
 }

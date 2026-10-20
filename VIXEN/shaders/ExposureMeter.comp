@@ -1,82 +1,41 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+#include "ExposureHistogram.glsl"
 
-// Slice 2: deterministic exposure meter. Each workgroup owns one 16x16 tile;
-// ExposureReduce.comp combines all tile sums after this dispatch completes.
+// Luminance histogram meter. Each 16x16 workgroup bins its pixels into a
+// shared histogram and adds the non-empty bins to the frame histogram.
+// Integer addition is order-independent, so the result is deterministic;
+// ExposureReduce.comp consumes and clears the frame histogram.
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistoryOutput;
 
-struct TileExposure {
-    float logLuminanceSum;
-    uint validPixelCount;
-};
-
 layout(std430, binding = 1) buffer ExposureMeterResult {
-    float ev100;
-    uint reserved;
-    TileExposure tileStats[];
+    ExposureMeterState meterState;
+    uint histogram[];
 } result;
 
-shared float tile[256];
-shared uint validPixel[256];
-shared uint tilePixelCount;
-shared uint cutoffIndex;
-
-// The brightest 5% of a tile is a solar/cosmic outlier regime, not a useful
-// adaptation target. A shared-memory bitonic sort keeps the cutoff deterministic
-// without serializing all comparisons onto invocation 0.
-const float kInvalidPixelSortValue = 3.402823466e+38;
+shared uint tileHistogram[kExposureHistogramBins];
 
 void main() {
-    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = imageSize(sceneRadianceHistoryOutput);
     uint i = gl_LocalInvocationIndex;
-    bool inBounds = all(lessThan(p, size));
-    float l = 0.0;
-    if (inBounds) {
+    if (i < kExposureHistogramBins) tileHistogram[i] = 0u;
+    barrier();
+
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (all(lessThan(p, imageSize(sceneRadianceHistoryOutput)))) {
         vec3 c = max(imageLoad(sceneRadianceHistoryOutput, p).rgb, vec3(0.0));
         float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-        if (!isnan(lum) && !isinf(lum) && lum > 1.0e-6) l = log2(lum);
-    }
-    tile[i] = inBounds ? l : kInvalidPixelSortValue;
-    validPixel[i] = inBounds ? 1u : 0u;
-    barrier();
-    if (i == 0u) {
-        tilePixelCount = 0u;
-        for (uint n = 0u; n < 256u; ++n) tilePixelCount += validPixel[n];
-        // ceil(0.95 * validCount) - 1, with at least one in-bounds pixel per group.
-        cutoffIndex = (tilePixelCount * 95u + 99u) / 100u - 1u;
-    }
-    barrier();
-
-    for (uint sequenceSize = 2u; sequenceSize <= 256u; sequenceSize <<= 1u) {
-        for (uint compareDistance = sequenceSize >> 1u;
-             compareDistance > 0u;
-             compareDistance >>= 1u) {
-            uint partner = i ^ compareDistance;
-            if (partner > i) {
-                float a = tile[i];
-                float b = tile[partner];
-                bool ascending = (i & sequenceSize) == 0u;
-                bool shouldSwap = ascending ? a > b : a < b;
-                if (shouldSwap) {
-                    tile[i] = b;
-                    tile[partner] = a;
-                }
+        if (!isnan(lum) && !isinf(lum)) {
+            uint bin = 0u;
+            if (lum > 1.0e-6) {
+                float scaled = (log2(lum) - kExposureHistogramLog2Min) * kExposureHistogramBinsPerEV;
+                bin = uint(clamp(scaled, 0.0, float(kExposureHistogramBins - 1u)));
             }
-            barrier();
+            atomicAdd(tileHistogram[bin], 1u);
         }
     }
+    barrier();
 
-    barrier();
-    tile[i] = i < tilePixelCount ? min(tile[i], tile[cutoffIndex]) : 0.0;
-    barrier();
-    for (uint stride = 128u; stride != 0u; stride >>= 1u) {
-        if (i < stride) tile[i] += tile[i + stride];
-        barrier();
-    }
-    if (i == 0u) {
-        uint tileIndex = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
-        result.tileStats[tileIndex].logLuminanceSum = tile[0];
-        result.tileStats[tileIndex].validPixelCount = tilePixelCount;
-    }
+    if (i < kExposureHistogramBins && tileHistogram[i] != 0u)
+        atomicAdd(result.histogram[i], tileHistogram[i]);
 }

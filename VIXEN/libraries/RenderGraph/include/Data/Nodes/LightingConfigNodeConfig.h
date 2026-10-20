@@ -59,6 +59,17 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr const char* PARAM_SKY_COLOR_G = "skyColorG";
     static constexpr const char* PARAM_SKY_COLOR_B = "skyColorB";
     static constexpr const char* PARAM_SKY_GRADIENT_SLOPE = "skyGradientSlope";
+    // Dynamic exposure (eye adaptation) read by ExposureReduce.comp; see
+    // reports/exposure-priorart.md for the source of each preset value.
+    static constexpr const char* PARAM_EXPOSURE_KEY_VALUE = "exposureKeyValue";
+    static constexpr const char* PARAM_EXPOSURE_MIN_EV100 = "exposureMinEV100";
+    static constexpr const char* PARAM_EXPOSURE_MAX_EV100 = "exposureMaxEV100";
+    static constexpr const char* PARAM_EXPOSURE_LOW_PERCENT = "exposureLowPercent";
+    static constexpr const char* PARAM_EXPOSURE_HIGH_PERCENT = "exposureHighPercent";
+    static constexpr const char* PARAM_EXPOSURE_SPEED_UP = "exposureSpeedUp";
+    static constexpr const char* PARAM_EXPOSURE_SPEED_DOWN = "exposureSpeedDown";
+    // > 0 pins the adaptation step (deterministic captures); 0 uses graph frame time.
+    static constexpr const char* PARAM_EXPOSURE_FIXED_DELTA_SECONDS = "exposureFixedDeltaSeconds";
 
     static constexpr uint32_t SHADING_MODE_LAMBERT_GGX = 0u;
     static constexpr uint32_t SHADING_MODE_CEL = 1u;
@@ -81,6 +92,48 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr float DEFAULT_SKY_GRADIENT_SLOPE = 0.4f;
     static constexpr float MIN_EXPOSURE_COMPENSATION_EV = -16.0f;
     static constexpr float MAX_EXPOSURE_COMPENSATION_EV = 16.0f;
+    // Longest wall-clock step one frame may adapt by; a stall resumes smoothly.
+    static constexpr float MAX_EXPOSURE_DELTA_SECONDS = 0.5f;
+
+    // Exposure presets named by a scene's SceneLook exposure declaration (VIXEN_HDR_EXPOSURE_PRESET
+    // overrides the application scene's). EV100 is measured
+    // in scene units (VIXEN radiance is not calibrated in cd/m2): a frame whose
+    // percentile window averages L meters EV100 = log2(L) + 3.
+    struct ExposurePreset {
+        const char* name;
+        float keyValue;
+        float minEV100;
+        float maxEV100;
+        float lowPercent;
+        float highPercent;
+        float speedUp;
+        float speedDown;
+    };
+    // The floor is how far a dim frame may be brightened toward the key: look-dev midday
+    // meters about -1 EV100, so default -8 allows ~7 EV of boost (UE 4.27's
+    // min/max_brightness span, 8 EV), interior -12 allows ~11 EV (toward HDRP's -1..14
+    // span) and bright -4 only ~3 EV. Space is for intentionally dark scenes (bodies on a
+    // night sky): its 0.5 floor caps the boost at log2(0.18) - (0.5 - 3) = +0.03 EV, so a
+    // dark frame is shown about as authored and never lifted toward middle grey (R670.2).
+    static constexpr ExposurePreset EXPOSURE_PRESETS[] = {
+        {"default", 0.18f, -8.0f, 12.0f, 50.0f, 95.0f, 3.0f, 1.0f},
+        {"interior", 0.18f, -12.0f, 12.0f, 75.0f, 98.0f, 3.0f, 1.0f},
+        {"bright", 0.18f, -4.0f, 16.0f, 10.0f, 90.0f, 3.0f, 1.0f},
+        {"space", 0.18f, 0.5f, 12.0f, 50.0f, 95.0f, 3.0f, 1.0f},
+    };
+    // EXPOSURE_PRESETS[0] ("default") supplies every unset exposure parameter.
+    static constexpr const ExposurePreset* FindExposurePreset(std::string_view name) {
+        for (const ExposurePreset& preset : EXPOSURE_PRESETS) {
+            if (name == preset.name) return &preset;
+        }
+        return nullptr;
+    }
+    // A fixed exposure (R670.1) is the degenerate preset: a zero-width EV100 window pins
+    // the target to key / 2^(ev100 - 3) whatever the meter reads, and zero speeds snap to it.
+    static constexpr ExposurePreset FixedExposure(float ev100) {
+        const ExposurePreset& base = EXPOSURE_PRESETS[0];
+        return {"fixed", base.keyValue, ev100, ev100, base.lowPercent, base.highPercent, 0.0f, 0.0f};
+    }
 
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,

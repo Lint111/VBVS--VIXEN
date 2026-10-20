@@ -64,6 +64,22 @@ public struct LightingConfig
     public Float3 skyColor;
     public uint skyMode;
     public float skyGradientSlope;
+
+    // Dynamic exposure (eye adaptation), read by ExposureReduce.comp. The meter
+    // averages log2 luminance between the low/high histogram percentiles,
+    // clamps it to [exposureMinEV100, exposureMaxEV100] (EV100 of scene units
+    // with the K = 12.5 reflected-meter constant), targets exposureKeyValue
+    // (middle grey) and adapts toward that target with separate rates (1/s)
+    // for brightening and darkening scenes. exposureDeltaSeconds is this
+    // frame's adaptation step; a zero step or rate snaps to the target.
+    public float exposureKeyValue;
+    public float exposureMinEV100;
+    public float exposureMaxEV100;
+    public float exposureLowPercent;
+    public float exposureHighPercent;
+    public float exposureSpeedUp;
+    public float exposureSpeedDown;
+    public float exposureDeltaSeconds;
     // Round the struct size to std430's 16-byte structure alignment.
     public float _envTailPadding0;
     public float _envTailPadding1;

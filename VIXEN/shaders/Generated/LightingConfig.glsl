@@ -31,6 +31,14 @@ struct LightingConfig {
     vec3 skyColor;
     uint skyMode;
     float skyGradientSlope;
+    float exposureKeyValue;
+    float exposureMinEV100;
+    float exposureMaxEV100;
+    float exposureLowPercent;
+    float exposureHighPercent;
+    float exposureSpeedUp;
+    float exposureSpeedDown;
+    float exposureDeltaSeconds;
     float _envTailPadding0;
     float _envTailPadding1;
     float _envTailPadding2;

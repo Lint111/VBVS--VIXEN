@@ -157,8 +157,6 @@ public:
         shadow->SetReachAndBias(state_.shadowMaxDistance, state_.shadowBias);
 
         lighting_->SetLights(Planet::Lights(state_), Planet::kAmbient, Planet::CelSpillPurposeScales());
-        lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
-                                state_.exposureCompensationEV);
         Vixen::App::ApplySceneLook(
             *lighting_, dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")),
             Planet::SceneLookDeclaration());
@@ -297,9 +295,19 @@ private:
         }
         std::ofstream meter(stem.string() + ".meter.bin", std::ios::binary);
         meter.write(static_cast<const char*>(mappedMeter), sizeof(float));
+        float log2Exposure = 0.0f;
+        std::memcpy(&log2Exposure, mappedMeter, sizeof(log2Exposure));
         meterBuffer->UnmapReadback(device);
         if (!meter) {
             captureError_ = "could not write exposure meter";
+            return false;
+        }
+        // Fixed mode (R670.1): the applied exposure is the declared one whatever the frame meters.
+        const auto fixed = Vixen::App::ExposureSettings(Planet::SceneLookDeclaration().exposure);
+        const float fixedLog2Exposure = std::log2(fixed.keyValue) - (fixed.minEV100 - 3.0f);
+        if (std::abs(log2Exposure - fixedLog2Exposure) > 1.0e-4f) {
+            captureError_ = "fixed exposure mode applied log2 exposure " + std::to_string(log2Exposure) +
+                            ", declared " + std::to_string(fixedLog2Exposure);
             return false;
         }
 
@@ -315,7 +323,7 @@ private:
         scene << "{\"state\":\"" << state_.name << "\",\"specState\":" << (Planet::IsSpecState(state_.name) ? "true" : "false")
               << ",\"width\":" << state_.width << ",\"height\":" << state_.height
               << ",\"verticalFovDegrees\":" << state_.verticalFovDegrees
-              << ",\"shading\":\"" << (shadingLambert_ ? "lambert" : "cel") << "\"" << ",\"exposureCompensationEV\":" << state_.exposureCompensationEV
+              << ",\"shading\":\"" << (shadingLambert_ ? "lambert" : "cel") << "\"" << ",\"exposureMode\":\"fixed\",\"exposureFixedEV100\":" << Planet::kFixedExposureEV100
               << ",\"lightCapacity\":" << std::size(Vixen::Gpu::LightingConfig{}.lights)
               << ",\"exposureOffset\":" << offsetof(Vixen::Gpu::LightingConfig, exposureCompensationEV)
               << ",\"focus\":\"" << state_.focus << "\",\"sunDirection\":";
