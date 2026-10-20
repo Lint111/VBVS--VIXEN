@@ -1,11 +1,123 @@
 # Lane exposure: dynamic exposure (eye adaptation)
 
-Branch `lane-exposure`. Round 1 (3-hour checkpoint, `99f533e9`) is kept below as §R1. Round 2
-(owner rulings of 2026-10-20) is first. All captures ran on Dozen and count for correctness only;
+Branch `lane-exposure`. Round 1 (3-hour checkpoint, `99f533e9`) is kept below as §R1. Round 3
+(R670.1/R670.2) is first, then round 2 (owner rulings of 2026-10-20). All captures ran on Dozen and count for correctness only;
 no timing in this report is representative. Evidence (logs, captures, CSV, scripts):
 `/home/liory/codeman-cases/undertow/reports/exposure-evidence/round2/` (round 1: the parent
 directory). Contact sheets: [`exposure-visual/`](exposure-visual/). Prior art:
 [`exposure-priorart.md`](exposure-priorart.md).
+
+## Round 3 (owner rulings R670.1, R670.2 of 2026-10-20)
+
+Merged `origin/wave/authoring-convergence` `f20e97c2` first (merge `9e26febf`, no conflicts); a fetch
+before the final checks showed no newer tip, so every round-3 capture and test ran on the merged tree.
+Code commit: `c3aaa417`. Evidence: `/home/liory/codeman-cases/undertow/reports/exposure-evidence/round3/`
+(sheets in `round3/sheets/`, logs in `round3/logs/`). All captures on Dozen: correctness only.
+
+### R3.1 SceneLook declares its exposure mode (R670.1)
+
+- `SceneLook.h:38` `ExposureDeclaration { Mode mode (Auto | Fixed); const char* preset; float fixedEV100; }`,
+  carried as `SceneLook::exposure` (`SceneLook.h:47`). `ApplySceneLook` applies it
+  (`SceneLook.h:87`) through `ExposureSettings()` (`:55`) and `ApplyExposureSettings()` (`:63`).
+  This is the one new field the ruling allows. No new GPU field, attribute or node.
+- **Fixed means meter bypassed, with no LightingConfig change.** `LightingConfigNodeConfig.h:133`
+  `FixedExposure(ev100)` is the degenerate preset: min EV100 = max EV100 = the set value, and both
+  speeds 0. `ExposureReduce.comp` then targets `log2(key) - (EV100 - 3)` whatever the histogram
+  reads, and a zero step snaps to it. The meter still records `meteredEV100` for diagnostics, but
+  that reading has no effect on the image.
+- **Planet** declares `Fixed` at EV100 `-1.05893` (`PlanetSceneDefinition.h:54,91-92`): log2(0.18) + 3
+  - 1.585, so the exposure is 3 (planetref D7/D8). The per-state meter table, `ExposureFor()`,
+  `kFloorMeterLog2Exposure` and `ResolvedState::exposureCompensationEV` are gone, and the capture no
+  longer sets a compensation. `test_planet_capture.cpp:305` fails the capture if the applied log2
+  exposure differs from the declared one by more than 1e-4. The scene sidecar records
+  `exposureMode`/`exposureFixedEV100`.
+- **Look-dev** declares `Auto` + `"default"` explicitly (`LookdevSceneDefinition.h:35-36`). The
+  ExposureRoom scenes use the look-dev look and keep it.
+
+### R3.2 Dark scenes stay dark: `space` vs `interior` (R670.2)
+
+`LightingConfigNodeConfig.h:119-122`:
+
+| preset | floor EV100 | max lift (log2 exposure at the floor) | for |
+|---|---|---|---|
+| default | -8 | +8.53 | ordinary scenes (look-dev, room) |
+| **interior** (was `dark`) | -12 | +12.53 | dark interiors; lifts the most |
+| bright | -4 | +4.53 | exteriors |
+| **space** (new) | **0.5** | **+0.03 (≤1.02×)** | intentionally dark scenes: bodies on a night sky |
+
+- `space` keeps round 1's floor and default window (key 0.18, 50-95 %, 3/1 per s). A dark frame
+  is shown about as authored and never lifted toward middle grey. Above its floor it behaves
+  exactly like `default`.
+- `FindExposurePreset()` (`:125`) replaces the old `find_if`. The unknown-name warning now lists
+  the table.
+
+**Which scenes declare space, and where.** The default-constructed `SceneLook` is the application's
+built-in scenes. Its environment defaults (navy 0.02/0.02/0.06 gradient) are already the
+`LightingConfigNode` defaults those scenes render, so `ExposureDeclaration`'s default preset is
+`space` (`SceneLook.h:41`). `BuildRenderGraph.cpp:290` `ConfigureExposure` starts from
+`SceneLook{}.exposure` (`:292`). So **HUD, editor, starfield and Cornell are space**.
+`VIXEN_HDR_EXPOSURE_PRESET` and the per-value `VIXEN_HDR_EXPOSURE_*` overrides still apply to
+them. Look-dev (and room) declare `default`; planet declares `fixed`.
+
+Behaviour change: a scene that applies its own SceneLook (look-dev, planet) now sets its preset
+values after `ConfigureExposure`. The env preset and per-value overrides therefore no longer reach
+those two scenes. `VIXEN_HDR_EXPOSURE_DT` (the step) still does.
+
+### R3.3 Re-captured and looked at (MEASURED)
+
+| scene | sheet (`round3/sheets/`) | result |
+|---|---|---|
+| HUD (frame 75) | `hud-off-r1-r2-r3.png`, `hud-stats.txt` | **round 3 is pixel-identical to round 1** (RGB hash `45ee4b4227`): shaded beige/blue/grey bodies on navy, sphere (167,171,178), sky (18,18,51), luma p50 26, 0 % clipped. Round 2 was near-white on periwinkle (p50 81). |
+| editor (frame 75) | `editor-off-r1-r2-r3.png` | pixel-identical to round 1 (`8d54721337`); round 2 was slightly lifted (p50 36 vs 28). |
+| starfield (HDR on) | `starfield-off-r1-r3.png` | pixel-identical to round 1. The scene meters EV100 1.03, above every floor, so the space preset does not engage. No round-2 starfield frame exists. |
+| Cornell (HDR on) | `cornell-off-r1-r2-r3.png` | rounds 1, 2 and 3 are pixel-identical (above every floor). |
+| look-dev 4 states × 4 angles | `lookdev-<state>-off-r2-r3.png`, `lookdev-r3-vs-r2.txt` | all 16 **pixel-identical to round 2**, which matched the reviewed hdrmeter frames within ±0.29 EV per angle (round 2 §R2.2). Looked at midday: the reviewed look (white hull with red door, blue-violet sky, readable trees). |
+| planet 12 states, fixed | `planet-states-{1,2}-off-r2-r3.png`, `planet-r3-vs-r2.txt` | the applied log2 exposure is **1.58500 in every state**. EV delta to round 2 is 0.000 in all 11 measurable states; C2 is a near-black frame with no unclipped samples, 0 pixels differ. Max pixel difference is 1 LSB (C1, C1-epic, C7; ≤0.003 % of pixels), the round-2 table's small reading error. Disc tones, C2-term grey face, C4a station and limb glow, C7 stone and ground, and the stars match. |
+| ExposureRoom door / window / walk | `room-r2-r3.png`, `room-r3-vs-r2.txt` | all three pass. Every frame (door, window, 26 walk frames) is pixel-identical to round 2: the doorway is near black from outside, the window is blown from inside, and the walk goes black → readable → blown → settled. |
+
+### R3.4 Tests (MEASURED; `round3/logs/`)
+
+- `test_exposure_meter_mirror` 1/1, with three new cases reading the engine's real preset table
+  (the target now links RenderGraph for the header; asserts are on, `-UNDEBUG`):
+  - `PresetTableNamesSpaceAndInterior` (`:255`): `dark` is gone; `interior < default < bright <
+    space` floors.
+  - `SpacePresetLimitsTheLift` (`:268`): a HUD-like navy frame and a near-black frame settle at
+    exactly the +0.026 cap under space, while default lifts them by more than 1.5 and 8 EV and
+    interior by 3 EV more. A frame above the floor meters identically under space and default.
+  - `FixedExposureBypassesTheMeter` (`:294`): near-black, mid-grey, 4096 and a sun frame all give
+    exactly log2 exposure 1.585, from the first frame and with no lag after any scene switch. The
+    meter reading still varies.
+- Layout and drift: `LightingConfigParity.*` 4/4, `LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct`
+  1/1, `sdi_merged_drift_check` 1/1 (`layout.log`; the struct is unchanged at 272 bytes).
+- `HudRenderCapture.*` 3/3, `EditorToggleUndoCapture.*` 7/7, both producers 2/2 (`hud-editor.log`).
+- Planet: `Application.PlanetCapture.<state>` 12/12, one queue job each (`planet-<state>.log`),
+  each including the new fixed-exposure assertion.
+- `Application.LookdevCapture.ExposureRoom.{door,window,walk}` 3/3.
+- Look-dev 16 states × angles in one process: passed (`lookdev-r3.log`). The registered
+  64-frame × 16 × 2-run repeat-pixel suite was **not run** (as in round 2).
+- Tone-map parity: **all 32** `Application.ExposureTonemapParity.*` passed (round 2 ran 2), and
+  16/16 reference/system PNG pairs are byte-identical (`tonemap-parity-bytes.txt`).
+- `Application.ReconstructionInputs.*` 6/6, including `Depth.fixed-exposure`.
+- `HeadlessStarfieldGraph.*` 3/3 and `HeadlessCornellGraph` 1/1 (both registered with HDR off).
+  With HDR on, Cornell fails at `test_headless_cornell_graph.cpp:313,369`: the pre-existing
+  mining-beam composite issue from round 2, unchanged.
+- Textures/RenderGraph/VulkanResources:
+  - CPU part 1249/1259. The 10 failures are the same RmlUi "No font engine interface set!" set as
+    round 2.
+  - GPU part 176/190. The 14 failures are the same families as round 2: `ProceduralRecipeRenderTest.*`
+    (10, test-local GLSL), `EditorDocumentRenderTest` (3) and `AppFlowEditorToggleRenderTest` (1).
+  - Round 2's text-shader timeout and `UndoRedoRestoresRenderByteExact` are now green.
+- Build: the full tree builds (`build-all.log`, 0 failed targets: the wave fixed round 2's base
+  reds). Zero new warnings: every remaining warning is in files this lane did not touch.
+- Canonical-shape grep on the added lines: no EntityId, `Id`, `KindRef`, attribute, interner or throw.
+
+### R3 STOPs
+
+None. Rulings 1 and 2 settled the design.
+- **Decided (INFERRED, owner may revisit):** the preset is named by string (the existing table's
+  key), not a new enum. An unknown name falls back to `default`.
+- **Decided (INFERRED, owner may revisit):** `space` copies round 1's floor (0.5) exactly. The
+  ruling's acceptance target was the round-1 HUD look, and that is now byte-identical.
 
 ## Round 2
 
@@ -357,7 +469,7 @@ INFERRED from scanning the pinned kernel source (`96570e48`):
 
 For now the math stays in the existing hand shaders, which is the existing renderer path.
 
-## STOPs
+## STOPs (round 2; STOP 1 resolved by R670.1 in round 3, STOP 2 by R670.2)
 
 1. **Planet-style pinned exposure under an auto meter.** Planet keeps a physical net exposure of 3,
    so its compensation must cancel the meter's settled reading per state. That is what it always
@@ -377,12 +489,26 @@ For now the math stays in the existing hand shaders, which is the existing rende
 
 ## SPT DISPOSITION
 
+Round 3:
+- **T-2878** (fixed exposure capture mode): PARTIAL. R670.1's `ExposureDeclaration::Mode::Fixed`
+  is the declared fixed-EV mode that T-2878 asks for (planet uses it). The test-only
+  `VIXEN_HDR_EXPOSURE_FIXED` shader variant (`ExposureReduce.comp:24`, `sdi-variants.json:138`)
+  and its `Depth.fixed-exposure`/temporal/jitter users still exist. Converting them to a declared
+  fixed EV100 (log2 exposure 1.508 = EV100 -0.982) is the remaining step; it was outside this round's scope.
+- Owner rulings R670.1 and R670.2: done (§R3.1-R3.4).
+
 No SPT id was given for this lane. Round 2's rulings 1-2, the acceptance scenes, the skipped
 checks, the `ev100` rename and the merge are done. PARTIAL:
 - the registered look-dev repeat-pixel suite and 30 of the 32 tone-map parity captures were not rerun;
 - STOP 1 needs an owner decision.
 
 ## CONSOLIDATION ISSUES
+
+Round 3:
+- `VIXEN_HDR_EXPOSURE_FIXED` duplicates the new fixed mode; see T-2878 above (not re-filed).
+- Python on ws no longer has Pillow/NumPy (round 2's sheet scripts used them). Round 3 used a
+  private venv at `<worktree>/.tmp/pyenv`.
+
 
 Filed as proposals (`.spt-proposals/exposure.jsonl`): the mining beam with HDR on, the wave's
 texture-extraction base reds, and the stb shallow-fetch pin.
