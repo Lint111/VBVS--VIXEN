@@ -17,7 +17,7 @@ if(NOT TARGET Vulkan::Headers)
     FetchContent_Declare(
         VulkanHeaders
         GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-        GIT_TAG main
+        GIT_TAG v1.3.290  # Pinned release; matches cmake/VulkanHeaders.cmake (b379292b)
     )
     FetchContent_MakeAvailable(VulkanHeaders)
 endif()
@@ -55,8 +55,8 @@ else()
     FetchContent_Declare(
         stbrumme_hash
         GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
-        GIT_TAG        master
-        GIT_SHALLOW    TRUE
+        # Pinned against upstream drift; no GIT_SHALLOW because a shallow clone cannot check out a SHA.
+        GIT_TAG        d389d18112bcf7e4786ec5e8723f3658a7f433d7
     )
     FetchContent_MakeAvailable(stbrumme_hash)
     add_compile_definitions(HAS_STBRUMME_HASH)
