@@ -139,6 +139,10 @@ select_args=("${exclude_args[@]}")
 
 cpu_selected="$(ctest_count -L '^cpu$' "${select_args[@]}")" || exit 2
 gpu_selected="$(ctest_count -L '^gpu$' "${select_args[@]}")" || exit 2
+if (( cpu_selected + gpu_selected == 0 )); then
+  echo "[run-tests-split] selection matches no tests (label='${suite_label:-<all>}' regex='${regex:-<all>}'): refusing to report a pass" >&2
+  exit 2
+fi
 
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
@@ -176,14 +180,19 @@ queue() {
 }
 
 run_part() {
-  local part="$1" resource="$2" jobs="$3"; shift 3
+  local part="$1" resource="$2" jobs="$3" selected="$4"; shift 4
   local started=$SECONDS cpu_tokens
+  if (( selected == 0 )); then
+    : >"$out_dir/$part.log"
+    echo "0 0" >"$out_dir/$part.status"
+    return 0
+  fi
   cpu_tokens="$(declared_cpu_tokens "$part")" || cpu_tokens=0
   (( cpu_tokens > 0 )) && echo "[run-tests-split] $part: PROCESSORS declaration needs cpu-tokens=$cpu_tokens"
   queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
     ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
-          --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
+          --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?
   echo "$status $((SECONDS - started))" >"$out_dir/$part.status"
@@ -199,9 +208,9 @@ for label in "${suite_labels[@]}"; do
 done
 
 wall_start=$SECONDS
-run_part cpu test "$cpu_jobs" &
+run_part cpu test "$cpu_jobs" "$cpu_selected" &
 cpu_pid=$!
-run_part gpu gpu "$gpu_jobs" ${gpu_env[@]+"${gpu_env[@]}"} &
+run_part gpu gpu "$gpu_jobs" "$gpu_selected" ${gpu_env[@]+"${gpu_env[@]}"} &
 gpu_pid=$!
 wait "$cpu_pid"; cpu_rc=$?
 wait "$gpu_pid"; gpu_rc=$?
