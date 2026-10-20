@@ -54,6 +54,7 @@
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
+#include <stb_image_write.h>
 
 #include <algorithm>
 #include <array>
@@ -1314,19 +1315,20 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
 
     // Save an actual close-up from the live GPU HitRecord buffer. The output
     // path is relative to the process working directory, so the test launcher
-    // controls where this raw PPM is written.
-    std::ofstream capture("aurender-30au-closeup.ppm", std::ios::binary);
-    ASSERT_TRUE(capture.good()) << "could not create aurender-30au-closeup.ppm in the test working directory";
-    capture << "P6\n" << kWidth << " " << kHeight << "\n255\n";
-    for (const HitRecordCpu& record : hitRecords) {
+    // controls where this PNG is written.
+    std::vector<uint8_t> closeupRgb(static_cast<size_t>(kWidth) * kHeight * 3u);
+    for (size_t i = 0; i < hitRecords.size(); ++i) {
+        const HitRecordCpu& record = hitRecords[i];
         const bool hit = (record.flags & kHitRecordFlagHit) != 0u;
         for (int channel = 0; channel < 3; ++channel) {
             const float value = hit ? std::clamp(record.albedo[channel], 0.0f, 1.0f) : 0.0f;
-            capture.put(static_cast<char>(std::lround(value * 255.0f)));
+            closeupRgb[i * 3u + static_cast<size_t>(channel)] = static_cast<uint8_t>(std::lround(value * 255.0f));
         }
     }
-    capture.close();
-    ASSERT_TRUE(capture.good());
+    ASSERT_NE(stbi_write_png("aurender-30au-closeup.png", static_cast<int>(kWidth), static_cast<int>(kHeight), 3,
+                             closeupRgb.data(), static_cast<int>(kWidth * 3u)),
+              0)
+        << "could not write aurender-30au-closeup.png in the test working directory";
 
     // The same live tier crossing takes its parent-tier LOD fallback when the
     // ray footprint is coarse, while the close-up capture above takes the child.

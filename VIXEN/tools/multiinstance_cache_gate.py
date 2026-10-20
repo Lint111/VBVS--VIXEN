@@ -19,6 +19,8 @@ import tempfile
 import time
 from typing import IO
 
+from vixen_gpu_env import gpu_test_environment
+
 
 def process_state(pid: int) -> str:
     status = pathlib.Path(f"/proc/{pid}/status")
@@ -106,7 +108,8 @@ def capture_environment(base: dict[str, str], cache: pathlib.Path, output: pathl
 def start_app(name: str, executable: pathlib.Path, cache: pathlib.Path, output: pathlib.Path,
               log: pathlib.Path, *, editor: bool, frames: int, document: pathlib.Path) -> Child:
     output.mkdir(parents=True, exist_ok=True)
-    env = capture_environment(os.environ, cache, output, editor=editor, frames=frames)
+    env = capture_environment({**os.environ, **gpu_test_environment(executable)}, cache, output,
+                              editor=editor, frames=frames)
     command = [str(executable)]
     if editor:
         document_copy = output / f"{name}.vxd"
