@@ -2539,6 +2539,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
     }
+    // Diagnostic presentation mode must participate in the ShaderFamily cache key.
+    // ShaderFamily::InjectFeatureDefines owns the #define spelling; the feature
+    // vector stores the bare feature name so the cache key and GLSL define agree.
+    if (envFlagEnabled("VIXEN_SDF_COVERAGE_DEBUG")) {
+        lightingShaderFeatures.push_back("VIXEN_SDF_COVERAGE_DEBUG");
+    }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES")) {
         // E11-T1: only ShadowVisibilityWave.comp #includes PolicyStencilTileBuffer;
         // every other lighting family just gets an inert #define (same shape as

@@ -314,7 +314,14 @@ void main() {
     // opaque winner (double-lighting; batch-42 controller fix). A genuine
     // regime-3 winner always has residualT strictly < 1 (anySampled requires
     // cov > 0), so excluding the sentinel loses nothing.
-    if (anyHit && worldHit.residualT > 1e-6 && worldHit.residualT < 0.999999) {
+    if (anyHit && worldHit.hasBehind && worldHit.coverage < 0.999999) {
+        // The front SDF's pixel coverage is independent of the regime-3 walk's
+        // residual transmittance. Blend the front and the farther candidate at
+        // the surface boundary before the shade pass turns the record into light.
+        recordCompositeBlend(worldHit.behindColor);
+        worldHit.color = mix(worldHit.behindColor, worldHit.color,
+                             clamp(worldHit.coverage, 0.0, 1.0));
+    } else if (anyHit && worldHit.residualT > 1e-6 && worldHit.residualT < 0.999999) {
         // B50-T1 follow-up C3 probe: measure the blend rather than infer it --
         // count is "blends that executed", max is over exactly those blends'
         // behindColor (see recordCompositeBlend, SceneBindings.glsl).
@@ -434,7 +441,9 @@ void main() {
             worldHit.footprintRegime, worldHit.sourceMask);
     }
 #endif
-    rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission), policyStencilWord);
+    rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission),
+                              policyStencilWord |
+                                  packHitRecordCoverage(worldHit.coverage, worldHit.hasBehind));
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
 

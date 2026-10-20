@@ -57,6 +57,9 @@
 // masked RMWs and own only bits 0..4. (VIXEN_SHADOW_DBG's
 // debug packing reuses all three under #ifdef, but that path never coexists
 // with a real frame's [0]/[1]/[2] content.)
+// [2] bits 16..23 = quantized SDF front-surface coverage (0..255 => 0..1),
+// bit 24 = a farther hit exists for the front-surface composite. Shadow/policy
+// writers preserve these high bits with their existing masked RMWs.
 // ============================================================================
 
 #ifndef HITRECORD_GLSL
@@ -71,6 +74,23 @@
 // Rides the bestHit selection (overwritten/cleared whenever a later,
 // non-far-field instance wins), never a sticky global.
 #define HITRECORD_FLAG_FAR_FIELD 0x4u
+
+#define HITRECORD_COVERAGE_SHIFT 16u
+#define HITRECORD_HAS_BEHIND_BIT 0x01000000u
+
+float hitRecordCoverage(uint word) {
+    return float((word >> HITRECORD_COVERAGE_SHIFT) & 0xffu) / 255.0;
+}
+
+bool hitRecordHasBehind(uint word) {
+    return (word & HITRECORD_HAS_BEHIND_BIT) != 0u;
+}
+
+uint packHitRecordCoverage(float coverage, bool hasBehind) {
+    uint quantized = uint(clamp(coverage, 0.0, 1.0) * 255.0 + 0.5);
+    return (quantized << HITRECORD_COVERAGE_SHIFT) |
+           (hasBehind ? HITRECORD_HAS_BEHIND_BIT : 0u);
+}
 
 struct HitRecord {
     vec3  albedo;

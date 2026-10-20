@@ -555,6 +555,11 @@ inline float SdfCore_MathClamp(float x, float lo, float hi) {
     return glm::clamp(x, lo, hi);
 }
 
+inline float SdfCore_SilhouetteCoverage(float signedDistance, float footprint) {
+    float safeFootprint = glm::max(footprint, 1e-6f);
+    return glm::clamp(0.5f - 0.5f * signedDistance / safeFootprint, 0.0f, 1.0f);
+}
+
 inline float SdfCore_MathAbs(float x) {
     return glm::abs(x);
 }

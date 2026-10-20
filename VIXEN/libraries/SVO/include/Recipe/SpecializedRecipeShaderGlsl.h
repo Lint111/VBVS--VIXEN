@@ -353,14 +353,15 @@ inline std::string EmitSpecializedRecipeComputeShader(
     // path, (b) broke pixel->instance->recipe resolution (the bucket-shade
     // ownership check and the Cornell diagnostics read _pad0[0] as instIdx), and
     // (c) dropped the winning instance's emission (recipeParams[3], the
-    // SpatialReuseShade self-lit term). _pad0[2] stays 0 — the shadow wave's
-    // visibility word (HitRecord.glsl's master ledger).
+    // SpatialReuseShade self-lit term). Preserve the existing _pad0[2] word so
+    // the shadow/coverage/policy bits written by the primary march survive the
+    // bucketed shade path (HitRecord.glsl's master ledger).
     out << "        rec.roughness = 0.5;\n";
     out << "        rec.worldNormal = bestNormal;\n";
     out << "        rec.hitT = bestT;\n";
     out << "        rec.worldPos = rayOrigin + rayDir * bestT;\n";
     out << "        rec.flags = HITRECORD_FLAG_HIT;\n";
-    out << "        rec._pad0 = uint[3](bestInstIdx, floatBitsToUint(bestEmission), 0u);\n";
+    out << "        rec._pad0 = uint[3](bestInstIdx, floatBitsToUint(bestEmission), hitRecords[hitIdx]._pad0[2]);\n";
     out << "        hitRecords[hitIdx] = rec;\n";
     out << "    }\n";
     out << "}\n";

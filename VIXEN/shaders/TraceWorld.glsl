@@ -62,6 +62,10 @@ struct WorldHit {
     // self-lit term for the Cornell ceiling light without a new SEM_* channel or any
     // change to the light-tree/GI path, which already samples emission independently.
     float emission;
+    // SDF silhouette coverage at the winning front sample. This is kept separate
+    // from residualT: the former is the front edge's pixel coverage, the latter is
+    // the compositing walk's remaining transmittance.
+    float coverage;
     // Round 9: does the pixel's FINAL winning hit come off the far-field mip-resolve
     // path? NOT the same as "some far-field candidate won its own per-instance
     // isCloserHit compare" (the round-8-located [FarFieldWon] conflation) -- this
@@ -77,6 +81,7 @@ struct WorldHit {
     // bookkeeping below) -- vec3(0.0) when no second candidate existed this frame.
     float residualT;
     vec3  behindColor;
+    bool  hasBehind;
     // E1-T1 probe-only terminal classification; not serialized into HitRecord.
     uint footprintRegime;
     uint sourceMask;
@@ -146,6 +151,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
     uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
+    float bestCoverage    = 1.0;          // SDF front-surface coverage; 1.0 for opaque/non-SDF hits
     bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
     uint  bestFootprintRegime = 1u;
     uint  sourceMask = 0u;
@@ -215,6 +221,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // mip representative via shadeFromMipSample on the far-field arm) is the
             // correct emission source here, mirroring the ESVO stored-branch fix below.
             bestEmission   = rqEmission;
+            bestCoverage   = 1.0;
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
             sourceMask |= 2u;
@@ -430,6 +437,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // spare for both, so it carries the light body's emission intensity (0.0 for
                 // every non-emissive body) without a new BodyInstance field.
                 bestEmission   = inst.recipeParams[3];
+                bestCoverage   = clamp(pCoverage, 0.0, 1.0);
                 bestFootprintRegime = 1u;
                 anyHit         = true;
             }
@@ -835,15 +843,18 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.voxelIdx   = bestVoxelIdx;
     hit.instIdx    = bestInstIdx;
     hit.emission   = bestEmission;
+    hit.coverage   = bestCoverage;
     hit.wasFarField = anyHit && bestWasFarField;
     hit.footprintRegime = bestFootprintRegime;
     hit.sourceMask = sourceMask;
 #ifdef VIXEN_REGIME3_COMPOSITE
     hit.residualT   = bestResidualT;
     hit.behindColor = secondColor;
+    hit.hasBehind   = secondInstIdx != 0xFFFFFFFFu;
 #else
     hit.residualT   = 1.0;
     hit.behindColor = vec3(0.0);
+    hit.hasBehind   = false;
 #endif
     return anyHit;
 }

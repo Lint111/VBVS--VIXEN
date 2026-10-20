@@ -82,6 +82,13 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
         if (d < EPS) {
             hitNormal = sdfGradient(recipeId, p, center, params);
             hitT      = t;
+#ifdef VIXEN_REGIME3_COMPOSITE
+            // A certified zero-crossing is a covered sample. The footprint ramp is
+            // reserved for rays that miss but whose closest approach is near the
+            // silhouette; feeding the root distance (d ~= 0) here would make every
+            // interior hit report the centered 0.5 coverage value.
+            hitCoverage = 1.0;
+#endif
             return true;
         }
         t += d * stepScale;
@@ -96,8 +103,7 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 #ifdef VIXEN_REGIME3_COMPOSITE
     if (closestDistance < 1e30) {
         float coverageWidth = max(closestFootprint, 1e-6);
-        float coverage = SdfCore_MathClamp(
-            0.5 - 0.5 * closestDistance / coverageWidth, 0.0, 1.0);
+        float coverage = SdfCore_SilhouetteCoverage(closestDistance, coverageWidth);
         if (coverage > 1e-6) {
             hitNormal = sdfGradient(recipeId, closestP, center, params);
             hitT = closestT;
@@ -270,6 +276,11 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             vec3 gradient = recipeFieldGradient(recipeId, p, params);
             hitNormal = normalize(gradient);
             hitT      = t;
+#ifdef VIXEN_REGIME3_COMPOSITE
+            // The marcher found a real sign-crossing/root, so this sample is fully
+            // covered. Only the closest-approach fallback below is fractional.
+            hitCoverage = 1.0;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u, recipeId,
                                   gridDim, t, d, p, gradient, traceLastGridBound,
@@ -354,6 +365,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     vec3 gradient = recipeFieldGradient(recipeId, p, params);
                     hitNormal = normalize(gradient);
                     hitT = t;
+#ifdef VIXEN_REGIME3_COMPOSITE
+                    // The refined bracket certifies a real root, so keep hit-vs-hit
+                    // compositing opaque; fractional coverage comes from a miss's
+                    // closest approach, not the root's zero distance.
+                    hitCoverage = 1.0;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
                     traceLastT = t;
                     traceLastD = evalRecipeField(recipeId, p, params);
@@ -419,8 +436,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #ifdef VIXEN_REGIME3_COMPOSITE
     if (closestDistance < 1e30) {
         float coverageWidth = max(closestFootprint, 1e-6);
-        float coverage = SdfCore_MathClamp(
-            0.5 - 0.5 * closestDistance / coverageWidth, 0.0, 1.0);
+        float coverage = SdfCore_SilhouetteCoverage(closestDistance, coverageWidth);
         if (coverage > 1e-6) {
             hitNormal = normalize(recipeFieldGradient(recipeId, closestP, params));
             hitT = closestT;

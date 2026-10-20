@@ -2107,6 +2107,16 @@ TEST(RecipeEvalParity, M4d_N1_Displacement_KernelProbe) {
     EXPECT_NEAR(SdfCore_Displacement(2.0f,  0.5f, 0.1f), 2.0f + 0.5f * 0.1f,  1e-6f);
     EXPECT_NEAR(SdfCore_Displacement(0.0f, -3.0f, 2.0f), 0.0f + (-3.0f) * 2.0f, 1e-6f);
 }
+TEST(RecipeEvalParity, Aacov_SilhouetteCoverage_KernelProbe) {
+    // The generated C++ twin is the CPU oracle for the GLSL callable consumed by
+    // SdfRecipes.glsl. Check the full ramp, both clamps, and the zero-width guard.
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage(-1.0f, 1.0f), 1.0f, 1e-6f);
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage(-0.5f, 1.0f), 0.75f, 1e-6f);
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage( 0.0f, 1.0f), 0.5f, 1e-6f);
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage( 0.5f, 1.0f), 0.25f, 1e-6f);
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage( 1.0f, 1.0f), 0.0f, 1e-6f);
+    EXPECT_NEAR(SdfCore_SilhouetteCoverage( 0.5f, 0.0f), 0.0f, 1e-6f);
+}
 
 // ── VM-control ops ────────────────────────────────────────────────────────────
 
