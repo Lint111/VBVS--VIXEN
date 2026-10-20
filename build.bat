@@ -30,6 +30,11 @@ REM   target-name  optional CMake target to build instead of the full graph
 REM                (e.g. VixenApp, or a single test binary). Omit to build
 REM                everything, as before.
 REM
+REM From WSL (including SSH shells, whose PATH has no cmd.exe) use tools/vixen-native.sh instead of
+REM calling cmd.exe by hand: it finds cmd.exe, keeps the Windows batch path intact, syncs a per-lane
+REM checkout under /mnt/c/vixen-native, runs 'provision' when the pinned tools are missing and then
+REM runs this script. See its --help.
+REM
 REM The gitignored _ninja_*.bat launchers are personal overrides; this is the
 REM shared, committed entry point.
 REM
@@ -39,6 +44,9 @@ REM   VIXEN_BUILD_LOCK_TIMEOUT  seconds to wait for the machine-wide configure O
 REM                             before giving up (default 1800 = 30 min; one knob for both --
 REM                             they are separate locks, see run_configure_locked.ps1's header)
 REM   VIXEN_SKIP_BUILD_LOCK=1   bypass BOTH locks entirely
+REM   VIXEN_BINARY_DIR         configure and build in this directory instead of the preset's binaryDir.
+REM                             A fresh one sidesteps a build tree whose Ninja metadata is unusable
+REM                             (e.g. "ninja: error: failed recompaction: Permission denied").
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
 REM                             logical cores) so a build leaves the machine
 REM                             usable instead of pegging every core
@@ -115,6 +123,9 @@ set "BUILD_DIR="
 if /i "%PRESET%"=="vixen-ninja" set "BUILD_DIR=%SRC_DIR%\..\build\ninja"
 if /i "%PRESET%"=="vixen-wsl" set "BUILD_DIR=%SRC_DIR%\..\build\wsl"
 if /i "%PRESET%"=="vixen-wsl-debug" set "BUILD_DIR=%SRC_DIR%\..\build\wsl-debug"
+set "BINARY_DIR_ARG="
+if defined VIXEN_BINARY_DIR set "BUILD_DIR=%VIXEN_BINARY_DIR%"
+if defined VIXEN_BINARY_DIR set "BINARY_DIR_ARG=-BinaryDir \"%VIXEN_BINARY_DIR%\""
 
 REM CMake binds a build tree to the source path that configured it. A tree left by an earlier run
 REM through the UNC path or under another mapped drive letter would be rejected, so move it aside
@@ -235,7 +246,7 @@ REM ---------------------------------------------------------------------------
 if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
 set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_configure_locked.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -SourceDir "%SRC_DIR%" -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_configure_locked.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" -SourceDir "%SRC_DIR%" %BINARY_DIR_ARG% -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG%
 exit /b %errorlevel%
 
 REM ---------------------------------------------------------------------------

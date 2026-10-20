@@ -38,6 +38,38 @@ add_test(NAME Provision.GdbDependencyPackages
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
 set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.KernelPinOverride
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"
+            -P "${VIXEN_ROOT}/cmake/tests/test_kernel_pin_override.cmake")
+set_tests_properties(Native.KernelPinOverride PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.NinjaVisibleLauncher
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_LAUNCHER_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/ninja-visible-launcher"
+            -P "${VIXEN_ROOT}/cmake/tests/test_ninja_visible_launcher.cmake")
+set_tests_properties(Native.NinjaVisibleLauncher PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.KernelSnapshotReuse
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SNAPSHOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-snapshot-reuse"
+            -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_reuse.cmake")
+set_tests_properties(Native.KernelSnapshotReuse PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.KernelSnapshotPublish
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SNAPSHOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-snapshot-publish"
+            -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_publish.cmake")
+set_tests_properties(Native.KernelSnapshotPublish PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.YeroketRootOrder
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_YEROKET_ROOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/yeroket-root-order"
+            -P "${VIXEN_ROOT}/cmake/tests/test_yeroket_root_order.cmake")
+set_tests_properties(Native.YeroketRootOrder PROPERTIES LABELS "cpu")
+
+if(UNIX)
+    add_test(NAME Native.WslRouteLauncher
+        COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_vixen_native_launcher.sh" "${VIXEN_ROOT}/.."
+                "${CMAKE_CURRENT_BINARY_DIR}/wsl-route-launcher")
+    set_tests_properties(Native.WslRouteLauncher PROPERTIES LABELS "cpu")
+endif()
+
 # Common test compile options
 if(MSVC)
     add_compile_options(/W4 /WX)

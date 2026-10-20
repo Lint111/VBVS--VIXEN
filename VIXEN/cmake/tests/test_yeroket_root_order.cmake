@@ -1,0 +1,92 @@
+# vixen_resolve_yeroket_root precedence: -DYEROKET_ROOT, then the environment, then the home probe.
+# Every case runs this script again as a probe process, so the cache and environment never leak.
+if(VIXEN_YEROKET_ROOT_PROBE)
+    get_filename_component(vixen_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+    include("${vixen_root}/cmake/VixenKernelSnapshot.cmake")
+    vixen_resolve_yeroket_root("${VIXEN_YEROKET_ROOT_HOMES}" resolved)
+    message(STATUS "RESOLVED=${resolved}")
+    return()
+endif()
+
+if(NOT DEFINED VIXEN_YEROKET_ROOT_TEST_ROOT)
+    message(FATAL_ERROR "VIXEN_YEROKET_ROOT_TEST_ROOT must be a scratch directory")
+endif()
+set(scratch "${VIXEN_YEROKET_ROOT_TEST_ROOT}")
+file(REMOVE_RECURSE "${scratch}")
+set(home "${scratch}/home")
+set(clone "${home}/Github/Yeroket-Fantasy")
+file(MAKE_DIRECTORY "${clone}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
+file(WRITE "${clone}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj" "<Project/>\n")
+set(cache_root "${scratch}/cache-root")
+set(env_root "${scratch}/env-root")
+file(MAKE_DIRECTORY "${cache_root}" "${env_root}")
+set(self "${CMAKE_CURRENT_LIST_FILE}")
+set(homes "${home}")
+
+function(run_probe env_value cache_value)
+    if(env_value STREQUAL "")
+        unset(ENV{YEROKET_ROOT})
+    else()
+        set(ENV{YEROKET_ROOT} "${env_value}")
+    endif()
+    set(cache_args "")
+    if(NOT cache_value STREQUAL "")
+        set(cache_args "-DYEROKET_ROOT=${cache_value}")
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -DVIXEN_YEROKET_ROOT_PROBE=ON
+            "-DVIXEN_YEROKET_ROOT_HOMES=${homes}" ${cache_args} -P "${self}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    set(probe_result "${result}" PARENT_SCOPE)
+    set(probe_output "${output}${error}" PARENT_SCOPE)
+endfunction()
+
+function(assert_resolved name expected_root expected_source)
+    if(NOT probe_result EQUAL 0)
+        message(FATAL_ERROR "${name}: probe failed: ${probe_output}")
+    endif()
+    string(FIND "${probe_output}" "RESOLVED=${expected_root}\n" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "${name}: expected RESOLVED=${expected_root} in: ${probe_output}")
+    endif()
+    string(FIND "${probe_output}" "${expected_source}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "${name}: expected '${expected_source}' in: ${probe_output}")
+    endif()
+    message(STATUS "PASS ${name}")
+endfunction()
+
+function(assert_rejected name expected_text)
+    if(probe_result EQUAL 0)
+        message(FATAL_ERROR "${name}: an unusable value was accepted: ${probe_output}")
+    endif()
+    string(REGEX REPLACE "[ \t\r\n]+" " " flat_output "${probe_output}")
+    string(FIND "${flat_output}" "${expected_text}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "${name}: expected '${expected_text}' in: ${probe_output}")
+    endif()
+    message(STATUS "PASS ${name}")
+endfunction()
+
+run_probe("${env_root}" "${cache_root}")
+assert_resolved("-DYEROKET_ROOT beats the environment" "${cache_root}" "kernel root from -DYEROKET_ROOT:")
+
+run_probe("${env_root}" "")
+assert_resolved("the environment beats the home probe" "${env_root}"
+    "kernel root from the YEROKET_ROOT environment variable:")
+
+run_probe("" "")
+assert_resolved("the home probe is used when nothing is set" "${clone}" "kernel root from the home-directory probe:")
+
+set(homes "${scratch}/no-home")
+run_probe("" "")
+assert_resolved("the home default is used when no checkout exists" "$ENV{HOME}/Github/Yeroket-Fantasy"
+    "kernel root from the home default (no checkout found):")
+set(homes "${home}")
+
+run_probe("${scratch}/missing" "")
+assert_rejected("a missing environment root is rejected by name" "kernel root from the YEROKET_ROOT environment variable is not a directory")
+
+run_probe("" "${scratch}/missing")
+assert_rejected("a missing -DYEROKET_ROOT is rejected by name" "kernel root from -DYEROKET_ROOT is not a directory")
+
+message(STATUS "YEROKET_ROOT resolves from -DYEROKET_ROOT, then the environment, then the home probe")

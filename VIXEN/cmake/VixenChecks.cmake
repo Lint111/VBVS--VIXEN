@@ -1,6 +1,19 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/VixenWriteIfDifferent.cmake")
 
+# Visual Studio's Ninja is a 32-bit process: it stats C:/Windows/System32/<name> through WOW64
+# redirection, where wsl.exe does not exist, and fails the build on a "missing" prerequisite
+# although cmd.exe runs the file. The per-user WindowsApps alias is not redirected, so use it.
+function(vixen_ninja_visible_launcher launcher apps_directory out_launcher)
+    set(_selected "${launcher}")
+    string(TOLOWER "${launcher}" _lower)
+    get_filename_component(_name "${launcher}" NAME)
+    if(_lower MATCHES "^[a-z]:/windows/system32/" AND EXISTS "${apps_directory}/${_name}")
+        set(_selected "${apps_directory}/${_name}")
+    endif()
+    set(${out_launcher} "${_selected}" PARENT_SCOPE)
+endfunction()
+
 # A successful check is a build output. Both its command and complete input list
 # are dependencies, including the generated files being checked. Deleting or
 # adding a schema changes the signature even if all remaining mtimes are old.
