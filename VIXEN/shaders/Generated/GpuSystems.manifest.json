@@ -3,7 +3,7 @@
   "stackHash": "28accb45516c468d",
   "systems": [
     {
-      "id": "core:ExposureTonemapSystem",
+      "id": "vixen:ExposureTonemapSystem",
       "class": "ExposureTonemapSystem",
       "glsl": "ExposureTonemapSystem.comp",
       "relaxed": false,
@@ -38,7 +38,7 @@
       "arguments": [
         {
           "name": "meter",
-          "kind": "Vixen.Codegen.Gpu.ExposureMeterState",
+          "kind": "state:exposure-meter",
           "member": "*",
           "form": "storage",
           "access": "in",

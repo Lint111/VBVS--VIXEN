@@ -1,6 +1,5 @@
 using System;
 using Undertow.Modding.Schema;
-using Undertow.Sim.Systems;
 using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;

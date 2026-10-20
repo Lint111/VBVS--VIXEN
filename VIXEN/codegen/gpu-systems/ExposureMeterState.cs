@@ -1,11 +1,9 @@
-using Yeroket.Util.KernelFramework;
-
 namespace Vixen.Codegen.Gpu;
 
 // The adapted-exposure record ExposureReduce.comp writes at the head of the meter buffer
 // (shaders/ExposureHistogram.glsl declares the same layout for the hand meter passes until
-// they convert). Its type is the meter's schema identity in the GPU system manifest.
-[GpuStruct]
+// they convert). The vixen:exposure-meter frame kind is its manifest identity;
+// the generated tonemap consumer therefore needs no parallel [GpuStruct] identity.
 public struct ExposureMeterState
 {
     public float log2Exposure;
