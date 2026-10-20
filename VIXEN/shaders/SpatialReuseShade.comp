@@ -36,6 +36,9 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 
+#include "RecipeGlyphBindings.glsl"
+#include "recipe/SdfCoreKernels.g.glsl"
+
 // W1b (wavefront epoch): this pass NO LONGER TRACES on the default path — the
 // ShadowVisibilityWave answers every shadow question into HitRecord._pad0
 // before this pass runs (see that shader's header for the _pad0 ledger). The
@@ -44,7 +47,6 @@ layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 // traversal seam for its own dedicated diagnostic ray (:431 arm).
 #ifdef VIXEN_SHADOW_DBG
 layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
-#include "recipe/SdfCoreKernels.g.glsl"
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 #include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
 #else

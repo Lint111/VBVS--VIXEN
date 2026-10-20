@@ -33,11 +33,11 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief meterBlock
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x5dc19a545a33d1a (for runtime discovery)
+ * Layout VixenHash: 0xb0361b56ddae4a93 (for runtime discovery)
  */
 struct meterBlock {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x5dc19a545a33d1aULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xb0361b56ddae4a93ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -100,11 +100,11 @@ namespace Set0 {
     };
 
     /**
-     * @brief meterBlock
+     * @brief meter
      * Type: STORAGE_BUFFER
      */
     struct Binding2 {
-        static constexpr const char* NAME = "meterBlock";
+        static constexpr const char* NAME = "meter";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -115,11 +115,11 @@ namespace Set0 {
     };
 
     /**
-     * @brief LightingConfigSSBOBlock
+     * @brief LightingConfigSSBO
      * Type: STORAGE_BUFFER
      */
     struct Binding3 {
-        static constexpr const char* NAME = "LightingConfigSSBOBlock";
+        static constexpr const char* NAME = "LightingConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 3;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -135,8 +135,8 @@ namespace Set0 {
 namespace Bind {
 using sceneRadianceHistoryOutput_current = Set0::Binding0;
 using outputImage_current = Set0::Binding1;
-using meterBlock = Set0::Binding2;
-using LightingConfigSSBOBlock = Set0::Binding3;
+using meter = Set0::Binding2;
+using LightingConfigSSBO = Set0::Binding3;
 } // namespace Bind
 
 namespace Push {
@@ -190,8 +190,8 @@ struct MemberInfo {
 inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceHistoryOutput_current", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"outputImage_current", false, 0, 1, 0, Access::WriteOnly, 0, nullptr},
-    {"meterBlock", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBOBlock", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},
+    {"meter", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},
     {"_ExtentX", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"_ExtentY", true, 0, 0, 4, Access::ReadOnly, 0, nullptr},
 };

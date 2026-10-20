@@ -4,6 +4,7 @@
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/PathInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"
+#include "VixenHash.h"
 
 #include FT_OUTLINE_H
 #include <msdfgen.h>
@@ -13,7 +14,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -141,6 +145,20 @@ double DistanceInsideBox(double x, double y, double xMin, double yMin, double xM
 } // namespace
 
 struct GlyphAtlas::Impl {
+    struct OutlineKey {
+        FT_Face face = nullptr;
+        std::uint32_t glyphIndex = 0;
+
+        friend bool operator==(const OutlineKey&, const OutlineKey&) = default;
+    };
+
+    struct OutlineKeyHash {
+        std::size_t operator()(const OutlineKey& key) const noexcept {
+            const std::size_t faceHash = std::hash<FT_Face>{}(key.face);
+            return faceHash ^ (static_cast<std::size_t>(key.glyphIndex) * 0x9e3779b9U);
+        }
+    };
+
     struct Placement {
         int x = 1;
         int y = 1;
@@ -264,9 +282,25 @@ struct GlyphAtlas::Impl {
     Placement placement;
     std::uint32_t version = 1;
     std::unordered_map<std::uint32_t, AtlasGlyph> glyphs;
-    std::unordered_map<std::uint32_t, std::shared_ptr<const GlyphOutlineInstance>> outlineInstances;
+    std::unordered_map<OutlineKey, std::shared_ptr<const GlyphOutlineInstance>, OutlineKeyHash> outlineInstances;
+    std::unordered_map<OutlineKey, std::uint32_t, OutlineKeyHash> outlineIndices;
+    std::vector<GlyphOutlineInstance> outlineBlob;
+    std::map<std::uint64_t, std::vector<std::uint32_t>> outlineHashBuckets;
     std::unique_ptr<Rml::CallbackTextureSource> currentSource;
     std::vector<std::unique_ptr<Rml::CallbackTextureSource>> retainedSources;
+
+    std::uint32_t InternOutline(const GlyphOutlineInstance& outline) {
+        const std::uint64_t hash = Vixen::Hash::ComputeHash64(&outline, sizeof(outline));
+        auto& candidates = outlineHashBuckets[hash];
+        for (const std::uint32_t index : candidates) {
+            if (std::memcmp(&outlineBlob[index], &outline, sizeof(outline)) == 0)
+                return index;
+        }
+        const std::uint32_t index = static_cast<std::uint32_t>(outlineBlob.size());
+        outlineBlob.push_back(outline);
+        candidates.push_back(index);
+        return index;
+    }
 };
 
 GlyphAtlas::GlyphAtlas(std::uint32_t pageDimension, float distanceRange)
@@ -276,7 +310,8 @@ GlyphAtlas::~GlyphAtlas() = default;
 
 std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
     FT_Face face, std::uint32_t glyphIndex, GlyphOutlineBakeDiagnostic* diagnostic) {
-    const auto found = impl_->outlineInstances.find(glyphIndex);
+    const Impl::OutlineKey key{face, glyphIndex};
+    const auto found = impl_->outlineInstances.find(key);
     if (found != impl_->outlineInstances.end()) {
         if (diagnostic) {
             diagnostic->glyphId = glyphIndex;
@@ -298,10 +333,32 @@ std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
     }
 
     auto sharedInstance = std::make_shared<const GlyphOutlineInstance>(instance);
-    impl_->outlineInstances.emplace(glyphIndex, sharedInstance);
+    const std::uint32_t outlineIndex = impl_->InternOutline(instance);
+    impl_->outlineInstances.emplace(key, sharedInstance);
+    impl_->outlineIndices.emplace(key, outlineIndex);
     if (diagnostic)
         *diagnostic = localDiagnostic;
     return sharedInstance;
+}
+
+std::uint32_t GlyphAtlas::GetOrAddOutlineIndex(
+    FT_Face face, std::uint32_t glyphIndex, GlyphOutlineBakeDiagnostic* diagnostic) {
+    const auto instance = GetOrAddOutline(face, glyphIndex, diagnostic);
+    if (!instance)
+        return std::numeric_limits<std::uint32_t>::max();
+    const Impl::OutlineKey key{face, glyphIndex};
+    const auto found = impl_->outlineIndices.find(key);
+    return found == impl_->outlineIndices.end()
+        ? std::numeric_limits<std::uint32_t>::max()
+        : found->second;
+}
+
+std::span<const GlyphOutlineInstance> GlyphAtlas::OutlineBlob() const noexcept {
+    return impl_->outlineBlob;
+}
+
+std::uint64_t GlyphAtlas::OutlineBlobBytes() const noexcept {
+    return impl_->outlineBlob.size() * sizeof(GlyphOutlineInstance);
 }
 
 bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) {

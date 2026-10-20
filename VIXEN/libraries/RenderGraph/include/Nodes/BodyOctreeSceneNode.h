@@ -10,6 +10,7 @@
 #include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
+#include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
 #include "WholesaleAvailability.h"
@@ -154,6 +155,7 @@ public:
     VkBuffer GetInstanceTransformBufferHandle(uint32_t ringSlot = 0) const {
         return transformPerFrame_.GetUniformBuffer(ringSlot % kRingSize);
     }
+    VkBuffer GetGlyphOutlineBufferHandle() const { return glyphOutlineBuffer_; }
 
     /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.
@@ -187,6 +189,16 @@ public:
      * flag needed).
      */
     void SetOccupancyGrid(std::vector<float> concatenatedGrid);
+
+    /**
+     * @brief Stage the flattened runtime glyph-outline SSBO payload (R631).
+     *
+     * GlyphOutline bytecode operands are rebased into this Ids()-ordered vector by the
+     * shader emitter. The payload is recreated with the next octree generation, alongside
+     * the occupancy-grid blob that follows the same shader-recompile seam.
+     */
+    void SetGlyphOutlineInstances(
+        std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances);
 
     /**
      * @brief R502.2 (count-agnostic lighting S0) — per-recipe surface-cell lists and areas the
@@ -261,6 +273,7 @@ public:
     [[nodiscard]] uint64_t MipPoolBytes() const { return concatenated_.mipPool.size(); }
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
     [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
+    [[nodiscard]] uint64_t GlyphOutlineBytes() const { return glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance); }
     // Sum the byte capacities of every persistent payload buffer, including
     // descriptor-valid 1-byte placeholders and the published shell generation.
     // This is allocation capacity, deliberately independent of readiness.
@@ -277,7 +290,8 @@ public:
                     !shellCache_.compact.brickGridLookup.empty()) ? 0u : concatenated_.brickGridLookup.size()) +
             padded(concatenated_.mipPool.size()) +
             padded(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef)) +
-            padded(occupancyGrid_.size() * sizeof(float));
+            padded(occupancyGrid_.size() * sizeof(float)) +
+            padded(glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance));
         total += static_cast<uint64_t>(shellDataCapacity_ + shellLookupCapacity_ +
                                        proxyAabbCapacity_);
         return total;
@@ -489,6 +503,7 @@ private:
     // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
     // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
     std::vector<float> occupancyGrid_;
+    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineInstances_;
 
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
@@ -542,6 +557,9 @@ private:
     // recipes, or one with only non-whitelisted-opcode recipes).
     VkBuffer       occupancyGridBuffer_  = VK_NULL_HANDLE;
     VkDeviceMemory occupancyGridMemory_  = VK_NULL_HANDLE;
+    // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
+    VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
+    VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;
 
     // OOC R1: a MONOTONIC per-node Execute counter — the retire/reclaim clock. It is NOT
     // CURRENT_FRAME_INDEX: FrameSyncNode's index is already reduced mod MAX_FRAMES_IN_FLIGHT

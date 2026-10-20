@@ -1115,7 +1115,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // no gradient taps; the per-recipe shade kernel (queued after all march
             // passes below) computes the identical normal on the final winner.
             const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeComputeShader(
-                *entry, recipeId, coreBuf.str(), /*emitGradientNormal=*/!bucketedShadeEnabled_);
+                *entry, recipeId, coreBuf.str(), /*emitGradientNormal=*/!bucketedShadeEnabled_,
+                proceduralRecipes_.GlyphInstanceBase(recipeId));
 
             // AddStageFromSpirv is a stub in this codebase today (ShaderBundleBuilder.cpp's own
             // "TODO: Store SPIRV separately, for now this is a placeholder" -- it discards the
@@ -1241,18 +1242,20 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // layout does not opt into (BuildDescriptorSetLayoutFromReflection's own default).
             VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
             VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
-            std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
+            const uint32_t bindingCount = entry->glyphInstances.empty() ? 5u : 6u;
+            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * bindingCount);
+            std::vector<VkWriteDescriptorSet> writes(frameSetCount * bindingCount);
             for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                VkBuffer buffers[5] = {
+                VkBuffer buffers[6] = {
                     bodyScene->GetInstanceBufferHandle(frameSlot),
                     bucketMembersBuf,
                     hitRecordBuf,
                     bucketMetaNode->GetBufferHandle(frameSlot),
                     bodyScene->GetInstanceTransformBufferHandle(frameSlot),
+                    bodyScene->GetGlyphOutlineBufferHandle(),
                 };
-                for (uint32_t binding = 0; binding < 5u; ++binding) {
-                    const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
+                for (uint32_t binding = 0; binding < bindingCount; ++binding) {
+                    const size_t writeIndex = static_cast<size_t>(frameSlot) * bindingCount + binding;
                     bufInfos[writeIndex] = { buffers[binding], 0, VK_WHOLE_SIZE };
                     writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[writeIndex].dstSet = descriptorSets[frameSlot];
@@ -1368,7 +1371,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             std::ifstream coreFile(corePath);
             std::ostringstream coreBuf;
             coreBuf << coreFile.rdbuf();
-            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeShadeShader(*entry, shadeRecipeId, coreBuf.str());
+            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeShadeShader(
+                *entry, shadeRecipeId, coreBuf.str(), proceduralRecipes_.GlyphInstanceBase(shadeRecipeId));
             ShaderManagement::CompilationOptions opts;
             opts.validateSpirv = false;
             ShaderManagement::ShaderBundleBuilder bundleBuilder;
@@ -1427,18 +1431,20 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                 if (pipelineWrapper && pipelineWrapper->pipeline != VK_NULL_HANDLE) {
                                     const VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
                                     const VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
-                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
+                                    const uint32_t bindingCount = entry->glyphInstances.empty() ? 5u : 6u;
+                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * bindingCount);
+                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * bindingCount);
                                     for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                                        const VkBuffer bufHandles[5] = {
+                                        const VkBuffer bufHandles[6] = {
                                             bodyScene->GetInstanceBufferHandle(frameSlot),
                                             bucketMembersBuf,
                                             hitRecordBuf,
                                             bucketMetaNode->GetBufferHandle(frameSlot),
                                             bodyScene->GetInstanceTransformBufferHandle(frameSlot),
+                                            bodyScene->GetGlyphOutlineBufferHandle(),
                                         };
-                                        for (uint32_t binding = 0; binding < 5u; ++binding) {
-                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
+                                        for (uint32_t binding = 0; binding < bindingCount; ++binding) {
+                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * bindingCount + binding;
                                             bufInfos[writeIndex] = { bufHandles[binding], 0, VK_WHOLE_SIZE };
                                             writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                                             writes[writeIndex].dstSet = descriptorSets[frameSlot];

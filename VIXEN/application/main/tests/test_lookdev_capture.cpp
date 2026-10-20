@@ -57,7 +57,6 @@
 #include <string_view>
 #include <tuple>
 #include <utility>
-#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -597,34 +596,13 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
 
     const float kGridUnitsPerPixel = rtlProof ? 0.22f : 0.30f;
     const float kOutlineScale = kGridUnitsPerPixel / 64.0f;
-    std::vector<GlyphOutlineInstance> glyphRows;
-    std::unordered_map<const GlyphOutlineInstance*, std::uint32_t> glyphRowsByIdentity;
+    // GlyphAtlas owns the immutable content-hash-deduplicated blob. Recipe transforms carry
+    // placement and scale; no scene-local normalized copy of the outline is uploaded.
+    const std::span<const GlyphOutlineInstance> glyphRows = glyphAtlas.OutlineBlob();
     std::array<std::vector<std::uint32_t>, 2> layoutRows;
     auto rowFor = [&](const PositionedGlyphOutline& glyph, std::uint32_t& row) {
-        if (!glyph.instance) return false;
-        if (const auto found = glyphRowsByIdentity.find(glyph.instance.get());
-            found != glyphRowsByIdentity.end()) {
-            row = found->second;
-            return true;
-        }
-        GlyphOutlineInstance normalized = *glyph.instance;
-        const float centerX = (normalized.BoundsMin.X + normalized.BoundsMax.X) * 0.5f;
-        const float centerY = (normalized.BoundsMin.Y + normalized.BoundsMax.Y) * 0.5f;
-        for (std::uint32_t segmentIndex = 0; segmentIndex < normalized.SegmentCount; ++segmentIndex) {
-            auto& segment = normalized.Segments[segmentIndex];
-            for (Vixen::Text::PathPoint* point :
-                 {&segment.P0, &segment.P1, &segment.P2, &segment.P3}) {
-                point->X = (point->X - centerX) * kOutlineScale;
-                point->Y = (point->Y - centerY) * kOutlineScale;
-            }
-        }
-        normalized.BoundsMin.X = (normalized.BoundsMin.X - centerX) * kOutlineScale;
-        normalized.BoundsMin.Y = (normalized.BoundsMin.Y - centerY) * kOutlineScale;
-        normalized.BoundsMax.X = (normalized.BoundsMax.X - centerX) * kOutlineScale;
-        normalized.BoundsMax.Y = (normalized.BoundsMax.Y - centerY) * kOutlineScale;
-        row = static_cast<std::uint32_t>(glyphRows.size());
-        glyphRows.push_back(std::move(normalized));
-        glyphRowsByIdentity.emplace(glyph.instance.get(), row);
+        if (!glyph.instance || glyph.outlineIndex >= glyphRows.size()) return false;
+        row = glyph.outlineIndex;
         return true;
     };
 
@@ -718,10 +696,12 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 transform.data[5] = 0.0f;
                 transform.data[6] = 0.0f;
                 transform.data[7] = 1.0f;
-                transform.data[8] = 1.0f;
-                transform.data[9] = 1.0f;
+                // Transform maps world coordinates to the immutable FreeType 26.6 row.
+                // Its distance scale restores world-space SDF units after that inverse scale.
+                transform.data[8] = 1.0f / kOutlineScale;
+                transform.data[9] = 1.0f / kOutlineScale;
                 transform.data[10] = 1.0f;
-                transform.data[11] = 1.0f;
+                transform.data[11] = kOutlineScale;
                 result.instructions.push_back(transform);
 
                 SdfInstruction glyphOp = instruction(SdfOpCode::GlyphOutline);
@@ -770,7 +750,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     for (const auto& [recipeId, recipe] : recipes) {
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         entry.bytecode = recipe.instructions;
-        entry.glyphInstances = glyphRows;
+        entry.glyphInstances.assign(glyphRows.begin(), glyphRows.end());
         entry.boundCenter = glm::vec3(0.0f);
         entry.boundRadius = 18.0f;
         entry.stepRelaxation = 0.9f;
