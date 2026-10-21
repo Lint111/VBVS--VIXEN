@@ -617,12 +617,7 @@ private:
     Vixen::RenderGraph::TransferSourceRegistry settingsTransferSources_;
     std::optional<Vixen::RenderGraph::TransferPlan> settingsTransferPlan_;
     Vixen::RenderGraph::TransferFillLedger lastSettingsTransferLedger_{};
-    Vixen::RenderGraph::NodeHandle lightingSettingsBuffer_{};
-    Vixen::RenderGraph::NodeHandle sceneLookSettingsBuffer_{};
-    Vixen::RenderGraph::NodeHandle shadowSettingsBuffer_{};
-    Vixen::RenderGraph::NodeHandle accumulationSettingsBuffer_{};
-    Vixen::RenderGraph::NodeHandle reservoirSettingsBuffer_{};
-    Vixen::RenderGraph::NodeHandle probeGridSettingsBuffer_{};
+    Vixen::RenderGraph::SchemaResourceRegistry settingsResources_;
     void RefreshResolvedLookSettings();
     void FillSettingsTransferBuffers();
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();

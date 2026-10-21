@@ -911,27 +911,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
     settingsTransferSources_.ProvideSingleton<Vixen::Gpu::ProbeGridSettings>(
         {"state:probe-grid-settings", "*"}, &probeGridSettings_, [this] { return settingsGenerations_[5]; });
 
-    const auto addSettingsBuffer = [&](const char* nodeName, const char* kind) {
+    settingsResources_ = {};
+    const auto addSettingsBuffer = [&](const char* kind) {
+        const SchemaIdentity identity{kind, "*"};
         const auto row = std::find_if(gpuManifest.transferPlan.begin(), gpuManifest.transferPlan.end(),
-            [kind](const GpuTransferPlanRow& candidate) {
-                return candidate.identity.kind == kind && candidate.identity.member == "*" &&
+            [&identity](const GpuTransferPlanRow& candidate) {
+                return candidate.identity == identity &&
                        candidate.direction == GpuTransferDirection::CpuToGpu && !candidate.regions.empty();
             });
         if (row == gpuManifest.transferPlan.end()) {
             throw std::runtime_error(std::string("missing settings transfer row for ") + kind);
         }
+        std::string nodeName = identity.kind.substr(identity.kind.find(':') + 1);
+        std::replace(nodeName.begin(), nodeName.end(), '-', '_');
         const NodeHandle handle = renderGraph->AddNode<StorageBufferNodeType>(nodeName);
         auto* node = static_cast<StorageBufferNode*>(renderGraph->GetInstance(handle));
         node->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
                            static_cast<uint32_t>(TransferPlan::BufferSize(*row)));
         node->SetParameter(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE,
                            TransferPlan::GenerationSlots);
+        settingsResources_.Provide(identity, handle, StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
+                                   SlotRole::Dependency | SlotRole::Execute);
         return handle;
     };
-    NodeHandle lightingConfigNode = addSettingsBuffer("lighting_settings", "state:lighting-settings");
-    lightingSettingsBuffer_ = lightingConfigNode;
-    NodeHandle sceneLookSettingsNode = addSettingsBuffer("scene_look_settings", "state:scene-look-settings");
-    sceneLookSettingsBuffer_ = sceneLookSettingsNode;
+    NodeHandle lightingConfigNode = addSettingsBuffer("state:lighting-settings");
+    NodeHandle sceneLookSettingsNode = addSettingsBuffer("state:scene-look-settings");
     if (hdrExposureEnabled) {
         ConfigureExposure(renderLook_, sceneLookDeltaSeconds_, offscreenPresentation, *mainLogger);
     }
@@ -948,8 +952,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc1 M4: ShadowConfig data (binding 18). Same per-frame ring upload
     // pattern as lightingConfigNode above — separate node (see ShadowConfigNode.h's file
     // header for the separate-vs-extend decision).
-    NodeHandle shadowConfigNode = addSettingsBuffer("shadow_settings", "state:shadow-settings");
-    shadowSettingsBuffer_ = shadowConfigNode;
+    NodeHandle shadowConfigNode = addSettingsBuffer("state:shadow-settings");
 
     // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17) — one HitRecord (64 B, see
     // shaders/HitRecord.glsl) per pixel of the offscreen render target. Reuses the generic
@@ -1018,6 +1021,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle skySphereNode = renderGraph->AddNode<SkySphereNodeType>("sky_sphere");
 
     NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
+    static_cast<SceneRadianceNode*>(renderGraph->GetInstance(sceneRadianceNode))
+        ->SetSettingsSource(&accumulationSettings_);
     NodeHandle exposureShaderLib{};
     NodeHandle exposureNode{};
     NodeHandle exposureMeterShaderLib{};
@@ -1077,14 +1082,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // upload pattern as shadowConfigNode above — separate node (see AccumulationConfigNode.h's
     // file header for the separate-vs-extend decision). Default content: enabled=0, so this
     // milestone's render is a byte-identical passthrough vs Inc1.
-    NodeHandle accumulationConfigNode = addSettingsBuffer("accumulation_settings", "state:accumulation-settings");
-    accumulationSettingsBuffer_ = accumulationConfigNode;
+    NodeHandle accumulationConfigNode = addSettingsBuffer("state:accumulation-settings");
 
     // Sampled Lighting Inc2 M1: persistent temporal-accumulation history image (binding 20) — a
     // SINGLE persistent storage image (NOT a per-frame ring; see AccumulationHistoryNode.h's file
     // header for why). Allocated + transitioned + wired this milestone; not yet read/written by
     // the shader (M2 consumes it).
     NodeHandle accumulationHistoryNode = renderGraph->AddNode<AccumulationHistoryNodeType>("accumulation_history");
+    static_cast<AccumulationHistoryNode*>(renderGraph->GetInstance(accumulationHistoryNode))
+        ->SetSettingsSource(&accumulationSettings_);
 
     // Sampled Lighting Inc3 M2 (KI-023): persistent worldPos/depth companion history image
     // (binding 22) — mirrors accumulationHistoryNode above (single persistent storage image,
@@ -1107,8 +1113,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // reservoirEnabled=0 by default and nothing reads this buffer yet (M4/M5 wire the
     // reservoir/RIS shading logic that consumes it); this milestone's render must stay
     // byte-identical to M1/M2.
-    NodeHandle reservoirConfigNode = addSettingsBuffer("reservoir_settings", "state:reservoir-settings");
-    reservoirSettingsBuffer_ = reservoirConfigNode;
+    NodeHandle reservoirConfigNode = addSettingsBuffer("state:reservoir-settings");
 
     // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (binding 24) -- RIS candidate
     // generation samples this. Content pushed via LightTreeBufferNode::SetLightTreeCut (host ->
@@ -1134,8 +1139,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // reservoirConfigNode above. M2 scaffolding only: probeGridEnabled=0 by default and nothing
     // reads this buffer yet (M3+ wires the probe-update pass that consumes it); this milestone's
     // render must stay byte-identical to Inc3.
-    NodeHandle probeGridConfigNode = addSettingsBuffer("probe_grid_settings", "state:probe-grid-settings");
-    probeGridSettingsBuffer_ = probeGridConfigNode;
+    NodeHandle probeGridConfigNode = addSettingsBuffer("state:probe-grid-settings");
 
     // Sampled Lighting Inc4 M2: persistent DDGI probe atlas images -- TWO separate ProbeAtlasNode
     // instances (irradiance + Chebyshev-visibility), per M1's own resolved finding
@@ -9846,7 +9850,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
         const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
         const SchemaIdentity exposureMeter{"state:exposure-meter", "*"};
-        SchemaResourceRegistry frameResources;
+        SchemaResourceRegistry frameResources = settingsResources_;
         frameResources.Provide(sceneRadiance, sceneRadianceNode,
                                SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
         frameResources.ProvideImage(sceneRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
@@ -9855,8 +9859,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
         frameResources.Provide(exposureMeter, exposureMeterBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                                SlotRole::Execute);
         frameResources.ProvideProducer(exposureMeter, exposureReduceNode);
-        frameResources.Provide({"state:scene-look-settings", "*"}, sceneLookSettingsNode,
-                               StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, kSceneRoles);
         frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                                      renderExtent.width);
         frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,

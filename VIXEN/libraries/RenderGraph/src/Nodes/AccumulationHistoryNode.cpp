@@ -10,7 +10,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 #include <algorithm>
-#include <cstdlib>
 #include <mutex>
 #include <stdexcept>
 
@@ -41,23 +40,6 @@ namespace {
 constexpr float kAccumPosEpsilon = 1e-4f;
 constexpr float kAccumDirEpsilon = 1e-5f;
 
-struct AccumulationPolicy {
-    uint32_t maxFrames = 256u;
-    bool resetOnMotion = true;
-    bool reprojectionEnabled = false;
-};
-
-AccumulationPolicy ResolveAccumulationPolicy() {
-    AccumulationPolicy policy;
-    if (const char* value = std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
-        policy.reprojectionEnabled = value[0] == '1';
-    }
-    if (std::getenv("VIXEN_RESTIR_GATE_DEMO") &&
-        !std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
-        policy.reprojectionEnabled = true;
-    }
-    return policy;
-}
 } // namespace
 
 // ====== AccumulationHistoryNodeType ======
@@ -151,7 +133,10 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
 }
 
 void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
-    const AccumulationPolicy policy = ResolveAccumulationPolicy();
+    if (!settings_) {
+        throw std::runtime_error("[AccumulationHistoryNode] AccumulationSettings source is not set");
+    }
+    const Vixen::Gpu::AccumulationSettings& policy = *settings_;
     const CameraData& camera = ctx.In(AccumulationHistoryNodeConfig::CAMERA_DATA);
     const bool first = !frameCounterEverEvaluated_;
     const bool moved = first ||
@@ -160,7 +145,7 @@ void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     frameCounterEverEvaluated_ = true;
     lastCameraPos_ = camera.cameraPos;
     lastCameraDir_ = camera.cameraDir;
-    if (first || (moved && policy.resetOnMotion && !policy.reprojectionEnabled)) {
+    if (first || (moved && policy.resetOnMotion != 0u && policy.reprojectionEnabled == 0u)) {
         accumFrameCounter_ = 1u;
     } else {
         accumFrameCounter_ = std::min(accumFrameCounter_ + 1u, policy.maxFrames);

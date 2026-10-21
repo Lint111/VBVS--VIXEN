@@ -367,6 +367,16 @@ public:
     template<typename SourceSlot>
     void Provide(const SchemaIdentity& identity, NodeHandle source, SourceSlot slot, SlotRole roles) {
         descriptors_[identity] = Connector(source, slot, roles);
+        sources_[identity] = source;
+    }
+
+    /// The node that provides this identity's resource.
+    NodeHandle Source(const SchemaIdentity& identity) const {
+        auto it = sources_.find(identity);
+        if (it == sources_.end()) {
+            throw std::runtime_error("SchemaResourceRegistry: no resource registered for " + identity.Text());
+        }
+        return it->second;
     }
 
     /// The render target that declares this identity's image to the sync tracker.
@@ -431,6 +441,7 @@ private:
     }
 
     std::map<SchemaIdentity, ConnectFn> descriptors_;
+    std::map<SchemaIdentity, NodeHandle> sources_;
     std::map<SchemaIdentity, ConnectFn> images_;
     std::map<SchemaIdentity, StageConnectFn> imageWrites_;
     std::map<SchemaIdentity, NodeHandle> producers_;

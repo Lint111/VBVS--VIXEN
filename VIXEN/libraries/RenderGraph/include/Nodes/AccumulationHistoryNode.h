@@ -3,6 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"
+#include "Generated/AccumulationConfig.g.h"
 #include <glm/glm.hpp>
 #include <memory>
 
@@ -57,6 +58,9 @@ public:
     AccumulationHistoryNode(const std::string& instanceName, NodeType* nodeType);
     ~AccumulationHistoryNode() override = default;
 
+    /// The host-written AccumulationSettings record; the node reads its policy from it each frame.
+    void SetSettingsSource(const Vixen::Gpu::AccumulationSettings* settings) { settings_ = settings; }
+
 protected:
     void TypedSetupImpl(TypedSetupContext&    ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -83,6 +87,7 @@ private:
     uint32_t createdWidth_  = 0;
     uint32_t createdHeight_ = 0;
 
+    const Vixen::Gpu::AccumulationSettings* settings_ = nullptr;
     bool frameCounterEverEvaluated_ = false;
     glm::vec3 lastCameraPos_{0.0f};
     glm::vec3 lastCameraDir_{0.0f};

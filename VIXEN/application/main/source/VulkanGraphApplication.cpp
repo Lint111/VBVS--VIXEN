@@ -841,15 +841,6 @@ void VulkanGraphApplication::FillSettingsTransferBuffers() {
     auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstanceByName("frame_sync"));
     if (!frameSync) return;
     const uint32_t predictedSlot = frameSync->GetCurrentFrameIndex();
-    const auto bufferFor = [this](const std::string& kind) -> NodeHandle {
-        if (kind == "state:lighting-settings") return lightingSettingsBuffer_;
-        if (kind == "state:scene-look-settings") return sceneLookSettingsBuffer_;
-        if (kind == "state:shadow-settings") return shadowSettingsBuffer_;
-        if (kind == "state:accumulation-settings") return accumulationSettingsBuffer_;
-        if (kind == "state:reservoir-settings") return reservoirSettingsBuffer_;
-        if (kind == "state:probe-grid-settings") return probeGridSettingsBuffer_;
-        throw std::runtime_error("unknown settings transfer identity " + kind);
-    };
     size_t bytesWritten = 0;
     std::string recordsWritten;
     lastSettingsTransferLedger_ = settingsTransferPlan_->Fill(
@@ -857,7 +848,7 @@ void VulkanGraphApplication::FillSettingsTransferBuffers() {
         [&](const GpuTransferPlanRow& row, uint32_t slot, std::span<const std::byte> bytes) {
             bytesWritten += bytes.size();
             recordsWritten += (recordsWritten.empty() ? "" : ",") + row.identity.kind;
-            auto* node = static_cast<StorageBufferNode*>(renderGraph->GetInstance(bufferFor(row.identity.kind)));
+            auto* node = static_cast<StorageBufferNode*>(renderGraph->GetInstance(settingsResources_.Source(row.identity)));
             if (!node || bytes.size() > node->GetSizeBytes()) {
                 throw std::runtime_error("settings transfer buffer is unavailable or undersized for " +
                                          row.identity.Text());
