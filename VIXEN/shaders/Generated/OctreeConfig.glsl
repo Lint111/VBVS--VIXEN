@@ -29,4 +29,476 @@ struct OctreeConfig {
     uint brickLookupBase;
     uint _tailPad[16];
 };
+
+#ifdef VIXEN_SOA_OctreeConfig_BUFFER
+OctreeConfig OctreeConfig_Load(uint index)
+{
+    OctreeConfig value;
+    value.esvoMaxScale = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u]);
+    value.userMaxLevels = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u]);
+    value.brickDepthLevels = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u]);
+    value.brickSize = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    value.minESVOScale = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u]);
+    value.brickESVOScale = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u]);
+    value.bricksPerAxis = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u]);
+    value._padding1 = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u]);
+    value.traceBoundsMin = uintBitsToFloat(uvec3(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 2u]));
+    value.traceBoundsMax = uintBitsToFloat(uvec3(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 2u]));
+    value.localToWorld = mat4(
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 0u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 1u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 2u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 3u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 4u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 5u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 6u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 7u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 8u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 9u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 10u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 11u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 12u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 13u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 14u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 15u])));
+    value.worldToLocal = mat4(
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 0u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 1u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 2u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 3u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 4u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 5u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 6u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 7u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 8u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 9u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 10u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 11u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 12u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 13u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 14u], VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 15u])));
+    value.nodeArrayBase = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[12u] >> 2u) + index * 1u)) + 0u]);
+    value.brickArrayBase = int(VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[13u] >> 2u) + index * 1u)) + 0u]);
+    value.formatId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[14u] >> 2u) + index * 1u)) + 0u];
+    value.bricksPerAxisSdf = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[15u] >> 2u) + index * 1u)) + 0u];
+    value.poolBrickBase = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[16u] >> 2u) + index * 1u)) + 0u];
+    value.channelCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[17u] >> 2u) + index * 1u)) + 0u];
+    value.brickStrideFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[18u] >> 2u) + index * 1u)) + 0u];
+    value._padChannels = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[19u] >> 2u) + index * 1u)) + 0u];
+    value.channels[0].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 0u) + 0u];
+    value.channels[0].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 1u) + 0u];
+    value.channels[0].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 2u) + 0u];
+    value.channels[0].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 3u) + 0u];
+    value.channels[1].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 0u) + 0u];
+    value.channels[1].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 1u) + 0u];
+    value.channels[1].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 2u) + 0u];
+    value.channels[1].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 3u) + 0u];
+    value.channels[2].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 0u) + 0u];
+    value.channels[2].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 1u) + 0u];
+    value.channels[2].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 2u) + 0u];
+    value.channels[2].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 3u) + 0u];
+    value.channels[3].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 0u) + 0u];
+    value.channels[3].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 1u) + 0u];
+    value.channels[3].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 2u) + 0u];
+    value.channels[3].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 3u) + 0u];
+    value.channels[4].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 0u) + 0u];
+    value.channels[4].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 1u) + 0u];
+    value.channels[4].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 2u) + 0u];
+    value.channels[4].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 3u) + 0u];
+    value.channels[5].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 0u) + 0u];
+    value.channels[5].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 1u) + 0u];
+    value.channels[5].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 2u) + 0u];
+    value.channels[5].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 3u) + 0u];
+    value.channels[6].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 0u) + 0u];
+    value.channels[6].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 1u) + 0u];
+    value.channels[6].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 2u) + 0u];
+    value.channels[6].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 3u) + 0u];
+    value.channels[7].semanticId = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 0u) + 0u];
+    value.channels[7].elemCount = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 1u) + 0u];
+    value.channels[7].channelBaseFloats = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 2u) + 0u];
+    value.channels[7].fieldKind = VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 3u) + 0u];
+    value.mipPoolBase = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[21u] >> 2u) + index * 1u)) + 0u];
+    value.brickResident = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[22u] >> 2u) + index * 1u)) + 0u];
+    value.tierRefTableBase = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[23u] >> 2u) + index * 1u)) + 0u];
+    value.brickLookupBase = VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[24u] >> 2u) + index * 1u)) + 0u];
+    value._tailPad[0] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 0u) + 0u];
+    value._tailPad[1] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 1u) + 0u];
+    value._tailPad[2] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 2u) + 0u];
+    value._tailPad[3] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 3u) + 0u];
+    value._tailPad[4] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 4u) + 0u];
+    value._tailPad[5] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 5u) + 0u];
+    value._tailPad[6] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 6u) + 0u];
+    value._tailPad[7] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 7u) + 0u];
+    value._tailPad[8] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 8u) + 0u];
+    value._tailPad[9] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 9u) + 0u];
+    value._tailPad[10] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 10u) + 0u];
+    value._tailPad[11] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 11u) + 0u];
+    value._tailPad[12] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 12u) + 0u];
+    value._tailPad[13] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 13u) + 0u];
+    value._tailPad[14] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 14u) + 0u];
+    value._tailPad[15] = VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 15u) + 0u];
+    return value;
+}
+
+void OctreeConfig_Store(uint index, OctreeConfig value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u] = uint(value.esvoMaxScale);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = uint(value.userMaxLevels);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u] = uint(value.brickDepthLevels);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = uint(value.brickSize);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u] = uint(value.minESVOScale);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u] = uint(value.brickESVOScale);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u] = uint(value.bricksPerAxis);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u] = uint(value._padding1);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 0u] = floatBitsToUint(value.traceBoundsMin[0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 1u] = floatBitsToUint(value.traceBoundsMin[1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[8u] >> 2u) + index * 3u)) + 2u] = floatBitsToUint(value.traceBoundsMin[2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 0u] = floatBitsToUint(value.traceBoundsMax[0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 1u] = floatBitsToUint(value.traceBoundsMax[1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[9u] >> 2u) + index * 3u)) + 2u] = floatBitsToUint(value.traceBoundsMax[2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 0u] = floatBitsToUint(value.localToWorld[0][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 1u] = floatBitsToUint(value.localToWorld[0][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 2u] = floatBitsToUint(value.localToWorld[0][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 3u] = floatBitsToUint(value.localToWorld[0][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 4u] = floatBitsToUint(value.localToWorld[1][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 5u] = floatBitsToUint(value.localToWorld[1][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 6u] = floatBitsToUint(value.localToWorld[1][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 7u] = floatBitsToUint(value.localToWorld[1][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 8u] = floatBitsToUint(value.localToWorld[2][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 9u] = floatBitsToUint(value.localToWorld[2][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 10u] = floatBitsToUint(value.localToWorld[2][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 11u] = floatBitsToUint(value.localToWorld[2][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 12u] = floatBitsToUint(value.localToWorld[3][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 13u] = floatBitsToUint(value.localToWorld[3][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 14u] = floatBitsToUint(value.localToWorld[3][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[10u] >> 2u) + index * 16u)) + 15u] = floatBitsToUint(value.localToWorld[3][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 0u] = floatBitsToUint(value.worldToLocal[0][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 1u] = floatBitsToUint(value.worldToLocal[0][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 2u] = floatBitsToUint(value.worldToLocal[0][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 3u] = floatBitsToUint(value.worldToLocal[0][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 4u] = floatBitsToUint(value.worldToLocal[1][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 5u] = floatBitsToUint(value.worldToLocal[1][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 6u] = floatBitsToUint(value.worldToLocal[1][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 7u] = floatBitsToUint(value.worldToLocal[1][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 8u] = floatBitsToUint(value.worldToLocal[2][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 9u] = floatBitsToUint(value.worldToLocal[2][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 10u] = floatBitsToUint(value.worldToLocal[2][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 11u] = floatBitsToUint(value.worldToLocal[2][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 12u] = floatBitsToUint(value.worldToLocal[3][0]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 13u] = floatBitsToUint(value.worldToLocal[3][1]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 14u] = floatBitsToUint(value.worldToLocal[3][2]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[11u] >> 2u) + index * 16u)) + 15u] = floatBitsToUint(value.worldToLocal[3][3]);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[12u] >> 2u) + index * 1u)) + 0u] = uint(value.nodeArrayBase);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[13u] >> 2u) + index * 1u)) + 0u] = uint(value.brickArrayBase);
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[14u] >> 2u) + index * 1u)) + 0u] = value.formatId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[15u] >> 2u) + index * 1u)) + 0u] = value.bricksPerAxisSdf;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[16u] >> 2u) + index * 1u)) + 0u] = value.poolBrickBase;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[17u] >> 2u) + index * 1u)) + 0u] = value.channelCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[18u] >> 2u) + index * 1u)) + 0u] = value.brickStrideFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[19u] >> 2u) + index * 1u)) + 0u] = value._padChannels;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 0u) + 0u] = value.channels[0].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 1u) + 0u] = value.channels[0].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 2u) + 0u] = value.channels[0].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 0u) + 3u) + 0u] = value.channels[0].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 0u) + 0u] = value.channels[1].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 1u) + 0u] = value.channels[1].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 2u) + 0u] = value.channels[1].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 4u) + 3u) + 0u] = value.channels[1].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 0u) + 0u] = value.channels[2].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 1u) + 0u] = value.channels[2].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 2u) + 0u] = value.channels[2].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 8u) + 3u) + 0u] = value.channels[2].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 0u) + 0u] = value.channels[3].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 1u) + 0u] = value.channels[3].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 2u) + 0u] = value.channels[3].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 12u) + 3u) + 0u] = value.channels[3].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 0u) + 0u] = value.channels[4].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 1u) + 0u] = value.channels[4].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 2u) + 0u] = value.channels[4].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 16u) + 3u) + 0u] = value.channels[4].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 0u) + 0u] = value.channels[5].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 1u) + 0u] = value.channels[5].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 2u) + 0u] = value.channels[5].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 20u) + 3u) + 0u] = value.channels[5].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 0u) + 0u] = value.channels[6].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 1u) + 0u] = value.channels[6].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 2u) + 0u] = value.channels[6].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 24u) + 3u) + 0u] = value.channels[6].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 0u) + 0u] = value.channels[7].semanticId;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 1u) + 0u] = value.channels[7].elemCount;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 2u) + 0u] = value.channels[7].channelBaseFloats;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((((VIXEN_SOA_OctreeConfig_BUFFER.words[20u] >> 2u) + index * 32u)) + 28u) + 3u) + 0u] = value.channels[7].fieldKind;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[21u] >> 2u) + index * 1u)) + 0u] = value.mipPoolBase;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[22u] >> 2u) + index * 1u)) + 0u] = value.brickResident;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[23u] >> 2u) + index * 1u)) + 0u] = value.tierRefTableBase;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[(((VIXEN_SOA_OctreeConfig_BUFFER.words[24u] >> 2u) + index * 1u)) + 0u] = value.brickLookupBase;
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 0u) + 0u] = value._tailPad[0];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 1u) + 0u] = value._tailPad[1];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 2u) + 0u] = value._tailPad[2];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 3u) + 0u] = value._tailPad[3];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 4u) + 0u] = value._tailPad[4];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 5u) + 0u] = value._tailPad[5];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 6u) + 0u] = value._tailPad[6];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 7u) + 0u] = value._tailPad[7];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 8u) + 0u] = value._tailPad[8];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 9u) + 0u] = value._tailPad[9];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 10u) + 0u] = value._tailPad[10];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 11u) + 0u] = value._tailPad[11];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 12u) + 0u] = value._tailPad[12];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 13u) + 0u] = value._tailPad[13];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 14u) + 0u] = value._tailPad[14];
+    VIXEN_SOA_OctreeConfig_BUFFER.words[((((VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u)) + 15u) + 0u] = value._tailPad[15];
+}
+
+uint OctreeConfig_esvoMaxScale_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[0u] >> 2u) + index * 1u;
+}
+int OctreeConfig_esvoMaxScale_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_esvoMaxScale_Word(index)]);
+}
+void OctreeConfig_esvoMaxScale_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_esvoMaxScale_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_userMaxLevels_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+int OctreeConfig_userMaxLevels_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_userMaxLevels_Word(index)]);
+}
+void OctreeConfig_userMaxLevels_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_userMaxLevels_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_brickDepthLevels_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[2u] >> 2u) + index * 1u;
+}
+int OctreeConfig_brickDepthLevels_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickDepthLevels_Word(index)]);
+}
+void OctreeConfig_brickDepthLevels_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickDepthLevels_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_brickSize_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+int OctreeConfig_brickSize_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickSize_Word(index)]);
+}
+void OctreeConfig_brickSize_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickSize_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_minESVOScale_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[4u] >> 2u) + index * 1u;
+}
+int OctreeConfig_minESVOScale_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_minESVOScale_Word(index)]);
+}
+void OctreeConfig_minESVOScale_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_minESVOScale_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_brickESVOScale_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[5u] >> 2u) + index * 1u;
+}
+int OctreeConfig_brickESVOScale_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickESVOScale_Word(index)]);
+}
+void OctreeConfig_brickESVOScale_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickESVOScale_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_bricksPerAxis_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[6u] >> 2u) + index * 1u;
+}
+int OctreeConfig_bricksPerAxis_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_bricksPerAxis_Word(index)]);
+}
+void OctreeConfig_bricksPerAxis_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_bricksPerAxis_Word(index)] = uint(value);
+}
+
+uint OctreeConfig__padding1_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[7u] >> 2u) + index * 1u;
+}
+int OctreeConfig__padding1_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__padding1_Word(index)]);
+}
+void OctreeConfig__padding1_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__padding1_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_nodeArrayBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[12u] >> 2u) + index * 1u;
+}
+int OctreeConfig_nodeArrayBase_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_nodeArrayBase_Word(index)]);
+}
+void OctreeConfig_nodeArrayBase_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_nodeArrayBase_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_brickArrayBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[13u] >> 2u) + index * 1u;
+}
+int OctreeConfig_brickArrayBase_Load(uint index)
+{
+    return int(VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickArrayBase_Word(index)]);
+}
+void OctreeConfig_brickArrayBase_Store(uint index, int value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickArrayBase_Word(index)] = uint(value);
+}
+
+uint OctreeConfig_formatId_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[14u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_formatId_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_formatId_Word(index)];
+}
+void OctreeConfig_formatId_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_formatId_Word(index)] = value;
+}
+
+uint OctreeConfig_bricksPerAxisSdf_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[15u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_bricksPerAxisSdf_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_bricksPerAxisSdf_Word(index)];
+}
+void OctreeConfig_bricksPerAxisSdf_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_bricksPerAxisSdf_Word(index)] = value;
+}
+
+uint OctreeConfig_poolBrickBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[16u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_poolBrickBase_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_poolBrickBase_Word(index)];
+}
+void OctreeConfig_poolBrickBase_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_poolBrickBase_Word(index)] = value;
+}
+
+uint OctreeConfig_channelCount_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[17u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_channelCount_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_channelCount_Word(index)];
+}
+void OctreeConfig_channelCount_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_channelCount_Word(index)] = value;
+}
+
+uint OctreeConfig_brickStrideFloats_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[18u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_brickStrideFloats_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickStrideFloats_Word(index)];
+}
+void OctreeConfig_brickStrideFloats_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickStrideFloats_Word(index)] = value;
+}
+
+uint OctreeConfig__padChannels_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[19u] >> 2u) + index * 1u;
+}
+uint OctreeConfig__padChannels_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__padChannels_Word(index)];
+}
+void OctreeConfig__padChannels_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__padChannels_Word(index)] = value;
+}
+
+uint OctreeConfig_mipPoolBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[21u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_mipPoolBase_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_mipPoolBase_Word(index)];
+}
+void OctreeConfig_mipPoolBase_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_mipPoolBase_Word(index)] = value;
+}
+
+uint OctreeConfig_brickResident_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[22u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_brickResident_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickResident_Word(index)];
+}
+void OctreeConfig_brickResident_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickResident_Word(index)] = value;
+}
+
+uint OctreeConfig_tierRefTableBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[23u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_tierRefTableBase_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_tierRefTableBase_Word(index)];
+}
+void OctreeConfig_tierRefTableBase_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_tierRefTableBase_Word(index)] = value;
+}
+
+uint OctreeConfig_brickLookupBase_Word(uint index)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[24u] >> 2u) + index * 1u;
+}
+uint OctreeConfig_brickLookupBase_Load(uint index)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickLookupBase_Word(index)];
+}
+void OctreeConfig_brickLookupBase_Store(uint index, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig_brickLookupBase_Word(index)] = value;
+}
+
+uint OctreeConfig__tailPad_Word(uint index, uint element)
+{
+    return (VIXEN_SOA_OctreeConfig_BUFFER.words[25u] >> 2u) + index * 16u + element * 1u;
+}
+uint OctreeConfig__tailPad_Load(uint index, uint element)
+{
+    return VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__tailPad_Word(index, element)];
+}
+void OctreeConfig__tailPad_Store(uint index, uint element, uint value)
+{
+    VIXEN_SOA_OctreeConfig_BUFFER.words[OctreeConfig__tailPad_Word(index, element)] = value;
+}
+#undef VIXEN_SOA_OctreeConfig_BUFFER
+#endif
 #endif // OCTREECONFIG_GLSL

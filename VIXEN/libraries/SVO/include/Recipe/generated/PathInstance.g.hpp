@@ -3,6 +3,7 @@
 // std430-v1 rules: scalar alignment is its width; vec2 aligns to 8; vec3/vec4 align to 16 (vec3 payload is 12); matrices use column-vector alignment and stride; arrays use element-aligned stride; structs align and round size to their maximum member alignment.
 #include <cstdint>
 #include <cstddef>
+#include <array>
 namespace Yeroket::Sdf::Generated {
 #ifndef YEROKET__SDF__GENERATED_PATHPOINT_CPP
 #define YEROKET__SDF__GENERATED_PATHPOINT_CPP
