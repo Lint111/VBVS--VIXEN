@@ -283,6 +283,15 @@ public:
     explicit TransferPlan(std::vector<GpuTransferPlanRow> rows) : rows_(std::move(rows)) {}
     explicit TransferPlan(const GpuSystemManifest& manifest) : TransferPlan(manifest.transferPlan) {}
 
+    static size_t BufferSize(const GpuTransferPlanRow& row, uint32_t rowCount = 1) {
+        size_t cursor = row.regions.size() * sizeof(uint32_t);
+        for (const auto& region : row.regions) {
+            cursor = AlignUp(cursor, region.alignment);
+            cursor += static_cast<size_t>(region.stride) * rowCount;
+        }
+        return cursor;
+    }
+
     TransferFillLedger Fill(uint64_t frame, const TransferSourceRegistry& sources,
                             const Upload& upload) {
         TransferFillLedger ledger;

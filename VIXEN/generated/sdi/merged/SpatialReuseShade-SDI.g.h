@@ -53,17 +53,17 @@ struct OctreeConfigsSSBO {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
+ * Layout VixenHash: 0x7732814c2892910d (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x7732814c2892910dULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "LightingConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 272;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -93,17 +93,17 @@ struct HitRecordBuffer {
  * @brief ShadowConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3b53615a99b577f6 (for runtime discovery)
+ * Layout VixenHash: 0x70e7e39fc2be04d5 (for runtime discovery)
  */
 struct ShadowConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3b53615a99b577f6ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x70e7e39fc2be04d5ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ShadowConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 16;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -113,17 +113,17 @@ struct ShadowConfigSSBO {
  * @brief AccumulationConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x5ce2d892be4b2b19 (for runtime discovery)
+ * Layout VixenHash: 0x5b8efb6afedf8440 (for runtime discovery)
  */
 struct AccumulationConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x5ce2d892be4b2b19ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x5b8efb6afedf8440ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "AccumulationConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 20;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -153,17 +153,17 @@ struct PrevCameraConfigSSBO {
  * @brief ReservoirConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x2a45c4769623e86b (for runtime discovery)
+ * Layout VixenHash: 0x19db8a95b4007b1c (for runtime discovery)
  */
 struct ReservoirConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x2a45c4769623e86bULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x19db8a95b4007b1cULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ReservoirConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 32;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -233,17 +233,17 @@ struct DDGILeakGateDebugShadeSSBO {
  * @brief ProbeGridConfigReadSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xb2dd7ab08f447af2 (for runtime discovery)
+ * Layout VixenHash: 0x4445ae0cc7bdc315 (for runtime discovery)
  */
 struct ProbeGridConfigReadSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xb2dd7ab08f447af2ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x4445ae0cc7bdc315ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ProbeGridConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 56;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -423,16 +423,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief LightingConfigSSBO
+     * @brief lightingSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding16 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "lightingSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 16;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = LightingConfigSSBO;
     };
@@ -453,31 +453,31 @@ namespace Set0 {
     };
 
     /**
-     * @brief ShadowConfigSSBO
+     * @brief shadowSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding18 {
-        static constexpr const char* NAME = "ShadowConfigSSBO";
+        static constexpr const char* NAME = "shadowSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 18;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ShadowConfigSSBO;
     };
 
     /**
-     * @brief AccumulationConfigSSBO
+     * @brief accumulationSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding19 {
-        static constexpr const char* NAME = "AccumulationConfigSSBO";
+        static constexpr const char* NAME = "accumulationSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 19;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = AccumulationConfigSSBO;
     };
@@ -526,16 +526,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief ReservoirConfigSSBO
+     * @brief reservoirSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding23 {
-        static constexpr const char* NAME = "ReservoirConfigSSBO";
+        static constexpr const char* NAME = "reservoirSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 23;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ReservoirConfigSSBO;
     };
@@ -614,16 +614,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief ProbeGridConfigReadSSBO
+     * @brief probeGridSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding34 {
-        static constexpr const char* NAME = "ProbeGridConfigReadSSBO";
+        static constexpr const char* NAME = "probeGridSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 34;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ProbeGridConfigReadSSBO;
     };
@@ -795,20 +795,20 @@ namespace Set0 {
 namespace Bind {
 using sceneRadianceImage = Set0::Binding0;
 using OctreeConfigsSSBO = Set0::Binding5;
-using LightingConfigSSBO = Set0::Binding16;
+using lightingSettingsBuffer = Set0::Binding16;
 using HitRecordBuffer = Set0::Binding17;
-using ShadowConfigSSBO = Set0::Binding18;
-using AccumulationConfigSSBO = Set0::Binding19;
+using shadowSettingsBuffer = Set0::Binding18;
+using accumulationSettingsBuffer = Set0::Binding19;
 using sceneRadianceHistory = Set0::Binding20;
 using PrevCameraConfigSSBO = Set0::Binding21;
 using worldPosHistoryImage = Set0::Binding22;
-using ReservoirConfigSSBO = Set0::Binding23;
+using reservoirSettingsBuffer = Set0::Binding23;
 using LightTreeBufferSSBO = Set0::Binding24;
 using SpatialReservoirDebugBuffer = Set0::Binding27;
 using DDGILeakGateDebugShadeSSBO = Set0::Binding31;
 using probeIrradianceAtlasRead = Set0::Binding32;
 using probeVisibilityAtlasRead = Set0::Binding33;
-using ProbeGridConfigReadSSBO = Set0::Binding34;
+using probeGridSettingsBuffer = Set0::Binding34;
 using skySphereImage = Set0::Binding35;
 using HitAccumTable = Set0::Binding36;
 using HitAccumParamsSSBO = Set0::Binding37;
@@ -1022,20 +1022,20 @@ inline constexpr const char* const kFeatures_Set0_Binding46[] = {"VIXEN_MINING_B
 inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
     {"OctreeConfigsSSBO", false, 0, 5, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding5},
-    {"LightingConfigSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
+    {"lightingSettingsBuffer", false, 0, 16, 0, Access::ReadWrite, 0, nullptr},
     {"HitRecordBuffer", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
-    {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
-    {"AccumulationConfigSSBO", false, 0, 19, 0, Access::ReadOnly, 0, nullptr},
+    {"shadowSettingsBuffer", false, 0, 18, 0, Access::ReadWrite, 0, nullptr},
+    {"accumulationSettingsBuffer", false, 0, 19, 0, Access::ReadWrite, 0, nullptr},
     {"sceneRadianceHistory", false, 0, 20, 0, Access::ReadOnly, 0, nullptr},
     {"PrevCameraConfigSSBO", false, 0, 21, 0, Access::ReadOnly, 0, nullptr},
     {"worldPosHistoryImage", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
-    {"ReservoirConfigSSBO", false, 0, 23, 0, Access::ReadOnly, 0, nullptr},
+    {"reservoirSettingsBuffer", false, 0, 23, 0, Access::ReadWrite, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
     {"SpatialReservoirDebugBuffer", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
     {"DDGILeakGateDebugShadeSSBO", false, 0, 31, 0, Access::ReadWrite, 0, nullptr},
     {"probeIrradianceAtlasRead", false, 0, 32, 0, Access::ReadOnly, 0, nullptr},
     {"probeVisibilityAtlasRead", false, 0, 33, 0, Access::ReadOnly, 0, nullptr},
-    {"ProbeGridConfigReadSSBO", false, 0, 34, 0, Access::ReadOnly, 0, nullptr},
+    {"probeGridSettingsBuffer", false, 0, 34, 0, Access::ReadWrite, 0, nullptr},
     {"skySphereImage", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"HitAccumTable", false, 0, 36, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding36},
     {"HitAccumParamsSSBO", false, 0, 37, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding37},

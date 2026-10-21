@@ -50,20 +50,20 @@ struct ExposureMeterResult {
 };
 
 /**
- * @brief LightingConfigSSBO
+ * @brief SceneLookSettingsSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
+ * Layout VixenHash: 0x630af927767b030b (for runtime discovery)
  */
-struct LightingConfigSSBO {
+struct SceneLookSettingsSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x630af927767b030bULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "LightingConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 272;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -87,18 +87,18 @@ namespace Set0 {
     };
 
     /**
-     * @brief LightingConfigSSBO
+     * @brief sceneLookSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding2 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "sceneLookSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = LightingConfigSSBO;
+        using DataType = SceneLookSettingsSSBO;
     };
 
 } // namespace Set0
@@ -106,7 +106,7 @@ namespace Set0 {
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
 using result = Set0::Binding1;
-using LightingConfigSSBO = Set0::Binding2;
+using sceneLookSettingsBuffer = Set0::Binding2;
 } // namespace Bind
 
 // ============================================================================
@@ -127,7 +127,7 @@ struct MemberInfo {
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"result", false, 0, 1, 0, Access::ReadWrite, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
+    {"sceneLookSettingsBuffer", false, 0, 2, 0, Access::ReadWrite, 0, nullptr},
 };
 
 /**

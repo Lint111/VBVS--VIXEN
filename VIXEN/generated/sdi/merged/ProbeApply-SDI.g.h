@@ -33,17 +33,17 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ProbeGridConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf9df306938bceb6 (for runtime discovery)
+ * Layout VixenHash: 0x6986ad1766e7c329 (for runtime discovery)
  */
 struct ProbeGridConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf9df306938bceb6ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x6986ad1766e7c329ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ProbeGridConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 56;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -112,16 +112,16 @@ struct ProbeRayPayloadBuffer {
 namespace Set0 {
 
     /**
-     * @brief ProbeGridConfigSSBO
+     * @brief probeGridSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding28 {
-        static constexpr const char* NAME = "ProbeGridConfigSSBO";
+        static constexpr const char* NAME = "probeGridSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 28;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ProbeGridConfigSSBO;
     };
@@ -203,7 +203,7 @@ namespace Set0 {
 
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
-using ProbeGridConfigSSBO = Set0::Binding28;
+using probeGridSettingsBuffer = Set0::Binding28;
 using probeIrradianceAtlas = Set0::Binding29;
 using probeVisibilityAtlas = Set0::Binding30;
 using DDGILeakGateDebugSSBO = Set0::Binding31;
@@ -250,7 +250,7 @@ struct MemberInfo {
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"ProbeGridConfigSSBO", false, 0, 28, 0, Access::ReadOnly, 0, nullptr},
+    {"probeGridSettingsBuffer", false, 0, 28, 0, Access::ReadWrite, 0, nullptr},
     {"probeIrradianceAtlas", false, 0, 29, 0, Access::ReadWrite, 0, nullptr},
     {"probeVisibilityAtlas", false, 0, 30, 0, Access::ReadWrite, 0, nullptr},
     {"DDGILeakGateDebugSSBO", false, 0, 31, 0, Access::ReadWrite, 0, nullptr},

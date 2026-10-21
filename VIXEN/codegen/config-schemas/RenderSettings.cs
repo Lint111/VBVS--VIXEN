@@ -2,9 +2,9 @@ using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
 
-// Render-bridge S2: cold, schema-owned settings records.  The legacy *Config
-// records remain only while their hand shader consumers are converted; these
-// records are the component-region sources used by TransferPlan/Fill.
+// Render-bridge S2: cold, schema-owned settings records.  The host settings
+// write is the producer; these records are the component-region sources used
+// by TransferPlan/Fill, which uploads a record only when its generation changes.
 [GpuStruct]
 public struct LightingSettings
 {
@@ -42,7 +42,6 @@ public struct SceneLookSettings
     public float exposureDeltaSeconds;
     public float lookSaturation;
     public uint presentationMode;
-    public uint frameSeed;
 }
 
 [GpuStruct]

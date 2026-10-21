@@ -33,17 +33,17 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief ReservoirConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x2a45c4769623e86b (for runtime discovery)
+ * Layout VixenHash: 0x19db8a95b4007b1c (for runtime discovery)
  */
 struct ReservoirConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x2a45c4769623e86bULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x19db8a95b4007b1cULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ReservoirConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 32;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -152,16 +152,16 @@ struct HitRecordBuffer {
 namespace Set0 {
 
     /**
-     * @brief ReservoirConfigSSBO
+     * @brief reservoirSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding0 {
-        static constexpr const char* NAME = "ReservoirConfigSSBO";
+        static constexpr const char* NAME = "reservoirSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ReservoirConfigSSBO;
     };
@@ -245,7 +245,7 @@ namespace Set0 {
 
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
-using ReservoirConfigSSBO = Set0::Binding0;
+using reservoirSettingsBuffer = Set0::Binding0;
 using LightTreeBufferSSBO = Set0::Binding1;
 using ReservoirBufferA = Set0::Binding2;
 using ReservoirBufferB = Set0::Binding3;
@@ -312,7 +312,7 @@ struct MemberInfo {
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"ReservoirConfigSSBO", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"reservoirSettingsBuffer", false, 0, 0, 0, Access::ReadWrite, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
     {"ReservoirBufferA", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
     {"ReservoirBufferB", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},

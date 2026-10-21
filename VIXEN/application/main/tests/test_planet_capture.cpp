@@ -1,13 +1,10 @@
 #include "VulkanGraphApplication.h"
 #include "graph/PlanetSceneDefinition.h"
 #include "Nodes/CameraNode.h"
-#include "Nodes/LightingConfigNode.h"
-#include "Nodes/ShadowConfigNode.h"
 #include "Nodes/DeviceNode.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"
-#include "Nodes/ReservoirConfigNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 
@@ -30,22 +27,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-namespace Vixen::RenderGraph {
-
-class LightingConfigNodeTestAccess {
-public:
-    static bool ReadMappedBytes(const LightingConfigNode& node, uint32_t frameIndex,
-                                std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)>& bytes) {
-        if (frameIndex >= node.perFrame_.GetFrameCount()) return false;
-        const void* mapped = node.perFrame_.GetUniformBufferMapped(frameIndex);
-        if (!mapped) return false;
-        std::memcpy(bytes.data(), mapped, bytes.size());
-        return true;
-    }
-};
-
-} // namespace Vixen::RenderGraph
 
 namespace {
 
@@ -74,7 +55,10 @@ double Percentile(std::vector<double> samples, double fraction) {
 }
 
 uint32_t DefaultFramesPerState() {
-    return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerState : kDefaultFramesPerState;
+    const char* explicitEnabled = std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED");
+    const bool enabled = explicitEnabled ? explicitEnabled[0] == '1'
+                                         : std::getenv("VIXEN_RESTIR_GATE_DEMO") != nullptr;
+    return enabled ? kMaxFramesPerState : kDefaultFramesPerState;
 }
 
 uint32_t CaptureFramesPerState(std::string& error) {
@@ -134,12 +118,8 @@ public:
         auto* graph = GetRenderGraph();
         camera_ = graph ? dynamic_cast<Vixen::RenderGraph::CameraNode*>(
             graph->GetInstanceByName("raymarch_camera")) : nullptr;
-        lighting_ = graph ? dynamic_cast<Vixen::RenderGraph::LightingConfigNode*>(
-            graph->GetInstanceByName("lighting_config")) : nullptr;
-        auto* shadow = graph ? dynamic_cast<Vixen::RenderGraph::ShadowConfigNode*>(
-            graph->GetInstanceByName("shadow_config")) : nullptr;
-        if (!camera_ || !lighting_ || !shadow) {
-            captureError_ = "production graph is missing raymarch_camera, lighting_config or shadow_config";
+        if (!camera_) {
+            captureError_ = "production graph is missing raymarch_camera";
             return;
         }
 
@@ -154,18 +134,16 @@ public:
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, state_.verticalFovDegrees);
         camera_->SetPositionForTest(glm::vec3(0.0f));
         camera_->SetLookTargetNoOrbitForTest(glm::vec3(state_.forward));
-        shadow->SetReachAndBias(state_.shadowMaxDistance, state_.shadowBias);
+        SetShadowReachAndBias(state_.shadowMaxDistance, state_.shadowBias);
 
-        Vixen::App::SetSceneLightsLayer(*lighting_, Vixen::RenderGraph::LookLightSet::From(
+        Vixen::App::SetSceneLightsLayer(RenderLook(), Vixen::RenderGraph::LookLightSet::From(
             Planet::Lights(state_), Planet::kAmbient, Planet::CelSpillPurposeScales()));
         Vixen::App::ApplySceneLook(
-            *lighting_, dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")),
+            RenderLook(), dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")),
             Planet::SceneLookDeclaration());
         const char* shading = std::getenv("VIXEN_PLANET_SHADING");
         shadingLambert_ = shading && std::string(shading) == "lambert";
-        lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_SHADING_MODE,
-                                shadingLambert_ ? Vixen::RenderGraph::LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX
-                                                : Vixen::RenderGraph::LightingConfigNodeConfig::SHADING_MODE_CEL);
+        SetLightingShadingMode(shadingLambert_ ? 0u : 1u);
         SetBodyInstances(Planet::BodyInstances(state_));
         if (std::getenv("VIXEN_PLANET_READBACK")) {
             auto* records = dynamic_cast<Vixen::RenderGraph::StorageBufferNode*>(
@@ -276,13 +254,13 @@ private:
         std::ofstream hits(stem.string() + ".hits.bin", std::ios::binary);
         hits.write(static_cast<const char*>(mapped), static_cast<std::streamsize>(snapshotSize_));
         vkUnmapMemory(device->device, snapshotMemory_);
-        std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> bytes{};
-        if (!hits || !Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(*lighting_, 0, bytes)) {
+        const auto& lighting = CurrentLightingSettings();
+        if (!hits) {
             captureError_ = "could not export planet lighting buffers";
             return false;
         }
         std::ofstream config(stem.string() + ".lighting.bin", std::ios::binary);
-        config.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        config.write(reinterpret_cast<const char*>(&lighting), sizeof(lighting));
         if (!config) {
             captureError_ = "could not export planet LightingConfig";
             return false;
@@ -295,9 +273,17 @@ private:
             return false;
         }
         std::ofstream meter(stem.string() + ".meter.bin", std::ios::binary);
-        meter.write(static_cast<const char*>(mappedMeter), sizeof(float));
+        uint32_t log2ExposureOffset = 0u;
+        std::memcpy(&log2ExposureOffset, mappedMeter, sizeof(log2ExposureOffset));
         float log2Exposure = 0.0f;
-        std::memcpy(&log2Exposure, mappedMeter, sizeof(log2Exposure));
+        if (static_cast<uint64_t>(log2ExposureOffset) + sizeof(log2Exposure) > meterBuffer->GetSizeBytes()) {
+            meterBuffer->UnmapReadback(device);
+            captureError_ = "exposure meter generated layout header is invalid";
+            return false;
+        }
+        std::memcpy(&log2Exposure, static_cast<const std::byte*>(mappedMeter) + log2ExposureOffset,
+                    sizeof(log2Exposure));
+        meter.write(reinterpret_cast<const char*>(&log2Exposure), sizeof(log2Exposure));
         meterBuffer->UnmapReadback(device);
         if (!meter) {
             captureError_ = "could not write exposure meter";
@@ -307,8 +293,11 @@ private:
         const auto fixed = Vixen::App::ExposureSettings(Planet::SceneLookDeclaration().exposure);
         const float fixedLog2Exposure = std::log2(fixed.keyValue) - (fixed.minEV100 - 3.0f);
         if (std::abs(log2Exposure - fixedLog2Exposure) > 1.0e-4f) {
+            const auto& scene = CurrentSceneLookSettings();
             captureError_ = "fixed exposure mode applied log2 exposure " + std::to_string(log2Exposure) +
-                            ", declared " + std::to_string(fixedLog2Exposure);
+                            ", declared " + std::to_string(fixedLog2Exposure) +
+                            ", host window [" + std::to_string(scene.exposureMinEV100) + ", " +
+                            std::to_string(scene.exposureMaxEV100) + "]";
             return false;
         }
 
@@ -325,8 +314,8 @@ private:
               << ",\"width\":" << state_.width << ",\"height\":" << state_.height
               << ",\"verticalFovDegrees\":" << state_.verticalFovDegrees
               << ",\"shading\":\"" << (shadingLambert_ ? "lambert" : "cel") << "\"" << ",\"exposureMode\":\"fixed\",\"exposureFixedEV100\":" << Planet::kFixedExposureEV100
-              << ",\"lightCapacity\":" << std::size(Vixen::Gpu::LightingConfig{}.lights)
-              << ",\"exposureOffset\":" << offsetof(Vixen::Gpu::LightingConfig, exposureCompensationEV)
+              << ",\"lightCapacity\":" << std::size(Vixen::Gpu::LightingSettings{}.lights)
+              << ",\"exposureOffset\":" << offsetof(Vixen::Gpu::SceneLookSettings, exposureCompensationEV)
               << ",\"focus\":\"" << state_.focus << "\",\"sunDirection\":";
         WriteVec(scene, state_.sunDirection);
         scene << ",\"sunDistance\":" << state_.sunDistance
@@ -385,7 +374,6 @@ private:
     std::filesystem::path outputDir_;
     Vixen::App::Planet::ResolvedState state_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
-    Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
     uint32_t framesPerState_ = kDefaultFramesPerState;
     uint32_t framesInState_ = 0;
     bool shadingLambert_ = false;

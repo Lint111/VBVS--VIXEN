@@ -693,17 +693,17 @@ struct OccupancyGridBuffer {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
+ * Layout VixenHash: 0x7732814c2892910d (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x7732814c2892910dULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "LightingConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 272;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -713,17 +713,17 @@ struct LightingConfigSSBO {
  * @brief ShadowConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3b53615a99b577f6 (for runtime discovery)
+ * Layout VixenHash: 0x70e7e39fc2be04d5 (for runtime discovery)
  */
 struct ShadowConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3b53615a99b577f6ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x70e7e39fc2be04d5ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ShadowConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 16;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1014,31 +1014,31 @@ namespace Set0 {
     };
 
     /**
-     * @brief LightingConfigSSBO
+     * @brief lightingSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding17 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "lightingSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 17;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = LightingConfigSSBO;
     };
 
     /**
-     * @brief ShadowConfigSSBO
+     * @brief shadowSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding18 {
-        static constexpr const char* NAME = "ShadowConfigSSBO";
+        static constexpr const char* NAME = "shadowSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 18;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ShadowConfigSSBO;
     };
@@ -1134,8 +1134,8 @@ using MipPoolBuffer = Set0::Binding13;
 using InstanceIterDebugBuffer = Set0::Binding14;
 using TierRefTableBuffer = Set0::Binding15;
 using OccupancyGridBuffer = Set0::Binding16;
-using LightingConfigSSBO = Set0::Binding17;
-using ShadowConfigSSBO = Set0::Binding18;
+using lightingSettingsBuffer = Set0::Binding17;
+using shadowSettingsBuffer = Set0::Binding18;
 using HitAccumTable = Set0::Binding21;
 using HitAccumParamsSSBO = Set0::Binding22;
 using HitAccumCellRadiance = Set0::Binding23;
@@ -1336,8 +1336,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"InstanceIterDebugBuffer", false, 0, 14, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding14},
     {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
     {"OccupancyGridBuffer", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
-    {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
+    {"lightingSettingsBuffer", false, 0, 17, 0, Access::ReadWrite, 0, nullptr},
+    {"shadowSettingsBuffer", false, 0, 18, 0, Access::ReadWrite, 0, nullptr},
     {"HitAccumTable", false, 0, 21, 0, Access::ReadWrite, 0, nullptr},
     {"HitAccumParamsSSBO", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
     {"HitAccumCellRadiance", false, 0, 23, 0, Access::ReadWrite, 0, nullptr},

@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "8e0a690d4daa44c61533965f005c5853b3264ef4")
+set(_vixen_tracked_yeroket_kernel_sha "f315389c8086dac7b9f6d7fd3a2f2d3e49efcc24")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -264,6 +264,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/SceneLookSettings.g.h" _out_scenelooksettings_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/SceneLookSettings.glsl" _out_scenelooksettings_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ExposureMeterState.glsl" _out_exposuremeterstate_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
@@ -372,6 +374,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
         set(_out_lightingconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl")
+        set(_out_scenelooksettings_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/SceneLookSettings.g.h")
+        set(_out_scenelooksettings_glsl_run "${VIXEN_ROOT}/shaders/Generated/SceneLookSettings.glsl")
         set(_out_exposuremeterstate_glsl_run "${VIXEN_ROOT}/shaders/Generated/ExposureMeterState.glsl")
         set(_out_shadowconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
         set(_out_shadowconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl")
@@ -766,7 +770,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # convention (SVO owns OctreeConfig because the octree is SVO's core data type).
     set(_lc_args
         "${_yk_dll_run}"
-        --schema "${_schema_config_run}" --struct LightingConfig
+        --schema "${_schema_config_run}" --struct LightingSettings
         --out-cpp  "${_out_lightingconfig_cpp_run}"
         --out-glsl "${_out_lightingconfig_glsl_run}")
     vixen_add_codegen_check(lightingconfig_check ALL
@@ -776,6 +780,21 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     add_custom_target(lightingconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args}
         COMMENT "[codegen] regenerate LightingConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    set(_scene_look_settings_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct SceneLookSettings
+        --out-cpp  "${_out_scenelooksettings_cpp_run}"
+        --out-glsl "${_out_scenelooksettings_glsl_run}")
+    vixen_add_codegen_check(scene_look_settings_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_scene_look_settings_args} --check
+        COMMENT "[codegen] golden check: SceneLookSettings C++/GLSL match canonical"
+        VERBATIM)
+    add_custom_target(scene_look_settings_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_scene_look_settings_args}
+        COMMENT "[codegen] regenerate SceneLookSettings C++/GLSL"
         JOB_POOL msbuild
         VERBATIM)
 
@@ -884,7 +903,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # mirroring LightingConfig's own "config lives with its consuming library" convention.
     set(_sc_args
         "${_yk_dll_run}"
-        --schema "${_schema_config_run}" --struct ShadowConfig
+        --schema "${_schema_config_run}" --struct ShadowSettings
         --out-cpp  "${_out_shadowconfig_cpp_run}"
         --out-glsl "${_out_shadowconfig_glsl_run}")
     vixen_add_codegen_check(shadowconfig_check ALL
@@ -902,7 +921,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # RenderGraph, mirroring ShadowConfig's own "config lives with its consuming library" convention.
     set(_ac_args
         "${_yk_dll_run}"
-        --schema "${_schema_config_run}" --struct AccumulationConfig
+        --schema "${_schema_config_run}" --struct AccumulationSettings
         --out-cpp  "${_out_accumulationconfig_cpp_run}"
         --out-glsl "${_out_accumulationconfig_glsl_run}")
     vixen_add_codegen_check(accumulationconfig_check ALL
@@ -954,7 +973,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # the only fields consumed this milestone).
     set(_rc_args
         "${_yk_dll_run}"
-        --schema "${_schema_config_run}" --struct ReservoirConfig
+        --schema "${_schema_config_run}" --struct ReservoirSettings
         --out-cpp  "${_out_reservoirconfig_cpp_run}"
         --out-glsl "${_out_reservoirconfig_glsl_run}")
     vixen_add_codegen_check(reservoirconfig_check ALL
@@ -974,7 +993,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # file header for the M2-scope note (no probe-update shader reads it yet).
     set(_pgc_args
         "${_yk_dll_run}"
-        --schema "${_schema_config_run}" --struct ProbeGridConfig
+        --schema "${_schema_config_run}" --struct ProbeGridSettings
         --out-cpp  "${_out_probegridconfig_cpp_run}"
         --out-glsl "${_out_probegridconfig_glsl_run}")
     vixen_add_codegen_check(probegridconfig_check ALL

@@ -3,7 +3,6 @@
 #include "Data/Nodes/LightingConfigNodeConfig.h"
 #include "Data/Nodes/SkySphereNodeConfig.h"
 #include "Look/LookResolver.h"
-#include "Nodes/LightingConfigNode.h"
 #include "Nodes/SkySphereNode.h"
 
 #include <array>
@@ -107,22 +106,22 @@ inline Vixen::RenderGraph::PartialLook SceneLookPartial(const SceneLook& look) {
 inline constexpr uint32_t kSceneLookSlot = 0;
 inline constexpr uint32_t kSceneLightsSlot = 1;
 
-inline void SetSceneLookLayer(Vixen::RenderGraph::LightingConfigNode& lighting, const SceneLook& look) {
+inline void SetSceneLookLayer(Vixen::RenderGraph::LookResolver& resolver, const SceneLook& look) {
     Vixen::RenderGraph::LookContribution contribution;
     contribution.look = SceneLookPartial(look);
-    lighting.Look().SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLookSlot, std::move(contribution));
+    resolver.SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLookSlot, std::move(contribution));
 }
 
-inline void SetSceneLightsLayer(Vixen::RenderGraph::LightingConfigNode& lighting,
+inline void SetSceneLightsLayer(Vixen::RenderGraph::LookResolver& resolver,
                                 Vixen::RenderGraph::LookLightSet lights) {
     Vixen::RenderGraph::LookContribution contribution;
     contribution.look.lights = std::move(lights);
-    lighting.Look().SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLightsSlot, std::move(contribution));
+    resolver.SetSlot(Vixen::RenderGraph::LookLayer::Scene, kSceneLightsSlot, std::move(contribution));
 }
 
-inline void ApplySceneLook(Vixen::RenderGraph::LightingConfigNode& lighting,
+inline void ApplySceneLook(Vixen::RenderGraph::LookResolver& resolver,
                            Vixen::RenderGraph::SkySphereNode* skySphere, const SceneLook& look) {
-    SetSceneLookLayer(lighting, look);
+    SetSceneLookLayer(resolver, look);
     if (skySphere) {
         using Sky = Vixen::RenderGraph::SkySphereNodeConfig;
         skySphere->SetParameter(Sky::PARAM_ENABLED, look.environment.starfield ? 1u : 0u);

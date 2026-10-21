@@ -1,6 +1,5 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
-#include "Generated/LightingConfig.glsl"
 #include "ExposureHistogram.glsl"
 
 // Turns ExposureMeter.comp's frame histogram into the adapted exposure:
@@ -12,7 +11,10 @@ layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 layout(std430, binding = 1) buffer ExposureMeterResult { uint words[]; } result;
 #define VIXEN_SOA_ExposureMeterState_BUFFER result
 #include "Generated/ExposureMeterState.glsl"
-layout(std430, binding = 2) readonly buffer LightingConfigSSBO { LightingConfig lightingConfig; };
+layout(std430, binding = 2) buffer SceneLookSettingsSSBO { uint words[]; } sceneLookSettingsBuffer;
+#define VIXEN_SOA_SceneLookSettings_BUFFER sceneLookSettingsBuffer
+#include "Generated/SceneLookSettings.glsl"
+#define lightingConfig SceneLookSettings_Load(0u)
 
 shared uint binCount[kExposureHistogramBins];
 

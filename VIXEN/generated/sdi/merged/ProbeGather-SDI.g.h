@@ -693,17 +693,17 @@ struct LightTreeBufferSSBO {
  * @brief ProbeGridConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf9df306938bceb6 (for runtime discovery)
+ * Layout VixenHash: 0x6986ad1766e7c329 (for runtime discovery)
  */
 struct ProbeGridConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf9df306938bceb6ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x6986ad1766e7c329ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ProbeGridConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 56;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -994,16 +994,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief ProbeGridConfigSSBO
+     * @brief probeGridSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding28 {
-        static constexpr const char* NAME = "ProbeGridConfigSSBO";
+        static constexpr const char* NAME = "probeGridSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 28;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ProbeGridConfigSSBO;
     };
@@ -1099,7 +1099,7 @@ using MipPoolBuffer = Set0::Binding13;
 using InstanceIterDebugBuffer = Set0::Binding14;
 using TierRefTableBuffer = Set0::Binding15;
 using LightTreeBufferSSBO = Set0::Binding24;
-using ProbeGridConfigSSBO = Set0::Binding28;
+using probeGridSettingsBuffer = Set0::Binding28;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 using ShadowRayRequestBuffer = Set0::Binding37;
 using ProbeRayPayloadBuffer = Set0::Binding39;
@@ -1300,7 +1300,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"InstanceIterDebugBuffer", false, 0, 14, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding14},
     {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
-    {"ProbeGridConfigSSBO", false, 0, 28, 0, Access::ReadOnly, 0, nullptr},
+    {"probeGridSettingsBuffer", false, 0, 28, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowRayRequestBuffer", false, 0, 37, 0, Access::WriteOnly, 0, nullptr},
     {"ProbeRayPayloadBuffer", false, 0, 39, 0, Access::WriteOnly, 0, nullptr},

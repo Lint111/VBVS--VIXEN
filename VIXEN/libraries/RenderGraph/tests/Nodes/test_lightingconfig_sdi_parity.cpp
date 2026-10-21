@@ -1,174 +1,21 @@
-/**
- * @file test_lightingconfig_sdi_parity.cpp
- * @brief Drift-guard: the generated `Vixen::Gpu::LightingConfig` C++ layout MUST match
- *        the layout the shipped `SpatialReuseShade.comp` actually compiles to.
- *
- * Sampled Lighting Inc0 M1 (test_lightingconfig_parity.cpp) proved the generated header's
- * own static_asserts hold. The cel shading mode consumes the new fields in
- * SpatialReuseShade.comp, so this SPIR-V-reflection sibling verifies the active consumer —
- * mirrors test_octree_config_sdi_parity.cpp's pattern:
- * reflect the compiled shader via ShaderManagement's SpirvReflector (SPIRV-Reflect) and
- * assert the reflected LightingConfig member's per-field byte offsets match the C++
- * struct's offsetof values. Pure CPU — reflection only, no Vulkan device / no render.
- *
- * GLSL_CEL_SHADE_SPV (path to the build-time-compiled SpatialReuseShade.spv) is
- * supplied by CMake.
- */
-
 #include <gtest/gtest.h>
-
-#include "SpirvReflector.h"
-#include "SpirvReflectionData.h"
-#include "ShaderStage.h"
 
 #include "Generated/LightingConfig.g.h"
 
+#include <array>
 #include <cstddef>
-#include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <vector>
 
-#ifndef GLSL_CEL_SHADE_SPV
-#error "GLSL_CEL_SHADE_SPV (path to compiled SpatialReuseShade.spv) must be defined by CMake"
-#endif
+TEST(LightingConfigSdiParity, GeneratedSettingsRegionsMatchHostRecord) {
+    using Vixen::Gpu::LightingSettings;
+    using Vixen::Gpu::LightingSettingsComponentRegions;
 
-using namespace ShaderManagement;
-
-namespace {
-
-std::vector<uint32_t> ReadSpirv(const char* path) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f) return {};
-    const std::streamsize sz = f.tellg();
-    if (sz <= 0 || (sz % 4) != 0) return {};
-    std::vector<uint32_t> code(static_cast<size_t>(sz) / 4);
-    f.seekg(0);
-    f.read(reinterpret_cast<char*>(code.data()), sz);
-    return code;
-}
-
-// First member named `memberName` across all reflected struct definitions.
-const SpirvStructMember* FindMember(const SpirvReflectionData& r, const std::string& memberName) {
-    for (const auto& sd : r.structDefinitions)
-        for (const auto& m : sd.members)
-            if (m.name == memberName) return &m;
-    return nullptr;
-}
-
-// A named sub-member of a struct member (by name).
-const SpirvStructMember* FindSubMember(const SpirvStructMember& parent, const std::string& name) {
-    for (const auto& m : parent.members)
-        if (m.name == name) return &m;
-    return nullptr;
-}
-
-}  // namespace
-
-// Catches a future edit to SpatialReuseShade.comp's LightingConfig / LightingConfigSSBO
-// (or the [GpuStruct] schema regen) that desyncs the active cel shader from the C++ struct.
-TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
-    using Vixen::Gpu::Light;
-    using Vixen::Gpu::LightingConfig;
-
-    const std::vector<uint32_t> spirv = ReadSpirv(GLSL_CEL_SHADE_SPV);
-    ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_CEL_SHADE_SPV;
-
-    SpirvReflector reflector;
-    auto refl = reflector.ReflectStage(spirv, ShaderStage::Compute);
-    ASSERT_NE(refl, nullptr) << "SPIR-V reflection failed";
-
-    // Locate the lightingConfig SSBO member (its type is the LightingConfig struct).
-    const SpirvStructMember* lightingConfig = FindMember(*refl, "lightingConfig");
-    ASSERT_NE(lightingConfig, nullptr)
-        << "reflection has no member 'lightingConfig' — LightingConfigSSBO changed or names were stripped";
-
-    std::cout << "[reflected LightingConfig] size=" << lightingConfig->type.sizeInBytes
-              << " members=" << lightingConfig->members.size() << "\n";
-    for (const auto& m : lightingConfig->members) {
-        std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
-    }
-
-    // (a) Struct SIZE == C++ struct size (the cel + exposure schema's std430 layout is 272 B).
-    EXPECT_EQ(static_cast<std::size_t>(lightingConfig->type.sizeInBytes), sizeof(LightingConfig))
-        << "LightingConfig size (" << lightingConfig->type.sizeInBytes
-        << ") != sizeof(LightingConfig) (" << sizeof(LightingConfig) << ") — std430 drift";
-    EXPECT_EQ(lightingConfig->type.sizeInBytes, 272u)
-        << "LightingConfig size must be 272 for the cel shading and exposure settings";
-
-    // (b) Top-level field offsets.
-    ASSERT_FALSE(lightingConfig->members.empty())
-        << "SpirvReflector did not surface LightingConfig members";
-
-    const SpirvStructMember* lightCount = FindSubMember(*lightingConfig, "lightCount");
-    ASSERT_NE(lightCount, nullptr) << "shader LightingConfig is missing field 'lightCount'";
-    EXPECT_EQ(static_cast<std::size_t>(lightCount->offset), offsetof(LightingConfig, lightCount));
-
-    const SpirvStructMember* ambientIntensity = FindSubMember(*lightingConfig, "ambientIntensity");
-    ASSERT_NE(ambientIntensity, nullptr) << "shader LightingConfig is missing field 'ambientIntensity'";
-    EXPECT_EQ(static_cast<std::size_t>(ambientIntensity->offset), offsetof(LightingConfig, ambientIntensity));
-
-    const SpirvStructMember* lights = FindSubMember(*lightingConfig, "lights");
-    ASSERT_NE(lights, nullptr) << "shader LightingConfig is missing field 'lights'";
-    EXPECT_EQ(static_cast<std::size_t>(lights->offset), offsetof(LightingConfig, lights));
-
-    // (c) Nested Light element stride == C++ Light size (32 B) — the array-stride proof.
-    // (lights->type.sizeInBytes is the WHOLE array's byte size — kMaxLightsInc0 * stride —
-    // not a single element's; arrayStride is the per-element field.)
-    ASSERT_FALSE(lights->members.empty())
-        << "SpirvReflector did not recurse into the nested Light struct — recursion regressed";
-    EXPECT_EQ(static_cast<std::size_t>(lights->arrayStride), sizeof(Light))
-        << "lights[] array stride (" << lights->arrayStride
-        << ") != sizeof(Light) (" << sizeof(Light) << ") — std430 restride drift";
-
-    struct Field { const char* name; std::size_t cppOffset; };
-    const Field lightFields[] = {
-        {"direction_or_position", offsetof(Light, direction_or_positionX)},  // 0
-        {"kind",                  offsetof(Light, kind)},                   // 12
-        {"radiance",               offsetof(Light, radianceX)},             // 16
-        {"range",                 offsetof(Light, range)},                  // 28
-    };
-    for (const auto& f : lightFields) {
-        const SpirvStructMember* sm = FindSubMember(*lights, f.name);
-        ASSERT_NE(sm, nullptr) << "shader Light is missing field '" << f.name << "'";
-        EXPECT_EQ(static_cast<std::size_t>(sm->offset), f.cppOffset)
-            << "offset drift on '" << f.name << "': shader=" << sm->offset
-            << " C++=" << f.cppOffset;
-    }
-
-    const Field celFields[] = {
-        {"celSpillPurposeScales", offsetof(LightingConfig, celSpillPurposeScales)},
-        {"shadingMode", offsetof(LightingConfig, shadingMode)},
-        {"celBandCount", offsetof(LightingConfig, celBandCount)},
-        {"celShadowThreshold", offsetof(LightingConfig, celShadowThreshold)},
-        {"celLitThreshold", offsetof(LightingConfig, celLitThreshold)},
-        {"celRampSoftness", offsetof(LightingConfig, celRampSoftness)},
-        {"celLitHueShiftDegrees", offsetof(LightingConfig, celLitHueShiftDegrees)},
-        {"celShadowHueShiftDegrees", offsetof(LightingConfig, celShadowHueShiftDegrees)},
-        {"celBandFalloffStart", offsetof(LightingConfig, celBandFalloffStart)},
-        {"celBandFalloffEnd", offsetof(LightingConfig, celBandFalloffEnd)},
-        {"celLightSpillScale", offsetof(LightingConfig, celLightSpillScale)},
-        {"exposureCompensationEV", offsetof(LightingConfig, exposureCompensationEV)},
-        {"dimBandFloor", offsetof(LightingConfig, dimBandFloor)},
-        {"skyColor", offsetof(LightingConfig, skyColorX)},
-        {"skyMode", offsetof(LightingConfig, skyMode)},
-        {"skyGradientSlope", offsetof(LightingConfig, skyGradientSlope)},
-        {"exposureKeyValue", offsetof(LightingConfig, exposureKeyValue)},
-        {"exposureMinEV100", offsetof(LightingConfig, exposureMinEV100)},
-        {"exposureMaxEV100", offsetof(LightingConfig, exposureMaxEV100)},
-        {"exposureLowPercent", offsetof(LightingConfig, exposureLowPercent)},
-        {"exposureHighPercent", offsetof(LightingConfig, exposureHighPercent)},
-        {"exposureSpeedUp", offsetof(LightingConfig, exposureSpeedUp)},
-        {"exposureSpeedDown", offsetof(LightingConfig, exposureSpeedDown)},
-        {"exposureDeltaSeconds", offsetof(LightingConfig, exposureDeltaSeconds)},
-        {"lookSaturation", offsetof(LightingConfig, lookSaturation)},
-    };
-    for (const auto& f : celFields) {
-        const SpirvStructMember* sm = FindSubMember(*lightingConfig, f.name);
-        ASSERT_NE(sm, nullptr) << "shader LightingConfig is missing field '" << f.name << "'";
-        EXPECT_EQ(static_cast<std::size_t>(sm->offset), f.cppOffset)
-            << "offset drift on '" << f.name << "': shader=" << sm->offset
-            << " C++=" << f.cppOffset;
+    EXPECT_EQ(sizeof(LightingSettings), 240u);
+    ASSERT_EQ(LightingSettingsComponentRegions.size(), 18u);
+    constexpr std::array<std::size_t, 18> expectedSourceOffsets{
+        0u, 4u, 16u, 144u, 160u, 164u, 168u, 172u, 176u,
+        180u, 184u, 188u, 192u, 196u, 200u, 208u, 220u, 224u};
+    for (std::size_t i = 0; i < expectedSourceOffsets.size(); ++i) {
+        EXPECT_EQ(LightingSettingsComponentRegions[i].offset, i * sizeof(uint32_t));
+        EXPECT_EQ(LightingSettingsComponentRegions[i].sourceOffset, expectedSourceOffsets[i]);
     }
 }

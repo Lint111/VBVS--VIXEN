@@ -155,7 +155,7 @@ public static class KindSchemas
             "state:scene-look-settings.exposureLowPercent", "state:scene-look-settings.exposureHighPercent",
             "state:scene-look-settings.exposureSpeedUp", "state:scene-look-settings.exposureSpeedDown",
             "state:scene-look-settings.exposureDeltaSeconds", "state:scene-look-settings.lookSaturation",
-            "state:scene-look-settings.presentationMode", "state:scene-look-settings.frameSeed" }),
+            "state:scene-look-settings.presentationMode" }),
         new SystemSchema("vixen:shadow-settings-write", writes: new[] {
             "state:shadow-settings.enabled", "state:shadow-settings.raysPerLight",
             "state:shadow-settings.maxShadowDistance", "state:shadow-settings.biasEpsilon" }),

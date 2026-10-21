@@ -41,11 +41,13 @@ layout(push_constant) uniform GatherPush {
     uint _Frame;
 } pc;
 
+layout(std430, binding = 0) buffer ReservoirConfigSSBO {
+    uint words[];
+} reservoirSettingsBuffer;
+#define VIXEN_SOA_ReservoirSettings_BUFFER reservoirSettingsBuffer
 #include "Generated/ReservoirConfig.glsl"
-
-layout(std430, binding = 0) readonly buffer ReservoirConfigSSBO {
-    ReservoirConfig reservoirConfig;
-};
+#define ReservoirConfig ReservoirSettings
+#define reservoirConfig ReservoirSettings_Load(0u)
 
 #include "Generated/LightTreeBuffer.glsl"
 
