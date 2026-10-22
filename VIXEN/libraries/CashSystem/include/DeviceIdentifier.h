@@ -215,9 +215,7 @@ private:
     // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
     // Access via m_device->GetBudgetManager() instead
 
-    // TypeRegistry will be embedded here for device-specific type registration
-    // This maintains the type-safe caching but per-device
-    // For now, we'll use a placeholder until we refactor TypeRegistry
+    // Per-device cachers (type-safe caching, scoped to this device)
     std::vector<std::unique_ptr<CacherBase>> m_deviceCachers;
 
     void OnInitialize();

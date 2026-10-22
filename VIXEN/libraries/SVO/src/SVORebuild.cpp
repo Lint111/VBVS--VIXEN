@@ -227,9 +227,6 @@ std::array<glm::vec3, 512> precomputeGeometricNormals(const EntityBrickView& bri
 
 void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax) {
 
-    // 1. Acquire write lock (blocks rendering)
-    std::unique_lock<std::shared_mutex> lock(m_renderLock);
-
     // 2. Initialize VolumeGrid for integer grid coordinate handling
     m_volumeGrid = VolumeGrid::fromWorldAABB(AABB{worldMin, worldMax});
 
@@ -765,8 +762,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
 void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
 
-    std::unique_lock<std::shared_mutex> lock(m_renderLock);
-
     if (!m_octree || !m_octree->root) {
         return;
     }
@@ -830,8 +825,6 @@ void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t bloc
 }
 
 void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
-    std::unique_lock<std::shared_mutex> lock(m_renderLock);
-
     if (!m_octree || !m_octree->root) {
         return;
     }
@@ -861,14 +854,6 @@ void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t bloc
 
     auto& brickGridMap = m_octree->root->brickGridToBrickView;
     brickGridMap.erase(gridKey);
-}
-
-void LaineKarrasOctree::lockForRendering() {
-    m_renderLock.lock();
-}
-
-void LaineKarrasOctree::unlockAfterRendering() {
-    m_renderLock.unlock();
 }
 
 } // namespace Vixen::SVO

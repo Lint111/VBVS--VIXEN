@@ -29,8 +29,7 @@ ResourceManagement/
 │   ├── IMemoryAllocator.h   # Allocator interface
 │   ├── VMAAllocator.h       # VMA-backed allocator
 │   ├── DirectAllocator.h    # Simple vkAllocateMemory wrapper
-│   ├── ResourceBudgetManager.h # Budget tracking
-│   └── BudgetBridge.h       # RenderGraph integration
+│   └── ResourceBudgetManager.h # Budget tracking
 └── Lifetime/                # Resource lifetime management
     ├── LifetimeScope.h      # Bulk resource lifecycle
     ├── SharedResource.h     # Reference-counted resources
@@ -282,21 +281,7 @@ sharedBuffer->Release();  // Decrement, destroy when zero
 
 ## 4. RenderGraph Integration
 
-### 4.1 BudgetBridge
-
-Connects DeviceBudgetManager to RenderGraph:
-
-```cpp
-#include <Memory/BudgetBridge.h>
-
-// In RenderGraph setup
-auto bridge = std::make_shared<BudgetBridge>(budgetManager);
-renderGraph.SetBudgetBridge(bridge);
-
-// RenderGraph now uses budget-tracked allocation
-```
-
-### 4.2 Cacher Integration
+### 4.1 Cacher Integration
 
 TypedCacher and MainCacher use AllocateBufferTracked:
 
@@ -380,5 +365,5 @@ CSV export columns:
 ## Related Pages
 
 - [[Overview]] - Library index
-- [[RenderGraph]] - Uses DeviceBudgetManager via BudgetBridge
+- [[RenderGraph]] - Uses DeviceBudgetManager
 - [[Profiler]] - Exports resource metrics

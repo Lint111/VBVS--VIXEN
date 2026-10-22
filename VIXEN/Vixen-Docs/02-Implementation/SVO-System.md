@@ -374,14 +374,9 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world,
 ### 8.2 Partial Updates
 
 ```cpp
-// Thread-safe partial updates
+// Partial updates: not synchronised, the caller needs exclusive access to the octree
 octree.updateBlock(blockWorldMin, depth);
 octree.removeBlock(blockWorldMin, depth);
-
-// Concurrency control
-octree.lockForRendering();
-// ... GPU ray casting ...
-octree.unlockAfterRendering();
 ```
 
 ---

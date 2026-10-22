@@ -4,7 +4,6 @@
 
 #include "CacherBase.h"
 #include "RuntimeCachePaths.h"
-#include "TypeRegistry.h"
 #include "TypedCacher.h"
 #include "DeviceIdentifier.h"
 #include "ILoggable.h"
