@@ -799,6 +799,7 @@ void RenderGraph::ExecuteCleanup() {
 
     // Ensure devices are idle before running cleanup
     WaitForGraphDevicesIdle();
+    ReleaseQueueTimelines();
 
     cleanupStack.ExecuteAll();
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup complete");
@@ -1161,6 +1162,9 @@ bool RenderGraph::RecoverFromDeviceLoss() {
             GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] GPU did not drain within the watchdog bound — the device is unrecoverable");
             return false;
         }
+        // The queues are drained or lost: release the owner's pending one-shots and its timelines
+        // before the devices they belong to are destroyed.
+        ReleaseQueueTimelines();
 
         // --- Pass 1: TEARDOWN in REVERSE execution order (children before the device) ---
         // reason = DeviceLost: every node releases its device-child resources (same as Recompile, which
@@ -1260,28 +1264,146 @@ int RenderGraph::GraphWorkerCount() const {
     return static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
 }
 
-bool RenderGraph::PublishSubmit(NodeInstance* producer, SubmitRecord&& record) {
-    // Only accept when the lowered executor owns this frame AND the producer has a valid slot.
-    // Otherwise the caller submits directly under its guard (unchanged behaviour) — this is the
-    // structural fallback that keeps a headless/sequential/test graph correct.
-    if (!submitChannelDraining_ || !submitChannel_.IsConfigured() || !producer) return false;
-    const std::size_t ordinal = producer->GetSubmitOrdinal();
-    if (ordinal >= submitChannel_.Size()) return false;
-    // The owner drains through the producing node's own device (queue + fpQueueSubmit2). A node with
-    // no device cannot be drained — reject so it submits directly (it has nothing to submit through
-    // the channel anyway).
-    if (!producer->GetDevice()) return false;
-    record.device = producer->GetDevice();
-    submitChannel_.Publish(ordinal, std::move(record));
-    return true;
+VkResult RenderGraph::SubmitNodeWork(NodeInstance* producer, SubmitRecord&& record) {
+    VulkanDevice* const device = producer ? producer->GetDevice() : nullptr;
+    if (!device) {
+        if (record.onRetired) record.onRetired();  // nothing was submitted
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    record.device = device;
+    // Lowered executor: publish into the producer's own slot; the owner drain issues it after the
+    // wave barrier. Sequential executor: the producer runs on the graph thread, which is the owner.
+    if (submitChannelDraining_ && submitChannel_.IsConfigured() &&
+        producer->GetSubmitOrdinal() < submitChannel_.Size()) {
+        submitChannel_.Publish(producer->GetSubmitOrdinal(), std::move(record));
+        return VK_SUCCESS;
+    }
+    return IssueRecord(record);
+}
+
+VkResult RenderGraph::SubmitOneShot(NodeInstance* producer, VkCommandPool pool, VkCommandBuffer cmd,
+                                    std::function<void()> release) {
+    VulkanDevice* const device = producer ? producer->GetDevice() : nullptr;
+    SubmitRecord record;
+    VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    command.commandBuffer = cmd;
+    record.commandBuffers.push_back(command);
+    const VkDevice vkDevice = device ? device->device : VK_NULL_HANDLE;
+    record.onRetired = [vkDevice, pool, cmd, release = std::move(release)] {
+        if (vkDevice != VK_NULL_HANDLE && pool != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
+            vkFreeCommandBuffers(vkDevice, pool, 1, &cmd);
+        if (release) release();
+    };
+    return SubmitNodeWork(producer, std::move(record));
+}
+
+VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
+    VulkanDevice* const device = rec.device;
+    if (!device) return VK_ERROR_INITIALIZATION_FAILED;
+    QueueTimeline& timeline = queueTimelines_[device->queue];
+    if (timeline.semaphore == VK_NULL_HANDLE) {
+        VkSemaphoreTypeCreateInfo typeInfo{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        info.pNext = &typeInfo;
+        const VkResult created = vkCreateSemaphore(device->device, &info, nullptr, &timeline.semaphore);
+        if (created != VK_SUCCESS) {
+            timeline.semaphore = VK_NULL_HANDLE;
+            if (rec.onRetired) rec.onRetired();
+            ReportGpuFault("RenderGraph::IssueRecord vkCreateSemaphore (queue timeline)", created);
+            return created;
+        }
+        timeline.device = device->device;
+    }
+
+    // Residual VK2, held only around the queue calls themselves (never across the timeline cap
+    // wait): the off-graph submitters (BatchedUploader, AS builds, readbacks) still submit to this
+    // queue from other threads.
+    auto& queueLock = device->SubmitMutex(device->queue);
+    VkResult result = VK_SUCCESS;
+    {
+        if (rec.present) {
+            VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+            VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
+            if (rec.presentFence != VK_NULL_HANDLE) {
+                presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
+                presentFenceInfo.swapchainCount = 1;
+                presentFenceInfo.pFences = &rec.presentFence;
+                presentInfo.pNext = &presentFenceInfo;
+            }
+            presentInfo.waitSemaphoreCount = rec.presentWait != VK_NULL_HANDLE ? 1u : 0u;
+            presentInfo.pWaitSemaphores = rec.presentWait != VK_NULL_HANDLE ? &rec.presentWait : nullptr;
+            presentInfo.swapchainCount = 1;
+            presentInfo.pSwapchains = &rec.swapchain;
+            presentInfo.pImageIndices = &rec.imageIndex;
+            const auto started = std::chrono::steady_clock::now();
+            if (rec.presentFn) {
+                std::lock_guard submitLock(queueLock);
+                result = rec.presentFn(device->queue, &presentInfo);
+            } else {
+                result = VK_ERROR_INITIALIZATION_FAILED;
+            }
+            if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
+                const auto completed = std::chrono::steady_clock::now();
+                std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count()),
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
+                    static_cast<int>(result));
+            }
+        } else {
+            const PFN_vkQueueSubmit2 submit2 = device->fpQueueSubmit2;
+            const VkQueue queue = device->queue;
+            result = submit2
+                ? rec.Submit([&queueLock, submit2, queue](const VkSubmitInfo2& info, VkFence fence) {
+                      std::lock_guard submitLock(queueLock);
+                      return submit2(queue, 1, &info, fence);
+                  }, timeline)
+                : VK_ERROR_INITIALIZATION_FAILED;
+        }
+    }
+    if (rec.onRetired) {
+        if (result == VK_SUCCESS && !rec.present) timeline.Defer(timeline.lastSignaled, std::move(rec.onRetired));
+        else rec.onRetired();
+        rec.onRetired = nullptr;
+    }
+    return result;
+}
+
+GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device) {
+    if (!device || submitChannelDraining_) return {};
+    const auto found = queueTimelines_.find(device->queue);
+    if (found == queueTimelines_.end() || found->second.semaphore == VK_NULL_HANDLE) return {};
+    QueueTimeline& timeline = found->second;
+    if (const VkResult polled = timeline.Poll(); polled != VK_SUCCESS) return MakeWaitResult(polled);
+    if (timeline.completed >= timeline.lastSignaled) return {};
+    const GpuWaitResult waited = BoundedWaitSemaphore(timeline.device, timeline.semaphore, timeline.lastSignaled);
+    if (waited.Ok()) (void)timeline.Poll();
+    return waited;
+}
+
+void RenderGraph::RetireCompletedSubmissions() {
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        if (timeline.Poll() != VK_SUCCESS) continue;  // a lost device is released at teardown
+        for (auto& release : timeline.TakeCompleted()) release();
+    }
+}
+
+void RenderGraph::ReleaseQueueTimelines() {
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        for (auto& release : timeline.TakeAll()) release();
+        if (timeline.semaphore != VK_NULL_HANDLE && timeline.device != VK_NULL_HANDLE)
+            vkDestroySemaphore(timeline.device, timeline.semaphore, nullptr);
+    }
+    queueTimelines_.clear();
 }
 
 // The queue owner (design §2.5): issue every submit published by the nodes that just completed this
 // wave, in canonical ordinal order. Runs on the graph caller thread after the wave barrier, so the
-// per-slot writes are visible with no lock and physical-queue access is serial by construction (one
-// owner, one thread) — no VK2 mutex. Present records are issued via their present function; ordinary
-// records via fpQueueSubmit2. A failed submit is recorded as a channel fault (device-loss surfaces
-// through RenderFrame's existing deviceLost_ path), replacing each node's former inline throw.
+// per-slot writes are visible with no lock and the owner state is touched by one thread only. A
+// failed submit is recorded as a channel fault (device-loss surfaces through RenderFrame's existing
+// deviceLost_ path), replacing each node's former inline throw.
 void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave) {
     if (!submitChannel_.IsConfigured()) return;
     PhaseTiming::ScopedWait drainTimer("queue-owner-drain");
@@ -1299,48 +1421,16 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
     std::sort(ordinals.begin(), ordinals.end());
 
     for (const std::size_t ordinal : ordinals) {
-        SubmitRecord& rec = submitChannel_.Record(ordinal);
-        VulkanDevice* const device = rec.device;  // the producing node's device (set at publish)
-        if (rec.present) {
-            VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-            VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
-            if (rec.presentFence != VK_NULL_HANDLE) {
-                presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
-                presentFenceInfo.swapchainCount = 1;
-                presentFenceInfo.pFences = &rec.presentFence;
-                presentInfo.pNext = &presentFenceInfo;
-            }
-            presentInfo.waitSemaphoreCount = rec.presentWait != VK_NULL_HANDLE ? 1u : 0u;
-            presentInfo.pWaitSemaphores = rec.presentWait != VK_NULL_HANDLE ? &rec.presentWait : nullptr;
-            presentInfo.swapchainCount = 1;
-            presentInfo.pSwapchains = &rec.swapchain;
-            presentInfo.pImageIndices = &rec.imageIndex;
-            if (rec.presentFn && device) {
-                const auto started = std::chrono::steady_clock::now();
-                const VkResult r = rec.presentFn(device->queue, &presentInfo);
-                if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
-                    const auto completed = std::chrono::steady_clock::now();
-                    std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
-                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count()),
-                        static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
-                        static_cast<int>(r));
-                }
-                // VK_SUBOPTIMAL_KHR / OUT_OF_DATE are handled by the swapchain nodes as before; only
-                // a hard failure is a channel fault. (Present result is not fed back per-node today.)
-                if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
-                    submitChannel_.RecordFault("vkQueuePresentKHR (queue-owner)", r);
-                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueuePresentKHR", r);
-                }
-            }
-        } else {
-            if (device && device->fpQueueSubmit2) {
-                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
-                                              vkQueueWaitIdle, &outstandingBatches_[device->queue]);
-                if (r != VK_SUCCESS) {
-                    submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
-                    ReportGpuFault("RenderGraph::DrainSubmitWave vkQueueSubmit2", r);
-                }
-            }
+        for (SubmitRecord& rec : submitChannel_.Records(ordinal)) {
+            const VkResult r = IssueRecord(rec);
+            // VK_SUBOPTIMAL_KHR / OUT_OF_DATE are handled by the swapchain nodes as before; only
+            // a hard failure is a channel fault.
+            if (r == VK_SUCCESS || (rec.present && (r == VK_SUBOPTIMAL_KHR || r == VK_ERROR_OUT_OF_DATE_KHR)))
+                continue;
+            submitChannel_.RecordFault(rec.present ? "vkQueuePresentKHR (queue-owner)"
+                                                   : "vkQueueSubmit2 (queue-owner)", r);
+            ReportGpuFault(rec.present ? "RenderGraph::DrainSubmitWave vkQueuePresentKHR"
+                                       : "RenderGraph::DrainSubmitWave vkQueueSubmit2", r);
         }
     }
 }
@@ -1367,7 +1457,7 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
     frameWaveStats_.wholeSlotRows = frameWaveStats_.rows;
 
     // Lock-free phase 1: the owner drains published submits per wave, so a frame-path node's
-    // PublishSubmit is accepted only for the duration of the lowered frame. Reset the slots first.
+    // SubmitNodeWork publishes only for the duration of the lowered frame. Reset the slots first.
     submitChannel_.BeginFrame();
     submitChannelDraining_ = true;
     struct DrainGuard {
@@ -1560,6 +1650,8 @@ VkResult RenderGraph::RenderFrame() {
     frameAborted_ = false;
     frameFault_ = VK_SUCCESS;
     BeginExecutionEpoch();
+    // Owner phase, graph thread, before any node runs: release the one-shots the GPU has finished.
+    RetireCompletedSubmissions();
 
     // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
     // counters at frame end. Two clock reads per frame; kept unconditional so the CSV columns
@@ -1893,6 +1985,9 @@ void RenderGraph::WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices
             vkDeviceWaitIdle(dev);
         }
     }
+    // Idle queues have reached every timeline value: run the pending one-shot releases now, before
+    // the recompile/cleanup that follows can destroy the pools they free into.
+    RetireCompletedSubmissions();
 }
 
 Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {

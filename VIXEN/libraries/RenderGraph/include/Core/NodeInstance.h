@@ -116,7 +116,7 @@ public:
     // assigned at compile. Used as the node's per-frame submit-channel slot index so a frame-path
     // submit publishes into its OWN slot with no lock (design §2.5). SIZE_MAX = not assigned (a node
     // that never runs through the lowered executor, e.g. a headless/test path); such a node must not
-    // publish. See RenderGraph::PublishSubmit / SubmitChannel.h.
+    // publish (its submits are issued at once by the owner instead). See RenderGraph::SubmitNodeWork.
     std::size_t GetSubmitOrdinal() const { return submitOrdinal_; }
     void SetSubmitOrdinal(std::size_t ordinal) { submitOrdinal_ = ordinal; }
 

@@ -14,7 +14,6 @@
 #include "VulkanDevice.h"
 #include "IRenderTarget.h"
 #include "Core/NodeLogging.h"
-#include <mutex>
 #include <set>
 #include <stdexcept>
 
@@ -242,19 +241,13 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Terminal blit: this path assigns the binary fence to Blit.
     VkFence submitFence = submissionPolicy.ownsFrameFence ? inFlightFence : VK_NULL_HANDLE;
 
-    // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
-    // order after the wave. Inactive channel (sequential/headless) -> guarded direct submit.
-    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, submitFence))) {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
-        if (result != VK_SUCCESS) {
-            NODE_LOG_ERROR("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
-            GetOwningGraph()->ReportGpuFault("BlitNode::ExecuteImpl vkQueueSubmit2", result);
-            return;
-        }
-
+    // R715: the graph's single submission point (published on the lowered executor, issued by the
+    // owner at once on the sequential one).
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, submitFence));
+        result != VK_SUCCESS) {
+        NODE_LOG_ERROR("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("BlitNode::ExecuteImpl vkQueueSubmit2", result);
+        return;
     }
 
     // Baked-Perf M6 Task 6.3: publish the real semaphore only when this submit actually

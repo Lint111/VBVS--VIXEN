@@ -6,7 +6,6 @@
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Message.h"
-#include <mutex>
 #include <stdexcept>
 #include <chrono>
 #include <cstdio>
@@ -239,17 +238,12 @@ void FrameSyncNode::HandleFrameEnd() {
     signal.value = completionValue;
     signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
-    VkSubmitInfo2 submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    submit.signalSemaphoreInfoCount = 1;
-    submit.pSignalSemaphoreInfos = &signal;
+    // R715: the frame completion marker goes through the graph's single submission point too.
+    SubmitRecord marker;
+    marker.signals.push_back(signal);
 
     VulkanDevice* const vulkanDevice = GetDevice();
-    VkResult result;
-    {
-        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &submit, VK_NULL_HANDLE);
-    }
+    const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(marker));
     if (result != VK_SUCCESS) {
         frameCompletionSubmitFailure_ = result;
         NODE_LOG_ERROR("FrameSyncNode: failed to submit frame completion timeline marker: " +

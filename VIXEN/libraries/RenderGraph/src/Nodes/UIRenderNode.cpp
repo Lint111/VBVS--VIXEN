@@ -255,7 +255,6 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = device->device;
     queue_ = device->queue;
     fpQueueSubmit2_ = device->fpQueueSubmit2;  // per-device PFN, refreshed each compile (valid after device-loss recovery)
-    submitMutex_ = &device->SubmitMutex(device->queue);
     extent_ = sc->GetExtent();
 
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
@@ -598,15 +597,11 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    // Lock-free phase 1 (design §2.5): publish this node's fence-owning submit to the queue-owner
-    // channel; the owner drains it in canonical order. When the channel is inactive
-    // (sequential/headless), fall back to the guarded direct submit.
-    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence))) {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
-        if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
-        fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
+    // R715: this node's fence-owning submit goes through the graph's single submission point.
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence));
+        result != VK_SUCCESS) {
+        GetOwningGraph()->ReportGpuFault("UIRenderNode::ExecuteImpl vkQueueSubmit2", result);
+        return;
     }
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);

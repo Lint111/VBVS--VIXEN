@@ -3,7 +3,7 @@
 
 One row per non-test file under `libraries/` and `application/` that carries std mutex/guard syntax (the census lexer of `2026-09-08-runtime-lock-inventory-and-classification.md`). Families come from `scripts/no-new-mutex.allowlist`; sites are `enclosing symbol -> lock alias` and carry no line numbers, so an unrelated edit does not move them. An alias is a declared lock (`mutex m_mutex`, `mutex& m`), a guard over its lock expression (`lock_guard(m_mutex)`), or a guard parameter/variable (`unique_lock lk`).
 
-84 files, 48 owning declarations.
+73 files, 48 owning declarations.
 
 | Source file | Owned | Families | Acquisition sites (symbol -> lock alias) |
 |---|---|---|---|
@@ -30,28 +30,17 @@ One row per non-test file under `libraries/` and `application/` that carries std
 | `libraries/RenderGraph/include/Nodes/InputNode.h` | 1 | RG3 | `InputNode` -> `Mutex<Vixen::LockCensus::Family::RG3> eventMutex_` |
 | `libraries/RenderGraph/include/Nodes/LightTreeBufferNode.h` | 1 | RG5 | `LightTreeBufferNode` -> `mutex cutMutex_` |
 | `libraries/RenderGraph/include/Nodes/WindowNode.h` | 2 | RG4 | `WindowNode` -> `Mutex<Vixen::LockCensus::Family::RG4, std::recursive_mutex> eventMutex` |
+| `libraries/RenderGraph/src/Core/RenderGraph.cpp` | 0 | VK2-borrowed | `RenderGraph::IssueRecord` -> `lock_guard(queueLock)` |
 | `libraries/RenderGraph/src/Nodes/AccumulationHistoryNode.cpp` | 0 | VK2-borrowed | `AccumulationHistoryNode::TransitionToGeneral` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
-| `libraries/RenderGraph/src/Nodes/BlitNode.cpp` | 0 | VK2-borrowed | `BlitNode::TypedExecuteImpl` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
 | `libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp` | 0 | VK2-borrowed | `BodyOctreeSceneNode::EnsureRtQueryTlasBuilt` -> `lock_guard(device->SubmitMutex(device->queue))` |
-| `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp` | 0 | VK2-borrowed | `ComputeDispatchNode::TypedExecuteImpl` -> `lock_guard(vulkanDevice->SubmitMutex(vulkanDevice->queue))` |
-| `libraries/RenderGraph/src/Nodes/ComputeStageNode.cpp` | 0 | VK2-borrowed | `ComputeStageNode::TypedExecuteImpl` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
 | `libraries/RenderGraph/src/Nodes/DepthBufferNode.cpp` | 0 | VK2-borrowed | `DepthBufferNode::TransitionDepthImageLayout` -> `lock_guard(vulkanDevice->SubmitMutex(vulkanDevice->queue))` |
 | `libraries/RenderGraph/src/Nodes/DepthTargetNode.cpp` | 0 | VK2-borrowed | `DepthTargetNode::CreateImages` -> `lock_guard(device->SubmitMutex(device->queue))` |
-| `libraries/RenderGraph/src/Nodes/FrameSyncNode.cpp` | 0 | VK2-borrowed | `FrameSyncNode::HandleFrameEnd` -> `lock_guard(vulkanDevice->SubmitMutex(vulkanDevice->queue))` |
-| `libraries/RenderGraph/src/Nodes/GeometryRenderNode.cpp` | 0 | VK2-borrowed | `GeometryRenderNode::TypedExecuteImpl` -> `lock_guard(device->SubmitMutex(device->queue))` |
 | `libraries/RenderGraph/src/Nodes/InputNode.cpp` | 0 | RG3 | `InputNode::ClearInputOnFocusLoss` -> `lock_guard(eventMutex_)`<br>`InputNode::ProcessPendingInput` -> `lock_guard(eventMutex_)`<br>`InputNode::QueueEvent` -> `lock_guard(eventMutex_)` |
 | `libraries/RenderGraph/src/Nodes/LightTreeBufferNode.cpp` | 0 | RG5 | `LightTreeBufferNode::SetLightTreeCut` -> `lock_guard(cutMutex_)`<br>`LightTreeBufferNode::TypedExecuteImpl` -> `lock_guard(cutMutex_)` |
-| `libraries/RenderGraph/src/Nodes/MultiDispatchNode.cpp` | 0 | VK2-borrowed | `MultiDispatchNode::TypedExecuteImpl` -> `lock_guard(vulkanDevice_->SubmitMutex(vulkanDevice_->queue))` |
-| `libraries/RenderGraph/src/Nodes/PassGroupNode.cpp` | 0 | VK2-borrowed | `PassGroupNode::VariadicExecuteImpl` -> `lock_guard(vulkanDevice->SubmitMutex(vulkanDevice->queue))` |
 | `libraries/RenderGraph/src/Nodes/PickIdTargetNode.cpp` | 0 | VK2-borrowed | `PickIdTargetNode::TransitionAllToGeneral` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
-| `libraries/RenderGraph/src/Nodes/PresentNode.cpp` | 0 | VK2-borrowed | `PresentNode::Present` -> `lock_guard(device->SubmitMutex(device->queue))` |
 | `libraries/RenderGraph/src/Nodes/ProbeAtlasNode.cpp` | 0 | VK2-borrowed | `ProbeAtlasNode::TransitionToGeneral` -> `lock_guard(device_->SubmitMutex(device_->queue))` |
-| `libraries/RenderGraph/src/Nodes/ProxyRasterStageNode.cpp` | 0 | VK2-borrowed | `ProxyRasterStageNode::TypedExecuteImpl` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
 | `libraries/RenderGraph/src/Nodes/ShellRevalidateNode.cpp` | 0 | VK2-borrowed | `ShellRevalidateNode::TypedExecuteImpl` -> `lock_guard(vulkanDevice_->SubmitMutex(vulkanDevice_->queue))` |
-| `libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp` | 0 | VK2-borrowed | `SkyProjectionNode::TypedExecuteImpl` -> `lock_guard(GetDevice()->SubmitMutex(queue_))` |
 | `libraries/RenderGraph/src/Nodes/SkySphereNode.cpp` | 0 | VK2-borrowed | `SkySphereNode::TransitionToGeneral` -> `lock_guard(device_->SubmitMutex(device_->queue))`<br>`SkySphereNode::UploadPixels` -> `lock_guard(device_->SubmitMutex(device_->queue))` |
-| `libraries/RenderGraph/src/Nodes/TraceRaysNode.cpp` | 0 | VK2-borrowed | `TraceRaysNode::TypedExecuteImpl` -> `lock_guard(vulkanDevice_->SubmitMutex(vulkanDevice_->queue))` |
-| `libraries/RenderGraph/src/Nodes/UIRenderNode.cpp` | 0 | VK2-borrowed | `UIRenderNode::TypedExecuteImpl` -> `unique_lock lock`<br>`UIRenderNode::TypedExecuteImpl` -> `unique_lock(*submitMutex_)` |
 | `libraries/RenderGraph/src/Nodes/VoxelSelectionProviderNode.cpp` | 0 | VK2-borrowed | `VoxelSelectionProviderNode::ReadPixelAt` -> `lock_guard(device->SubmitMutex(device->queue))`<br>`VoxelSelectionProviderNode::SubmitTrackingReadback` -> `lock_guard(device->SubmitMutex(device->queue))` |
 | `libraries/RenderGraph/src/Nodes/WindowNode.cpp` | 0 | RG4 | `WindowNode::InjectWindowEvent` -> `lock_guard(eventMutex)`<br>`WindowNode::OnFramebufferSize` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowClose` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowFocus` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowIconify` -> `lock_guard(self->eventMutex)`<br>`WindowNode::PendingEventCountForTest` -> `lock_guard(eventMutex)`<br>`WindowNode::ProcessPendingEvents` -> `lock_guard(eventMutex)`<br>`WindowNode::TypedExecuteImpl` -> `lock_guard(eventMutex)` |
 | `libraries/RenderGraph/src/Nodes/WorldPosHistoryNode.cpp` | 0 | VK2-borrowed | `WorldPosHistoryNode::TransitionToGeneral` -> `lock_guard(GetDevice()->SubmitMutex(GetDevice()->queue))` |
