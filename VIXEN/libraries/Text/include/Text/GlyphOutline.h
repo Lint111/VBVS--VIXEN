@@ -9,6 +9,7 @@
 #include FT_FREETYPE_H
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -49,10 +50,11 @@ struct GlyphOutlineBakeDiagnostic {
 };
 
 // Position values use the same 26.6 pixel units as FreeType and HarfBuzz.
-// Each positioned glyph refers directly to the atlas-owned typed instance row;
-// repeated glyphs across strings share that same immutable bucket.
+// Each positioned glyph carries the atlas-owned row index; repeated glyphs across strings
+// share that same immutable bucket, while the shared pointer remains for CPU bounds/metrics.
 struct PositionedGlyphOutline {
     std::uint32_t glyphId = 0;
+    std::uint32_t outlineIndex = std::numeric_limits<std::uint32_t>::max();
     std::uint32_t cluster = 0;
     std::shared_ptr<const GlyphOutlineInstance> instance;
     std::int32_t x = 0;
@@ -80,7 +82,7 @@ bool LoadGlyphOutline(FT_Face fontFace, std::uint32_t glyphId,
                       GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
 
 // Shape a literal with the selected preset, preserve its visual bidi run order,
-// and attach one typed glyph-instance reference to every positioned glyph. The
+// and attach one atlas blob index plus typed glyph-instance reference to every positioned glyph. The
 // caller applies worldUnitsPerPixel / 64 to both contour coordinates and
 // instance positions. RTL layouts carry mirrorX so the scene transform can
 // mirror the sign as a whole.

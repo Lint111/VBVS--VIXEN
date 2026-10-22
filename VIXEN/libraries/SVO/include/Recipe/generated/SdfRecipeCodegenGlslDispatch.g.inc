@@ -1059,7 +1059,7 @@ case SdfOpCode::ReadParamQ16: {
 case SdfOpCode::GlyphOutline: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_GlyphOutline(" + curPos + ", " + "glyphOutlineInstances[" + std::to_string(std::bit_cast<std::uint32_t>(in.data[0])) + "]" + ");\n";
+    body += "  precise float " + t + " = SdfCore_GlyphOutline(" + curPos + ", " + std::to_string(std::bit_cast<std::uint32_t>(in.data[0])) + "u" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;

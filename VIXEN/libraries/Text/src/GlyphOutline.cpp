@@ -214,6 +214,10 @@ WorldTextLayout ShapeWorldText(const PresetDesc& preset,
                 result.diagnostics.push_back(diagnostic);
                 return result;
             }
+            const std::uint32_t outlineIndex = glyphAtlas.GetOrAddOutlineIndex(
+                fontFace, glyph.glyphId, nullptr);
+            if (outlineIndex == std::numeric_limits<std::uint32_t>::max())
+                return {};
 
             const std::int64_t positionedX = penX + glyph.xOffset;
             const std::int64_t positionedY = penY + glyph.yOffset;
@@ -224,6 +228,7 @@ WorldTextLayout ShapeWorldText(const PresetDesc& preset,
                 return {};
 
             result.glyphs.push_back({glyph.glyphId,
+                                     outlineIndex,
                                      glyph.cluster,
                                      std::move(instance),
                                      static_cast<std::int32_t>(positionedX),
