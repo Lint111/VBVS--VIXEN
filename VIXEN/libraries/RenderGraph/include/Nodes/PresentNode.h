@@ -2,7 +2,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/PresentNodeConfig.h"
-#include "Core/BoundedQueueIdle.h"
+#include "Core/GpuFault.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -56,7 +56,6 @@ protected:
 private:
     // Configuration from parameters
     bool waitForIdle = true;
-    BoundedQueueIdle idleWait_;
 
     // State
     VkResult lastResult = VK_SUCCESS;

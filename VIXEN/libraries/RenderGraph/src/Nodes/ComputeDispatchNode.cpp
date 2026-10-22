@@ -5,7 +5,6 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
-#include <mutex>
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "Nodes/Common/GpuDeviceClass.h"
@@ -375,15 +374,11 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
     }
     submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
-    if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
-        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        const VkResult result = record.Submit(
-            vulkanDevice->fpQueueSubmit2, vulkanDevice->queue);
-        if (result != VK_SUCCESS) {
-            NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
-            GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2", result);
-            return;
-        }
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
+        result != VK_SUCCESS) {
+        NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2", result);
+        return;
     }
 
     // Output semaphore for Present to wait on

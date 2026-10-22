@@ -494,6 +494,25 @@ TEST(DeferredDestructionConcurrencyTest, ConcurrentAddGenericAndProcessFrameNoCo
     EXPECT_EQ(queue.GetPendingCount(), 0u);
 }
 
+TEST(DeferredDestructionConcurrencyTest, DestructorThatQueuesAnotherRunsOnTheNextDrain) {
+    // R715: producers only touch the wait-free inbox, so a destructor that releases another
+    // resource (re-entering AddGeneric from inside ProcessFrame) can neither deadlock nor be lost.
+    DeferredDestructionQueue queue;
+    int outer = 0, inner = 0;
+    queue.AddGeneric([&] {
+        ++outer;
+        queue.AddGeneric([&inner] { ++inner; }, /*currentFrame=*/5);
+    }, /*currentFrame=*/0);
+    queue.ProcessFrame(3, 3);
+    EXPECT_EQ(outer, 1);
+    EXPECT_EQ(inner, 0);
+    EXPECT_EQ(queue.GetPendingCount(), 1u);
+    queue.ProcessFrame(8, 3);
+    EXPECT_EQ(inner, 1);
+    EXPECT_EQ(queue.GetPendingCount(), 0u);
+    EXPECT_EQ(queue.GetPreAllocationStats().totalQueued, 2u);
+}
+
 // ============================================================================
 // DeferredDestructionQueue Pre-Allocation Tests (Sprint 5.5 Task #300)
 // ============================================================================

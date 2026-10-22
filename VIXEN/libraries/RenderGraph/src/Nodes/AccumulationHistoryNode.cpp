@@ -7,7 +7,6 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
-#include <mutex>
 #include <stdexcept>
 
 // Local helper — mirrors RenderGraph::NodeHelpers::FindMemoryType from BufferHelpers.h but defined
@@ -267,23 +266,13 @@ void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkI
         throw std::runtime_error("[AccumulationHistoryNode] vkEndCommandBuffer (transition) failed");
     }
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &cmd;
-
-    // Submit on the device queue and wait — this runs once at Compile, before any dispatch.
-    // Externally synchronized per Vulkan spec (audit V-M11) regardless.
-    {
-        std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        if (vkQueueSubmit(GetDevice()->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-            vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-            throw std::runtime_error("[AccumulationHistoryNode] vkQueueSubmit (transition) failed");
-        }
-        vkQueueWaitIdle(GetDevice()->queue);
+    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
+    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
+    // so there is no submit-then-wait-idle here.
+    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
+        throw std::runtime_error("[AccumulationHistoryNode] vkQueueSubmit (transition) failed");
     }
 
-    vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }
 
 void AccumulationHistoryNode::DestroyImages() {

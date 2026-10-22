@@ -5,12 +5,12 @@
 // host-visible vertex/index buffers. RmlUi compiles geometry on layout change (not per frame), so the
 // buffers are cheap. The owning UIRenderNode calls Init() once (Compile) and BeginFrame()+context
 // Render() each frame; draws are recorded into the BeginFrame() command buffer.
-#include "LockCensus.h"
+
 #include <vulkan/vulkan.h>
 #include <RmlUi/Core/RenderInterface.h>
 
 #include <cstdint>
-#include <mutex>
+#include <functional>
 #include <span>
 #include <unordered_map>
 #include <utility>
@@ -26,14 +26,16 @@ public:
     VixenRmlRenderInterface() = default;
     ~VixenRmlRenderInterface() override = default;
 
+    /// Hands a recorded one-shot command buffer (allocated from the pool) to the graph's submission
+    /// point; `release` runs once the GPU has finished it. Returns false when the submit failed.
+    using OneShotSubmit = std::function<bool(VkCommandPool, VkCommandBuffer, std::function<void()> release)>;
+
     // One-time setup once the device, command pool, and (UI-owned, color-only) render pass exist.
-    // submitMutex must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on `queue`
-    // elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this interface's one-shot
-    // texture-upload submit (audit V-M11) is externally synchronized against those, not just
-    // against itself.
+    // R715: the texture-upload one-shot rides the owning node's submission stream through
+    // `submitOneShot` (RenderGraph::SubmitOneShot), so this interface never takes VK2 nor waits.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
               const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
-              Vixen::LockCensus::QueueSubmitMutex* submitMutex);
+              OneShotSubmit submitOneShot);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
@@ -112,7 +114,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
-    Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
+    OneShotSubmit submitOneShot_;  // R715: the owning node's graph submission point
     uint32_t queueFamilyIndex_ = 0;
     VkPhysicalDeviceMemoryProperties memProps_{};
     VkCommandPool commandPool_ = VK_NULL_HANDLE;

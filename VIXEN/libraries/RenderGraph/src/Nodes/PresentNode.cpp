@@ -4,7 +4,6 @@
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"
 #include "Core/FailScenario.h"
-#include <mutex>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -64,7 +63,7 @@ void PresentNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void PresentNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (GetDevice() != nullptr) idleWait_.Destroy(GetDevice()->device);
+    (void)ctx;
 }
 
 VkResult PresentNode::Present(Context& ctx) {
@@ -93,14 +92,17 @@ VkResult PresentNode::Present(Context& ctx) {
         throw std::runtime_error("PresentNode: No present function available");
     }
 
-    // Setup present info
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = nullptr;
+    // R715: the present is a record issued by the graph's single submission point (at once on the
+    // sequential executor, after the final wave on the lowered one), never under a node-held VK2.
+    SubmitRecord present;
+    present.present = true;
+    present.presentFn = fpQueuePresent;
+    present.swapchain = swapchain;
+    present.imageIndex = imageIndex;
+    present.presentWait = renderCompleteSemaphore;
 
-    // VK_EXT_swapchain_maintenance1: Chain present fence info only when extension is available
+    // VK_EXT_swapchain_maintenance1: chain the present fence only when the extension is available.
     // The presentFenceArray is only populated when the extension is enabled (checked in FrameSyncNode)
-    VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
     if (!presentFenceArray.empty()) {
         // CRITICAL: Reset fence immediately before reuse to avoid race condition
         // SwapChainNode waits on the fence, but vkQueuePresentKHR may still own it after signaling
@@ -108,35 +110,13 @@ VkResult PresentNode::Present(Context& ctx) {
         // Resetting here (right before present) ensures previous present operation has released ownership
         VkFence fenceToReset = presentFenceArray[imageIndex];
         vkResetFences(device->device, 1, &fenceToReset);
-
-        presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
-        presentFenceInfo.pNext = nullptr;
-        presentFenceInfo.swapchainCount = 1;
-        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
-        presentInfo.pNext = &presentFenceInfo;
+        present.presentFence = presentFenceArray[imageIndex];
     }
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain;
-    presentInfo.pImageIndices = &imageIndex;
-    
-    // Wait for rendering to complete if semaphore is provided
-    if (renderCompleteSemaphore != VK_NULL_HANDLE) {
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &renderCompleteSemaphore;
-    } else {
-        presentInfo.waitSemaphoreCount = 0;
-        presentInfo.pWaitSemaphores = nullptr;
-    }
-    
-    presentInfo.pResults = nullptr;
 
-
-    // Queue present. Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel
-    // executor can schedule another node's submit on the same queue.
     const auto presentStarted = std::chrono::steady_clock::now();
     {
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
+        lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present,
+                                        GetOwningGraph()->SubmitNodeWork(this, std::move(present)));
     }
 
     // Wait for device idle if requested (for compatibility with current behavior). VK_SUBOPTIMAL_KHR
@@ -146,7 +126,7 @@ VkResult PresentNode::Present(Context& ctx) {
     // VK_SUBOPTIMAL_KHR routinely) permanently loses this idle-wait's synchronization margin.
     const bool presentSucceeded = (lastResult == VK_SUCCESS || lastResult == VK_SUBOPTIMAL_KHR);
     if (waitForIdle && presentSucceeded && device != nullptr) {
-        const GpuWaitResult idle = idleWait_.Wait(*device);
+        const GpuWaitResult idle = GetOwningGraph()->WaitIssuedWork(device);
         if (!idle.Ok()) {
             GetOwningGraph()->ReportGpuFault("PresentNode::idle wait", idle.result, true);
         }

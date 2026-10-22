@@ -3,6 +3,7 @@
 #include "Nodes/SkySphereNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
+#include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 
 #include <algorithm>
@@ -10,8 +11,8 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
-#include <mutex>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -256,6 +257,7 @@ void SkySphereNode::TypedSetupImpl(TypedSetupContext&) {
 
 void SkySphereNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = ctx.In(SkySphereNodeConfig::VULKAN_DEVICE_IN);
+    SetDevice(device_);  // R715: the graph submission point issues through the node's device
     commandPool_ = ctx.In(SkySphereNodeConfig::COMMAND_POOL);
     if (!device_) throw std::runtime_error("[SkySphereNode] VULKAN_DEVICE_IN is null");
     if (commandPool_ == VK_NULL_HANDLE) throw std::runtime_error("[SkySphereNode] COMMAND_POOL is null");
@@ -421,18 +423,10 @@ void SkySphereNode::TransitionToGeneral(VkCommandPool commandPool) {
         vkFreeCommandBuffers(vkDevice, commandPool, 1, &commandBuffer);
         throw std::runtime_error("[SkySphereNode] vkEndCommandBuffer failed");
     }
-    VkSubmitInfo submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &commandBuffer;
-    VkResult result;
-    {
-        std::lock_guard submitLock(device_->SubmitMutex(device_->queue));
-        result = vkQueueSubmit(device_->queue, 1, &submit, VK_NULL_HANDLE);
-        if (result == VK_SUCCESS) result = vkQueueWaitIdle(device_->queue);
-    }
-    vkFreeCommandBuffers(vkDevice, commandPool, 1, &commandBuffer);
-    if (result != VK_SUCCESS) throw std::runtime_error("[SkySphereNode] image transition submit failed");
+    // R715: the transition rides the graph's submission stream; the command buffer is freed once
+    // the queue timeline reaches it (no submit-then-wait-idle).
+    if (GetOwningGraph()->SubmitOneShot(this, commandPool, commandBuffer) != VK_SUCCESS)
+        throw std::runtime_error("[SkySphereNode] image transition submit failed");
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
 }
 
@@ -597,18 +591,17 @@ void SkySphereNode::UploadPixels(const std::vector<uint16_t>* rgba16, bool initi
         vkFreeCommandBuffers(vkDevice, commandPool_, 1, &commandBuffer);
         throw std::runtime_error("[SkySphereNode] upload vkEndCommandBuffer failed");
     }
-    VkSubmitInfo submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &commandBuffer;
-    VkResult result;
-    {
-        std::lock_guard submitLock(device_->SubmitMutex(device_->queue));
-        result = vkQueueSubmit(device_->queue, 1, &submit, VK_NULL_HANDLE);
-        if (result == VK_SUCCESS) result = vkQueueWaitIdle(device_->queue);
-    }
-    vkFreeCommandBuffers(vkDevice, commandPool_, 1, &commandBuffer);
-    if (result != VK_SUCCESS) throw std::runtime_error("[SkySphereNode] upload queue submission failed");
+    // R715: the upload rides the graph's submission stream instead of submit plus wait idle on
+    // the frame path. The staging buffer moves into the release, which runs once the queue
+    // timeline reaches the upload (or at once if the submit fails).
+    const VkBuffer stagingBuffer = std::exchange(staging.buffer, VK_NULL_HANDLE);
+    const VkDeviceMemory stagingMemory = std::exchange(staging.memory, VK_NULL_HANDLE);
+    if (GetOwningGraph()->SubmitOneShot(this, commandPool_, commandBuffer,
+            [vkDevice, stagingBuffer, stagingMemory] {
+                if (stagingBuffer != VK_NULL_HANDLE) vkDestroyBuffer(vkDevice, stagingBuffer, nullptr);
+                if (stagingMemory != VK_NULL_HANDLE) vkFreeMemory(vkDevice, stagingMemory, nullptr);
+            }) != VK_SUCCESS)
+        throw std::runtime_error("[SkySphereNode] upload queue submission failed");
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
 }
 

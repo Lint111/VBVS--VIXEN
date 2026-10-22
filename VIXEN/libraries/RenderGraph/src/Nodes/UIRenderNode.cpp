@@ -248,6 +248,7 @@ void UIRenderNode::FreeCommandBuffers() {
 
 void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(UIRenderNodeConfig::VULKAN_DEVICE);
+    SetDevice(device);  // R715: the graph submission point issues through the node's device
     Vixen::Vulkan::Resources::IRenderTarget* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
     commandPool_ = ctx.In(UIRenderNodeConfig::COMMAND_POOL);
     renderPass_ = ctx.In(UIRenderNodeConfig::RENDER_PASS);
@@ -255,7 +256,6 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = device->device;
     queue_ = device->queue;
     fpQueueSubmit2_ = device->fpQueueSubmit2;  // per-device PFN, refreshed each compile (valid after device-loss recovery)
-    submitMutex_ = &device->SubmitMutex(device->queue);
     extent_ = sc->GetExtent();
 
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
@@ -267,7 +267,9 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // RmlUi global init, the context, and the document.
         renderInterface_.Init(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
                               device->gpuMemoryProperties, commandPool_, renderPass_,
-                              &device->SubmitMutex(device->queue));
+                              [this](VkCommandPool pool, VkCommandBuffer cmd, std::function<void()> release) {
+                                  return GetOwningGraph()->SubmitOneShot(this, pool, cmd, std::move(release)) == VK_SUCCESS;
+                              });
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());
@@ -598,15 +600,11 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    // Lock-free phase 1 (design §2.5): publish this node's fence-owning submit to the queue-owner
-    // channel; the owner drains it in canonical order. When the channel is inactive
-    // (sequential/headless), fall back to the guarded direct submit.
-    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence))) {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
-        if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
-        fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
+    // R715: this node's fence-owning submit goes through the graph's single submission point.
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence));
+        result != VK_SUCCESS) {
+        GetOwningGraph()->ReportGpuFault("UIRenderNode::ExecuteImpl vkQueueSubmit2", result);
+        return;
     }
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);

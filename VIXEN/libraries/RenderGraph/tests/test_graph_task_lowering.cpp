@@ -402,15 +402,11 @@ struct NativeSubmitCall {
 };
 std::vector<NativeSubmitCall> nativeSubmitCalls;
 int failNativeSubmit = -1;
-int nativeOutstanding = 0;
-int nativeMaximumOutstanding = 0;
-int nativeRetireCalls = 0;
-int failNativeRetire = -1;
-VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeRetire(VkQueue) {
-    if (++nativeRetireCalls == failNativeRetire) return VK_ERROR_DEVICE_LOST;
-    nativeOutstanding = 0;
-    return VK_SUCCESS;
-}
+// A fake GPU: the timeline counter only advances when the host waits on it (or a test sets it).
+uint64_t fakeCounter = 0;
+int fakeWaitCalls = 0;
+int failFakeWait = -1;
+std::vector<uint64_t> fakeWaitedValues;
 VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
     VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence fence) {
     EXPECT_EQ(count, 1u);
@@ -420,9 +416,33 @@ VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
         si.commandBufferInfoCount ? si.pCommandBufferInfos[0].commandBuffer : VK_NULL_HANDLE});
     if (static_cast<int>(nativeSubmitCalls.size()) == failNativeSubmit)
         return VK_ERROR_DEVICE_LOST;
-    ++nativeOutstanding;
-    nativeMaximumOutstanding = std::max(nativeMaximumOutstanding, nativeOutstanding);
     return VK_SUCCESS;
+}
+const SubmitRecord::IssueFn CaptureIssue = [](const VkSubmitInfo2& info, VkFence fence) {
+    return CaptureNativeSubmit(VK_NULL_HANDLE, 1, &info, fence);
+};
+VkResult FakeCounter(VkDevice, VkSemaphore, uint64_t* value) {
+    *value = fakeCounter;
+    return VK_SUCCESS;
+}
+VkResult FakeWait(VkDevice, VkSemaphore, uint64_t value, uint64_t) {
+    if (++fakeWaitCalls == failFakeWait) return VK_ERROR_DEVICE_LOST;
+    fakeWaitedValues.push_back(value);
+    fakeCounter = std::max(fakeCounter, value);
+    return VK_SUCCESS;
+}
+QueueTimeline FakeTimeline() {
+    nativeSubmitCalls.clear();
+    failNativeSubmit = -1;
+    fakeCounter = 0;
+    fakeWaitCalls = 0;
+    failFakeWait = -1;
+    fakeWaitedValues.clear();
+    QueueTimeline timeline;
+    timeline.semaphore = reinterpret_cast<VkSemaphore>(uintptr_t(42));
+    timeline.counterFn = FakeCounter;
+    timeline.waitFn = FakeWait;
+    return timeline;
 }
 
 TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
@@ -435,30 +455,27 @@ TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
         info.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
         record.commandBuffers.push_back(info);
     }
-    nativeSubmitCalls.clear();
-    failNativeSubmit = -1;
-    nativeOutstanding = 1;
-    nativeMaximumOutstanding = 1;
-    nativeRetireCalls = 0;
-    failNativeRetire = -1;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
+    QueueTimeline timeline = FakeTimeline();
+    EXPECT_EQ(record.Submit(CaptureIssue, timeline), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 3u);
-    // R503: the direct path assumes a full queue, retires, then keeps at most two outstanding.
-    EXPECT_EQ(nativeRetireCalls, 2);
-    EXPECT_LE(nativeMaximumOutstanding, static_cast<int>(SubmitRecord::kOutstandingBatchCap));
-    EXPECT_EQ(nativeOutstanding, 1);  // the final chunk owns completion
+    // R503 on the timeline: the third batch waits for the OLDEST batch (value 1) only.
+    ASSERT_EQ(fakeWaitedValues, std::vector<uint64_t>{1});
+    EXPECT_LE(timeline.outstanding.size(), static_cast<std::size_t>(SubmitRecord::kOutstandingBatchCap));
+    EXPECT_EQ(timeline.lastSignaled, 3u);
 
     for (size_t i = 0; i < nativeSubmitCalls.size(); ++i) {
         EXPECT_EQ(nativeSubmitCalls[i].commands, 1u);
         EXPECT_EQ(nativeSubmitCalls[i].command, record.commandBuffers[i].commandBuffer);
         EXPECT_EQ(nativeSubmitCalls[i].waits, i == 0 ? 2u : 0u);
-        EXPECT_EQ(nativeSubmitCalls[i].signals, i == 2 ? 3u : 0u);
+        // Every batch signals the queue timeline; the final one also carries the record's signals.
+        EXPECT_EQ(nativeSubmitCalls[i].signals, i == 2 ? 4u : 1u);
         EXPECT_EQ(nativeSubmitCalls[i].fence, i == 2 ? record.fence : VK_NULL_HANDLE);
     }
-    nativeSubmitCalls.clear();
+    timeline = FakeTimeline();
     failNativeSubmit = 2;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_ERROR_DEVICE_LOST);
+    EXPECT_EQ(record.Submit(CaptureIssue, timeline), VK_ERROR_DEVICE_LOST);
     EXPECT_EQ(nativeSubmitCalls.size(), 2u);
+    EXPECT_EQ(timeline.lastSignaled, 1u);  // the failed batch's value is never recorded as issued
     failNativeSubmit = -1;
 }
 
@@ -470,23 +487,20 @@ TEST(SubmitRecord, RetirementFailureStopsBeforeTheNextChunkAndFinalSignal) {
         command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
         record.commandBuffers.push_back(command);
     }
-    nativeSubmitCalls.clear();
-    failNativeSubmit = -1;
-    nativeRetireCalls = 0;
-    failNativeRetire = 2;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_ERROR_DEVICE_LOST);
+    QueueTimeline timeline = FakeTimeline();
+    failFakeWait = 1;
+    EXPECT_EQ(record.Submit(CaptureIssue, timeline), VK_ERROR_DEVICE_LOST);
     // R503: two chunks were queued before the failing retirement; the final chunk never ran.
     ASSERT_EQ(nativeSubmitCalls.size(), 2u);
     for (const auto& call : nativeSubmitCalls) {
-        EXPECT_EQ(call.signals, 0u);
+        EXPECT_EQ(call.signals, 1u);  // the queue timeline only, never the record's own signal
         EXPECT_EQ(call.fence, VK_NULL_HANDLE);
     }
-    failNativeRetire = -1;
 }
 
-TEST(SubmitRecord, DrainCounterKeepsTwoBatchesOutstandingAcrossRecords) {
-    // R503: with the queue-wide counter the second record's first batch follows the first
-    // record's batch without a host round trip; the third batch retires the queue.
+TEST(SubmitRecord, TimelineKeepsTwoBatchesOutstandingAcrossRecords) {
+    // R503 + R715: the queue-wide timeline lets the second record's first batch follow the first
+    // record's batch without a host round trip; the third batch waits for the oldest value only.
     SubmitRecord first, second;
     for (uintptr_t i = 1; i <= 2; ++i) {
         VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
@@ -497,18 +511,53 @@ TEST(SubmitRecord, DrainCounterKeepsTwoBatchesOutstandingAcrossRecords) {
     third.commandBuffer = reinterpret_cast<VkCommandBuffer>(uintptr_t(3));
     second.commandBuffers.push_back(third);
     second.commandCostUpperBoundsNs = {2'000'000, 2'000'000};  // two batches
-    nativeSubmitCalls.clear();
-    nativeRetireCalls = nativeOutstanding = nativeMaximumOutstanding = 0;
-    failNativeSubmit = failNativeRetire = -1;
-    uint32_t outstanding = 0;
-    ASSERT_EQ(first.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire, &outstanding), VK_SUCCESS);
-    EXPECT_EQ(nativeRetireCalls, 0);
-    EXPECT_EQ(outstanding, 1u);
-    ASSERT_EQ(second.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire, &outstanding), VK_SUCCESS);
+    QueueTimeline timeline = FakeTimeline();
+    ASSERT_EQ(first.Submit(CaptureIssue, timeline), VK_SUCCESS);
+    EXPECT_EQ(fakeWaitCalls, 0);
+    EXPECT_EQ(timeline.outstanding.size(), 1u);
+    ASSERT_EQ(second.Submit(CaptureIssue, timeline), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 3u);
-    EXPECT_EQ(nativeRetireCalls, 1);  // only before the third batch
-    EXPECT_EQ(nativeMaximumOutstanding, 2);
-    EXPECT_EQ(outstanding, 1u);
+    ASSERT_EQ(fakeWaitedValues, std::vector<uint64_t>{1});  // only before the third batch
+    EXPECT_EQ(timeline.outstanding.size(), 2u);              // the queue is never drained to zero
+}
+
+TEST(SubmitRecord, ReachedOldestBatchIsPolledNotWaited) {
+    // R715 pattern 5: when the GPU keeps up, reaching the cap costs one counter read and no wait.
+    SubmitRecord record;
+    for (uintptr_t i = 1; i <= 3; ++i) {
+        VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
+        record.commandBuffers.push_back(command);
+    }
+    QueueTimeline timeline = FakeTimeline();
+    fakeCounter = 1;  // the first batch has already completed when the third is issued
+    ASSERT_EQ(record.Submit(CaptureIssue, timeline), VK_SUCCESS);
+    EXPECT_EQ(nativeSubmitCalls.size(), 3u);
+    EXPECT_EQ(fakeWaitCalls, 0);
+    EXPECT_EQ(timeline.blockingWaits, 0u);
+    EXPECT_EQ(timeline.outstanding.size(), 2u);
+}
+
+TEST(SubmitRecord, ReleaseRunsOnlyOnceItsValueIsReached) {
+    QueueTimeline timeline = FakeTimeline();
+    int released = 0;
+    timeline.lastSignaled = 2;
+    timeline.Issued(1);
+    timeline.Issued(2);
+    timeline.Defer(2, [&released] { ++released; });
+    fakeCounter = 1;
+    ASSERT_EQ(timeline.Poll(), VK_SUCCESS);
+    EXPECT_TRUE(timeline.TakeCompleted().empty());
+    fakeCounter = 2;
+    ASSERT_EQ(timeline.Poll(), VK_SUCCESS);
+    for (auto& release : timeline.TakeCompleted()) release();
+    EXPECT_EQ(released, 1);
+    EXPECT_TRUE(timeline.outstanding.empty());
+    timeline.Defer(1, [&released] { ++released; });  // already reached: runs at once
+    EXPECT_EQ(released, 2);
+    timeline.Defer(5, [&released] { ++released; });
+    for (auto& release : timeline.TakeAll()) release();  // teardown releases everything
+    EXPECT_EQ(released, 3);
 }
 
 TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
@@ -528,19 +577,17 @@ TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
     EXPECT_EQ(batches[0].count, 3u);
     EXPECT_EQ(batches[1].first, 3u);
     EXPECT_EQ(batches[1].count, 1u);
-    nativeSubmitCalls.clear();
-    nativeRetireCalls = nativeOutstanding = nativeMaximumOutstanding = 0;
-    failNativeSubmit = failNativeRetire = -1;
-    ASSERT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
+    QueueTimeline timeline = FakeTimeline();
+    ASSERT_EQ(record.Submit(CaptureIssue, timeline), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 2u);
     EXPECT_EQ(nativeSubmitCalls[0].commands, 3u);
     EXPECT_EQ(nativeSubmitCalls[0].waits, 2u);
-    EXPECT_EQ(nativeSubmitCalls[0].signals, 0u);
+    EXPECT_EQ(nativeSubmitCalls[0].signals, 1u);
     EXPECT_EQ(nativeSubmitCalls[1].waits, 0u);
-    EXPECT_EQ(nativeSubmitCalls[1].signals, 3u);
+    EXPECT_EQ(nativeSubmitCalls[1].signals, 4u);
     EXPECT_EQ(nativeSubmitCalls[1].fence, record.fence);
-    EXPECT_EQ(nativeMaximumOutstanding, 2);  // R503: both batches queued after one retirement
-    EXPECT_EQ(nativeRetireCalls, 1);
+    EXPECT_EQ(timeline.outstanding.size(), 2u);  // R503: both batches queued with no host wait
+    EXPECT_EQ(fakeWaitCalls, 0);
 }
 
 TEST(SubmitRecord, UnknownOrMissingCostReservesAWholeSubmission) {
@@ -565,14 +612,45 @@ TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
     info.pSignalSemaphoreInfos = &signal;
     const auto fence = reinterpret_cast<VkFence>(uintptr_t(7));
     const auto record = SubmitRecord::FromSubmitInfo2(info, fence);
-    nativeSubmitCalls.clear();
-    failNativeSubmit = -1;
-    EXPECT_EQ(record.Submit(CaptureNativeSubmit, VK_NULL_HANDLE, CaptureNativeRetire), VK_SUCCESS);
+    QueueTimeline timeline = FakeTimeline();
+    EXPECT_EQ(record.Submit(CaptureIssue, timeline), VK_SUCCESS);
     ASSERT_EQ(nativeSubmitCalls.size(), 1u);
     EXPECT_EQ(nativeSubmitCalls[0].commands, 0u);
     EXPECT_EQ(nativeSubmitCalls[0].waits, 0u);
-    EXPECT_EQ(nativeSubmitCalls[0].signals, 1u);
+    EXPECT_EQ(nativeSubmitCalls[0].signals, 2u);
     EXPECT_EQ(nativeSubmitCalls[0].fence, fence);
+}
+
+TEST(SubmitRecord, LegacySubmitInfoKeepsStagesAndTimelineValues) {
+    VkSemaphore wait = reinterpret_cast<VkSemaphore>(uintptr_t(3));
+    VkSemaphore signal = reinterpret_cast<VkSemaphore>(uintptr_t(4));
+    VkCommandBuffer command = reinterpret_cast<VkCommandBuffer>(uintptr_t(5));
+    VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    const uint64_t waitValue = 11, signalValue = 12;
+    VkTimelineSemaphoreSubmitInfo values{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+    values.waitSemaphoreValueCount = 1;
+    values.pWaitSemaphoreValues = &waitValue;
+    values.signalSemaphoreValueCount = 1;
+    values.pSignalSemaphoreValues = &signalValue;
+    VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    info.pNext = &values;
+    info.waitSemaphoreCount = 1;
+    info.pWaitSemaphores = &wait;
+    info.pWaitDstStageMask = &stage;
+    info.commandBufferCount = 1;
+    info.pCommandBuffers = &command;
+    info.signalSemaphoreCount = 1;
+    info.pSignalSemaphores = &signal;
+    const auto record = SubmitRecord::FromSubmitInfo(info, VK_NULL_HANDLE);
+    ASSERT_EQ(record.waits.size(), 1u);
+    EXPECT_EQ(record.waits[0].semaphore, wait);
+    EXPECT_EQ(record.waits[0].value, waitValue);
+    EXPECT_EQ(record.waits[0].stageMask, static_cast<VkPipelineStageFlags2>(stage));
+    ASSERT_EQ(record.commandBuffers.size(), 1u);
+    EXPECT_EQ(record.commandBuffers[0].commandBuffer, command);
+    ASSERT_EQ(record.signals.size(), 1u);
+    EXPECT_EQ(record.signals[0].semaphore, signal);
+    EXPECT_EQ(record.signals[0].value, signalValue);
 }
 
 } // namespace

@@ -5,9 +5,8 @@
 #include "Message.h"     // Sprint 6.3: Frame events
 #include <vector>
 #include <functional>
+#include <atomic>
 #include <cstdint>
-#include "LockCensus.h"
-#include <mutex>
 
 namespace ResourceManagement {
 
@@ -42,6 +41,10 @@ struct PendingDestruction {
  * - Resources destroyed after frameNumber - submittedFrame >= maxFramesInFlight
  * - Zero-stutter: No blocking waits during hot-reload
  * - Growth fallback with warning logging for capacity tuning
+ * - R715 (no-stall, pattern 3): no mutex. Producers (any thread: the last SharedResourcePtr
+ *   Release() can run on a worker) push into a wait-free multi-producer inbox, one atomic exchange
+ *   per Add and no retry loop. The ring and its statistics belong to the CONSUMER, the frame loop
+ *   (ProcessFrame/Flush/PreReserve and the getters), which folds the inbox in at its owner phase.
  *
  * Usage:
  *
@@ -80,7 +83,7 @@ public:
     }
 
     ~DeferredDestructionQueue() {
-        Flush();  // Ensure all pending destructions are executed
+        Flush();  // Ensure all pending destructions are executed (no producer may outlive the queue)
     }
 
     // Disable copy/move (manages resource lifetimes)
@@ -98,7 +101,7 @@ public:
      * @param capacity Number of pending destructions to pre-allocate for
      */
     void PreReserve(size_t capacity) {
-        std::lock_guard lock(mutex_);
+        DrainInbox();
         PreReserveLocked(capacity);
     }
 
@@ -106,7 +109,7 @@ public:
      * @brief Get current pre-allocated capacity
      */
     size_t GetCapacity() const noexcept {
-        std::lock_guard lock(mutex_);
+        DrainInbox();
         return buffer_.size();
     }
 
@@ -137,8 +140,7 @@ public:
             return;  // Nothing to destroy
         }
 
-        std::lock_guard lock(mutex_);
-        PushInternal(PendingDestruction(
+        PushInbox(PendingDestruction(
             [device, handle, destroyer]() {
                 destroyer(device, handle, nullptr);
             },
@@ -167,8 +169,7 @@ public:
             return;
         }
 
-        std::lock_guard lock(mutex_);
-        PushInternal(PendingDestruction(std::move(destructorFunc), currentFrame));
+        PushInbox(PendingDestruction(std::move(destructorFunc), currentFrame));
     }
 
     /**
@@ -192,13 +193,12 @@ public:
      * ```
      */
     void ProcessFrame(uint64_t currentFrame, uint32_t maxFramesInFlight = 3) {
-        // Pop the due entries into a local batch under the lock, then run destructors outside
-        // it (audit V-M10): a destructor that itself releases a SharedResourcePtr can re-enter
-        // AddGeneric()/PushInternal() on this same queue, which would deadlock on a
-        // non-recursive mutex if still held here.
+        // Pop the due entries into a local batch, then run destructors (audit V-M10): a destructor
+        // that itself releases a SharedResourcePtr re-enters AddGeneric(), which only pushes into
+        // the inbox and is picked up by the next drain.
+        DrainInbox();
         std::vector<PendingDestruction> due;
         {
-            std::lock_guard lock(mutex_);
             while (size_ > 0) {
                 const auto& pending = buffer_[head_];
 
@@ -235,12 +235,12 @@ public:
      * ```
      */
     void Flush() {
-        // Same pop-under-lock / destroy-outside-lock shape as ProcessFrame (audit V-M10): a
-        // destructor may re-enter AddGeneric() on this queue (e.g. freeing a resource whose
-        // own teardown queues another deferred destruction).
+        // Same pop-then-destroy shape as ProcessFrame (audit V-M10): a destructor may re-enter
+        // AddGeneric() on this queue (e.g. freeing a resource whose own teardown queues another
+        // deferred destruction); that lands in the inbox for the next drain.
+        DrainInbox();
         std::vector<PendingDestruction> all;
         {
-            std::lock_guard lock(mutex_);
             all.reserve(size_);
             while (size_ > 0) {
                 all.push_back(std::move(buffer_[head_]));
@@ -258,7 +258,7 @@ public:
      * @brief Get number of pending destructions
      */
     size_t GetPendingCount() const noexcept {
-        std::lock_guard lock(mutex_);
+        DrainInbox();
         return size_;
     }
 
@@ -270,13 +270,13 @@ public:
      * - maxSizeReached << capacity → decrease PreReserve capacity
      */
     PreAllocationStats GetPreAllocationStats() const noexcept {
-        std::lock_guard lock(mutex_);
+        DrainInbox();
         PreAllocationStats stats;
         stats.capacity = buffer_.size();
         stats.currentSize = size_;
         stats.maxSizeReached = maxSizeReached_;
         stats.growthCount = growthCount_;
-        stats.totalQueued = totalQueued_;
+        stats.totalQueued = totalQueued_.load(std::memory_order_relaxed);
         stats.totalDestroyed = totalDestroyed_;
         stats.totalFlushed = totalFlushed_;
         return stats;
@@ -288,10 +288,10 @@ public:
      * Resets growth count and high-water mark for fresh measurement period.
      */
     void ResetStats() noexcept {
-        std::lock_guard lock(mutex_);
+        DrainInbox();
         maxSizeReached_ = size_;
         growthCount_ = 0;
-        totalQueued_ = 0;
+        totalQueued_.store(0, std::memory_order_relaxed);
         totalDestroyed_ = 0;
         totalFlushed_ = 0;
     }
@@ -342,8 +342,59 @@ public:
     }
 
 private:
+    /// One producer entry. Producers own a node only until the exchange that publishes it.
+    struct InboxNode {
+        PendingDestruction item;
+        std::atomic<InboxNode*> next{nullptr};
+    };
+
+    /// Producer side, any thread: wait-free publish (one exchange, no retry loop).
+    void PushInbox(PendingDestruction pending) {
+        totalQueued_.fetch_add(1, std::memory_order_relaxed);
+        auto* node = new InboxNode{std::move(pending)};
+        LinkInbox(node);
+    }
+
+    void LinkInbox(InboxNode* node) const noexcept {
+        node->next.store(nullptr, std::memory_order_relaxed);
+        InboxNode* previous = inboxPublish_.exchange(node, std::memory_order_acq_rel);
+        previous->next.store(node, std::memory_order_release);
+    }
+
+    /// Consumer side: the oldest published node, or nullptr when the inbox is empty or a producer
+    /// is between its exchange and its link (that entry is taken by the next drain; never waits).
+    InboxNode* PopInbox() const noexcept {
+        InboxNode* oldest = inboxOldest_;
+        InboxNode* next = oldest->next.load(std::memory_order_acquire);
+        if (oldest == &inboxStub_) {
+            if (next == nullptr) return nullptr;
+            inboxOldest_ = next;
+            oldest = next;
+            next = next->next.load(std::memory_order_acquire);
+        }
+        if (next != nullptr) {
+            inboxOldest_ = next;
+            return oldest;
+        }
+        if (oldest != inboxPublish_.load(std::memory_order_acquire)) return nullptr;
+        LinkInbox(&inboxStub_);
+        next = oldest->next.load(std::memory_order_acquire);
+        if (next == nullptr) return nullptr;
+        inboxOldest_ = next;
+        return oldest;
+    }
+
+    /// Consumer owner phase: fold every published inbox entry into the ring, in publish order.
+    void DrainInbox() const noexcept {
+        auto* self = const_cast<DeferredDestructionQueue*>(this);
+        while (InboxNode* node = PopInbox()) {
+            self->PushInternal(std::move(node->item));
+            delete node;
+        }
+    }
+
     /**
-     * @brief Grow/reserve the ring buffer. Caller must hold mutex_.
+     * @brief Grow/reserve the ring buffer. Consumer only.
      */
     void PreReserveLocked(size_t capacity) {
         if (capacity <= buffer_.size()) {
@@ -365,8 +416,7 @@ private:
     }
 
     /**
-     * @brief Push element to ring buffer with automatic growth fallback. Caller must hold
-     * mutex_ (audit V-M10).
+     * @brief Push element to ring buffer with automatic growth fallback. Consumer only.
      */
     void PushInternal(PendingDestruction pending) {
         // Check if we need to grow
@@ -381,7 +431,6 @@ private:
         buffer_[tail_] = std::move(pending);
         tail_ = (tail_ + 1) % buffer_.size();
         size_++;
-        totalQueued_++;
 
         // Track high-water mark
         if (size_ > maxSizeReached_) {
@@ -390,7 +439,7 @@ private:
     }
 
     /**
-     * @brief Pop element from ring buffer front. Caller must hold mutex_ (audit V-M10).
+     * @brief Pop element from ring buffer front. Consumer only.
      */
     void PopInternal() noexcept {
         if (size_ == 0) {
@@ -401,12 +450,14 @@ private:
         size_--;
     }
 
-    // Guards buffer_/head_/tail_/size_ and the stats counters below. SharedResourcePtr::Release()
-    // can call Add()/AddGeneric() from any thread (refcounts are atomic — see V-M10), racing the
-    // frame loop's ProcessFrame()/Flush(). ProcessFrame()/Flush() pop under this lock into a
-    // local batch and run destructors after releasing it, so a destructor that re-enters
-    // AddGeneric() doesn't deadlock.
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM1> mutex_;
+    // SharedResourcePtr::Release() can call Add()/AddGeneric() from any thread (refcounts are
+    // atomic — see V-M10). Those producers touch only the inbox; everything below it is the
+    // consumer's (the frame loop's ProcessFrame()/Flush()), so no lock guards it. The inbox is a
+    // stub-headed intrusive multi-producer list: producers exchange inboxPublish_, the consumer
+    // walks from inboxOldest_. mutable: the const getters fold it in on the consumer thread.
+    mutable InboxNode inboxStub_;
+    mutable std::atomic<InboxNode*> inboxPublish_{&inboxStub_};
+    mutable InboxNode* inboxOldest_ = &inboxStub_;
 
     // Ring buffer storage
     std::vector<PendingDestruction> buffer_;
@@ -417,7 +468,7 @@ private:
     // Statistics for capacity tuning (always tracked, not just DEBUG)
     size_t maxSizeReached_ = 0;
     size_t growthCount_ = 0;
-    size_t totalQueued_ = 0;
+    std::atomic<size_t> totalQueued_{0};
     size_t totalDestroyed_ = 0;
     size_t totalFlushed_ = 0;
 

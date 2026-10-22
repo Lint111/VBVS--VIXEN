@@ -12,7 +12,6 @@
 #include "IRenderTarget.h"             // Vixen::Vulkan::Resources::IRenderTarget
 
 #include <cassert>
-#include <mutex>
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {
@@ -204,12 +203,8 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     submitInfo.signalSemaphoreCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pSignalSemaphores    = &renderCompleteSemaphore;
 
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
-    }
+    // R715: through the graph's single submission point, not a node-held VK2.
+    result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo(submitInfo, inFlightFence));
     if (result != VK_SUCCESS) {
         NODE_LOG_ERROR("[PassGroupNode::ExecuteImpl] Failed to submit: " + std::to_string(result));
         GetOwningGraph()->ReportGpuFault("PassGroupNode::ExecuteImpl vkQueueSubmit", result);
