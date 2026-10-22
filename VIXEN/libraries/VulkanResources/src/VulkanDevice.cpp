@@ -313,19 +313,6 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     fpGetAccelerationStructureDeviceAddress = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
         vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR"));
 
-    // R503 frame-submit retirement timeline (see SubmitTimeline). Without it the queue owner
-    // falls back to draining the queue at the outstanding cap.
-    submitTimeline = {};
-    if (vulkan12Features.timelineSemaphore) {
-        VkSemaphoreTypeCreateInfo typeInfo{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
-        typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-        VkSemaphoreCreateInfo semaphoreInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        semaphoreInfo.pNext = &typeInfo;
-        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &submitTimeline.semaphore) != VK_SUCCESS) {
-            submitTimeline.semaphore = VK_NULL_HANDLE;
-        }
-    }
-
     // The capability graph was built before device creation (so feature enablement could be
     // gated through it). Now record the device extensions that were actually enabled, then
     // invalidate cached results so subsequent queries see the populated extension set.
@@ -385,10 +372,6 @@ void VulkanDevice::DestroyDevice()
     }
     queryManager_.reset();
     budgetManager_.reset();
-    if (submitTimeline.semaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(device, submitTimeline.semaphore, nullptr);
-        submitTimeline = {};
-    }
 
     vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;

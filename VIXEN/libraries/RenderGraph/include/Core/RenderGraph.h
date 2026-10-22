@@ -897,20 +897,35 @@ public:
         return executionTaskPlan_;
     }
 
-    // ====== Lock-free phase 1: queue-owner submit channel (design §2.5) ======
-    // A frame-path async submit site (a graph node) calls PublishSubmit instead of taking
-    // VulkanDevice::SubmitMutex and calling vkQueueSubmit2 itself. The node publishes a deep-copied
-    // SubmitRecord into its OWN per-frame slot (indexed by its executionOrder ordinal — no lock,
-    // distinct nodes own distinct slots). After each wave barrier, ExecuteLoweredFrame's owner drain
-    // (DrainSubmitWave, graph caller thread) issues the published submits in canonical ordinal order,
-    // and present last. This replaces the per-queue mutex hold (VK2) on the frame path with a
-    // single-owner invariant. The channel is a no-op (IsConfigured()==false) on graphs that never ran
-    // through the lowered executor, so a node's PublishSubmit falls back to a direct guarded submit.
+    // ====== R715 submission model: one submission point per queue ======
+    // Every graph node submits through SubmitNodeWork; no node takes VulkanDevice::SubmitMutex. On
+    // the lowered executor the record goes into the node's OWN per-frame slot (its executionOrder
+    // ordinal, no lock) and ExecuteLoweredFrame's owner drain (DrainSubmitWave, graph caller thread)
+    // issues it after the wave barrier in canonical order, present last. On the sequential executor
+    // (nodes run on the graph thread) the same owner function issues it at once. Each issued batch
+    // signals the queue's QueueTimeline; R503's cap waits only for the oldest outstanding batch.
     [[nodiscard]] bool SubmitChannelActive() const { return submitChannel_.IsConfigured() && submitChannelDraining_; }
 
-    /// A frame-path node publishes its submit. Returns true if the channel accepted it (the node must
-    /// then NOT submit itself); false if the channel is inactive (the node submits directly, guarded).
-    bool PublishSubmit(NodeInstance* producer, SubmitRecord&& record);
+    /// The one node submission point. Returns the submit/present result when issued at once, and
+    /// VK_SUCCESS when published (a deferred failure surfaces as the frame's channel fault).
+    VkResult SubmitNodeWork(NodeInstance* producer, SubmitRecord&& record);
+
+    /// A one-shot command buffer (a layout transition, a clear, an upload) rides the graph's
+    /// submission stream instead of an immediate submit plus wait idle: queue order and the
+    /// recorded barrier order it before every later submission, and `cmd` (allocated from `pool`)
+    /// is freed with `release` once the queue's timeline reaches it.
+    VkResult SubmitOneShot(NodeInstance* producer, VkCommandPool pool, VkCommandBuffer cmd,
+                           std::function<void()> release = {});
+
+    /// Run `release` once every submission `producer` has handed to the owner so far is reached
+    /// (an empty marker batch rides the stream behind them). For a failure path that must free a
+    /// pool its earlier one-shots still reference.
+    VkResult ReleaseAfterIssued(NodeInstance* producer, std::function<void()> release);
+
+    /// Opt-in synchronous retirement (PresentNode's waitForIdle, demo graphs only): a bounded wait
+    /// for the newest batch the owner issued on `device`'s queue. Polls first; never takes VK2 and
+    /// never submits. On the lowered executor nothing of this frame is issued yet, so it returns.
+    [[nodiscard]] GpuWaitResult WaitIssuedWork(Vixen::Vulkan::Resources::VulkanDevice* device);
 
 private:
     std::unordered_map<VkRenderPass, VkImageLayout> renderPassFinalLayouts_;
@@ -988,15 +1003,19 @@ private:
     Vixen::LockCensus::FrameSampler lockCensus_;
 
     // Lock-free phase 1 queue-owner channel (design §2.5). Configured at Compile() to the node count;
-    // filled by PublishSubmit during a wave; drained in canonical order by ExecuteLoweredFrame after
+    // filled by SubmitNodeWork during a wave; drained in canonical order by ExecuteLoweredFrame after
     // each wave barrier. submitChannelDraining_ is true only while the lowered executor owns the frame
     // (so a node outside the lowered path submits directly). See SubmitChannel.h.
     SubmitChannel submitChannel_;
     bool submitChannelDraining_ = false;
-    // R503: batches submitted since the drain last retired each queue; SubmitRecord::Submit
-    // keeps it at or under SubmitRecord::kOutstandingBatchCap across records. Used only for a
-    // device without a submit timeline (VulkanDevice::submitTimeline), which retires per batch.
-    std::unordered_map<VkQueue, uint32_t> outstandingBatches_;
+    // R715/R503: the retirement timeline of each queue the owner submits to (graph thread only).
+    std::unordered_map<VkQueue, QueueTimeline> queueTimelines_;
+    /// The owner's issue of one record (submit or present) on the graph thread.
+    VkResult IssueRecord(SubmitRecord& record);
+    /// Run the releases whose timeline value is reached. Never blocks.
+    void RetireCompletedSubmissions();
+    /// Teardown: the queues are idle (or the device is lost); release everything, destroy timelines.
+    void ReleaseQueueTimelines();
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).

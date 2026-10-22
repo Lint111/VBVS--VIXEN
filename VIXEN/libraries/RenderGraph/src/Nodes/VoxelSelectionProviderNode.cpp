@@ -467,12 +467,11 @@ void VoxelSelectionProviderNode::SubmitTrackingReadback(const FrameSnapshot& fra
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
-    {
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        if (vkQueueSubmit(device->queue, 1, &submit, slot.fence) != VK_SUCCESS) {
-            vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
-            return;
-        }
+    // R715: the tracking readback rides the graph's submission stream; its fence is polled by later
+    // Executes (vkGetFenceStatus), never waited.
+    if (GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo(submit, slot.fence)) != VK_SUCCESS) {
+        vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
+        return;
     }
     slot.cmd = cmd;
     slot.inFlight = true;

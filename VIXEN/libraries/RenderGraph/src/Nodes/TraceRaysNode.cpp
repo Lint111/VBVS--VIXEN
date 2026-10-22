@@ -13,7 +13,6 @@
 #include <cstring>
 #include <cstdlib>
 #include <limits>
-#include <mutex>
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {
@@ -486,17 +485,12 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     info.pWaitSemaphoreInfos = &acquire;
     info.signalSemaphoreInfoCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     info.pSignalSemaphoreInfos = &present;
-    VkResult result = VK_SUCCESS;
     auto record = SubmitRecord::FromSubmitInfo2(info, inFlightFence);
     record.submissionBudgetNs = budgetNs;
     for (uint64_t pixelCount : pixels)
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(pixelCount));
     submissionBatches_[currentFrame] = record.SubmissionBatches();
-    if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
-        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-        result = record.Submit(
-            vulkanDevice_->fpQueueSubmit2, vulkanDevice_->queue);
-    }
+    const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
 
     if (result != VK_SUCCESS) {
         // Matches ComputeDispatchNode: a swallowed submit failure here previously fell through to

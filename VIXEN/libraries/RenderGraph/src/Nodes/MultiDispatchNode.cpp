@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <chrono>
 #include <sstream>  // Sprint 6.1: Task #314 - For enhanced logging
-#include <mutex>    // Inc4 M3: SubmitMutex guard around vkQueueSubmit2
 #include <algorithm>
 #include <set>      // Inc4 M3: distinctSignalValues dedup
 
@@ -424,19 +423,15 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // forbids. IN_FLIGHT_FENCE stays as an INPUT (gates whether this node participates in
         // the real submit chain at all, matching every pre-M3 consumer's record-only default
         // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
-        // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; the owner drains in
-        // canonical order after the wave (a submit fault there surfaces the device-loss path). When
-        // the channel is inactive (sequential/headless), fall back to the guarded direct submit.
-        if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE))) {
-            std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-            const VkResult result = SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE).Submit(
-                vulkanDevice_->fpQueueSubmit2, vulkanDevice_->queue);
-            if (result != VK_SUCCESS) {
-                NODE_LOG_ERROR("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
-                               std::to_string(result));
-                GetOwningGraph()->ReportGpuFault("MultiDispatchNode::ExecuteImpl vkQueueSubmit2", result);
-                return;
-            }
+        // R715: the graph's single submission point (published on the lowered executor, issued by
+        // the owner at once on the sequential one).
+        if (const VkResult result = GetOwningGraph()->SubmitNodeWork(
+                this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE));
+            result != VK_SUCCESS) {
+            NODE_LOG_ERROR("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
+                           std::to_string(result));
+            GetOwningGraph()->ReportGpuFault("MultiDispatchNode::ExecuteImpl vkQueueSubmit2", result);
+            return;
         }
     }
 

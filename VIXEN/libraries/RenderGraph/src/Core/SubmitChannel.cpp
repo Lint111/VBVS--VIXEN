@@ -1,5 +1,6 @@
 #include "Core/SubmitChannel.h"
 #include "Core/PhaseTiming.h"
+#include "Core/GpuFault.h"
 
 #include <string>
 #include <chrono>
@@ -27,20 +28,73 @@ std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
     return batches;
 }
 
-VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
-                              PFN_vkQueueWaitIdle retireFn,
-                              uint32_t* outstandingBatches) const {
-    return SubmitBatches(submitFn, queue, retireFn, outstandingBatches, nullptr);
+VkResult QueueTimeline::Poll() {
+    if (outstanding.empty() || semaphore == VK_NULL_HANDLE) return VK_SUCCESS;
+    uint64_t value = completed;
+    const VkResult result = counterFn ? counterFn(device, semaphore, &value)
+                                      : vkGetSemaphoreCounterValue(device, semaphore, &value);
+    if (result != VK_SUCCESS) return result;
+    completed = std::max(completed, value);
+    while (!outstanding.empty() && outstanding.front() <= completed) outstanding.pop_front();
+    return VK_SUCCESS;
 }
 
-VkResult SubmitRecord::Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
-                              const TimelineRetirement& timeline) const {
-    return SubmitBatches(submitFn, queue, nullptr, nullptr, &timeline);
+VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
+    if (outstanding.size() < cap) return VK_SUCCESS;
+    if (const VkResult polled = Poll(); polled != VK_SUCCESS) return polled;
+    if (outstanding.size() < cap) return VK_SUCCESS;
+    // The cap is reached and the oldest batch is still running: wait for that batch only.
+    const bool trace = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
+    const auto started = std::chrono::steady_clock::now();
+    PhaseTiming::ScopedWait retireTimer("submit-retire-oldest-timeline");
+    const uint64_t oldest = outstanding[outstanding.size() - cap];
+    ++blockingWaits;
+    const VkResult waited = waitFn ? waitFn(device, semaphore, oldest, GpuWaitBoundNs())
+                                   : BoundedWaitSemaphore(device, semaphore, oldest).result;
+    if (trace) {
+        const auto ns = [](std::chrono::steady_clock::time_point t) {
+            return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                t.time_since_epoch()).count());
+        };
+        std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire value=%llu start_ns=%lld end_ns=%lld result=%d\n",
+            static_cast<unsigned long long>(oldest), ns(started), ns(std::chrono::steady_clock::now()),
+            static_cast<int>(waited));
+    }
+    if (waited != VK_SUCCESS) return waited;
+    completed = std::max(completed, oldest);
+    while (!outstanding.empty() && outstanding.front() <= completed) outstanding.pop_front();
+    return VK_SUCCESS;
 }
 
-VkResult SubmitRecord::SubmitBatches(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
-                                     PFN_vkQueueWaitIdle retireFn, uint32_t* outstandingBatches,
-                                     const TimelineRetirement* timeline) const {
+void QueueTimeline::Defer(uint64_t value, std::function<void()> release) {
+    if (!release) return;
+    if (value <= completed) {
+        release();
+        return;
+    }
+    releases.emplace_back(value, std::move(release));
+}
+
+std::vector<std::function<void()>> QueueTimeline::TakeCompleted() {
+    std::vector<std::function<void()>> ready;
+    while (!releases.empty() && releases.front().first <= completed) {
+        ready.push_back(std::move(releases.front().second));
+        releases.pop_front();
+    }
+    return ready;
+}
+
+std::vector<std::function<void()>> QueueTimeline::TakeAll() {
+    completed = lastSignaled;
+    outstanding.clear();
+    std::vector<std::function<void()>> all;
+    all.reserve(releases.size());
+    for (auto& entry : releases) all.push_back(std::move(entry.second));
+    releases.clear();
+    return all;
+}
+
+VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) const {
     const bool trace = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
     using Clock = std::chrono::steady_clock;
     const auto ticks = [](Clock::time_point time) {
@@ -49,47 +103,17 @@ VkResult SubmitRecord::SubmitBatches(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
     };
     const auto batches = SubmissionBatches();
     const std::size_t count = batches.size();
-    uint32_t assumedFull = kOutstandingBatchCap;
-    uint32_t& outstanding = outstandingBatches ? *outstandingBatches : assumedFull;
-    // With a timeline every batch signals its own value; slot 0 is that signal, followed by the
-    // record's own signals, which only the final batch carries.
-    std::vector<VkSemaphoreSubmitInfo> timelineSignals;
-    if (timeline) {
-        timelineSignals.reserve(signals.size() + 1);
-        VkSemaphoreSubmitInfo batchSignal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        batchSignal.semaphore = timeline->semaphore;
-        batchSignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        timelineSignals.push_back(batchSignal);
-        timelineSignals.insert(timelineSignals.end(), signals.begin(), signals.end());
-    }
+    VkSemaphoreSubmitInfo timelineSignal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    timelineSignal.semaphore = timeline.semaphore;
+    timelineSignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    std::vector<VkSemaphoreSubmitInfo> finalSignals(signals);
+    finalSignals.push_back(timelineSignal);
     for (std::size_t i = 0; i < count; ++i) {
-        if (timeline && *timeline->submitted - *timeline->retired >= kOutstandingBatchCap) {
-            const uint64_t oldest = *timeline->submitted - kOutstandingBatchCap + 1;
-            const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
-            PhaseTiming::ScopedWait retireTimer("submit-retire-oldest-batch");
-            VkSemaphoreWaitInfo waitInfo{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
-            waitInfo.semaphoreCount = 1;
-            waitInfo.pSemaphores = &timeline->semaphore;
-            waitInfo.pValues = &oldest;
-            const VkResult retired = timeline->waitFn(timeline->device, &waitInfo, UINT64_MAX);
-            if (trace) {
-                std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
-                    i, count, ticks(retireStarted), ticks(Clock::now()), static_cast<int>(retired));
-            }
-            if (retired != VK_SUCCESS) return retired;
-            *timeline->retired = oldest;
-        } else if (!timeline && outstanding >= kOutstandingBatchCap) {
-            const auto retireStarted = trace ? Clock::now() : Clock::time_point{};
-            PhaseTiming::ScopedWait retireTimer("submit-retire-queue-wait-idle");
-            const VkResult retired = retireFn(queue);
-            if (trace) {
-                std::fprintf(stderr, "[GPUYIELD_HOST] operation=chunk-retire chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
-                    i, count, ticks(retireStarted), ticks(Clock::now()), static_cast<int>(retired));
-            }
-            if (retired != VK_SUCCESS) return retired;
-            outstanding = 0;
-        }
+        if (const VkResult reserved = timeline.ReserveBatch(kOutstandingBatchCap); reserved != VK_SUCCESS)
+            return reserved;
 
+        const bool last = i + 1 == count;
+        const uint64_t value = timeline.lastSignaled + 1;
         VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
         if (i == 0) {
             si.waitSemaphoreInfoCount = static_cast<uint32_t>(waits.size());
@@ -99,24 +123,25 @@ VkResult SubmitRecord::SubmitBatches(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
             si.commandBufferInfoCount = static_cast<uint32_t>(batches[i].count);
             si.pCommandBufferInfos = &commandBuffers[batches[i].first];
         }
-        const bool last = i + 1 == count;
-        if (timeline) {
-            timelineSignals[0].value = *timeline->submitted + 1;
-            si.signalSemaphoreInfoCount = last ? static_cast<uint32_t>(timelineSignals.size()) : 1u;
-            si.pSignalSemaphoreInfos = timelineSignals.data();
-        } else if (last) {
-            si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
-            si.pSignalSemaphoreInfos = signals.empty() ? nullptr : signals.data();
+        timelineSignal.value = value;
+        finalSignals.back().value = value;
+        // A null timeline (no semaphore: CPU contract tests) signals only the record's own semaphores.
+        const bool withTimeline = timeline.semaphore != VK_NULL_HANDLE;
+        if (last) {
+            si.signalSemaphoreInfoCount = static_cast<uint32_t>(finalSignals.size() - (withTimeline ? 0 : 1));
+            si.pSignalSemaphoreInfos = si.signalSemaphoreInfoCount ? finalSignals.data() : nullptr;
+        } else if (withTimeline) {
+            si.signalSemaphoreInfoCount = 1;
+            si.pSignalSemaphoreInfos = &timelineSignal;
         }
         const auto started = trace ? Clock::now() : Clock::time_point{};
-        const VkResult result = submitFn(queue, 1, &si, last ? fence : VK_NULL_HANDLE);
+        const VkResult result = issue(si, last ? fence : VK_NULL_HANDLE);
         if (trace) {
             std::fprintf(stderr, "[GPUYIELD_HOST] operation=submit chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
                 i, count, ticks(started), ticks(Clock::now()), static_cast<int>(result));
         }
         if (result != VK_SUCCESS) return result;
-        if (timeline) ++*timeline->submitted;
-        else ++outstanding;
+        timeline.Issued(timeline.NextValue());
     }
     return VK_SUCCESS;
 }

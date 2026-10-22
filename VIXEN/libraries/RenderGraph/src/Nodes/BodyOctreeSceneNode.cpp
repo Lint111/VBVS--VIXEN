@@ -18,7 +18,6 @@
 #include <cstdlib>   // std::getenv
 #include <cstring>
 #include <iostream>  // FIX 5: std::cout -- BrickDataHash bypasses the disabled per-node logger
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>   // std::pair / std::move (OOC R1 retire ledger)
@@ -2134,7 +2133,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         return;
     }
 
-    // One-time command pool + fence for the synchronous build submits below.
+    // One-time command pool for the build submits below (destroyed by the last build's release).
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
@@ -2144,16 +2143,19 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateCommandPool failed");
     }
 
-    auto submitAndWait = [&](VkCommandBuffer cmd) {
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmd;
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        if (vkQueueSubmit(device->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+    // R715: each build rides the graph's submission stream instead of submit plus wait idle. The
+    // command buffer (and a BLAS's scratch) is released once the queue timeline reaches it; queue
+    // order plus the barriers recorded in the TLAS command order the TLAS after every BLAS and
+    // every later frame read after the TLAS.
+    auto submitOneShot = [&](VkCommandBuffer cmd, std::function<void()> release) {
+        if (GetOwningGraph()->SubmitOneShot(this, buildPool, cmd, std::move(release)) != VK_SUCCESS) {
             throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
         }
-        vkQueueWaitIdle(device->queue);
+    };
+    // A failure path must not destroy the pool under its still-pending BLAS command buffers.
+    auto releasePool = [&] {
+        (void)GetOwningGraph()->ReleaseAfterIssued(
+            this, [vkDevice, buildPool] { vkDestroyCommandPool(vkDevice, buildPool, nullptr); });
     };
     auto beginOneShot = [&]() {
         VkCommandBufferAllocateInfo allocInfo{};
@@ -2268,10 +2270,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         VkCommandBuffer cmd = beginOneShot();
         vkCmdBuildAS(cmd, 1, &buildInfo, &pRangeInfo);
         vkEndCommandBuffer(cmd);
-        submitAndWait(cmd);
-        vkFreeCommandBuffers(vkDevice, buildPool, 1, &cmd);
-
-        device->FreeBuffer(scratchAllocation);
+        submitOneShot(cmd, [device, scratchAllocation]() mutable { device->FreeBuffer(scratchAllocation); });
 
         VkAccelerationStructureDeviceAddressInfoKHR addrInfo{};
         addrInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
@@ -2304,7 +2303,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         // second AS metadata buffer.
         const uint32_t proxyBaseForInstance = rtQueryBlas_[oi].proxyBase;
         if (ii > 0xFFu || proxyBaseForInstance > 0xFFFFu) {
-            vkDestroyCommandPool(vkDevice, buildPool, nullptr);
+            releasePool();
             throw std::runtime_error(
                 "[BodyOctreeSceneNode] RTAccelStructures proxy metadata exceeds VkAccelerationStructureInstanceKHR custom-index capacity");
         }
@@ -2370,7 +2369,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     tlasCreateInfo.size = tlasSizeInfo.accelerationStructureSize;
     tlasCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
     if (vkCreateAS(vkDevice, &tlasCreateInfo, nullptr, &rtQueryTlas_) != VK_SUCCESS) {
-        vkDestroyCommandPool(vkDevice, buildPool, nullptr);
+        releasePool();
         throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (TLAS) failed");
     }
 
@@ -2384,11 +2383,22 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     const VkAccelerationStructureBuildRangeInfoKHR* pTlasRangeInfo = &tlasRangeInfo;
 
     VkCommandBuffer tlasCmd = beginOneShot();
+    // The BLAS builds were earlier submissions on this queue: make their writes visible to the
+    // TLAS build, then the TLAS visible to every later reader (the host no longer waits between).
+    VkMemoryBarrier blasBuilt{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    blasBuilt.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+    blasBuilt.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+    vkCmdPipelineBarrier(tlasCmd, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                         VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &blasBuilt,
+                         0, nullptr, 0, nullptr);
     vkCmdBuildAS(tlasCmd, 1, &tlasBuildInfo, &pTlasRangeInfo);
+    VkMemoryBarrier tlasBuilt{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    tlasBuilt.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+    tlasBuilt.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(tlasCmd, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &tlasBuilt, 0, nullptr, 0, nullptr);
     vkEndCommandBuffer(tlasCmd);
-    submitAndWait(tlasCmd);
-    vkFreeCommandBuffers(vkDevice, buildPool, 1, &tlasCmd);
-    vkDestroyCommandPool(vkDevice, buildPool, nullptr);
+    submitOneShot(tlasCmd, [vkDevice, buildPool] { vkDestroyCommandPool(vkDevice, buildPool, nullptr); });
 
     rtQueryTlasBuilt_ = true;
     rtQueryTlasBuiltForInstanceCount_ = instanceCount_;

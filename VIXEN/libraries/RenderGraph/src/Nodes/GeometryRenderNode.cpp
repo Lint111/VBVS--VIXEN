@@ -5,7 +5,6 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include <cstring>
-#include <mutex>
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 
@@ -248,13 +247,8 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
     // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
-    VkResult result;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
-        // schedule this alongside another node's submit on the same queue.
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        result = vkQueueSubmit(device->queue, 1, &submitInfo, inFlightFence);
-    }
+    // R715: through the graph's single submission point, not a node-held VK2.
+    const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo(submitInfo, inFlightFence));
     if (result != VK_SUCCESS) {
         NODE_LOG_ERROR("GeometryRenderNode: Failed to submit command buffer: " + std::to_string(result));
         GetOwningGraph()->ReportGpuFault("GeometryRenderNode::ExecuteImpl vkQueueSubmit", result);

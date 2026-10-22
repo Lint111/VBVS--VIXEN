@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <bit>
 #include <limits>
-#include <mutex>
 #include <set>
 #include <stdexcept>
 
@@ -154,17 +153,13 @@ void ProxyRasterStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     submit.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     submit.pSignalSemaphoreInfos = signals.data();
 
-    // Lock-free phase 1 (design §2.5): publish the submit to the queue-owner channel instead of
-    // taking VK2 and calling vkQueueSubmit2 here. The owner drains it in canonical order after the
-    // wave. When the channel is inactive (sequential/headless path), fall back to the guarded submit.
-    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(submit, VK_NULL_HANDLE))) {
-        std::lock_guard lock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1u, &submit, VK_NULL_HANDLE);
-        if (result != VK_SUCCESS) {
-            NODE_LOG_ERROR("[ProxyRasterStageNode] vkQueueSubmit2 failed: " + std::to_string(result));
-            GetOwningGraph()->ReportGpuFault("ProxyRasterStageNode::ExecuteImpl vkQueueSubmit2", result);
-            return;
-        }
+    // R715: the graph's single submission point (published on the lowered executor, issued by the
+    // owner at once on the sequential one).
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(submit, VK_NULL_HANDLE));
+        result != VK_SUCCESS) {
+        NODE_LOG_ERROR("[ProxyRasterStageNode] vkQueueSubmit2 failed: " + std::to_string(result));
+        GetOwningGraph()->ReportGpuFault("ProxyRasterStageNode::ExecuteImpl vkQueueSubmit2", result);
+        return;
     }
 
     const std::vector<VkBuffer> writes =

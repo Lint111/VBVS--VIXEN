@@ -9,7 +9,6 @@
 
 #include <cstring>
 #include <cstddef>
-#include <mutex>
 #include <span>
 #include <stdexcept>
 
@@ -59,13 +58,13 @@ void VixenRmlRenderInterface::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags
 void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue,
                                    uint32_t queueFamilyIndex, const VkPhysicalDeviceMemoryProperties& memProps,
                                    VkCommandPool commandPool, VkRenderPass renderPass,
-                                   Vixen::LockCensus::QueueSubmitMutex* submitMutex,
+                                   OneShotSubmit submitOneShot,
                                    VkPipelineCache pipelineCache) {
     device_ = device;
     pipelineCache_ = pipelineCache;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
-    submitMutex_ = submitMutex;
+    submitOneShot_ = std::move(submitOneShot);
     queueFamilyIndex_ = queueFamilyIndex;
     memProps_ = memProps;
     commandPool_ = commandPool;
@@ -362,19 +361,15 @@ VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(con
                          0, nullptr, 0, nullptr, 1, &toRead);
 
     vkEndCommandBuffer(cmd);
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &cmd;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
-        if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
-        Check(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), "submit one-shot");
-        vkQueueWaitIdle(queue_);
-    }
-    vkFreeCommandBuffers(device_, commandPool_, 1, &cmd);
-    vkDestroyBuffer(device_, staging, nullptr);
-    vkFreeMemory(device_, stagingMem, nullptr);
+    // R715: the upload rides the owning node's submission stream (queue order plus the barriers
+    // above order it before the UI draw that samples it); the staging buffer is released once the
+    // queue timeline reaches it instead of after a submit plus wait idle.
+    const VkDevice device = device_;
+    const bool submitted = submitOneShot_ && submitOneShot_(commandPool_, cmd, [device, staging, stagingMem] {
+        vkDestroyBuffer(device, staging, nullptr);
+        vkFreeMemory(device, stagingMem, nullptr);
+    });
+    if (!submitted) Check(VK_ERROR_INITIALIZATION_FAILED, "submit one-shot");
 
     VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vci.image = tex->image;
