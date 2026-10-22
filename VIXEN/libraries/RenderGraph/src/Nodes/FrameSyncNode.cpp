@@ -168,8 +168,15 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // frame-indexed command buffer or descriptor set. The binary fence may belong to an
     // intermediate submit (for example, UI before later compute stages), so it is not a
     // sufficient guard for the whole graph frame.
+    // R715: the previous frame's end-of-frame retire (HandleFrameEnd) is the single pacing wait, so
+    // this flight's work has normally been reached already: poll first, and wait (bounded) only when
+    // the value is genuinely pending (or the poll itself fails, which the wait then reports).
     const uint64_t completionValue = frameCompletionValues_[currentFrameIndex];
-    if (completionValue != 0) {
+    uint64_t reachedValue = 0;
+    const bool reached = completionValue == 0 ||
+        (vkGetSemaphoreCounterValue(device->device, timelineSemaphore_, &reachedValue) == VK_SUCCESS &&
+         reachedValue >= completionValue);
+    if (!reached) {
         const GpuWaitResult timelineWait = [&] {
             PhaseTiming::ScopedWait timelineTimer("frame-sync-timeline");
             return BoundedWaitSemaphore(device->device, timelineSemaphore_, completionValue);
@@ -187,11 +194,15 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Keep the binary fence wait for existing consumers that use it as a mid-frame
     // synchronization point (for example, optional debug readback).
     VkFence currentFence = frameSyncData[currentFrameIndex].inFlightFence;
+    // Poll first as well: vkGetFenceStatus also reports device loss, and the bounded wait runs only
+    // while the fence is genuinely unsignalled.
     const VkResult waitResult = [&] {
-        PhaseTiming::ScopedWait fenceTimer("frame-sync-fence");
-        return VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait,
-                                  vkWaitForFences(device->device, 1, &currentFence, VK_TRUE,
-                                                  GpuWaitBoundNs()));
+        VkResult status = vkGetFenceStatus(device->device, currentFence);
+        if (status == VK_NOT_READY) {
+            PhaseTiming::ScopedWait fenceTimer("frame-sync-fence");
+            status = vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, GpuWaitBoundNs());
+        }
+        return VIXEN_FAULT_FILTER(GetOwningGraph(), FenceWait, status);
     }();
 
     // AR#1 Phase 3 (Increment 1): this fence wait runs every frame and is the universal, earliest
