@@ -1,4 +1,6 @@
 #pragma once
+#include <functional>
+#include <thread>
 
 #include "Headers.h"
 
@@ -1042,6 +1044,16 @@ private:
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 public:
     // Fail-scenario fault injection (test builds only): dormant unless a scenario arms it.
+    /// Keeps the host's OS message pump running while the graph blocks on the GPU (recompile drains
+    /// the device, which takes seconds when other processes share it). `pump` runs on the calling
+    /// thread, only if that is the thread that registered it, every ~16 ms during the wait. Without
+    /// it the window is "Not Responding" for the whole wait and the compositor shows the old image at
+    /// the old size with black beyond it. Pass an empty function to clear it.
+    void SetIdleWaitPump(std::function<void()> pump) {
+        idleWaitPump_ = std::move(pump);
+        idleWaitPumpThread_ = std::this_thread::get_id();
+    }
+
     FailScenario::FaultInjector* GetFaultInjector() {
         if (!faultInjector_) faultInjector_ = std::make_unique<FailScenario::FaultInjector>();
         return faultInjector_.get();
@@ -1138,6 +1150,9 @@ private:
     bool DrainGraphDevicesBounded();
     // Wait for the provided set of VkDevice handles to be idle
     void WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices);
+
+    std::function<void()> idleWaitPump_;
+    std::thread::id idleWaitPumpThread_;
 };
 
 // ============================================================================

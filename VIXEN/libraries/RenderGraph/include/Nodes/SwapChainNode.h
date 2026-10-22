@@ -157,6 +157,14 @@ private:
     bool extentDrifting_ = false;
     void CheckSurfaceExtentDrift();
 
+    // VIXEN_RESIZE_TRACE=1: one stderr line whenever the window framebuffer size or the swapchain
+    // extent changes ("[RESIZE_TRACE] where=... framebuffer=WxH swapchain=WxH"), so a resize run can
+    // be checked offline (tools/check-resize-fill.py) without a debugger or screenshots.
+    GLFWwindow* traceWindow_ = nullptr;
+    uint32_t lastTraceFramebuffer_[2] = {0, 0};
+    uint32_t lastTraceSwapchain_[2] = {0, 0};
+    void TraceExtents(const char* where);
+
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
     uint32_t compileCount_ = 0;
 #endif

@@ -25,6 +25,7 @@
 #include "Nodes/Common/GpuDeviceClass.h"
 #include <limits>
 #include <thread>
+#include <future>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -1888,11 +1889,31 @@ void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& inst
 }
 
 void RenderGraph::WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices) {
-    for (VkDevice dev : devices) {
-        if (dev != VK_NULL_HANDLE) {
-            vkDeviceWaitIdle(dev);
+    const bool pumpHere = idleWaitPump_ && idleWaitPumpThread_ == std::this_thread::get_id();
+    if (!pumpHere) {
+        for (VkDevice dev : devices) {
+            if (dev != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(dev);
+            }
         }
+        return;
     }
+    // The drain can take seconds when other processes share the GPU. Block on a worker so this
+    // thread keeps pumping OS messages: a window whose thread is stuck in vkDeviceWaitIdle is "Not
+    // Responding" and shows its old image at the old size with black beyond it. This thread submits
+    // nothing while it waits, so the queues stay externally synchronized.
+    std::vector<VkDevice> toWait;
+    for (VkDevice dev : devices) {
+        if (dev != VK_NULL_HANDLE) toWait.push_back(dev);
+    }
+    if (toWait.empty()) return;
+    auto drained = std::async(std::launch::async, [toWait] {
+        for (VkDevice dev : toWait) vkDeviceWaitIdle(dev);
+    });
+    while (drained.wait_for(std::chrono::milliseconds(16)) != std::future_status::ready) {
+        idleWaitPump_();
+    }
+    drained.get();
 }
 
 Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {

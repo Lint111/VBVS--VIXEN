@@ -244,6 +244,10 @@ void VulkanGraphApplication::CreateEngineContext() {
     nodeRegistry = &engine_->Registry();
     messageBus = &engine_->Bus();
     renderGraph = &engine_->Graph();
+    // Graph recompiles drain the GPU on this thread; keep the window's message pump alive meanwhile.
+    renderGraph->SetIdleWaitPump([this] {
+        if (presentationTarget_ == PresentationTarget::Window) glfwPollEvents();
+    });
     mainLogger->Info("EngineContext created (MainCacher initialized, autonomous CalibrationStore active)");
 
     messageBus->Subscribe(
