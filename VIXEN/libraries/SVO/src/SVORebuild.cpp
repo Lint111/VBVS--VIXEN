@@ -40,6 +40,7 @@
 #include "ComponentData.h"
 #include "Compression/DXT1Compressor.h"
 #include "MortonEncoding.h"
+#include "Generated/MaterialColor.g.hpp"
 #include <sstream>
 #include <algorithm>
 #include <queue>
@@ -53,70 +54,17 @@ using namespace Vixen::VoxelData::Compression;
 namespace Vixen::SVO {
 
 // ============================================================================
-// Material-to-Color Mapping (Single Source of Truth)
+// Material-to-Color Mapping
 // ============================================================================
 // Converts material IDs to RGB colors for DXT compression when Color component
-// is not explicitly set on voxel entities. This allows VoxelGridNode to store
-// only Material IDs while still getting proper colors in compressed buffers.
-//
-// Material ID ranges by scene type:
-//   Cornell Box: 1-20
-//   Noise/Tunnel: 30-40
-//   Cityscape: 50-61
-//
-// NOTE: Keep in sync with shader getMaterialColor() in VoxelRT_Compressed.rchit
+// is not explicitly set on voxel entities. The palette is authored once in
+// libraries/SVO/schemas/MaterialColorCallables.cs and shared with the GLSL
+// getMaterialColor(); this adapter only packs the three channel reads.
 static glm::vec3 MaterialIdToColor(uint32_t matID) {
-    switch (matID) {
-        // Cornell Box materials (1-20)
-        case 1:  return glm::vec3(1.0f, 0.0f, 0.0f);      // Red (left wall)
-        case 2:  return glm::vec3(0.0f, 1.0f, 0.0f);      // Green (right wall)
-        case 3:  return glm::vec3(0.9f, 0.9f, 0.9f);      // Light gray (white wall)
-        case 4:  return glm::vec3(0.85f, 0.85f, 0.85f);   // Floor (white/light gray)
-        case 5:  return glm::vec3(0.95f, 0.95f, 0.95f);   // White (ceiling)
-        case 6:  return glm::vec3(0.8f, 0.8f, 0.8f);      // Medium gray (floor light)
-        case 7:  return glm::vec3(0.4f, 0.4f, 0.4f);      // Darker gray (floor dark)
-        case 10: return glm::vec3(0.8f, 0.6f, 0.2f);      // Tan/wooden (left cube)
-        case 11: return glm::vec3(0.6f, 0.8f, 0.9f);      // Light blue (right cube)
-        case 20: return glm::vec3(1.0f, 0.98f, 0.9f);     // Warm white (ceiling light)
-
-        // Noise/Tunnel materials (30-40) - earth/stone tones
-        case 30: return glm::vec3(0.5f, 0.45f, 0.4f);     // Stone (brown-gray)
-        case 31: return glm::vec3(0.6f, 0.55f, 0.5f);     // Stalactite (lighter stone)
-        case 32: return glm::vec3(0.55f, 0.5f, 0.45f);    // Stalagmite
-        case 33: return glm::vec3(0.52f, 0.48f, 0.42f);   // Stone variant
-        case 34: return glm::vec3(0.48f, 0.44f, 0.38f);   // Stone variant
-        case 35: return glm::vec3(0.45f, 0.42f, 0.36f);   // Stone variant
-        case 36: return glm::vec3(0.58f, 0.52f, 0.46f);   // Stone variant
-        case 37: return glm::vec3(0.62f, 0.56f, 0.48f);   // Stone variant
-        case 38: return glm::vec3(0.65f, 0.58f, 0.5f);    // Stone variant
-        case 39: return glm::vec3(0.68f, 0.6f, 0.52f);    // Stone variant
-        case 40: return glm::vec3(0.8f, 0.6f, 0.2f);      // Ore (golden)
-
-        // Cityscape materials (50-61)
-        case 50: return glm::vec3(0.2f, 0.2f, 0.22f);     // Asphalt (dark gray)
-        case 60: return glm::vec3(0.6f, 0.58f, 0.55f);    // Concrete (light gray)
-        case 61: return glm::vec3(0.7f, 0.85f, 0.95f);    // Glass (light blue tint)
-
-        default:
-            // Use HSV-based color wheel for unknown materials (more visible than dark grey)
-            {
-                float hue = static_cast<float>(matID % 256) / 256.0f;
-                float h = hue * 6.0f;
-                int i = static_cast<int>(h);
-                float f = h - static_cast<float>(i);
-                float p = 0.8f * 0.3f;  // v * (1 - s)
-                float q = 0.8f * (1.0f - 0.7f * f);
-                float t = 0.8f * (1.0f - 0.7f * (1.0f - f));
-                switch (i % 6) {
-                    case 0: return glm::vec3(0.8f, t, p);
-                    case 1: return glm::vec3(q, 0.8f, p);
-                    case 2: return glm::vec3(p, 0.8f, t);
-                    case 3: return glm::vec3(p, q, 0.8f);
-                    case 4: return glm::vec3(t, p, 0.8f);
-                    default: return glm::vec3(0.8f, p, q);
-                }
-            }
-    }
+    using Vixen::AppFlow::Generated::MaterialColorChannel;
+    return glm::vec3(MaterialColorChannel(matID, 0u),
+                     MaterialColorChannel(matID, 1u),
+                     MaterialColorChannel(matID, 2u));
 }
 
 // ============================================================================
