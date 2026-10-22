@@ -3,7 +3,7 @@
 
 One row per non-test file under `libraries/` and `application/` that carries std mutex/guard syntax (the census lexer of `2026-09-08-runtime-lock-inventory-and-classification.md`). Families come from `scripts/no-new-mutex.allowlist`; sites are `enclosing symbol -> lock alias` and carry no line numbers, so an unrelated edit does not move them. An alias is a declared lock (`mutex m_mutex`, `mutex& m`), a guard over its lock expression (`lock_guard(m_mutex)`), or a guard parameter/variable (`unique_lock lk`).
 
-64 files, 47 owning declarations.
+63 files, 47 owning declarations.
 
 | Source file | Owned | Families | Acquisition sites (symbol -> lock alias) |
 |---|---|---|---|
@@ -37,7 +37,6 @@ One row per non-test file under `libraries/` and `application/` that carries std
 | `libraries/RenderGraph/src/Nodes/VoxelSelectionProviderNode.cpp` | 0 | VK2-borrowed | `VoxelSelectionProviderNode::ReadPixelAt` -> `lock_guard(device->SubmitMutex(device->queue))` |
 | `libraries/RenderGraph/src/Nodes/WindowNode.cpp` | 0 | RG4 | `WindowNode::InjectWindowEvent` -> `lock_guard(eventMutex)`<br>`WindowNode::OnFramebufferSize` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowClose` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowFocus` -> `lock_guard(self->eventMutex)`<br>`WindowNode::OnWindowIconify` -> `lock_guard(self->eventMutex)`<br>`WindowNode::PendingEventCountForTest` -> `lock_guard(eventMutex)`<br>`WindowNode::ProcessPendingEvents` -> `lock_guard(eventMutex)`<br>`WindowNode::TypedExecuteImpl` -> `lock_guard(eventMutex)` |
 | `libraries/RenderGraph/src/Ui/UiHitMask.cpp` | 1 | RG6 | `(file scope)` -> `mutex& MaskCacheMutex`<br>`GetOrLoadMask` -> `lock_guard(MaskCacheMutex())`<br>`MaskCacheMutex` -> `mutex m` |
-| `libraries/RenderGraph/src/Ui/VixenRmlRenderInterface.cpp` | 0 | VK2-borrowed | `VixenRmlRenderInterface::CreateTextureRGBA` -> `unique_lock lock`<br>`VixenRmlRenderInterface::CreateTextureRGBA` -> `unique_lock(*submitMutex_)` |
 | `libraries/ResourceManagement/include/Memory/BatchedUploader.h` | 4 | RM9, RM10, RM11, RM12;VK2-borrowed | `BatchedUploader` -> `Mutex<Vixen::LockCensus::Family::RM10> pendingMutex_`<br>`BatchedUploader` -> `Mutex<Vixen::LockCensus::Family::RM11> submittedMutex_`<br>`BatchedUploader` -> `Mutex<Vixen::LockCensus::Family::RM12> statusMutex_`<br>`BatchedUploader` -> `Mutex<Vixen::LockCensus::Family::RM9> cmdBufferMutex_` |
 | `libraries/ResourceManagement/include/Memory/BudgetBridge.h` | 1 | RM13 | `BudgetBridge` -> `mutex pendingMutex_` |
 | `libraries/ResourceManagement/include/Memory/DirectAllocator.h` | 1 | RM5 | `DirectAllocator` -> `mutex mutex_` |

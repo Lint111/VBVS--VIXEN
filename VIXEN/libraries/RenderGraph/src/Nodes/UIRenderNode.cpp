@@ -267,7 +267,9 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // RmlUi global init, the context, and the document.
         renderInterface_.Init(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
                               device->gpuMemoryProperties, commandPool_, renderPass_,
-                              &device->SubmitMutex(device->queue));
+                              [this](VkCommandPool pool, VkCommandBuffer cmd, std::function<void()> release) {
+                                  return GetOwningGraph()->SubmitOneShot(this, pool, cmd, std::move(release)) == VK_SUCCESS;
+                              });
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());

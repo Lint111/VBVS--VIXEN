@@ -35,7 +35,6 @@ VIXEN/libraries/RenderGraph/src/Nodes/ShellRevalidateNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/VoxelSelectionProviderNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/WindowNode.cpp	0	RG4
 VIXEN/libraries/RenderGraph/src/Ui/UiHitMask.cpp	1	RG6
-VIXEN/libraries/RenderGraph/src/Ui/VixenRmlRenderInterface.cpp	0	VK2-borrowed
 VIXEN/libraries/ResourceManagement/include/Memory/BatchedUploader.h	4	RM9,RM10,RM11,RM12;VK2-borrowed
 VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h	1	RM13
 VIXEN/libraries/ResourceManagement/include/Memory/DirectAllocator.h	1	RM5
