@@ -5,7 +5,7 @@
 #include <string>
 #include <cstdint>
 #include <optional>
-#include <mutex>
+#include <atomic>
 #include <unordered_map>
 
 namespace ShaderManagement {
