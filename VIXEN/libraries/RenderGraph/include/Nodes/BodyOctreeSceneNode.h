@@ -198,7 +198,7 @@ public:
      * the occupancy-grid blob that follows the same shader-recompile seam.
      */
     void SetGlyphOutlineInstances(
-        std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances);
+        std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances);
 
     /**
      * @brief R502.2 (count-agnostic lighting S0) — per-recipe surface-cell lists and areas the
@@ -273,7 +273,7 @@ public:
     [[nodiscard]] uint64_t MipPoolBytes() const { return concatenated_.mipPool.size(); }
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
     [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
-    [[nodiscard]] uint64_t GlyphOutlineBytes() const { return glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance); }
+    [[nodiscard]] uint64_t GlyphOutlineBytes() const { return glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance); }
     // Sum the byte capacities of every persistent payload buffer, including
     // descriptor-valid 1-byte placeholders and the published shell generation.
     // This is allocation capacity, deliberately independent of readiness.
@@ -291,7 +291,7 @@ public:
             padded(concatenated_.mipPool.size()) +
             padded(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef)) +
             padded(occupancyGrid_.size() * sizeof(float)) +
-            padded(glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance));
+            padded(glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance));
         total += static_cast<uint64_t>(shellDataCapacity_ + shellLookupCapacity_ +
                                        proxyAabbCapacity_);
         return total;
@@ -503,7 +503,7 @@ private:
     // grid, set by SetOccupancyGrid. CPU source of truth for CreateOctreeBuffers' upload —
     // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
     std::vector<float> occupancyGrid_;
-    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineInstances_;
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineInstances_;
 
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.

@@ -2089,7 +2089,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
             std::string splicedSource;
             std::vector<float> occupancyGridBlob;
-            std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineBlob;
+            std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineBlob;
             try {
                 splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
                     rawSource, proceduralRecipes_, &occupancyGridBlob, &glyphOutlineBlob);

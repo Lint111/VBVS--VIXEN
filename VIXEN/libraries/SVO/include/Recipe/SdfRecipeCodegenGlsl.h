@@ -62,9 +62,9 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     uint32_t recipeId,
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
-    std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
+    std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
     uint32_t glyphInstanceBase = 0,
-    std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {})
+    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {})
 {
     std::vector<std::string> stk;
     std::string body;
@@ -105,7 +105,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
             const auto& path = pathInstances[pathIndex];
             const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
             const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::PathSegmentCapacity));
             body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
             body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
             body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
@@ -135,7 +135,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
             const auto& path = pathInstances[pathIndex];
             const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
             const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::PathSegmentCapacity));
             body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
             body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
             body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";

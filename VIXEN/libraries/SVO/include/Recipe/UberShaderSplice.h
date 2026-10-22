@@ -48,7 +48,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
     const std::string& rawSource,
     const RecipeRegistry& registry,
     std::vector<float>* outConcatenatedOccupancyGrid = nullptr,
-    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr)
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr)
 {
     if (outConcatenatedOccupancyGrid) outConcatenatedOccupancyGrid->clear();
     if (outConcatenatedGlyphInstances) outConcatenatedGlyphInstances->clear();

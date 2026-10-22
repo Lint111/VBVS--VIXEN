@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Canonical SparseEmitterEntry — one source for C++ (Vixen::Gpu) + GLSL.
 // Count-agnostic lighting (R502.2, lightdesign §2.3 step 1): one row per STORED body
 // instance whose octree carries a non-zero sparse power lane, with an inclusive running

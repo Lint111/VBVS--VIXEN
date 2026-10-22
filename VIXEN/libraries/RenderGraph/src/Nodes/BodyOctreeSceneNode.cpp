@@ -445,7 +445,7 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
 }
 
 void BodyOctreeSceneNode::SetGlyphOutlineInstances(
-    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances) {
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances) {
     // R631: this payload is produced by the same shader-build callback as the spliced recipe
     // source. The registry owns one content-deduplicated blob and the emitted operands carry
     // its global indices, so the SSBO and generated shader are always one generation pair.
@@ -1352,7 +1352,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
     // R631: the glyph outline payload is runtime data. Keeping it out of the generated GLSL
     // source prevents the driver from unrolling one large compile-time object per recipe.
     const VkDeviceSize glyphOutlineSize = std::max<VkDeviceSize>(
-        glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance), 1);
+        glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance), 1);
     CreateHostBuffer(device, glyphOutlineSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         glyphOutlineInstances_.empty() ? nullptr : glyphOutlineInstances_.data(),

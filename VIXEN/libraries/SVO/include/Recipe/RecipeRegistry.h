@@ -106,9 +106,9 @@ public:
         // Registration-local rows used to validate and intern GlyphOutline operands. After
         // Register(), operands point into RecipeRegistry's shared GlyphOutlineBlob(); this
         // vector remains as CPU-side staging for existing specialized-shader call sites.
-        std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances;
+        std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances;
         // PathDistance indexes one complete PathInstance row the same way.
-        std::vector<Yeroket::Sdf::Generated::PathInstance> pathInstances;
+        std::vector<Yeroket::Sdf::Kernels::PathInstance> pathInstances;
     };
 
     enum class RegisterResult {
@@ -303,13 +303,13 @@ public:
     }
 
     // The single immutable runtime glyph resource consumed by all registered recipe jobs.
-    [[nodiscard]] std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>
+    [[nodiscard]] std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>
     GlyphOutlineBlob() const noexcept {
         return glyphOutlineBlob_;
     }
 
     [[nodiscard]] std::uint64_t GlyphOutlineBytes() const noexcept {
-        return glyphOutlineBlob_.size() * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance);
+        return glyphOutlineBlob_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance);
     }
 
     // Compatibility accessor for specialized pipeline call sites. GlyphOutline operands are
@@ -324,11 +324,11 @@ public:
 
 private:
     std::uint64_t generation_ = 0;
-    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineBlob_;
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineBlob_;
     std::map<std::uint64_t, std::vector<std::uint32_t>> glyphOutlineHashBuckets_;
 
     [[nodiscard]] std::uint32_t InternGlyphOutline(
-        const Yeroket::Sdf::Generated::GlyphOutlineInstance& outline) {
+        const Yeroket::Sdf::Kernels::GlyphOutlineInstance& outline) {
         const std::uint64_t hash = Vixen::Hash::ComputeHash64(&outline, sizeof(outline));
         auto& candidates = glyphOutlineHashBuckets_[hash];
         for (const std::uint32_t index : candidates) {

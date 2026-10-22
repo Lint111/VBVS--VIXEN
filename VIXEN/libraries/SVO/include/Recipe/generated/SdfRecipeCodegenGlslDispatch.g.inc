@@ -1072,3 +1072,11 @@ case SdfOpCode::PathDistance: {
     stk.push_back(t);
     break;
 }
+case SdfOpCode::PathDistance: {
+    const std::size_t recipeStackBase = stk.size() - 0;
+    std::string t = "t" + std::to_string(n++);
+    body += "  precise float " + t + " = SdfCore_PathDistance(" + curPos + ", " + "pathInstances[" + std::to_string(std::bit_cast<std::uint32_t>(in.data[0])) + "]" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back(t);
+    break;
+}

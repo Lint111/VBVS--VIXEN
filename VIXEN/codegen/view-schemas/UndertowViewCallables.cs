@@ -58,7 +58,7 @@ namespace Vixen.ViewSchemas
         // emit an uncompilable `inline string IdentityString(string v)`. The real C++ symbol
         // (Vixen::AppFlow::Generated::IdentityString(Rml::String)), reached by
         // UndertowHudInspect.typed.g.h's cause() accessor, is hand-authored in
-        // libraries/AppFlow/include/AppFlowCallablesHandString.h instead (same "consumer must
+        // libraries/AppFlow/include/AppFlowCallables.g.hpp instead (same "consumer must
         // define by hand" precedent as EditorLayersView's activeLayerCountOverride hook) and
         // included alongside the generated header. The adapter calls this identity helper directly.
         public static string IdentityString(string v) => v;
