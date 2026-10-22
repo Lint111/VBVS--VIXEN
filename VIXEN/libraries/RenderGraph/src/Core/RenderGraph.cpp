@@ -2069,6 +2069,16 @@ void RenderGraph::GeneratePipelines() {
         // This includes ConnectVariadic PostCompile hooks that populate slot resources
         lifecycleHooks.ExecuteNodeHooks(NodeLifecyclePhase::PostCompile, instance);
     }
+
+    // The pipelines for the first frame now exist; keep their driver-compiled form on disk so a
+    // run that never reaches a clean shutdown still leaves the next launch warm.
+    if (mainCacher) {
+        const auto persistStart = PhaseTiming::Clock::now();
+        mainCacher->PersistWarmState();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=persist-pipeline-cache ms=%.3f\n", PhaseTiming::MsSince(persistStart));
+        }
+    }
 }
 
 void RenderGraph::BuildExecutionOrder() {

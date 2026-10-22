@@ -97,6 +97,10 @@ public:
     void SetMainCacher(MainCacher* owner) noexcept { mainCacher_ = owner; }
     MainCacher* GetMainCacher() const noexcept { return mainCacher_; }
 
+    // Persist driver-compiled state that is expensive to rebuild (pipeline cache blobs) without
+    // waiting for shutdown, so a killed or crashed run still leaves the next launch warm.
+    virtual void PersistWarmState() const {}
+
 protected:
     // Cacher-specific byte format. These methods only see unique temporary payload paths; callers
     // persist through SerializeToFile/DeserializeFromFile above.

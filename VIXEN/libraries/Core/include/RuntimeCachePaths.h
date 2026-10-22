@@ -22,6 +22,14 @@ namespace Vixen {
  */
 std::filesystem::path RuntimeCacheDirectory();
 
+/**
+ * Return the root for driver-compiled state that is valid for a device and driver, not for a build
+ * tree (VkPipelineCache blobs). Order: VIXEN_SHARED_CACHE_DIR; <VIXEN_CACHE_DIR>/shared when the
+ * runtime cache is overridden (isolated runs stay isolated); the per-user cache directory
+ * (%LOCALAPPDATA%\VIXEN\cache, $XDG_CACHE_HOME/vixen or ~/.cache/vixen); <runtime cache>/shared.
+ */
+std::filesystem::path SharedDeviceCacheDirectory();
+
 /// Return the current process identifier on the host platform.
 std::uint64_t CurrentProcessId() noexcept;
 

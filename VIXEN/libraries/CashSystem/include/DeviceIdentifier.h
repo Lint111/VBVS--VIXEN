@@ -151,6 +151,11 @@ public:
      * @brief Save all caches to disk for this device
      */
     bool SaveAll(const std::filesystem::path& directory) const;
+
+    /**
+     * @brief Persist warm driver state (pipeline cache blobs) of every cacher now
+     */
+    void PersistWarmState() const;
     
     /**
      * @brief Load all caches from disk for this device

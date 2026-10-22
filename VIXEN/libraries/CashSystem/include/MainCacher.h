@@ -420,6 +420,16 @@ public:
     }
 
     /**
+     * @brief Persist warm driver state (pipeline cache blobs) now, without a full SaveAll
+     */
+    void PersistWarmState() const {
+        std::shared_lock deviceLock(m_deviceRegistriesMutex);
+        for (const auto& [deviceId, registry] : m_deviceRegistries) {
+            registry.PersistWarmState();
+        }
+    }
+
+    /**
      * @brief Save all caches to disk asynchronously (non-blocking)
      * @return Future that resolves to true if all saves succeeded
      * @note Submits device and global cache work to the cacher-owned blocking lane
