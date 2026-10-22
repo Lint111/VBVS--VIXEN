@@ -177,6 +177,33 @@ std::filesystem::path RuntimeCacheDirectory() {
 #endif
 }
 
+std::filesystem::path SharedDeviceCacheDirectory() {
+    const auto environmentPath = [](const char* name) -> std::filesystem::path {
+        const char* value = std::getenv(name);
+        return value && *value ? std::filesystem::path(value) : std::filesystem::path();
+    };
+
+    if (auto explicitRoot = environmentPath("VIXEN_SHARED_CACHE_DIR"); !explicitRoot.empty()) {
+        return explicitRoot;
+    }
+    if (auto overriddenRuntime = environmentPath("VIXEN_CACHE_DIR"); !overriddenRuntime.empty()) {
+        return overriddenRuntime / "shared";
+    }
+#ifdef _WIN32
+    if (auto localAppData = environmentPath("LOCALAPPDATA"); !localAppData.empty()) {
+        return localAppData / "VIXEN" / "cache";
+    }
+#else
+    if (auto xdgCache = environmentPath("XDG_CACHE_HOME"); !xdgCache.empty()) {
+        return xdgCache / "vixen";
+    }
+    if (auto home = environmentPath("HOME"); !home.empty()) {
+        return home / ".cache" / "vixen";
+    }
+#endif
+    return RuntimeCacheDirectory() / "shared";
+}
+
 std::uint64_t CurrentProcessId() noexcept {
 #ifdef _WIN32
     return static_cast<std::uint64_t>(::_getpid());

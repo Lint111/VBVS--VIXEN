@@ -112,6 +112,7 @@ public:
     bool SerializePayloadToFile(const std::filesystem::path& path) const override;
     bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "ComputePipelineCacher"; }
+    void PersistWarmState() const override;
 
 protected:
     // TypedCacher implementation
