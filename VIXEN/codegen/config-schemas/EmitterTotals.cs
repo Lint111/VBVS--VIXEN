@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical EmitterTotals — one source for C++ (Vixen::Gpu) + GLSL.
 // Count-agnostic lighting (R502, lightdesign §2.4): the per-frame aggregate the two-level
 // emitter mixture needs. Written by the instance uploader (BodyOctreeSceneNode), read by

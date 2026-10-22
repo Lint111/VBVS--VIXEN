@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical ProbeGridConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc4 M2: DDGI probe-grid placement + compute budget as
 // drift-guarded data, not magic numbers. Mirrors ReservoirConfig.cs's precedent

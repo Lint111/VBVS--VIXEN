@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical Light / LightingConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc0 M1: lights become generated, drift-guarded data types.
 //

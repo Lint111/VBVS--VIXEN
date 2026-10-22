@@ -47,9 +47,9 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
 }
 
-// Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Reference::bitAt(source, index).
+// Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Generated::bitAt(source, index).
 inline bool ComputeEditorLayerRow_isChecked(uint32_t source, uint32_t index) {
-    return Vixen::AppFlow::Reference::bitAt(source, index);
+    return Vixen::AppFlow::Generated::bitAt(source, index);
 }
 
 }  // namespace Vixen::Views

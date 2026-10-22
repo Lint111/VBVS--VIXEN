@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical ReservoirConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc3 M3: ReSTIR reservoir-sampling compute budget as
 // drift-guarded data, not magic numbers. Mirrors ShadowConfig.cs/

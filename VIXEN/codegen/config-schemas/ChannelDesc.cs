@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical per-channel descriptor — mirrors VoxelChannelFormat.h ChannelDesc (1 uvec4).
 [GpuStruct]
 public struct ChannelDesc

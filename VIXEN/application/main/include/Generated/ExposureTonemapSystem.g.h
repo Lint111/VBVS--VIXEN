@@ -20,20 +20,20 @@ static_assert(offsetof(ExposureTonemapSystemPushConstants, _ExtentY) == 4, "_Ext
 namespace Vixen::Gpu {
 inline constexpr uint32_t ExposureTonemapSystemBinding_meter = 2;
 inline constexpr uint32_t ExposureTonemapSystemBinding_LightingConfigSSBO = 3;
-struct ExposureTonemapSystemBindingInfo { uint32_t binding; bool readOnly; const char* kind; const char* member; };
+struct ExposureTonemapSystemBindingInfo { uint32_t binding; bool readOnly; };
 inline constexpr std::array<ExposureTonemapSystemBindingInfo, 2> ExposureTonemapSystemBindings = {{
-    {2u, true, "", ""},
-    {3u, true, "Vixen.Gpu.LightingConfig", "*"},
+    {2u, true},
+    {3u, true},
 }};
 struct ExposureTonemapSystemTextureDescriptor { uint32_t set; uint32_t binding; VkDescriptorType type; uint32_t count; VkFormat format; bool read; bool write; bool previous; };
 inline constexpr std::array<ExposureTonemapSystemTextureDescriptor, 2> ExposureTonemapSystemTextureDescriptors = {{
     {0u, 0u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_FORMAT_R16G16B16A16_SFLOAT, true, false, false},
     {0u, 1u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_FORMAT_R8G8B8A8_UNORM, false, true, false},
 }};
-// sceneRadianceHistoryOutput_current: Vixen.Codegen.Gpu.FrameTargetsRef.SceneRadianceHistoryOutput
+// sceneRadianceHistoryOutput_current: Vixen.Codegen.Gpu.StateFrameTargetsRef.SceneRadianceHistoryOutput
 inline constexpr uint32_t ExposureTonemapSystemBinding_sceneRadianceHistoryOutput_current = 0u;
 inline constexpr uint32_t ExposureTonemapSystemSlot_sceneRadianceHistoryOutput_current(uint32_t frame) { return 0u; }
-// outputImage_current: Vixen.Codegen.Gpu.FrameTargetsRef.OutputImage
+// outputImage_current: Vixen.Codegen.Gpu.StateFrameTargetsRef.OutputImage
 inline constexpr uint32_t ExposureTonemapSystemBinding_outputImage_current = 1u;
 inline constexpr uint32_t ExposureTonemapSystemSlot_outputImage_current(uint32_t frame) { return (frame & 1u); }
 inline constexpr uint32_t ExposureTonemapSystemLocalSizeX = 8;

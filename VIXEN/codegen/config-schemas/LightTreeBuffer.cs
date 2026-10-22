@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical LightTreeGpuNode / LightTreeBuffer — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc3 M4: the GPU-side mirror of LightTree.h's CPU LightTreeNode, so
 // RIS candidate generation can sample the SAME mip-cut light-tree the M3 brute-force

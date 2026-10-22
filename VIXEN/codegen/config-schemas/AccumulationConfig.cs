@@ -1,7 +1,5 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
-
 // Canonical AccumulationConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc2 M1: temporal-accumulation compute budget as drift-guarded
 // data, not magic numbers. Mirrors ShadowConfig.cs's precedent exactly (see that

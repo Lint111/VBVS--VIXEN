@@ -61,7 +61,7 @@ namespace Vixen::SVO {
 // libraries/SVO/schemas/MaterialColorCallables.cs and shared with the GLSL
 // getMaterialColor(); this adapter only packs the three channel reads.
 static glm::vec3 MaterialIdToColor(uint32_t matID) {
-    using Vixen::Materials::MaterialColorChannel;
+    using Vixen::AppFlow::Generated::MaterialColorChannel;
     return glm::vec3(MaterialColorChannel(matID, 0u),
                      MaterialColorChannel(matID, 1u),
                      MaterialColorChannel(matID, 2u));
