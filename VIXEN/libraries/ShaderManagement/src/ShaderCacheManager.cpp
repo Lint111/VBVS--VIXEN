@@ -89,14 +89,16 @@ ShaderCacheManager& DefaultShaderCacheManager() {
 
 ShaderCacheManager::ShaderCacheManager(const ShaderCacheConfig& cfg)
     : config(cfg)
+    , enabled_(cfg.enabled)
+    , maxCacheSizeMB_(cfg.maxCacheSizeMB)
 {
     // Create cache directory if it doesn't exist
-    if (config.enabled && !std::filesystem::exists(config.cacheDirectory)) {
+    if (enabled_ && !std::filesystem::exists(config.cacheDirectory)) {
         try {
             std::filesystem::create_directories(config.cacheDirectory);
         } catch (const std::filesystem::filesystem_error&) {
             // If directory creation fails, disable caching
-            config.enabled = false;
+            enabled_ = false;
         }
     }
 }
@@ -106,16 +108,14 @@ ShaderCacheManager::~ShaderCacheManager() {
 }
 
 std::optional<std::vector<uint32_t>> ShaderCacheManager::Lookup(const std::string& cacheKey) {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return std::nullopt;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     std::filesystem::path cachePath = config.cacheDirectory / (cacheKey + ".spv");
 
     if (!std::filesystem::exists(cachePath)) {
-        stats.totalCacheMisses++;
+        stats.totalCacheMisses.fetch_add(1, std::memory_order_relaxed);
         return std::nullopt;
     }
 
@@ -123,18 +123,18 @@ std::optional<std::vector<uint32_t>> ShaderCacheManager::Lookup(const std::strin
     // have atomically replaced it after this reader opened the previous file.
     auto spirv = ReadShaderCacheFile(cachePath, cacheKey, config.validateCache);
     if (!spirv) {
-        stats.totalCacheMisses++;
+        stats.totalCacheMisses.fetch_add(1, std::memory_order_relaxed);
         return std::nullopt;
     }
 
-    stats.totalCacheHits++;
-    stats.totalBytesRead += spirv->size() * sizeof(uint32_t);
+    stats.totalCacheHits.fetch_add(1, std::memory_order_relaxed);
+    stats.totalBytesRead.fetch_add(spirv->size() * sizeof(uint32_t), std::memory_order_relaxed);
 
     return spirv;
 }
 
 bool ShaderCacheManager::Store(const std::string& cacheKey, const std::vector<uint32_t>& spirv) {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return false;
     }
 
@@ -146,8 +146,6 @@ bool ShaderCacheManager::Store(const std::string& cacheKey, const std::vector<ui
     if (spirv.empty()) {
         return false;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     std::filesystem::path cachePath = config.cacheDirectory / (cacheKey + ".spv");
 
@@ -168,11 +166,11 @@ bool ShaderCacheManager::Store(const std::string& cacheKey, const std::vector<ui
         return false;
     }
 
-    stats.totalBytesWritten += bytes.size();
-    stats.cachedShaderCount++;
+    stats.totalBytesWritten.fetch_add(bytes.size(), std::memory_order_relaxed);
+    stats.cachedShaderCount.fetch_add(1, std::memory_order_relaxed);
 
     // Check cache size limit (simple check, full eviction done on demand)
-    if (stats.currentCacheSizeBytes > config.maxCacheSizeMB * 1024 * 1024) {
+    if (stats.currentCacheSizeBytes.load(std::memory_order_relaxed) > maxCacheSizeMB_.load(std::memory_order_relaxed) * 1024 * 1024) {
         EvictOldEntries();
     }
 
@@ -180,22 +178,18 @@ bool ShaderCacheManager::Store(const std::string& cacheKey, const std::vector<ui
 }
 
 bool ShaderCacheManager::Contains(const std::string& cacheKey) const {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return false;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     std::filesystem::path cachePath = config.cacheDirectory / (cacheKey + ".spv");
     return std::filesystem::exists(cachePath);
 }
 
 bool ShaderCacheManager::Remove(const std::string& cacheKey) {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return false;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     std::filesystem::path cachePath = config.cacheDirectory / (cacheKey + ".spv");
     if (!std::filesystem::exists(cachePath)) {
@@ -203,17 +197,15 @@ bool ShaderCacheManager::Remove(const std::string& cacheKey) {
     }
 
     std::filesystem::remove(cachePath);
-    stats.cachedShaderCount--;
+    stats.cachedShaderCount.fetch_sub(1, std::memory_order_relaxed);
 
     return true;
 }
 
 void ShaderCacheManager::Clear() {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     // Remove all .spv files in cache directory
     for (const auto& entry : std::filesystem::directory_iterator(config.cacheDirectory)) {
@@ -222,16 +214,14 @@ void ShaderCacheManager::Clear() {
         }
     }
 
-    stats.cachedShaderCount = 0;
-    stats.currentCacheSizeBytes = 0;
+    stats.cachedShaderCount.store(0, std::memory_order_relaxed);
+    stats.currentCacheSizeBytes.store(0, std::memory_order_relaxed);
 }
 
 uint32_t ShaderCacheManager::ValidateCache() {
-    if (!config.enabled) {
+    if (!enabled_.load(std::memory_order_relaxed)) {
         return 0;
     }
-
-    std::lock_guard<std::mutex> lock(cacheMutex);
 
     uint32_t corruptedCount = 0;
 
@@ -251,18 +241,15 @@ uint32_t ShaderCacheManager::ValidateCache() {
 }
 
 void ShaderCacheManager::SetEnabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    config.enabled = enabled;
+    enabled_.store(enabled, std::memory_order_relaxed);
 }
 
 bool ShaderCacheManager::IsEnabled() const {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    return config.enabled;
+    return enabled_.load(std::memory_order_relaxed);
 }
 
 void ShaderCacheManager::SetMaxCacheSize(size_t maxSizeMB) {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    config.maxCacheSizeMB = maxSizeMB;
+    maxCacheSizeMB_.store(maxSizeMB, std::memory_order_relaxed);
 }
 
 const std::filesystem::path& ShaderCacheManager::GetCacheDirectory() const {
@@ -270,21 +257,24 @@ const std::filesystem::path& ShaderCacheManager::GetCacheDirectory() const {
 }
 
 ShaderCacheStats ShaderCacheManager::GetStatistics() const {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    return stats;
+    ShaderCacheStats snapshot;
+    snapshot.totalCacheHits = stats.totalCacheHits.load(std::memory_order_relaxed);
+    snapshot.totalCacheMisses = stats.totalCacheMisses.load(std::memory_order_relaxed);
+    snapshot.totalBytesRead = stats.totalBytesRead.load(std::memory_order_relaxed);
+    snapshot.totalBytesWritten = stats.totalBytesWritten.load(std::memory_order_relaxed);
+    snapshot.currentCacheSizeBytes = stats.currentCacheSizeBytes.load(std::memory_order_relaxed);
+    snapshot.cachedShaderCount = stats.cachedShaderCount.load(std::memory_order_relaxed);
+    return snapshot;
 }
 
 void ShaderCacheManager::ResetStatistics() {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    stats.totalCacheHits = 0;
-    stats.totalCacheMisses = 0;
-    stats.totalBytesRead = 0;
-    stats.totalBytesWritten = 0;
+    stats.totalCacheHits.store(0, std::memory_order_relaxed);
+    stats.totalCacheMisses.store(0, std::memory_order_relaxed);
+    stats.totalBytesRead.store(0, std::memory_order_relaxed);
+    stats.totalBytesWritten.store(0, std::memory_order_relaxed);
 }
 
 void ShaderCacheManager::RebuildMetadata() {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-
     // Clear existing metadata
     entries.clear();
 
@@ -371,8 +361,8 @@ uint32_t ShaderCacheManager::EvictOldEntries() {
         });
 
     // Remove oldest until we're under the limit
-    size_t targetSize = config.maxCacheSizeMB * 1024 * 1024 * 9 / 10; // 90% of limit
-    size_t currentSize = stats.currentCacheSizeBytes;
+    size_t targetSize = maxCacheSizeMB_.load(std::memory_order_relaxed) * 1024 * 1024 * 9 / 10; // 90% of limit
+    size_t currentSize = stats.currentCacheSizeBytes.load(std::memory_order_relaxed);
     uint32_t evicted = 0;
 
     for (const auto& entry : fileEntries) {
@@ -382,11 +372,11 @@ uint32_t ShaderCacheManager::EvictOldEntries() {
 
         std::filesystem::remove(entry.path);
         currentSize -= entry.size;
-        stats.cachedShaderCount--;
+        stats.cachedShaderCount.fetch_sub(1, std::memory_order_relaxed);
         evicted++;
     }
 
-    stats.currentCacheSizeBytes = currentSize;
+    stats.currentCacheSizeBytes.store(currentSize, std::memory_order_relaxed);
     return evicted;
 }
 

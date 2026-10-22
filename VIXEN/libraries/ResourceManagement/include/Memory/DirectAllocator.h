@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Memory/IMemoryAllocator.h"
+#include "Memory/RecordPool.h"
 #include "Memory/ResourceBudgetManager.h"
-#include <mutex>
-#include <unordered_map>
+#include <atomic>
 
 namespace ResourceManagement {
 
@@ -75,6 +75,9 @@ private:
      *
      * Stored as AllocationHandle (void*) in BufferAllocation/ImageAllocation
      */
+    /// One live allocation; the record is the allocation handle. Fields are written by the
+    /// allocating thread before `live` is published, then immutable except the map state, which
+    /// Vulkan itself requires the caller to externally synchronise per VkDeviceMemory.
     struct AllocationRecord {
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkDeviceSize size = 0;
@@ -83,16 +86,31 @@ private:
         void* mappedPtr = nullptr;
         bool canAlias = false;     // Created with allowAliasing=true
         bool isAliased = false;    // This is an aliased resource (doesn't own memory)
+        std::atomic<bool> live{false};  // published after the fields; cleared by the one freeing thread
+        uint32_t poolIndex = 0;         // RecordPool bookkeeping
+        uint32_t nextFree = 0;          // RecordPool bookkeeping
     };
 
     VkPhysicalDevice physicalDevice_;
     VkDevice device_;
     VkPhysicalDeviceMemoryProperties memProperties_;
-    ResourceBudgetManager* budgetManager_ = nullptr;
 
-    mutable std::mutex mutex_;
-    std::unordered_map<AllocationHandle, AllocationRecord> allocations_;
-    AllocationStats stats_;
+    // Lock-free registry: the pool hands out stable records, `live` + Owns() validate handles
+    // without dereferencing foreign pointers, and the stats are independent atomics.
+    RecordPool<AllocationRecord> allocations_;
+    std::atomic<uint64_t> totalAllocatedBytes_{0};
+    std::atomic<uint64_t> totalUsedBytes_{0};
+    std::atomic<uint32_t> allocationCount_{0};
+    std::atomic<uint32_t> blockCount_{0};
+    std::atomic<ResourceBudgetManager*> budgetManager_{nullptr};  // set at wiring time, read lock-free
+    [[nodiscard]] ResourceBudgetManager* Budget() const noexcept { return budgetManager_.load(std::memory_order_acquire); }
+
+    /// Take a pool slot and publish it as live; nullptr when the pool is at its cap.
+    AllocationRecord* AcquireRecord(VkDeviceMemory memory, VkDeviceSize size,
+                                    uint32_t memoryTypeIndex, bool canAlias, bool isAliased);
+    /// Claim `handle` for freeing: true for exactly one caller per live handle, false for an
+    /// invalid or already-freed handle (which is never dereferenced).
+    bool ClaimForFree(AllocationHandle handle);
 
     // Helper methods
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;

@@ -13,9 +13,8 @@
 #include <typeinfo>
 #include <vector>
 #include <memory>
-#include "LockCensus.h"
-#include <mutex>
-#include <shared_mutex>
+#include <atomic>
+#include <cassert>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -65,7 +64,7 @@ class MainCacher : public ILoggable {
 public:
     /// Construct a standalone cacher. AR#8: MainCacher is an ordinary instantiable object owned by
     /// its host (EngineContext / BenchmarkRunner), not a process-wide singleton. Non-copyable/movable
-    /// (holds mutexes and is referenced by the cachers/registries it owns).
+    /// (holds the registries and is referenced by the cachers/registries it owns).
     MainCacher() = default;
     ~MainCacher();
     MainCacher(const MainCacher&) = delete;
@@ -123,7 +122,7 @@ public:
         static_assert(std::is_base_of_v<TypedCacher<ResourceT, CreateInfoT>, CacherT>,
                       "CacherT must inherit from TypedCacher");
 
-        std::lock_guard lock(m_globalRegistryMutex);
+        WriterScope scope(m_registryWriter);
 
         // Check if already registered
         auto existingIt = m_globalFactories.find(typeIndex);
@@ -168,12 +167,10 @@ public:
         }
         
         // Check if this type is registered as device-dependent
-        std::shared_lock dependencyLock(m_globalRegistryMutex);
         auto dependencyIt = m_deviceDependency.find(typeIndex);
         if (dependencyIt == m_deviceDependency.end() || !dependencyIt->second) {
             return nullptr;  // Not registered or not device-dependent
         }
-        dependencyLock.unlock();
         
         // Get or create device registry
         auto& deviceRegistry = GetOrCreateDeviceRegistry(device);
@@ -183,7 +180,6 @@ public:
 
         if (!typedCacher) {
             // Cacher doesn't exist - create using global factory
-            std::lock_guard globalLock(m_globalRegistryMutex);
             auto factoryIt = m_globalFactories.find(typeIndex);
             if (factoryIt == m_globalFactories.end()) {
                 return nullptr;  // Factory not registered (shouldn't happen after registration check)
@@ -203,8 +199,10 @@ public:
             typedCacher->SetCacheDeviceIdentity(deviceRegistry.GetDeviceIdentifier().GetHash());
 
             // Store in device registry
-            std::lock_guard deviceLock(m_deviceRegistriesMutex);
-            deviceRegistry.m_deviceCachers.emplace_back(std::move(newCacher));
+            {
+                WriterScope scope(m_registryWriter);
+                deviceRegistry.m_deviceCachers.emplace_back(std::move(newCacher));
+            }
 
             // Lazy deserialization: Load from disk if cache file exists
             std::string cacheName(typedCacher->name());
@@ -243,16 +241,12 @@ public:
         static_assert(std::is_base_of_v<TypedCacher<ResourceT, CreateInfoT>, CacherT>,
                       "CacherT must inherit from TypedCacher");
                       
-        std::shared_lock dependencyLock(m_globalRegistryMutex);
         auto dependencyIt = m_deviceDependency.find(typeIndex);
         if (dependencyIt == m_deviceDependency.end() || dependencyIt->second) {
             return nullptr;  // Not registered or device-dependent
         }
-        dependencyLock.unlock();
-        
+
         // Get or create in global shared registry
-        std::lock_guard globalLock(m_globalRegistryMutex);
-        
         auto it = m_globalCachers.find(typeIndex);
         if (it != m_globalCachers.end()) {
             return dynamic_cast<CacherT*>(it->second.get());
@@ -275,7 +269,10 @@ public:
         }
         
         // Device-independent cachers don't need device initialization
-        m_globalCachers[typeIndex] = std::move(newCacher);
+        {
+            WriterScope scope(m_registryWriter);
+            m_globalCachers[typeIndex] = std::move(newCacher);
+        }
         return typedCacher;
     }
 
@@ -298,13 +295,11 @@ public:
                       "CacherT must inherit from TypedCacher");
                       
         // Check registration and dependency
-        std::shared_lock dependencyLock(m_globalRegistryMutex);
         auto dependencyIt = m_deviceDependency.find(typeIndex);
         if (dependencyIt == m_deviceDependency.end()) {
             return nullptr;  // Not registered
         }
-        dependencyLock.unlock();
-        
+
         if (dependencyIt->second) {
             // Device-dependent
             return GetDeviceDependentCacher<CacherT, ResourceT, CreateInfoT>(typeIndex, device);
@@ -318,7 +313,6 @@ public:
      * @brief Check if a type is registered
      */
     bool IsRegistered(std::type_index typeIndex) const {
-        std::shared_lock lock(m_globalRegistryMutex);
         return m_globalFactories.find(typeIndex) != m_globalFactories.end();
     }
 
@@ -326,7 +320,6 @@ public:
      * @brief Check if a registered type is device-dependent
      */
     bool IsDeviceDependent(std::type_index typeIndex) const {
-        std::shared_lock lock(m_globalRegistryMutex);
         auto it = m_deviceDependency.find(typeIndex);
         return (it != m_deviceDependency.end()) ? it->second : true;  // Default to device-dependent
     }
@@ -335,7 +328,6 @@ public:
      * @brief Get human-readable name for a registered type
      */
     std::string GetTypeName(std::type_index typeIndex) const {
-        std::shared_lock lock(m_globalRegistryMutex);
         auto it = m_globalNames.find(typeIndex);
         return (it != m_globalNames.end()) ? std::string(it->second) : "UnknownType";
     }
@@ -351,7 +343,6 @@ public:
             return;
         }
 
-        std::lock_guard lock(m_deviceRegistriesMutex);
         auto deviceId = DeviceIdentifier(device);
 
         auto it = m_deviceRegistries.find(deviceId);
@@ -363,6 +354,7 @@ public:
                 }
             }
             // Now erase the registry
+            WriterScope scope(m_registryWriter);
             m_deviceRegistries.erase(it);
         }
     }
@@ -371,7 +363,7 @@ public:
      * @brief Clear all global (device-independent) caches
      */
     void ClearGlobalCaches() {
-        std::lock_guard lock(m_globalRegistryMutex);
+        WriterScope scope(m_registryWriter);
         m_globalCachers.clear();
     }
 
@@ -379,9 +371,8 @@ public:
      * @brief Clear all caches for all devices and global caches
      */
     void ClearAll() {
-        std::lock_guard deviceLock(m_deviceRegistriesMutex);
-        std::lock_guard globalLock(m_globalRegistryMutex);
-        
+        WriterScope scope(m_registryWriter);
+
         m_deviceRegistries.clear();
         m_globalCachers.clear();
         // Keep global factories and names for continued registration
@@ -395,15 +386,12 @@ public:
         bool success = true;
 
         // Save device-specific caches
-        {
-            std::shared_lock deviceLock(m_deviceRegistriesMutex);
-            for (const auto& [deviceId, registry] : m_deviceRegistries) {
-                auto deviceDir = directory / "devices" / deviceId.GetDescription();
-                if (!std::filesystem::exists(deviceDir)) {
-                    std::filesystem::create_directories(deviceDir);
-                }
-                success &= registry.SaveAll(deviceDir);
+        for (const auto& [deviceId, registry] : m_deviceRegistries) {
+            auto deviceDir = directory / "devices" / deviceId.GetDescription();
+            if (!std::filesystem::exists(deviceDir)) {
+                std::filesystem::create_directories(deviceDir);
             }
+            success &= registry.SaveAll(deviceDir);
         }
 
         // Save global caches
@@ -435,17 +423,14 @@ public:
      */
     std::future<bool> SaveAllAsync(const std::filesystem::path& directory) const {
         std::vector<std::function<bool()>> tasks;
-        {
-            std::shared_lock deviceLock(m_deviceRegistriesMutex);
-            tasks.reserve(m_deviceRegistries.size() + 1);
-            for (const auto& [deviceId, registry] : m_deviceRegistries) {
-                auto deviceDir = directory / "devices" / deviceId.GetDescription();
-                auto* registryPtr = &registry;
-                tasks.emplace_back([deviceDir, registryPtr]() {
-                    std::filesystem::create_directories(deviceDir);
-                    return registryPtr->SaveAll(deviceDir);
-                });
-            }
+        tasks.reserve(m_deviceRegistries.size() + 1);
+        for (const auto& [deviceId, registry] : m_deviceRegistries) {
+            auto deviceDir = directory / "devices" / deviceId.GetDescription();
+            auto* registryPtr = &registry;
+            tasks.emplace_back([deviceDir, registryPtr]() {
+                std::filesystem::create_directories(deviceDir);
+                return registryPtr->SaveAll(deviceDir);
+            });
         }
 
         tasks.emplace_back([this, directory]() {
@@ -502,9 +487,11 @@ public:
                 auto deviceDir = entry.path();
                 auto deviceId = DeviceIdentifier::FromDirectoryName(deviceDir.filename().string());
                 if (!deviceId.IsValid()) continue;
-                tasks.emplace_back([this, deviceId, deviceDir]() {
-                    auto& registry = GetOrCreateDeviceRegistry(deviceId);
-                    return registry.LoadAll(deviceDir);
+                // Membership is owner-phase: create the registry here, on the caller. The blocking
+                // lane then touches only this registry (map nodes are address-stable).
+                auto* registryPtr = &GetOrCreateDeviceRegistry(deviceId);
+                tasks.emplace_back([registryPtr, deviceDir]() {
+                    return registryPtr->LoadAll(deviceDir);
                 });
             }
         }
@@ -520,7 +507,6 @@ public:
      * @brief Get list of all registered cache types
      */
     std::vector<std::string> GetRegisteredTypes() const {
-        std::shared_lock lock(m_globalRegistryMutex);
         std::vector<std::string> types;
         
         for (const auto& [typeIndex, name] : m_globalNames) {
@@ -534,7 +520,6 @@ public:
      * @brief Get list of active device registries
      */
     std::vector<std::string> GetActiveDevices() const {
-        std::shared_lock lock(m_deviceRegistriesMutex);
         std::vector<std::string> devices;
         
         for (const auto& [deviceId, registry] : m_deviceRegistries) {
@@ -556,8 +541,6 @@ public:
     };
 
     CacheStats GetStats() const {
-        std::shared_lock deviceLock(m_deviceRegistriesMutex);
-        std::shared_lock globalLock(m_globalRegistryMutex);
 
         CacheStats stats;
         stats.globalCaches = m_globalCachers.size();
@@ -640,7 +623,6 @@ private:
         // Save the manifest atomically with the same envelope checks as cacher payloads.
         auto manifestPath = directory / "manifest.txt";
         std::ostringstream manifest;
-        std::shared_lock lock(m_globalRegistryMutex);
         for (const auto& [typeIndex, cacher] : m_globalCachers) {
             if (cacher) {
                 manifest << cacher->name() << "\n";
@@ -691,7 +673,6 @@ private:
 
         std::vector<std::function<bool()>> tasks;
 
-        std::shared_lock lock(m_globalRegistryMutex);
         for (const auto& [typeIndex, cacher] : m_globalCachers) {
             if (cacher) {
                 auto cacheName = std::string(cacher->name());
@@ -729,11 +710,23 @@ private:
     std::unordered_map<std::type_index, std::unique_ptr<CacherBase>> m_globalCachers;
     
     // Device-specific registries
-    mutable Vixen::LockCensus::SharedMutex<Vixen::LockCensus::Family::C4> m_deviceRegistriesMutex;
     std::unordered_map<DeviceIdentifier, DeviceRegistry, DeviceIdentifier::DeviceHasher> m_deviceRegistries;
 
-    // Thread safety for global registry
-    mutable Vixen::LockCensus::SharedMutex<Vixen::LockCensus::Family::C3> m_globalRegistryMutex;
+    // Owner phase (C3, C4): registry membership (factories, global cachers, device registries) is
+    // written only by the graph owner thread -- node Setup/Compile and shutdown -- and read by the
+    // same thread afterwards. The blocking lane's save/load tasks touch only registries and cachers
+    // resolved before submit. No lock; a debug build asserts if two membership writes overlap.
+    struct WriterScope {
+        std::atomic<bool>& flag;
+        explicit WriterScope(std::atomic<bool>& f) : flag(f) {
+            [[maybe_unused]] const bool was = flag.exchange(true, std::memory_order_acquire);
+            assert(!was && "MainCacher registry membership is owner-phase (single writer)");
+        }
+        ~WriterScope() { flag.store(false, std::memory_order_release); }
+        WriterScope(const WriterScope&) = delete;
+        WriterScope& operator=(const WriterScope&) = delete;
+    };
+    std::atomic<bool> m_registryWriter{false};
 };
 
 } // namespace CashSystem

@@ -53,15 +53,6 @@ VMAAllocator::VMAAllocator(
 
 VMAAllocator::~VMAAllocator() {
     if (allocator_) {
-        // Verify all allocations were freed
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!allocationRecords_.empty()) {
-                // Log warning about leaked allocations
-                // In production, this indicates a resource leak
-            }
-        }
-
         vmaDestroyAllocator(allocator_);
         allocator_ = nullptr;
     }
@@ -78,8 +69,8 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
     }
 
     // Check budget before allocating
-    if (budgetManager_) {
-        if (!budgetManager_->TryAllocate(BudgetResourceType::DeviceMemory, request.size)) {
+    if (auto* budget = Budget()) {
+        if (!budget->TryAllocate(BudgetResourceType::DeviceMemory, request.size)) {
             return std::unexpected(AllocationError::OverBudget);
         }
     }
@@ -119,6 +110,7 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
 
     if (request.allowAliasing) {
         allocInfo.flags |= VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+        allocInfo.pUserData = reinterpret_cast<void*>(kUserDataCanAlias);
     }
 
     VkBuffer buffer = VK_NULL_HANDLE;
@@ -148,21 +140,9 @@ VMAAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         vmaSetAllocationName(allocator_, allocation, std::string(request.debugName).c_str());
     }
 
-    // Track allocation
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        allocationRecords_[static_cast<void*>(allocation)] = AllocationRecord{
-            .vmaAllocation = allocation,
-            .size = allocationInfo.size,
-            .isMapped = (allocationInfo.pMappedData != nullptr),
-            .canAlias = request.allowAliasing,
-            .isAliased = false
-        };
-    }
-
     // Report to budget manager
-    if (budgetManager_) {
-        budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, allocationInfo.size);
+    if (auto* budget = Budget()) {
+        budget->RecordAllocation(BudgetResourceType::DeviceMemory, allocationInfo.size);
     }
 
     // Get device address if needed (for RT buffers)
@@ -195,20 +175,14 @@ void VMAAllocator::FreeBuffer(BufferAllocation& allocation) {
 
     // Get size for budget tracking before freeing
     VkDeviceSize size = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = allocationRecords_.find(allocation.allocation);
-        if (it != allocationRecords_.end()) {
-            size = it->second.size;
-            allocationRecords_.erase(it);
-        }
-    }
+    bool canAlias = false;
+    (void)QueryAllocation(allocation.allocation, size, canAlias);
 
     vmaDestroyBuffer(allocator_, allocation.buffer, vmaAlloc);
 
     // Report deallocation to budget manager
-    if (budgetManager_ && size > 0) {
-        budgetManager_->RecordDeallocation(BudgetResourceType::DeviceMemory, size);
+    if (auto* budget = Budget(); budget && size > 0) {
+        budget->RecordDeallocation(BudgetResourceType::DeviceMemory, size);
     }
 
     // Invalidate the allocation struct
@@ -234,8 +208,8 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
                                   request.createInfo.extent.height *
                                   request.createInfo.extent.depth * 4; // Approximate bytes per pixel
 
-    if (budgetManager_) {
-        if (!budgetManager_->TryAllocate(BudgetResourceType::DeviceMemory, estimatedSize)) {
+    if (auto* budget = Budget()) {
+        if (!budget->TryAllocate(BudgetResourceType::DeviceMemory, estimatedSize)) {
             return std::unexpected(AllocationError::OverBudget);
         }
     }
@@ -264,6 +238,7 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
 
     if (request.allowAliasing) {
         allocInfo.flags |= VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+        allocInfo.pUserData = reinterpret_cast<void*>(kUserDataCanAlias);
     }
 
     VkImage image = VK_NULL_HANDLE;
@@ -293,21 +268,9 @@ VMAAllocator::AllocateImage(const ImageAllocationRequest& request) {
         vmaSetAllocationName(allocator_, allocation, std::string(request.debugName).c_str());
     }
 
-    // Track allocation
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        allocationRecords_[static_cast<void*>(allocation)] = AllocationRecord{
-            .vmaAllocation = allocation,
-            .size = allocationInfo.size,
-            .isMapped = false,
-            .canAlias = request.allowAliasing,
-            .isAliased = false
-        };
-    }
-
     // Report actual size to budget manager
-    if (budgetManager_) {
-        budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, allocationInfo.size);
+    if (auto* budget = Budget()) {
+        budget->RecordAllocation(BudgetResourceType::DeviceMemory, allocationInfo.size);
     }
 
     return ImageAllocation{
@@ -328,20 +291,14 @@ void VMAAllocator::FreeImage(ImageAllocation& allocation) {
 
     // Get size for budget tracking before freeing
     VkDeviceSize size = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = allocationRecords_.find(allocation.allocation);
-        if (it != allocationRecords_.end()) {
-            size = it->second.size;
-            allocationRecords_.erase(it);
-        }
-    }
+    bool canAlias = false;
+    (void)QueryAllocation(allocation.allocation, size, canAlias);
 
     vmaDestroyImage(allocator_, allocation.image, vmaAlloc);
 
     // Report deallocation to budget manager
-    if (budgetManager_ && size > 0) {
-        budgetManager_->RecordDeallocation(BudgetResourceType::DeviceMemory, size);
+    if (auto* budget = Budget(); budget && size > 0) {
+        budget->RecordDeallocation(BudgetResourceType::DeviceMemory, size);
     }
 
     // Invalidate the allocation struct
@@ -368,15 +325,6 @@ void* VMAAllocator::MapBuffer(const BufferAllocation& allocation) {
         return nullptr;
     }
 
-    // Update tracking
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = allocationRecords_.find(allocation.allocation);
-        if (it != allocationRecords_.end()) {
-            it->second.isMapped = true;
-        }
-    }
-
     return mappedData;
 }
 
@@ -393,14 +341,6 @@ void VMAAllocator::UnmapBuffer(const BufferAllocation& allocation) {
     VmaAllocation vmaAlloc = static_cast<VmaAllocation>(allocation.allocation);
     vmaUnmapMemory(allocator_, vmaAlloc);
 
-    // Update tracking
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = allocationRecords_.find(allocation.allocation);
-        if (it != allocationRecords_.end()) {
-            it->second.isMapped = false;
-        }
-    }
 }
 
 void VMAAllocator::FlushMappedRange(
@@ -455,23 +395,20 @@ AllocationStats VMAAllocator::GetStats() const {
 }
 
 void VMAAllocator::SetBudgetManager(ResourceBudgetManager* budgetManager) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    budgetManager_ = budgetManager;
+    budgetManager_.store(budgetManager, std::memory_order_release);
 }
 
 ResourceBudgetManager* VMAAllocator::GetBudgetManager() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return budgetManager_;
+    return Budget();
 }
 
-VMAAllocator::AllocationRecord* VMAAllocator::GetRecord(AllocationHandle handle) {
-    auto it = allocationRecords_.find(handle);
-    return it != allocationRecords_.end() ? &it->second : nullptr;
-}
-
-const VMAAllocator::AllocationRecord* VMAAllocator::GetRecord(AllocationHandle handle) const {
-    auto it = allocationRecords_.find(handle);
-    return it != allocationRecords_.end() ? &it->second : nullptr;
+bool VMAAllocator::QueryAllocation(AllocationHandle handle, VkDeviceSize& size, bool& canAlias) const {
+    if (!allocator_ || !handle) return false;
+    VmaAllocationInfo info{};
+    vmaGetAllocationInfo(allocator_, static_cast<VmaAllocation>(handle), &info);
+    size = info.size;
+    canAlias = (reinterpret_cast<uintptr_t>(info.pUserData) & kUserDataCanAlias) != 0;
+    return true;
 }
 
 // ============================================================================
@@ -490,14 +427,14 @@ VMAAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
 
     // Verify source allocation supports aliasing
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto* record = GetRecord(request.sourceAllocation);
-        if (!record || !record->canAlias) {
+        VkDeviceSize sourceSize = 0;
+        bool canAlias = false;
+        if (!QueryAllocation(request.sourceAllocation, sourceSize, canAlias) || !canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
 
         // Verify size fits within source allocation
-        if (request.offsetInAllocation + request.size > record->size) {
+        if (request.offsetInAllocation + request.size > sourceSize) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
     }
@@ -574,12 +511,10 @@ VMAAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
     // Verify source allocation supports aliasing
     VkDeviceSize sourceSize = 0;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto* record = GetRecord(request.sourceAllocation);
-        if (!record || !record->canAlias) {
+        bool canAlias = false;
+        if (!QueryAllocation(request.sourceAllocation, sourceSize, canAlias) || !canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
-        sourceSize = record->size;
     }
 
     // Create image without allocating new memory
@@ -625,9 +560,9 @@ bool VMAAllocator::SupportsAliasing(AllocationHandle allocation) const {
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto* record = GetRecord(allocation);
-    return record && record->canAlias;
+    VkDeviceSize size = 0;
+    bool canAlias = false;
+    return QueryAllocation(allocation, size, canAlias) && canAlias;
 }
 
 // Factory implementation

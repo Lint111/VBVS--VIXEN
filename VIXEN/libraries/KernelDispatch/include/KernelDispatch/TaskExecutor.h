@@ -22,14 +22,14 @@
 #include "VirtualTask.h"
 #include "Abi.h"
 #include <oneapi/tbb/task_arena.h>
-#include <chrono>
-#include <condition_variable>
-#include <deque>
+#include <oneapi/tbb/concurrent_queue.h>
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <semaphore>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -95,13 +95,33 @@ public:
     [[nodiscard]] CompletionResult Result() const;
 
 private:
+    /// Completion state is a single atomic phase word with one writer at a time (no mutex, no
+    /// condition variable). `Publishing` is internal: the winner of a Pending -> Publishing claim
+    /// writes `errorMessage`, then release-stores the terminal phase, so a reader that acquires a
+    /// terminal phase sees the whole result.
     struct State {
+        static constexpr uint32_t kPublishing = 0xFFu;
+
         explicit State(uint64_t order) : submissionOrder(order) {}
 
-        mutable std::mutex mutex;
-        mutable std::condition_variable condition;
+        std::atomic<uint32_t> phase{static_cast<uint32_t>(CompletionStatus::Pending)};
+        std::counting_semaphore<> signal{0};  // one permit once terminal; waiters pass it on
         uint64_t submissionOrder = 0;
-        CompletionResult result;
+        std::string errorMessage;
+
+        static bool IsTerminal(uint32_t value) noexcept {
+            return value == static_cast<uint32_t>(CompletionStatus::Succeeded)
+                || value == static_cast<uint32_t>(CompletionStatus::Failed)
+                || value == static_cast<uint32_t>(CompletionStatus::Cancelled);
+        }
+
+        /// Pending -> Running; false when a cancellation already claimed the state.
+        bool TryStart() noexcept;
+        /// Pending -> Cancelled with `message`; false when the state already left Pending.
+        bool TryCancel(const char* message);
+        /// Running -> terminal; only the worker that won TryStart() calls this.
+        void Finish(CompletionResult result);
+        [[nodiscard]] CompletionResult Snapshot() const;
     };
 
     explicit CompletionHandle(std::shared_ptr<State> state) : state_(std::move(state)) {}
@@ -214,18 +234,25 @@ private:
     std::vector<TaskError> errors_;
     DispatcherProfile profile_;
 
-    mutable std::mutex blockingMutex_;
-    std::condition_variable blockingCondition_;
-    std::deque<BlockingWork> blockingQueue_;
+    /// Blocking lane: producers push onto a lock-free queue and release a semaphore permit (never
+    /// block); an idle worker parks on the semaphore (allowed blocking: an idle park, not a stall).
+    /// Workers start once, claimed by a CAS on `blockingStartState_` (0 idle, 1 starting, 2 started);
+    /// work queued while they start is picked up as soon as they run.
+    oneapi::tbb::concurrent_queue<BlockingWork> blockingQueue_;
+    std::counting_semaphore<> blockingPermits_{0};
     std::vector<std::thread> blockingWorkers_;
-    bool blockingStopping_ = false;
-    size_t blockingOutstanding_ = 0;
-    std::condition_variable blockingIdleCondition_;
+    std::atomic<uint32_t> blockingStartState_{0};
+    std::atomic<bool> blockingStopping_{false};
+    std::atomic<uint32_t> blockingOutstanding_{0};
     std::atomic<uint64_t> nextSubmissionOrder_{0};
 
-    mutable std::mutex asyncMutex_;
-    std::condition_variable asyncIdleCondition_;
-    size_t asyncOutstanding_ = 0;
+    /// Async frame lane: the in-flight count lives in shared state so a finishing TBB task can
+    /// publish its decrement after the executor's destructor has observed zero.
+    struct AsyncLaneState {
+        std::atomic<uint32_t> outstanding{0};
+    };
+    std::shared_ptr<AsyncLaneState> asyncLane_ = std::make_shared<AsyncLaneState>();
+    std::once_flag asyncArenaOnce_;
     oneapi::tbb::task_arena asyncArena_;
 
     VirtualTask* FindTask(std::vector<VirtualTask>& tasks, const TaskId& id) const;
@@ -239,7 +266,7 @@ private:
                            std::stop_token stopToken,
                            std::vector<TaskError>& errors);
 
-    void EnsureBlockingWorkersLocked();
+    void EnsureBlockingWorkers();
     void BlockingWorkerLoop();
     void ExecuteBlockingWork(BlockingWork& work);
     void EnqueueBlocking(BlockingWork work);

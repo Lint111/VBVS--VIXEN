@@ -169,8 +169,15 @@ public:
      * @param callback Function to handle log messages (must be thread-safe)
      */
     void SetCallback(LogCallback callback) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        callback_ = std::move(callback);
+        // Immutable publish: each callback is a new node pushed by CAS; Log() reads the newest
+        // node with one acquire load. Replaced nodes stay allocated until the logger is destroyed
+        // (a handful per process), so a Log() that is mid-call on an older node never dangles.
+        auto* node = new CallbackNode{std::move(callback), nullptr};
+        node->older = callbackHead_.load(std::memory_order_relaxed);
+        while (!callbackHead_.compare_exchange_weak(node->older, node,
+                   std::memory_order_release, std::memory_order_relaxed)) {
+            // node->older refreshed by the failed exchange
+        }
     }
 
     /**
@@ -206,10 +213,9 @@ public:
 
         LogMessage msg(level, message, category);
 
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        if (callback_) {
-            callback_(msg);
+        const CallbackNode* current = callbackHead_.load(std::memory_order_acquire);
+        if (current && current->callback) {
+            current->callback(msg);
         } else {
             // Default: print to stderr
             DefaultLog(msg);
@@ -261,17 +267,30 @@ private:
 #endif
         std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeInfo);
 
-        fprintf(stderr, "[%s] [%s]", timeStr, LogLevelToString(msg.level));
-
+        // One formatted line, one write: concurrent loggers cannot interleave inside a message.
+        std::string line = std::string("[") + timeStr + "] [" + LogLevelToString(msg.level) + "]";
         if (!msg.category.empty()) {
-            fprintf(stderr, " [%s]", msg.category.c_str());
+            line += " [" + msg.category + "]";
         }
-
-        fprintf(stderr, " %s\n", msg.message.c_str());
+        line += " " + msg.message + "\n";
+        fwrite(line.data(), 1, line.size(), stderr);
     }
 
-    std::mutex mutex_;
-    LogCallback callback_;
+    struct CallbackNode {
+        LogCallback callback;
+        CallbackNode* older;
+    };
+
+    ~ShaderLogger() {
+        CallbackNode* node = callbackHead_.load(std::memory_order_acquire);
+        while (node) {
+            CallbackNode* older = node->older;
+            delete node;
+            node = older;
+        }
+    }
+
+    std::atomic<CallbackNode*> callbackHead_{nullptr};
     std::atomic<int> minLevel_;
 };
 

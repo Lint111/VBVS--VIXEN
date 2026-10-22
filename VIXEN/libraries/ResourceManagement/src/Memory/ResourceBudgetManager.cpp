@@ -12,153 +12,157 @@
 namespace ResourceManagement {
 
 // Budget configuration
+void ResourceBudgetManager::Slot::Set(const ResourceBudget& budget) noexcept {
+    maxBytes.store(budget.maxBytes, std::memory_order_relaxed);
+    warningThreshold.store(budget.warningThreshold, std::memory_order_relaxed);
+    strict.store(budget.strict, std::memory_order_relaxed);
+    configured.store(true, std::memory_order_release);
+}
+
+std::optional<ResourceBudget> ResourceBudgetManager::Slot::Get() const noexcept {
+    if (!configured.load(std::memory_order_acquire)) return std::nullopt;
+    return ResourceBudget(maxBytes.load(std::memory_order_relaxed),
+                          warningThreshold.load(std::memory_order_relaxed),
+                          strict.load(std::memory_order_relaxed));
+}
+
+void ResourceBudgetManager::Slot::ResetAll() noexcept {
+    configured.store(false, std::memory_order_release);
+    maxBytes.store(0, std::memory_order_relaxed);
+    warningThreshold.store(0, std::memory_order_relaxed);
+    strict.store(false, std::memory_order_relaxed);
+    usage.Reset();
+}
+
+ResourceBudgetManager::~ResourceBudgetManager() {
+    CustomSlot* node = customHead_.load(std::memory_order_acquire);
+    while (node) {
+        CustomSlot* next = node->next;
+        delete node;
+        node = next;
+    }
+}
+
+ResourceBudgetManager::Slot* ResourceBudgetManager::FindSlot(BudgetResourceType type) noexcept {
+    const auto index = static_cast<size_t>(type);
+    return index < kStandardTypeCount ? &slots_[index] : nullptr;
+}
+
+const ResourceBudgetManager::Slot* ResourceBudgetManager::FindSlot(BudgetResourceType type) const noexcept {
+    const auto index = static_cast<size_t>(type);
+    return index < kStandardTypeCount ? &slots_[index] : nullptr;
+}
+
+ResourceBudgetManager::CustomSlot* ResourceBudgetManager::FindCustom(const std::string& name) const noexcept {
+    for (CustomSlot* node = customHead_.load(std::memory_order_acquire); node; node = node->next) {
+        if (node->name == name) return node;
+    }
+    return nullptr;
+}
+
+ResourceBudgetManager::CustomSlot* ResourceBudgetManager::GetOrCreateCustom(const std::string& name) {
+    if (CustomSlot* existing = FindCustom(name)) return existing;
+
+    // First use of a name (cold): publish one node by CAS; a loser re-checks for a racing insert.
+    auto* node = new CustomSlot(name);
+    CustomSlot* head = customHead_.load(std::memory_order_acquire);
+    for (;;) {
+        node->next = head;
+        if (customHead_.compare_exchange_weak(head, node,
+                std::memory_order_release, std::memory_order_acquire)) {
+            return node;
+        }
+        for (CustomSlot* seen = head; seen; seen = seen->next) {
+            if (seen->name == name) {
+                delete node;
+                return seen;
+            }
+        }
+    }
+}
+
 void ResourceBudgetManager::SetBudget(BudgetResourceType type, const ResourceBudget& budget) {
-    std::unique_lock lock(mutex_);
-    budgets_[type] = budget;
+    if (Slot* slot = FindSlot(type)) slot->Set(budget);
 }
 
 void ResourceBudgetManager::SetBudget(const std::string& customType, const ResourceBudget& budget) {
-    std::unique_lock lock(mutex_);
-    customBudgets_[customType] = budget;
+    GetOrCreateCustom(customType)->Set(budget);
 }
 
 std::optional<ResourceBudget> ResourceBudgetManager::GetBudget(BudgetResourceType type) const {
-    std::shared_lock lock(mutex_);
-    auto it = budgets_.find(type);
-    if (it != budgets_.end()) {
-        return it->second;
-    }
-    return std::nullopt;
+    const Slot* slot = FindSlot(type);
+    return slot ? slot->Get() : std::nullopt;
 }
 
 std::optional<ResourceBudget> ResourceBudgetManager::GetBudget(const std::string& customType) const {
-    std::shared_lock lock(mutex_);
-    auto it = customBudgets_.find(customType);
-    if (it != customBudgets_.end()) {
-        return it->second;
-    }
-    return std::nullopt;
-}
-
-// Helper to get or create usage entry (must hold exclusive lock)
-AtomicResourceUsage* ResourceBudgetManager::GetOrCreateUsage(BudgetResourceType type) {
-    auto it = usage_.find(type);
-    if (it == usage_.end()) {
-        it = usage_.emplace(type, AtomicResourceUsage{}).first;
-    }
-    return &it->second;
-}
-
-AtomicResourceUsage* ResourceBudgetManager::GetOrCreateUsage(const std::string& customType) {
-    auto it = customUsage_.find(customType);
-    if (it == customUsage_.end()) {
-        it = customUsage_.emplace(customType, AtomicResourceUsage{}).first;
-    }
-    return &it->second;
+    const CustomSlot* slot = FindCustom(customType);
+    return slot ? slot->Get() : std::nullopt;
 }
 
 // Allocation attempts (check if allocation would succeed)
 bool ResourceBudgetManager::TryAllocate(BudgetResourceType type, uint64_t bytes) {
-    std::unique_lock lock(mutex_);
-
-    auto budgetIt = budgets_.find(type);
-    const ResourceBudget* budget = (budgetIt != budgets_.end()) ? &budgetIt->second : nullptr;
-    AtomicResourceUsage* usage = GetOrCreateUsage(type);
-
-    return TryAllocateImpl(budget, usage, bytes);
+    const Slot* slot = FindSlot(type);
+    return slot ? TryAllocateImpl(*slot, bytes) : true;
 }
 
 bool ResourceBudgetManager::TryAllocate(const std::string& customType, uint64_t bytes) {
-    std::unique_lock lock(mutex_);
-
-    auto budgetIt = customBudgets_.find(customType);
-    const ResourceBudget* budget = (budgetIt != customBudgets_.end()) ? &budgetIt->second : nullptr;
-    AtomicResourceUsage* usage = GetOrCreateUsage(customType);
-
-    return TryAllocateImpl(budget, usage, bytes);
+    const CustomSlot* slot = FindCustom(customType);
+    return slot ? TryAllocateImpl(*slot, bytes) : true;  // no budget configured: allow
 }
 
-// Record actual allocations (lock-free atomic updates after map lookup)
+// Record actual allocations (atomic updates on the slot's counters)
 void ResourceBudgetManager::RecordAllocation(BudgetResourceType type, uint64_t bytes) {
-    AtomicResourceUsage* usage = nullptr;
-    {
-        std::unique_lock lock(mutex_);
-        usage = GetOrCreateUsage(type);
-    }
-    RecordAllocationImpl(usage, bytes);
+    if (Slot* slot = FindSlot(type)) RecordAllocationImpl(&slot->usage, bytes);
 }
 
 void ResourceBudgetManager::RecordAllocation(const std::string& customType, uint64_t bytes) {
-    AtomicResourceUsage* usage = nullptr;
-    {
-        std::unique_lock lock(mutex_);
-        usage = GetOrCreateUsage(customType);
-    }
-    RecordAllocationImpl(usage, bytes);
+    RecordAllocationImpl(&GetOrCreateCustom(customType)->usage, bytes);
 }
 
 // Record deallocations
 void ResourceBudgetManager::RecordDeallocation(BudgetResourceType type, uint64_t bytes) {
-    std::shared_lock lock(mutex_);
-    auto it = usage_.find(type);
-    if (it != usage_.end()) {
-        RecordDeallocationImpl(&it->second, bytes);
-    }
+    if (Slot* slot = FindSlot(type)) RecordDeallocationImpl(&slot->usage, bytes);
 }
 
 void ResourceBudgetManager::RecordDeallocation(const std::string& customType, uint64_t bytes) {
-    std::shared_lock lock(mutex_);
-    auto it = customUsage_.find(customType);
-    if (it != customUsage_.end()) {
-        RecordDeallocationImpl(&it->second, bytes);
-    }
+    if (CustomSlot* slot = FindCustom(customType)) RecordDeallocationImpl(&slot->usage, bytes);
 }
 
-// Query current state (read lock + atomic read)
+// Query current state (atomic reads)
 BudgetResourceUsage ResourceBudgetManager::GetUsage(BudgetResourceType type) const {
-    std::shared_lock lock(mutex_);
-    auto it = usage_.find(type);
-    return (it != usage_.end()) ? it->second.ToUsage() : BudgetResourceUsage{};
+    const Slot* slot = FindSlot(type);
+    return slot ? slot->usage.ToUsage() : BudgetResourceUsage{};
 }
 
 BudgetResourceUsage ResourceBudgetManager::GetUsage(const std::string& customType) const {
-    std::shared_lock lock(mutex_);
-    auto it = customUsage_.find(customType);
-    return (it != customUsage_.end()) ? it->second.ToUsage() : BudgetResourceUsage{};
+    const CustomSlot* slot = FindCustom(customType);
+    return slot ? slot->usage.ToUsage() : BudgetResourceUsage{};
+}
+
+uint64_t ResourceBudgetManager::AvailableBytesImpl(const Slot* slot) {
+    if (!slot || !slot->configured.load(std::memory_order_acquire)) {
+        return (std::numeric_limits<uint64_t>::max)(); // Unlimited
+    }
+    const uint64_t max = slot->maxBytes.load(std::memory_order_relaxed);
+    if (max == 0) return (std::numeric_limits<uint64_t>::max)(); // Unlimited
+
+    const uint64_t current = slot->usage.currentBytes.load(std::memory_order_acquire);
+    return (current < max) ? (max - current) : 0;
+}
+
+bool ResourceBudgetManager::NearWarningImpl(const Slot* slot) {
+    if (!slot || !slot->configured.load(std::memory_order_acquire)) return false;
+    const uint64_t warning = slot->warningThreshold.load(std::memory_order_relaxed);
+    if (warning == 0) return false; // No warning threshold set
+    return slot->usage.currentBytes.load(std::memory_order_acquire) >= warning;
 }
 
 uint64_t ResourceBudgetManager::GetAvailableBytes(BudgetResourceType type) const {
-    std::shared_lock lock(mutex_);
-
-    auto budgetIt = budgets_.find(type);
-    auto usageIt = usage_.find(type);
-
-    if (budgetIt == budgets_.end() || budgetIt->second.maxBytes == 0) {
-        return (std::numeric_limits<uint64_t>::max)(); // Unlimited
-    }
-
-    uint64_t current = (usageIt != usage_.end())
-        ? usageIt->second.currentBytes.load(std::memory_order_acquire) : 0;
-    uint64_t max = budgetIt->second.maxBytes;
-
-    return (current < max) ? (max - current) : 0;
+    return AvailableBytesImpl(FindSlot(type));
 }
 
 uint64_t ResourceBudgetManager::GetAvailableBytes(const std::string& customType) const {
-    std::shared_lock lock(mutex_);
-
-    auto budgetIt = customBudgets_.find(customType);
-    auto usageIt = customUsage_.find(customType);
-
-    if (budgetIt == customBudgets_.end() || budgetIt->second.maxBytes == 0) {
-        return (std::numeric_limits<uint64_t>::max)(); // Unlimited
-    }
-
-    uint64_t current = (usageIt != customUsage_.end())
-        ? usageIt->second.currentBytes.load(std::memory_order_acquire) : 0;
-    uint64_t max = budgetIt->second.maxBytes;
-
-    return (current < max) ? (max - current) : 0;
+    return AvailableBytesImpl(FindCustom(customType));
 }
 
 bool ResourceBudgetManager::IsOverBudget(BudgetResourceType type) const {
@@ -170,33 +174,11 @@ bool ResourceBudgetManager::IsOverBudget(const std::string& customType) const {
 }
 
 bool ResourceBudgetManager::IsNearWarningThreshold(BudgetResourceType type) const {
-    std::shared_lock lock(mutex_);
-
-    auto budgetIt = budgets_.find(type);
-    auto usageIt = usage_.find(type);
-
-    if (budgetIt == budgets_.end() || budgetIt->second.warningThreshold == 0) {
-        return false; // No warning threshold set
-    }
-
-    uint64_t current = (usageIt != usage_.end())
-        ? usageIt->second.currentBytes.load(std::memory_order_acquire) : 0;
-    return current >= budgetIt->second.warningThreshold;
+    return NearWarningImpl(FindSlot(type));
 }
 
 bool ResourceBudgetManager::IsNearWarningThreshold(const std::string& customType) const {
-    std::shared_lock lock(mutex_);
-
-    auto budgetIt = customBudgets_.find(customType);
-    auto usageIt = customUsage_.find(customType);
-
-    if (budgetIt == customBudgets_.end() || budgetIt->second.warningThreshold == 0) {
-        return false; // No warning threshold set
-    }
-
-    uint64_t current = (usageIt != customUsage_.end())
-        ? usageIt->second.currentBytes.load(std::memory_order_acquire) : 0;
-    return current >= budgetIt->second.warningThreshold;
+    return NearWarningImpl(FindCustom(customType));
 }
 
 // System memory detection
@@ -237,37 +219,30 @@ uint64_t ResourceBudgetManager::DetectDeviceMemoryBytes(VkPhysicalDevice physica
 
 // Utilities
 void ResourceBudgetManager::Reset() {
-    std::unique_lock lock(mutex_);
-    budgets_.clear();
-    usage_.clear();
-    customBudgets_.clear();
-    customUsage_.clear();
+    for (auto& slot : slots_) slot.ResetAll();
+    // Custom nodes stay allocated (lock-free readers may hold them); they just go back to unconfigured.
+    for (CustomSlot* node = customHead_.load(std::memory_order_acquire); node; node = node->next) {
+        node->ResetAll();
+    }
 }
 
 void ResourceBudgetManager::ResetUsage(BudgetResourceType type) {
-    std::shared_lock lock(mutex_);
-    auto it = usage_.find(type);
-    if (it != usage_.end()) {
-        it->second.Reset();  // Atomic reset
-    }
+    if (Slot* slot = FindSlot(type)) slot->usage.Reset();
 }
 
 void ResourceBudgetManager::ResetUsage(const std::string& customType) {
-    std::shared_lock lock(mutex_);
-    auto it = customUsage_.find(customType);
-    if (it != customUsage_.end()) {
-        it->second.Reset();  // Atomic reset
-    }
+    if (CustomSlot* slot = FindCustom(customType)) slot->usage.Reset();
 }
 
 // Internal helpers
-bool ResourceBudgetManager::TryAllocateImpl(const ResourceBudget* budget, AtomicResourceUsage* usage, uint64_t bytes) {
+bool ResourceBudgetManager::TryAllocateImpl(const Slot& slot, uint64_t bytes) {
+    const auto budget = slot.Get();
     if (!budget || budget->maxBytes == 0) {
         return true; // No budget limit - allow
     }
 
-    uint64_t current = usage->currentBytes.load(std::memory_order_acquire);
-    uint64_t newTotal = current + bytes;
+    const uint64_t current = slot.usage.currentBytes.load(std::memory_order_acquire);
+    const uint64_t newTotal = current + bytes;
 
     if (budget->strict && newTotal > budget->maxBytes) {
         return false; // Strict mode - reject allocation over budget

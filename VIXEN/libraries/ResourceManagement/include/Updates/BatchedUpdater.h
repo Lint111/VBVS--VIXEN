@@ -4,7 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
-#include <mutex>
+#include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -182,7 +182,7 @@ public:
     /**
      * @brief Get frame count
      */
-    [[nodiscard]] uint32_t GetFrameCount() const { return static_cast<uint32_t>(frameQueues_.size()); }
+    [[nodiscard]] uint32_t GetFrameCount() const { return frameCount_; }
 
     /**
      * @brief Get configuration
@@ -202,8 +202,32 @@ private:
     Config config_;
 
     // Per-frame queues
-    mutable std::mutex mutex_;
-    std::vector<std::vector<UpdateRequestPtr>> frameQueues_;
+    /// One lock-free multi-producer queue per frame: producers push a node with a CAS on `head`,
+    /// the recording owner takes the whole list with one exchange (no pop, so no ABA) and reverses
+    /// it back into submission order. `pending` mirrors the node count for the stat queries.
+    /// Resize() is an owner-phase call (device/swapchain rebuild), never concurrent with Queue().
+    struct FrameQueue {
+        struct Node {
+            UpdateRequestPtr request;
+            Node* next = nullptr;
+        };
+
+        std::atomic<Node*> head{nullptr};
+        std::atomic<uint32_t> pending{0};
+
+        FrameQueue() = default;
+        FrameQueue(const FrameQueue&) = delete;
+        FrameQueue& operator=(const FrameQueue&) = delete;
+        ~FrameQueue() { Clear(); }
+
+        void Push(UpdateRequestPtr request);
+        /// Takes every queued request in submission order.
+        std::vector<UpdateRequestPtr> TakeAll();
+        void Clear();
+    };
+
+    std::unique_ptr<FrameQueue[]> frameQueues_;
+    uint32_t frameCount_ = 0;
 
     // Statistics
     std::atomic<uint64_t> totalQueued_{0};

@@ -11,9 +11,7 @@
 namespace CashSystem {
 
 void MainCacher::CleanupGlobalCaches() {
-    // Cleanup all device-independent cachers
-    std::lock_guard lock(m_globalRegistryMutex);
-
+    // Cleanup all device-independent cachers (owner phase: shutdown on the owner thread)
     // Check if m_globalCachers itself is in a valid state (avoid static deinitialization issues)
     if (reinterpret_cast<uintptr_t>(&m_globalCachers) == 0xFFFFFFFFFFFFFFFF) {
         return;  // Already destroyed during static deinitialization
@@ -84,7 +82,8 @@ void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
 DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device) {
     DeviceIdentifier deviceId(const_cast<const ::Vixen::Vulkan::Resources::VulkanDevice*>(device));
 
-    std::lock_guard lock(m_deviceRegistriesMutex);
+    // Owner phase: see m_registryWriter
+    WriterScope scope(m_registryWriter);
 
     // Check if registry already exists for this device
     auto it = m_deviceRegistries.find(deviceId);
@@ -110,7 +109,7 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources
 }
 
 DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId) {
-    std::lock_guard lock(m_deviceRegistriesMutex);
+    WriterScope scope(m_registryWriter);
 
     // Check if registry already exists for this device
     auto it = m_deviceRegistries.find(deviceId);
@@ -134,8 +133,8 @@ CacherBase* MainCacher::CreateCacherByName(
 ) {
     // Note: Creating cacher (log message removed - no logging infrastructure in this context)
 
-    std::lock_guard lock(m_globalRegistryMutex);
-
+    // Reads the factory maps only (written during the registration phase); the registry's own
+    // cacher list is touched by exactly one blocking-lane task (its device's load).
     // Look up factory by name
     auto factoryIt = m_nameToFactory.find(name);
     if (factoryIt == m_nameToFactory.end()) {

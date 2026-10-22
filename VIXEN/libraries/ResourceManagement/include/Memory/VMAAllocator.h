@@ -10,8 +10,7 @@ typedef VmaAllocator_T* VmaAllocator;
 struct VmaAllocation_T;
 typedef VmaAllocation_T* VmaAllocation;
 
-#include <mutex>
-#include <unordered_map>
+#include <atomic>
 
 namespace ResourceManagement {
 
@@ -26,7 +25,8 @@ namespace ResourceManagement {
  * - Dedicated allocations for large resources
  * - Budget tracking integration with ResourceBudgetManager
  *
- * Thread-safe: Yes (VMA is thread-safe, plus internal tracking mutex)
+ * Thread-safe: Yes. VMA synchronises its own state; per-allocation facts (aliasing) ride in the
+ * VmaAllocation user data, so this wrapper keeps no registry and takes no lock.
  */
 class VMAAllocator : public IMemoryAllocator {
 public:
@@ -100,29 +100,18 @@ public:
     [[nodiscard]] bool IsValid() const { return allocator_ != nullptr; }
 
 private:
-    /**
-     * @brief Internal record tracking VMA allocation metadata
-     *
-     * Stored alongside VmaAllocation to track size for budget reporting.
-     */
-    struct AllocationRecord {
-        VmaAllocation vmaAllocation = nullptr;
-        VkDeviceSize size = 0;
-        bool isMapped = false;
-        bool canAlias = false;     // Created with allowAliasing=true
-        bool isAliased = false;    // This is an aliased resource (doesn't own memory)
-    };
+    /// Bits stored in each VmaAllocation's pUserData (set at creation, read back with
+    /// vmaGetAllocationInfo): the only per-allocation facts this wrapper needs.
+    static constexpr uintptr_t kUserDataCanAlias = 1;
+
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = nullptr;
-    ResourceBudgetManager* budgetManager_ = nullptr;
+    std::atomic<ResourceBudgetManager*> budgetManager_{nullptr};  // set at wiring time, read lock-free
 
-    mutable std::mutex mutex_;
-    std::unordered_map<void*, AllocationRecord> allocationRecords_;
-
-    // Helper methods
-    AllocationRecord* GetRecord(AllocationHandle handle);
-    const AllocationRecord* GetRecord(AllocationHandle handle) const;
+    [[nodiscard]] ResourceBudgetManager* Budget() const noexcept { return budgetManager_.load(std::memory_order_acquire); }
+    /// Allocation size and alias capability, read from VMA itself (false/0 for a null handle).
+    bool QueryAllocation(AllocationHandle handle, VkDeviceSize& size, bool& canAlias) const;
 };
 
 } // namespace ResourceManagement

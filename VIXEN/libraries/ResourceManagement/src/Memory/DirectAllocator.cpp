@@ -18,15 +18,34 @@ DirectAllocator::DirectAllocator(
 }
 
 DirectAllocator::~DirectAllocator() {
-    std::lock_guard lock(mutex_);
-
-    // Free any remaining allocations
-    for (auto& [handle, record] : allocations_) {
-        if (record.memory != VK_NULL_HANDLE && device_ != VK_NULL_HANDLE) {
+    // Free any remaining allocations (teardown: no concurrent users by contract)
+    allocations_.ForEachSlot([this](AllocationRecord& record) {
+        if (record.live.exchange(false) && record.memory != VK_NULL_HANDLE && device_ != VK_NULL_HANDLE) {
             vkFreeMemory(device_, record.memory, nullptr);
         }
-    }
-    allocations_.clear();
+    });
+}
+
+DirectAllocator::AllocationRecord* DirectAllocator::AcquireRecord(
+    VkDeviceMemory memory, VkDeviceSize size, uint32_t memoryTypeIndex, bool canAlias, bool isAliased)
+{
+    AllocationRecord* record = allocations_.Acquire();
+    if (!record) return nullptr;
+    record->memory = memory;
+    record->size = size;
+    record->memoryTypeIndex = memoryTypeIndex;
+    record->isMapped = false;
+    record->mappedPtr = nullptr;
+    record->canAlias = canAlias;
+    record->isAliased = isAliased;
+    record->live.store(true, std::memory_order_release);
+    return record;
+}
+
+bool DirectAllocator::ClaimForFree(AllocationHandle handle) {
+    // Owns() never dereferences: an invalid handle is rejected before its memory is touched.
+    if (!allocations_.Owns(handle)) return false;
+    return static_cast<AllocationRecord*>(handle)->live.exchange(false, std::memory_order_acq_rel);
 }
 
 std::expected<BufferAllocation, AllocationError>
@@ -40,8 +59,8 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
     }
 
     // Check budget before allocation
-    if (budgetManager_) {
-        if (!budgetManager_->TryAllocate(BudgetResourceType::DeviceMemory, request.size)) {
+    if (auto* budget = Budget()) {
+        if (!budget->TryAllocate(BudgetResourceType::DeviceMemory, request.size)) {
             return std::unexpected(AllocationError::OverBudget);
         }
     }
@@ -118,30 +137,23 @@ DirectAllocator::AllocateBuffer(const BufferAllocationRequest& request) {
         deviceAddress = vkGetBufferDeviceAddress(device_, &addressInfo);
     }
 
-    // Create allocation record
-    auto* record = new AllocationRecord{
-        .memory = memory,
-        .size = memReq.size,
-        .memoryTypeIndex = memTypeIndex,
-        .isMapped = false,
-        .mappedPtr = nullptr,
-        .canAlias = request.allowAliasing,
-        .isAliased = false
-    };
-
-    // Track allocation
-    {
-        std::lock_guard lock(mutex_);
-        allocations_[record] = *record;
-        stats_.totalAllocatedBytes += memReq.size;
-        stats_.totalUsedBytes += request.size;
-        stats_.allocationCount++;
-        stats_.blockCount++;
+    // Create allocation record (the record is the handle)
+    AllocationRecord* record = AcquireRecord(memory, memReq.size, memTypeIndex, request.allowAliasing, false);
+    if (!record) {
+        vkFreeMemory(device_, memory, nullptr);
+        vkDestroyBuffer(device_, buffer, nullptr);
+        return std::unexpected(AllocationError::OutOfHostMemory);
     }
 
+    // Track allocation
+    totalAllocatedBytes_.fetch_add(memReq.size, std::memory_order_relaxed);
+    totalUsedBytes_.fetch_add(request.size, std::memory_order_relaxed);
+    allocationCount_.fetch_add(1, std::memory_order_relaxed);
+    blockCount_.fetch_add(1, std::memory_order_relaxed);
+
     // Record to budget manager
-    if (budgetManager_) {
-        budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, memReq.size);
+    if (auto* budget = Budget()) {
+        budget->RecordAllocation(BudgetResourceType::DeviceMemory, memReq.size);
     }
 
     return BufferAllocation{
@@ -161,41 +173,24 @@ void DirectAllocator::FreeBuffer(BufferAllocation& allocation) {
         return;
     }
 
-    // record (the AllocationRecord* used as the map key) is only valid to deref/delete if we
-    // actually find+erase its map entry below — a handle not in allocations_ (already freed by a
-    // racing FreeBuffer(), or simply invalid) must not fall through to vkDestroyBuffer/vkFreeMemory/
-    // delete on a pointer whose lifetime we don't own (audit V-N14: invalid-free early-return).
+    // Claim the handle first (audit V-N14): only the one caller whose exchange clears `live` may read
+    // the record or free its memory; an invalid or already-freed handle returns without a deref.
+    if (!ClaimForFree(allocation.allocation)) {
+        return;
+    }
     AllocationRecord* record = static_cast<AllocationRecord*>(allocation.allocation);
-    VkDeviceSize freedSize = 0;
-    VkDeviceMemory freedMemory = VK_NULL_HANDLE;
-    bool found = false;
+    const VkDeviceSize freedSize = record->size;
+    const VkDeviceMemory freedMemory = record->memory;
 
-    {
-        std::lock_guard lock(mutex_);
-
-        auto it = allocations_.find(allocation.allocation);
-        if (it != allocations_.end()) {
-            found = true;
-            freedSize = it->second.size;
-            freedMemory = it->second.memory;
-
-            // Unmap if mapped
-            if (it->second.isMapped && device_ != VK_NULL_HANDLE) {
-                vkUnmapMemory(device_, it->second.memory);
-            }
-
-            allocations_.erase(it);
-
-            stats_.totalAllocatedBytes -= freedSize;
-            stats_.totalUsedBytes -= allocation.size;
-            stats_.allocationCount--;
-            stats_.blockCount--;
-        }
+    // Unmap if mapped
+    if (record->isMapped && device_ != VK_NULL_HANDLE) {
+        vkUnmapMemory(device_, record->memory);
     }
 
-    if (!found) {
-        return;  // Invalid or already-freed handle — no deref/delete/vkFree.
-    }
+    totalAllocatedBytes_.fetch_sub(freedSize, std::memory_order_relaxed);
+    totalUsedBytes_.fetch_sub(allocation.size, std::memory_order_relaxed);
+    allocationCount_.fetch_sub(1, std::memory_order_relaxed);
+    blockCount_.fetch_sub(1, std::memory_order_relaxed);
 
     // Free Vulkan resources
     if (device_ != VK_NULL_HANDLE) {
@@ -206,11 +201,11 @@ void DirectAllocator::FreeBuffer(BufferAllocation& allocation) {
     }
 
     // Record to budget manager
-    if (budgetManager_ && freedSize > 0) {
-        budgetManager_->RecordDeallocation(BudgetResourceType::DeviceMemory, freedSize);
+    if (auto* budget = Budget(); budget && freedSize > 0) {
+        budget->RecordDeallocation(BudgetResourceType::DeviceMemory, freedSize);
     }
 
-    delete record;
+    allocations_.Release(record);
 
     // Invalidate allocation
     allocation.buffer = VK_NULL_HANDLE;
@@ -238,8 +233,8 @@ DirectAllocator::AllocateImage(const ImageAllocationRequest& request) {
     vkGetImageMemoryRequirements(device_, image, &memReq);
 
     // Check budget
-    if (budgetManager_) {
-        if (!budgetManager_->TryAllocate(BudgetResourceType::DeviceMemory, memReq.size)) {
+    if (auto* budget = Budget()) {
+        if (!budget->TryAllocate(BudgetResourceType::DeviceMemory, memReq.size)) {
             vkDestroyImage(device_, image, nullptr);
             return std::unexpected(AllocationError::OverBudget);
         }
@@ -278,28 +273,21 @@ DirectAllocator::AllocateImage(const ImageAllocationRequest& request) {
         return std::unexpected(AllocationError::Unknown);
     }
 
-    // Create record
-    auto* record = new AllocationRecord{
-        .memory = memory,
-        .size = memReq.size,
-        .memoryTypeIndex = memTypeIndex,
-        .isMapped = false,
-        .mappedPtr = nullptr,
-        .canAlias = request.allowAliasing,
-        .isAliased = false
-    };
-
-    {
-        std::lock_guard lock(mutex_);
-        allocations_[record] = *record;
-        stats_.totalAllocatedBytes += memReq.size;
-        stats_.totalUsedBytes += memReq.size;
-        stats_.allocationCount++;
-        stats_.blockCount++;
+    // Create record (the record is the handle)
+    AllocationRecord* record = AcquireRecord(memory, memReq.size, memTypeIndex, request.allowAliasing, false);
+    if (!record) {
+        vkFreeMemory(device_, memory, nullptr);
+        vkDestroyImage(device_, image, nullptr);
+        return std::unexpected(AllocationError::OutOfHostMemory);
     }
 
-    if (budgetManager_) {
-        budgetManager_->RecordAllocation(BudgetResourceType::DeviceMemory, memReq.size);
+    totalAllocatedBytes_.fetch_add(memReq.size, std::memory_order_relaxed);
+    totalUsedBytes_.fetch_add(memReq.size, std::memory_order_relaxed);
+    allocationCount_.fetch_add(1, std::memory_order_relaxed);
+    blockCount_.fetch_add(1, std::memory_order_relaxed);
+
+    if (auto* budget = Budget()) {
+        budget->RecordAllocation(BudgetResourceType::DeviceMemory, memReq.size);
     }
 
     return ImageAllocation{
@@ -316,34 +304,18 @@ void DirectAllocator::FreeImage(ImageAllocation& allocation) {
         return;
     }
 
-    // Same discipline as FreeBuffer (audit V-N14): only deref/delete record if we actually
-    // find+erase its map entry — a handle not in allocations_ is an invalid or already-freed
-    // handle, not a pointer we own.
+    // Same discipline as FreeBuffer (audit V-N14): claim the handle before any deref.
+    if (!ClaimForFree(allocation.allocation)) {
+        return;
+    }
     AllocationRecord* record = static_cast<AllocationRecord*>(allocation.allocation);
-    VkDeviceSize freedSize = 0;
-    VkDeviceMemory freedMemory = VK_NULL_HANDLE;
-    bool found = false;
+    const VkDeviceSize freedSize = record->size;
+    const VkDeviceMemory freedMemory = record->memory;
 
-    {
-        std::lock_guard lock(mutex_);
-
-        auto it = allocations_.find(allocation.allocation);
-        if (it != allocations_.end()) {
-            found = true;
-            freedSize = it->second.size;
-            freedMemory = it->second.memory;
-            allocations_.erase(it);
-
-            stats_.totalAllocatedBytes -= freedSize;
-            stats_.totalUsedBytes -= allocation.size;
-            stats_.allocationCount--;
-            stats_.blockCount--;
-        }
-    }
-
-    if (!found) {
-        return;  // Invalid or already-freed handle — no deref/delete/vkFree.
-    }
+    totalAllocatedBytes_.fetch_sub(freedSize, std::memory_order_relaxed);
+    totalUsedBytes_.fetch_sub(allocation.size, std::memory_order_relaxed);
+    allocationCount_.fetch_sub(1, std::memory_order_relaxed);
+    blockCount_.fetch_sub(1, std::memory_order_relaxed);
 
     if (device_ != VK_NULL_HANDLE) {
         vkDestroyImage(device_, allocation.image, nullptr);
@@ -352,11 +324,11 @@ void DirectAllocator::FreeImage(ImageAllocation& allocation) {
         }
     }
 
-    if (budgetManager_ && freedSize > 0) {
-        budgetManager_->RecordDeallocation(BudgetResourceType::DeviceMemory, freedSize);
+    if (auto* budget = Budget(); budget && freedSize > 0) {
+        budget->RecordDeallocation(BudgetResourceType::DeviceMemory, freedSize);
     }
 
-    delete record;
+    allocations_.Release(record);
 
     allocation.image = VK_NULL_HANDLE;
     allocation.allocation = nullptr;
@@ -367,25 +339,25 @@ void* DirectAllocator::MapBuffer(const BufferAllocation& allocation) {
         return nullptr;
     }
 
-    std::lock_guard lock(mutex_);
-
-    auto it = allocations_.find(allocation.allocation);
-    if (it == allocations_.end()) {
+    // Mapping one VkDeviceMemory is externally synchronised by Vulkan's own rules, so the map
+    // state needs no lock: the caller owns the allocation while it maps, unmaps or flushes it.
+    AllocationRecord* record = GetRecord(allocation.allocation);
+    if (!record) {
         return nullptr;
     }
 
-    if (it->second.isMapped) {
-        return it->second.mappedPtr;
+    if (record->isMapped) {
+        return record->mappedPtr;
     }
 
     void* data = nullptr;
-    VkResult result = vkMapMemory(device_, it->second.memory, 0, it->second.size, 0, &data);
+    VkResult result = vkMapMemory(device_, record->memory, 0, record->size, 0, &data);
     if (result != VK_SUCCESS) {
         return nullptr;
     }
 
-    it->second.isMapped = true;
-    it->second.mappedPtr = data;
+    record->isMapped = true;
+    record->mappedPtr = data;
     return data;
 }
 
@@ -394,16 +366,14 @@ void DirectAllocator::UnmapBuffer(const BufferAllocation& allocation) {
         return;
     }
 
-    std::lock_guard lock(mutex_);
-
-    auto it = allocations_.find(allocation.allocation);
-    if (it == allocations_.end() || !it->second.isMapped) {
+    AllocationRecord* record = GetRecord(allocation.allocation);
+    if (!record || !record->isMapped) {
         return;
     }
 
-    vkUnmapMemory(device_, it->second.memory);
-    it->second.isMapped = false;
-    it->second.mappedPtr = nullptr;
+    vkUnmapMemory(device_, record->memory);
+    record->isMapped = false;
+    record->mappedPtr = nullptr;
 }
 
 void DirectAllocator::FlushMappedRange(
@@ -415,18 +385,16 @@ void DirectAllocator::FlushMappedRange(
         return;
     }
 
-    std::lock_guard lock(mutex_);
-
-    auto it = allocations_.find(allocation.allocation);
-    if (it == allocations_.end() || !it->second.isMapped) {
+    AllocationRecord* record = GetRecord(allocation.allocation);
+    if (!record || !record->isMapped) {
         return;
     }
 
     VkMappedMemoryRange range{};
     range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = it->second.memory;
+    range.memory = record->memory;
     range.offset = offset;
-    range.size = (size == VK_WHOLE_SIZE) ? it->second.size : size;
+    range.size = (size == VK_WHOLE_SIZE) ? record->size : size;
 
     vkFlushMappedMemoryRanges(device_, 1, &range);
 }
@@ -440,25 +408,26 @@ void DirectAllocator::InvalidateMappedRange(
         return;
     }
 
-    std::lock_guard lock(mutex_);
-
-    auto it = allocations_.find(allocation.allocation);
-    if (it == allocations_.end() || !it->second.isMapped) {
+    AllocationRecord* record = GetRecord(allocation.allocation);
+    if (!record || !record->isMapped) {
         return;
     }
 
     VkMappedMemoryRange range{};
     range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = it->second.memory;
+    range.memory = record->memory;
     range.offset = offset;
-    range.size = (size == VK_WHOLE_SIZE) ? it->second.size : size;
+    range.size = (size == VK_WHOLE_SIZE) ? record->size : size;
 
     vkInvalidateMappedMemoryRanges(device_, 1, &range);
 }
 
 AllocationStats DirectAllocator::GetStats() const {
-    std::lock_guard lock(mutex_);
-    AllocationStats result = stats_;
+    AllocationStats result;
+    result.totalAllocatedBytes = totalAllocatedBytes_.load(std::memory_order_relaxed);
+    result.totalUsedBytes = totalUsedBytes_.load(std::memory_order_relaxed);
+    result.allocationCount = allocationCount_.load(std::memory_order_relaxed);
+    result.blockCount = blockCount_.load(std::memory_order_relaxed);
 
     // Calculate fragmentation
     if (result.totalAllocatedBytes > 0) {
@@ -471,13 +440,11 @@ AllocationStats DirectAllocator::GetStats() const {
 }
 
 void DirectAllocator::SetBudgetManager(ResourceBudgetManager* budgetManager) {
-    std::lock_guard lock(mutex_);
-    budgetManager_ = budgetManager;
+    budgetManager_.store(budgetManager, std::memory_order_release);
 }
 
 ResourceBudgetManager* DirectAllocator::GetBudgetManager() const {
-    std::lock_guard lock(mutex_);
-    return budgetManager_;
+    return Budget();
 }
 
 uint32_t DirectAllocator::FindMemoryType(
@@ -508,13 +475,15 @@ VkMemoryPropertyFlags DirectAllocator::GetMemoryProperties(MemoryLocation locati
 }
 
 DirectAllocator::AllocationRecord* DirectAllocator::GetRecord(AllocationHandle handle) {
-    auto it = allocations_.find(handle);
-    return (it != allocations_.end()) ? &it->second : nullptr;
+    if (!allocations_.Owns(handle)) return nullptr;
+    auto* record = static_cast<AllocationRecord*>(handle);
+    return record->live.load(std::memory_order_acquire) ? record : nullptr;
 }
 
 const DirectAllocator::AllocationRecord* DirectAllocator::GetRecord(AllocationHandle handle) const {
-    auto it = allocations_.find(handle);
-    return (it != allocations_.end()) ? &it->second : nullptr;
+    if (!allocations_.Owns(handle)) return nullptr;
+    const auto* record = static_cast<const AllocationRecord*>(handle);
+    return record->live.load(std::memory_order_acquire) ? record : nullptr;
 }
 
 // ============================================================================
@@ -536,8 +505,7 @@ DirectAllocator::CreateAliasedBuffer(const AliasedBufferRequest& request) {
     // erasing that entry — so nothing derived from the pointer may survive past this lock scope.
     VkDeviceMemory sourceMemory = VK_NULL_HANDLE;
     {
-        std::lock_guard lock(mutex_);
-        AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
+        const AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
         if (!sourceRecord || !sourceRecord->canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
@@ -610,8 +578,7 @@ DirectAllocator::CreateAliasedImage(const AliasedImageRequest& request) {
     VkDeviceMemory sourceMemory = VK_NULL_HANDLE;
     VkDeviceSize sourceSize = 0;
     {
-        std::lock_guard lock(mutex_);
-        AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
+        const AllocationRecord* sourceRecord = GetRecord(request.sourceAllocation);
         if (!sourceRecord || !sourceRecord->canAlias) {
             return std::unexpected(AllocationError::InvalidParameters);
         }
@@ -657,8 +624,7 @@ bool DirectAllocator::SupportsAliasing(AllocationHandle allocation) const {
         return false;
     }
 
-    std::lock_guard lock(mutex_);
-    auto* record = GetRecord(allocation);
+    const auto* record = GetRecord(allocation);
     return record && record->canAlias;
 }
 

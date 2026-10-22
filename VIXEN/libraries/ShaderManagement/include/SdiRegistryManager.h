@@ -5,7 +5,8 @@
 #include <unordered_set>
 #include <filesystem>
 #include <vector>
-#include <mutex>
+#include <cassert>
+#include <thread>
 #include <optional>
 
 namespace ShaderManagement {
@@ -263,7 +264,11 @@ public:
 
 private:
     Config config_;
-    mutable std::recursive_mutex mutex_;
+    // Owner phase (SH8): the registry belongs to the thread that built it (shader_tool, or the
+    // graph-build owner). Nothing shares it across threads, so there is no lock; a debug build
+    // asserts on cross-thread use instead of serialising it.
+    const std::thread::id owner_ = std::this_thread::get_id();
+    void AssertOwner() const { assert(owner_ == std::this_thread::get_id() && "SdiRegistryManager is single-owner"); }
 
     // Registry data
     std::unordered_map<std::string, SdiRegistryEntry> entries_;  // uuid -> entry

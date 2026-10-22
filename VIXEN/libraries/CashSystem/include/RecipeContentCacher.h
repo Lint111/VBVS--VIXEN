@@ -3,9 +3,10 @@
 #include "RecipeContentHash.h"
 #include "TypedCacher.h"
 
+#include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 namespace CashSystem {
@@ -59,6 +60,10 @@ public:
      * already present — e.g. a caller retrying the same registration — is not double-added).
      * This is the "real call site proving the cache is genuinely exercised" (plan §0/Task 4): the
      * returned record's `memberRecipeIds.size()` growing past 1 is the exact-dup-collapse proof.
+     *
+     * Owner phase: membership is appended by the graph-build owner thread (the recipe registration
+     * loops in VulkanGraphApplication), and `memberRecipeIds` is read only after registration.
+     * There is no lock; a debug build asserts if two registrations ever overlap.
      */
     PtrT RegisterRecipe(uint32_t recipeId,
                          const std::vector<Vixen::SVO::Recipe::SdfInstruction>& bytecode) {
@@ -68,7 +73,8 @@ public:
 
         PtrT record = GetOrCreate(ci);
 
-        std::lock_guard lock(m_memberLock);
+        [[maybe_unused]] const bool wasRegistering = m_registering.exchange(true, std::memory_order_acquire);
+        assert(!wasRegistering && "RecipeContentCacher::RegisterRecipe is owner-phase (single writer)");
         if (record->firstRecipeId != recipeId) {
             bool alreadyMember = false;
             for (uint32_t id : record->memberRecipeIds) {
@@ -78,6 +84,7 @@ public:
                 record->memberRecipeIds.push_back(recipeId);
             }
         }
+        m_registering.store(false, std::memory_order_release);
         return record;
     }
 
@@ -95,9 +102,8 @@ protected:
     }
 
 private:
-    // Guards mutation of an already-cached record's memberRecipeIds (TypedCacher publishes
-    // immutable entries and does not cover post-GetOrCreate mutation of the returned resource).
-    std::mutex m_memberLock;
+    // Debug overlap detector for the owner-phase contract on RegisterRecipe (never blocks).
+    std::atomic<bool> m_registering{false};
 };
 
 } // namespace CashSystem

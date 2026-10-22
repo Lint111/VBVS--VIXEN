@@ -15,8 +15,7 @@
 namespace ShaderManagement {
 
 // Initialize glslang process (global, once per process)
-static bool s_glslangInitialized = false;
-static std::mutex s_initMutex;
+static std::once_flag s_glslangInitOnce;
 
 ShaderCompiler::ShaderCompiler()
     : cache_(&DefaultShaderCacheManager()) {
@@ -38,12 +37,11 @@ const std::string& ShaderCompiler::CompilerIdentity() {
 }
 
 void ShaderCompiler::InitializeGlslang() {
-    std::lock_guard<std::mutex> lock(s_initMutex);
-    if (!s_glslangInitialized) {
+    // Process startup: only a racing first caller ever waits, for the one InitializeProcess().
+    std::call_once(s_glslangInitOnce, [this] {
         glslang::InitializeProcess();
-        s_glslangInitialized = true;
         initialized = true;
-    }
+    });
 }
 
 void ShaderCompiler::FinalizeGlslang() {
