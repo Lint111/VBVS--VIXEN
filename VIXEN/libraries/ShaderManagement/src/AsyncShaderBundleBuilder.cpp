@@ -30,8 +30,12 @@ AsyncShaderBundleBuilder::~AsyncShaderBundleBuilder() {
     // Wait before member destruction because queued callbacks publish through messageBus_ and
     // retain active-build handles.
     WaitForAll();
-    std::lock_guard<std::mutex> lock(buildsMutex_);
-    activeBuilds_.clear();
+    BuildNode* node = buildsHead_.exchange(nullptr, std::memory_order_acq_rel);
+    while (node) {
+        BuildNode* older = node->older;
+        delete node;
+        node = older;
+    }
 }
 
 AsyncShaderBundleBuilder::AsyncConfigurator AsyncShaderBundleBuilder::BuildAsync(
@@ -40,13 +44,32 @@ AsyncShaderBundleBuilder::AsyncConfigurator AsyncShaderBundleBuilder::BuildAsync
     return AsyncConfigurator(this, sender);
 }
 
-bool AsyncShaderBundleBuilder::CancelBuild(const std::string& uuid) {
-    std::lock_guard<std::mutex> lock(buildsMutex_);
+AsyncShaderBundleBuilder::BuildNode* AsyncShaderBundleBuilder::FindBuild(const std::string& uuid) const {
+    for (BuildNode* node = buildsHead_.load(std::memory_order_acquire); node; node = node->older) {
+        if (node->handle->uuid != uuid) continue;
+        // The newest node for a uuid shadows older ones, as the old map's overwrite did.
+        return node->removed.load(std::memory_order_acquire) ? nullptr : node;
+    }
+    return nullptr;
+}
 
-    auto it = activeBuilds_.find(uuid);
-    if (it != activeBuilds_.end()) {
-        it->second->cancelled = true;
-        it->second->stopSource.request_stop();
+template <typename Fn>
+void AsyncShaderBundleBuilder::ForEachLiveBuild(Fn&& fn) const {
+    std::vector<const std::string*> seen;
+    for (BuildNode* node = buildsHead_.load(std::memory_order_acquire); node; node = node->older) {
+        const std::string& uuid = node->handle->uuid;
+        const bool shadowed = std::any_of(seen.begin(), seen.end(),
+            [&](const std::string* other) { return *other == uuid; });
+        if (shadowed) continue;
+        seen.push_back(&uuid);
+        if (!node->removed.load(std::memory_order_acquire)) fn(*node);
+    }
+}
+
+bool AsyncShaderBundleBuilder::CancelBuild(const std::string& uuid) {
+    if (BuildNode* node = FindBuild(uuid)) {
+        node->handle->cancelled = true;
+        node->handle->stopSource.request_stop();
         return true;
     }
 
@@ -54,11 +77,8 @@ bool AsyncShaderBundleBuilder::CancelBuild(const std::string& uuid) {
 }
 
 bool AsyncShaderBundleBuilder::IsBuildComplete(const std::string& uuid) const {
-    std::lock_guard<std::mutex> lock(buildsMutex_);
-
-    auto it = activeBuilds_.find(uuid);
-    if (it != activeBuilds_.end()) {
-        return it->second->completion.IsReady();
+    if (BuildNode* node = FindBuild(uuid)) {
+        return node->handle->completion.IsReady();
     }
 
     return true; // Not found = already completed/cleaned up
@@ -68,14 +88,11 @@ bool AsyncShaderBundleBuilder::WaitForBuild(
     const std::string& uuid,
     std::chrono::milliseconds timeout
 ) {
-    std::shared_ptr<AsyncBuildHandle> handle;
-    {
-        std::lock_guard<std::mutex> lock(buildsMutex_);
-        auto it = activeBuilds_.find(uuid);
-        if (it == activeBuilds_.end()) return true;
-        handle = it->second;
-    }
+    BuildNode* node = FindBuild(uuid);
+    if (!node) return true;
+    const std::shared_ptr<AsyncBuildHandle> handle = node->handle;
 
+    // Off-frame join (load / shutdown / tests); never called from the frame path.
     if (timeout.count() == 0) {
         (void)handle->completion.Wait();
         return true;
@@ -85,11 +102,7 @@ bool AsyncShaderBundleBuilder::WaitForBuild(
 
 bool AsyncShaderBundleBuilder::WaitForAll(std::chrono::milliseconds timeout) {
     std::vector<std::shared_ptr<AsyncBuildHandle>> handles;
-    {
-        std::lock_guard<std::mutex> lock(buildsMutex_);
-        handles.reserve(activeBuilds_.size());
-        for (const auto& entry : activeBuilds_) handles.push_back(entry.second);
-    }
+    ForEachLiveBuild([&](BuildNode& node) { handles.push_back(node.handle); });
 
     const auto start = std::chrono::steady_clock::now();
     for (const auto& handle : handles) {
@@ -105,37 +118,29 @@ bool AsyncShaderBundleBuilder::WaitForAll(std::chrono::milliseconds timeout) {
 }
 
 size_t AsyncShaderBundleBuilder::GetActiveBuildCount() const {
-    std::lock_guard<std::mutex> lock(buildsMutex_);
-    return std::count_if(activeBuilds_.begin(), activeBuilds_.end(),
-        [](const auto& pair) { return !pair.second->completion.IsReady(); });
+    size_t count = 0;
+    ForEachLiveBuild([&](BuildNode& node) {
+        if (!node.handle->completion.IsReady()) ++count;
+    });
+    return count;
 }
 
 std::vector<std::string> AsyncShaderBundleBuilder::GetActiveBuilds() const {
-    std::lock_guard<std::mutex> lock(buildsMutex_);
-
     std::vector<std::string> uuids;
-    for (const auto& [uuid, handle] : activeBuilds_) {
-        if (!handle->completion.IsReady()) {
-            uuids.push_back(uuid);
-        }
-    }
-
+    ForEachLiveBuild([&](BuildNode& node) {
+        if (!node.handle->completion.IsReady()) uuids.push_back(node.handle->uuid);
+    });
     return uuids;
 }
 
 uint32_t AsyncShaderBundleBuilder::CleanupCompleted() {
-    std::lock_guard<std::mutex> lock(buildsMutex_);
-
     uint32_t count = 0;
-    auto it = activeBuilds_.begin();
-    while (it != activeBuilds_.end()) {
-        if (it->second->completion.IsReady()) {
-            it = activeBuilds_.erase(it);
+    ForEachLiveBuild([&](BuildNode& node) {
+        if (node.handle->completion.IsReady()) {
+            node.removed.store(true, std::memory_order_release);
             ++count;
-        } else {
-            ++it;
         }
-    }
+    });
 
     return count;
 }
@@ -147,9 +152,12 @@ void AsyncShaderBundleBuilder::SubmitBuildInternal(
     // Create build handle
     auto handle = std::make_shared<AsyncBuildHandle>(builder.GetUuid());
 
-    {
-        std::lock_guard<std::mutex> lock(buildsMutex_);
-        activeBuilds_[handle->uuid] = handle;
+    auto* node = new BuildNode();
+    node->handle = handle;
+    node->older = buildsHead_.load(std::memory_order_relaxed);
+    while (!buildsHead_.compare_exchange_weak(node->older, node,
+               std::memory_order_release, std::memory_order_relaxed)) {
+        // node->older refreshed by the failed exchange; retry the push
     }
 
     auto builderPtr = std::make_shared<ShaderBundleBuilder>(std::move(builder));
