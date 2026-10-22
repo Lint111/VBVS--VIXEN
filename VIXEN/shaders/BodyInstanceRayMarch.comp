@@ -295,6 +295,7 @@ void main() {
     // instance loop, nearest-hit across all body instances.
     // -----------------------------------------------------------------------
     WorldHit worldHit;
+    g_recipeTraceExhaustedRays = 0u;
     bool anyHit = TraceWorld(rayOrigin, rayDir, traceMin, traceMax, worldHit);
     if (anyHit) {
         recordCompositionPixel(worldHit.footprintRegime, worldHit.sourceMask);
@@ -410,6 +411,7 @@ void main() {
     rec.hitT        = worldHit.t;
     rec.worldPos    = rayOrigin + rayDir * worldHit.t;
     rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    if (g_recipeTraceExhaustedRays != 0u) rec.flags |= HITRECORD_FLAG_TRACE_EXHAUSTED;
     // Round 9: tag the FINAL winning hit as far-field iff it survived the
     // far-hit-rejection block above (anyHit would already be false if
     // rejected) AND TraceWorld's bestHit selection actually carries
@@ -480,12 +482,12 @@ void main() {
     } else {
         HitRecord existing = hitRecords[hitRecordIdx];
         if (!anyHit) {
-            if (existing.flags == 0u) {
+            if ((existing.flags & HITRECORD_FLAG_HIT) == 0u) {
                 hitRecords[hitRecordIdx] = rec;
             }
             // else: tier-0 missed but is NOT exhaustive this frame and something else already
             // claimed this pixel with a real hit — defer to it, don't clobber.
-        } else if (rec.hitT < existing.hitT || existing.flags == 0u) {
+        } else if (rec.hitT < existing.hitT || (existing.flags & HITRECORD_FLAG_HIT) == 0u) {
             hitRecords[hitRecordIdx] = rec;
         }
     }

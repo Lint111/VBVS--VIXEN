@@ -260,6 +260,7 @@ void main() {
     bool leanSkip = (flags & HITRECORD_FLAG_CELL_RESOLVED) != 0u;
 
     if (!leanSkip && (flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
+        g_recipeTraceExhaustedRays = 0u;
         vec3 worldPos    = hitRecords[slot].worldPos;
         vec3 worldNormal = hitRecords[slot].worldNormal;
         for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
@@ -287,6 +288,8 @@ void main() {
                 1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
             if (occluded) visBits &= ~(1u << i);
         }
+        if (g_recipeTraceExhaustedRays != 0u)
+            hitRecords[slot].flags = flags | HITRECORD_FLAG_SHADOW_TRACE_EXHAUSTED;
     }
 
     // Mask to the analytic bits this phase owns. Preserve every other bit:

@@ -33,15 +33,33 @@ vec3 sdfGradient(uint recipeId, vec3 p, vec3 center, vec3 params) {
     return normalize(vec3(gx, gy, gz));
 }
 
+// R716: the recipe's own bound on how far evalSdf can overstate the true distance.
+// |grad(length(d) - r)| = 1 and |grad(amp * sin(fx)sin(fy)sin(fz))| <= amp * freq (the
+// squared gradient over freq^2 is multilinear in the three sin^2 terms, so its maximum is
+// at a vertex of [0,1]^3, where it is 1), so L = 1 + amp * freq. See SdfRecipes.h.
+float recipeLipschitzBound(uint recipeId, vec3 params) {
+    return recipeId == RECIPE_DISPLACED_SPHERE ? 1.0 + abs(params.y) * abs(params.z) : 1.0;
+}
+
+// R716: rays whose step budget ran out in the latest traceProceduralBody calls. The caller
+// clears it before a trace and reads it after; an exhausted ray is never a silent miss.
+uint g_recipeTraceExhaustedRays = 0u;
+
 // Sphere-trace within the bounding sphere. Writes hitNormal/hitT on success.
+// footprintBase + t * footprintPerT is the ray's footprint width at t, in the units of
+// ro/rd (the pixel cone, RayFootprint.glsl). Where the bounded step falls below the
+// footprint, the estimate can no longer conclude at pixel scale and the march samples at
+// footprint spacing; the first sign change is a known-outside/known-inside bracket that
+// bisection resolves exactly. A zero footprint keeps the plain bounded sphere-trace.
 bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 rd,
-                         float conservativeStepScale,
+                         float conservativeStepScale, float footprintBase, float footprintPerT,
                          out vec3 hitNormal, out float hitT) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
 
-    float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? params.y : 0.0;
-    float boundR  = params.x + maxDisp + 0.01;
+    float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? abs(params.y) : 0.0;
+    float shellR  = params.x + maxDisp;
+    float boundR  = shellR + 0.01;
 
     vec3  oc   = ro - center;
     float b    = dot(oc, rd);
@@ -54,21 +72,68 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
     if (tFar < 0.0) return false;
 
     float t = tNear;
-    const int   MAX_STEPS = 128;
-    const float EPS       = 1e-3;  // hit threshold (independent of gradient h in sdfGradient, which coincidentally equals EPS)
-    // Step factor = 1/Lipschitz (see SdfRecipes.h): L = 1 + maxDisp*freq*sqrt(3).
-    float stepScale = 1.0 / (1.0 + maxDisp * params.z * 1.7320508);
-    stepScale *= clamp(conservativeStepScale, 0.0, 1.0);
-    for (int i = 0; i < MAX_STEPS; ++i) {
+    // Every step advances at least the footprint, which only grows with t, so a positive
+    // entry footprint bounds the steps the interval can take. A zero footprint (LOD-free
+    // harnesses) keeps the plain march's budget, and its exhaustion is counted below.
+    const int MAX_STEPS = 128;
+    float entryFootprint = footprintBase + tNear * footprintPerT;
+    int stepBudget = entryFootprint > 0.0
+        ? int(min(ceil((tFar - tNear) / entryFootprint), 1048576.0)) + 1
+        : MAX_STEPS;
+    float stepScale = clamp(conservativeStepScale, 0.0, 1.0) /
+                      recipeLipschitzBound(recipeId, params);
+    bool  haveOutside = false;
+    float outsideT = tNear;
+    float closestT = tNear;
+    float closestGap = 1e30;
+    for (int i = 0; i < stepBudget; ++i) {
         vec3  p = ro + rd * t;
         float d = evalSdf(recipeId, p, center, params);
-        if (d < EPS) {
+        if (d <= 0.0) {
+            if (haveOutside) {
+                float insideT = t;
+                for (int refine = 0; refine < 32; ++refine) {
+                    float midT = 0.5 * (outsideT + insideT);
+                    if (midT <= outsideT || midT >= insideT) break;
+                    if (evalSdf(recipeId, ro + rd * midT, center, params) > 0.0) {
+                        outsideT = midT;
+                    } else {
+                        insideT = midT;
+                    }
+                }
+                t = outsideT;
+                p = ro + rd * t;
+            }
             hitNormal = sdfGradient(recipeId, p, center, params);
             hitT      = t;
             return true;
         }
-        t += d * stepScale;
-        if (t > tFar) return false;
+        float footprint = max(footprintBase + t * footprintPerT, 0.0);
+        if (d - footprint < closestGap) {
+            closestGap = d - footprint;
+            closestT = t;
+        }
+        haveOutside = true;
+        outsideT = t;
+        // Outside the displacement shell the surface is at least |d| - shellR away (1-Lipschitz).
+        float shellGap = length(p - center) - shellR;
+        float step = max(max(d * stepScale, shellGap), footprint);
+        float nextT = t + step;
+        if (nextT <= t) {
+            // The bounded estimate converged to float resolution at t: the surface is here.
+            hitNormal = sdfGradient(recipeId, p, center, params);
+            hitT      = t;
+            return true;
+        }
+        if (t >= tFar) return false;
+        t = min(nextT, tFar);
+    }
+    g_recipeTraceExhaustedRays += 1u;
+    if (closestGap <= 0.0) {
+        // The ray passed within its own footprint of the surface: the pixel holds surface.
+        hitNormal = sdfGradient(recipeId, ro + rd * closestT, center, params);
+        hitT      = closestT;
+        return true;
     }
     return false;
 }

@@ -71,6 +71,10 @@
 // Rides the bestHit selection (overwritten/cleared whenever a later,
 // non-far-field instance wins), never a sticky global.
 #define HITRECORD_FLAG_FAR_FIELD 0x4u
+// R716: a procedural march on this pixel's primary ray (0x8) or on one of its analytic
+// shadow rays (0x10) used its whole step budget. Counted from readback; never a silent miss.
+#define HITRECORD_FLAG_TRACE_EXHAUSTED 0x8u
+#define HITRECORD_FLAG_SHADOW_TRACE_EXHAUSTED 0x10u
 
 struct HitRecord {
     vec3  albedo;

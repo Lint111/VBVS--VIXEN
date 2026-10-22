@@ -226,6 +226,10 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     // -----------------------------------------------------------------------
     // INSTANCE LOOP
     // -----------------------------------------------------------------------
+    // R716: the ray's pixel-cone width where it starts (camera: raySizeBias; a shadow ray
+    // leaving a shaded point: that point's own pixel footprint), in world units.
+    const float rayFootprintBase = length(rayOrigin - pc.cameraPos) * VIXEN_QUERY_RAY_SIZE_COEF +
+                                   pc.raySizeBias;
     int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
@@ -312,11 +316,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
+                                               rayFootprintBase, VIXEN_QUERY_RAY_SIZE_COEF,
                                                pNormal, pT);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               rayFootprintBase / worldUnitsPerInstUnit,
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -900,6 +906,10 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
     }
 #endif
 
+    // R716: the ray's pixel-cone width where it starts (camera: raySizeBias; a shadow ray
+    // leaving a shaded point: that point's own pixel footprint), in world units.
+    const float rayFootprintBase = length(rayOrigin - pc.cameraPos) * VIXEN_QUERY_RAY_SIZE_COEF +
+                                   pc.raySizeBias;
     int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap, matches TraceWorld
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
@@ -958,11 +968,13 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
+                                               rayFootprintBase, VIXEN_QUERY_RAY_SIZE_COEF,
                                                pNormal, pT);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               rayFootprintBase / worldUnitsPerInstUnit,
+                                               VIXEN_QUERY_RAY_SIZE_COEF, pNormal, pT);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
