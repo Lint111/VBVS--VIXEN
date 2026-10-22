@@ -328,6 +328,7 @@ void BatchedUploader::CreateCommandPool(uint32_t queueFamilyIndex) {
 
     VkResult result = vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_);
     assert(result == VK_SUCCESS && "Failed to create command pool");
+    (void)result;
 
     // Pre-allocate command buffers
     VkCommandBufferAllocateInfo allocInfo{};
@@ -339,6 +340,7 @@ void BatchedUploader::CreateCommandPool(uint32_t queueFamilyIndex) {
     commandBuffers_.resize(config_.maxBatchCommandBuffers);
     result = vkAllocateCommandBuffers(device_, &allocInfo, commandBuffers_.data());
     assert(result == VK_SUCCESS && "Failed to allocate command buffers");
+    (void)result;
 
     // All start as available
     for (auto cmdBuffer : commandBuffers_) {
@@ -436,8 +438,8 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
         nullptr, queue_, submitInfo);
     batch.completion = submitRequest_(std::move(request));
-    if (!batch.completion || batch.completion->Result() != VK_NOT_READY &&
-        batch.completion->Result() != VK_SUCCESS) {
+    if (!batch.completion || (batch.completion->Result() != VK_NOT_READY &&
+                              batch.completion->Result() != VK_SUCCESS)) {
         ReleaseCommandBuffer(cmdBuffer);
         FailBatch(batch.uploads);
         return;
