@@ -10,7 +10,6 @@
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include "VulkanSwapChain.h"
-#include <mutex>
 #include <sstream>
 
 using namespace RenderGraph::NodeHelpers;
@@ -234,20 +233,10 @@ void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
 
     vkEndCommandBuffer(cmdBuffer);
 
-    // Submit and wait
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(vulkanDevice->queue);
-    }
-
-    vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
+    // R715: the transition rides the graph's submission stream; the command buffer is freed once
+    // the queue timeline reaches it (no submit-then-wait-idle).
+    if (GetOwningGraph()->SubmitOneShot(this, cmdPool, cmdBuffer) != VK_SUCCESS)
+        throw std::runtime_error("[DepthBufferNode] depth layout transition submit failed");
 }
 
 void DepthBufferNode::TransitionImageLayout(

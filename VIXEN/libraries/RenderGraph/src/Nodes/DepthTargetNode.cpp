@@ -8,7 +8,6 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
-#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -210,19 +209,12 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
         throw std::runtime_error("[DepthTargetNode] vkEndCommandBuffer (clear) failed");
     }
 
-    VkSubmitInfo submit{};
-    submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers    = &cmd;
-    {
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        if (vkQueueSubmit(device->queue, 1, &submit, VK_NULL_HANDLE) != VK_SUCCESS) {
-            vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-            throw std::runtime_error("[DepthTargetNode] vkQueueSubmit (clear) failed");
-        }
-        vkQueueWaitIdle(device->queue);
+    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
+    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
+    // so there is no submit-then-wait-idle here.
+    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
+        throw std::runtime_error("[DepthTargetNode] vkQueueSubmit (clear) failed");
     }
-    vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 
     NODE_LOG_INFO("[DepthTargetNode] Created R32_SFLOAT ping-pong pair at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +
