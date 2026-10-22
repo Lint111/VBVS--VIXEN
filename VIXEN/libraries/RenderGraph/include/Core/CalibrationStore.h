@@ -28,6 +28,7 @@
  */
 
 #include "TaskProfileRegistry.h"
+#include "ConcurrentRunRegistry.h"
 #include <CacheCodec.h>
 #include "MessageBus.h"
 #include "Message.h"
@@ -39,6 +40,7 @@
 #include <iomanip>
 #include <sstream>
 #include <iterator>
+#include <memory>
 #include <system_error>
 #include <utility>
 
@@ -198,19 +200,29 @@ public:
 
         subscriptions_.SetBus(messageBus);
 
-        // Subscribe to DeviceMetadataEvent - configure GPU and load
+        // Subscribe to DeviceMetadataEvent - configure GPU and load. DeviceNode republishes this
+        // event on every recompile (a window resize, a device-loss rebuild), so the load happens
+        // ONCE per GPU identity: a running process never re-tunes from the file another process
+        // published meanwhile, and a recompile never discards the live calibration.
         subscriptions_.Subscribe<EventBus::DeviceMetadataEvent>(
             [this](const EventBus::DeviceMetadataEvent& e) {
                 const auto& device = e.GetSelectedDevice();
-                gpu_ = GPUIdentifier{
+                const GPUIdentifier incoming{
                     device.deviceName,
                     device.vendorID,
                     device.deviceID,
                     device.driverVersion  // Phase 7.2: Capture driver version
                 };
+                const bool alreadyLoaded = loadedForGpu_ && gpuConfigured_ && incoming == gpu_;
+                gpu_ = incoming;
                 gpuConfigured_ = true;
-                if (registry_) {
+                if (!runs_) {
+                    runs_ = std::make_unique<ConcurrentRunRegistry>(baseDir_ / "runs");
+                    runs_->Enter();
+                }
+                if (registry_ && !alreadyLoaded) {
                     Load();
+                    loadedForGpu_ = true;
                 }
             }
         );
@@ -306,6 +318,24 @@ public:
             // Build file path
             auto filePath = GetFilePath();
 
+            // A run that shared the machine with other VIXEN processes measured the contention,
+            // not the hardware. It may seed a missing or equally contended file, but never
+            // replaces a clean one.
+            const std::size_t overlapping = runs_ ? runs_->OverlappingRuns() : 0;
+            const bool contended = overlapping > 0;
+            if (contended) {
+                nlohmann::json existing;
+                if (TryReadValidated(filePath, existing).empty() &&
+                    !existing.value("contendedRun", false)) {
+                    result.success = true;
+                    result.message = "Skipped save: this run overlapped " + std::to_string(overlapping) +
+                                     " other VIXEN run(s); keeping the clean calibration at " +
+                                     filePath.string();
+                    lastResult_ = result;
+                    return result;
+                }
+            }
+
             // Build JSON
             nlohmann::json j;
             j["version"] = CURRENT_VERSION;
@@ -314,6 +344,8 @@ public:
             j["gpuDeviceId"] = gpu_.deviceId;
             j["gpuDriverVersion"] = gpu_.driverVersion;  // Phase 7.2
             j["timestamp"] = GetISOTimestamp();
+            j["contendedRun"] = contended;
+            j["overlappingRuns"] = overlapping;
 
             // Save profiles via registry
             registry_->SaveState(j);
@@ -383,42 +415,11 @@ public:
                 return result;
             }
 
-            std::error_code sizeError;
-            const auto fileSize = std::filesystem::file_size(filePath, sizeError);
-            constexpr std::uintmax_t maxCalibrationBytes = 16ULL * 1024ULL * 1024ULL;
-            if (sizeError || fileSize > maxCalibrationBytes) {
-                return reject("Calibration file size is invalid or exceeds the limit");
+            nlohmann::json j;
+            if (const std::string readError = TryReadValidated(filePath, j); !readError.empty()) {
+                return reject(readError);
             }
-
-            // Read the bounded file before parsing so an incomplete or oversized write cannot
-            // feed unbounded input to the JSON reader.
-            std::ifstream file(filePath, std::ios::binary);
-            if (!file.is_open()) {
-                return reject("Failed to open calibration file for reading: " + filePath.string());
-            }
-            const std::string jsonText{
-                std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-            if (file.bad() || jsonText.size() != fileSize) {
-                return reject("Calibration file was truncated while reading");
-            }
-            file.close();
-
-            nlohmann::json j = nlohmann::json::parse(jsonText);
-            if (!j.is_object()) {
-                return reject("Calibration file is not a JSON object");
-            }
-
-            const auto savedChecksum = j.value("checksum", std::string{});
-            if (savedChecksum.empty()) {
-                return reject("Calibration file has no checksum");
-            }
-            j.erase("checksum");
-            const auto checksumInput = j.dump();
-            const auto expectedChecksum = std::to_string(CashSystem::CacheChecksum64(
-                checksumInput.data(), checksumInput.size()));
-            if (savedChecksum != expectedChecksum) {
-                return reject("Calibration checksum mismatch");
-            }
+            loadedContended_ = j.value("contendedRun", false);
 
             // Version check
             uint32_t version = j.value("version", 0u);
@@ -542,7 +543,57 @@ public:
         return driverVersionMismatch_;
     }
 
+    /// True when the loaded file was measured while other VIXEN runs shared the machine.
+    [[nodiscard]] bool LoadedFromContendedRun() const { return loadedContended_; }
+
 private:
+    /// Read, bound, parse and checksum-verify a calibration file. Returns an empty string on
+    /// success (the checksum field is removed from `j`), otherwise the rejection message.
+    [[nodiscard]] static std::string TryReadValidated(const std::filesystem::path& filePath,
+                                                      nlohmann::json& j) {
+        try {
+            std::error_code sizeError;
+            const auto fileSize = std::filesystem::file_size(filePath, sizeError);
+            constexpr std::uintmax_t maxCalibrationBytes = 16ULL * 1024ULL * 1024ULL;
+            if (sizeError || fileSize > maxCalibrationBytes) {
+                return "Calibration file size is invalid or exceeds the limit";
+            }
+
+            // Read the bounded file before parsing so an incomplete or oversized write cannot
+            // feed unbounded input to the JSON reader.
+            std::ifstream file(filePath, std::ios::binary);
+            if (!file.is_open()) {
+                return "Failed to open calibration file for reading: " + filePath.string();
+            }
+            const std::string jsonText{
+                std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+            if (file.bad() || jsonText.size() != fileSize) {
+                return "Calibration file was truncated while reading";
+            }
+            file.close();
+
+            j = nlohmann::json::parse(jsonText);
+            if (!j.is_object()) {
+                return "Calibration file is not a JSON object";
+            }
+
+            const auto savedChecksum = j.value("checksum", std::string{});
+            if (savedChecksum.empty()) {
+                return "Calibration file has no checksum";
+            }
+            j.erase("checksum");
+            const auto checksumInput = j.dump();
+            const auto expectedChecksum = std::to_string(CashSystem::CacheChecksum64(
+                checksumInput.data(), checksumInput.size()));
+            if (savedChecksum != expectedChecksum) {
+                return "Calibration checksum mismatch";
+            }
+            return {};
+        } catch (const std::exception& e) {
+            return std::string("Load failed: ") + e.what();
+        }
+    }
+
     [[nodiscard]] static std::string GetISOTimestamp() {
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::system_clock::to_time_t(now);
@@ -555,6 +606,9 @@ private:
     GPUIdentifier gpu_;
     bool gpuConfigured_ = false;
     bool driverVersionMismatch_ = false;  // Phase 7.2: Track driver changes
+    bool loadedForGpu_ = false;           // event-driven Load() ran for gpu_ (once per GPU identity)
+    bool loadedContended_ = false;
+    std::unique_ptr<ConcurrentRunRegistry> runs_;
     TaskProfileRegistry* registry_ = nullptr;
     EventBus::ScopedSubscriptions subscriptions_;
     CalibrationStoreResult lastResult_;
