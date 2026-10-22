@@ -60,6 +60,7 @@ void ProbeAtlasNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ProbeAtlasNode] Compile START");
 
     device_ = ctx.In(ProbeAtlasNodeConfig::VULKAN_DEVICE_IN);
+    SetDevice(device_);  // R715: the graph submission point issues through the node's device
     if (!device_) {
         throw std::runtime_error("[ProbeAtlasNode] VULKAN_DEVICE_IN is null");
     }

@@ -248,6 +248,7 @@ void UIRenderNode::FreeCommandBuffers() {
 
 void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(UIRenderNodeConfig::VULKAN_DEVICE);
+    SetDevice(device);  // R715: the graph submission point issues through the node's device
     Vixen::Vulkan::Resources::IRenderTarget* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
     commandPool_ = ctx.In(UIRenderNodeConfig::COMMAND_POOL);
     renderPass_ = ctx.In(UIRenderNodeConfig::RENDER_PASS);

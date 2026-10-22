@@ -60,6 +60,7 @@ void DepthBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Validate and set device using helper
     vulkanDevice = ValidateInput<VulkanDevice*>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
     deviceHandle = vulkanDevice;  // Keep for legacy code
+    SetDevice(vulkanDevice);  // R715: the graph submission point issues through the node's device
 
     // Helper macro for VkDevice
     #define VK_DEVICE (vulkanDevice->device)

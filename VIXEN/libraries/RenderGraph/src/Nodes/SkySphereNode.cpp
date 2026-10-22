@@ -257,6 +257,7 @@ void SkySphereNode::TypedSetupImpl(TypedSetupContext&) {
 
 void SkySphereNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = ctx.In(SkySphereNodeConfig::VULKAN_DEVICE_IN);
+    SetDevice(device_);  // R715: the graph submission point issues through the node's device
     commandPool_ = ctx.In(SkySphereNodeConfig::COMMAND_POOL);
     if (!device_) throw std::runtime_error("[SkySphereNode] VULKAN_DEVICE_IN is null");
     if (commandPool_ == VK_NULL_HANDLE) throw std::runtime_error("[SkySphereNode] COMMAND_POOL is null");

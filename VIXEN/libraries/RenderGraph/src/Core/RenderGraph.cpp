@@ -1267,6 +1267,9 @@ int RenderGraph::GraphWorkerCount() const {
 VkResult RenderGraph::SubmitNodeWork(NodeInstance* producer, SubmitRecord&& record) {
     VulkanDevice* const device = producer ? producer->GetDevice() : nullptr;
     if (!device) {
+        GRAPH_LOG_ERROR("[RenderGraph::SubmitNodeWork] node '" +
+                        (producer ? producer->GetInstanceName() : std::string("<null>")) +
+                        "' submits without a device (it must SetDevice at compile)");
         if (record.onRetired) record.onRetired();  // nothing was submitted
         return VK_ERROR_INITIALIZATION_FAILED;
     }
