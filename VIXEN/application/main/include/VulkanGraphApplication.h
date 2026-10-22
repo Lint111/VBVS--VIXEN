@@ -16,7 +16,6 @@
 #include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Mount/PushBuildingInspector seam (gaia-free)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
-#include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include <chrono>
 #include <cstdint>
@@ -68,13 +67,6 @@ namespace Vixen::App { class BuildingInspectorView; struct BuildingInspectorIn; 
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
-
-// Baked-perf-pipeline M2b: builds shaderCacheManager_'s config (VIXEN_SHADER_CACHE_DIR /
-// VIXEN_SHADER_CACHE_DISABLE env parsing). Free function (not inline in the class body) so the
-// env-parsing logic lives out-of-line in VulkanGraphApplication.cpp, matching the constructor's
-// existing VIXEN_WINDOW_WIDTH/HEIGHT parsing style -- called from shaderCacheManager_'s
-// default-member-initializer, so it must be declared (not just defined) before that point.
-ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig();
 
 /**
  * @brief Graph-based Vulkan application using RenderGraph architecture
@@ -370,20 +362,6 @@ private:
     // source at build time) does. Kept as a real (not pointer) member for the same reason
     // perfCsvWriter_ above is -- always-valid, no null-check needed at any call site.
     Vixen::SVO::RecipeRegistry proceduralRecipes_;
-    // Baked-perf-pipeline M2b (Task 2b.1): persistent disk cache for the 4 live shader
-    // builders registered in BuildRenderGraph.cpp (BodyInstanceRayMarch/DirectLighting/
-    // SpatialReuseShade/ProbeUpdate). Wired via .EnableCaching(&shaderCacheManager_) at each
-    // builder site; ShaderBundleBuilder::Build() keys the cache off the FINAL effective
-    // source (post-splice, post-VIXEN_GPU_TRACE_HOOKS-injection, post-#include-resolution --
-    // see Build()'s cache-key comment in ShaderBundleBuilder.cpp), so a splice/define/include
-    // change naturally busts the cache with no separate invalidation logic needed. Real
-    // (not pointer) member -- always-valid, no null-check needed at any call site, same
-    // rationale as perfCsvWriter_ above. Default-member-initialized (not ctor-init-list) so
-    // construction order can't matter; cache dir is a relative "cache/shaders" (gitignored at
-    // repo root via "cache/", same convention as the app's other relative "shaders/" search
-    // paths). Override with VIXEN_SHADER_CACHE_DIR; VIXEN_SHADER_CACHE_DISABLE=1 disables
-    // caching outright (e.g. for a clean-recompile A/B) without deleting the directory.
-    ShaderManagement::ShaderCacheManager shaderCacheManager_{ MakeShaderCacheConfig() };
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
     // Registered source families share the recipe registry and its live invalidation.
     std::vector<NodeHandle> proceduralShaderLibNodes_;

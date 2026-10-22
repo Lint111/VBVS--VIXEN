@@ -38,6 +38,7 @@ struct CompilationOutput {
     std::string infoLog;                // Info/warning messages
     std::string errorLog;               // Error messages
     std::chrono::milliseconds compilationTime{0};
+    bool fromCache = false;             // SPIR-V read from the compile cache, glslang not run
 
     operator bool() const { return success; }
 
@@ -65,14 +66,25 @@ struct CompilationOutput {
  * - Returns SPIR-V bytecode only (no VkShaderModule creation)
  * - Proper error reporting with line numbers
  */
+class ShaderCacheManager;
+
 class ShaderCompiler {
 public:
     ShaderCompiler();
     ~ShaderCompiler();
 
+    /// Every compile reads and fills a SPIR-V cache: DefaultShaderCacheManager() unless set here.
+    /// nullptr always compiles. The key hashes the source, its name, stage, entry point, every
+    /// option and CompilerIdentity(), so no caller decides when an entry is stale.
+    void SetCache(ShaderCacheManager* cache) { cache_ = cache; }
+
     // Disable copy (manages glslang state)
     ShaderCompiler(const ShaderCompiler&) = delete;
     ShaderCompiler& operator=(const ShaderCompiler&) = delete;
+
+    /// glslang and SPIRV-Tools versions: the same source compiled by another compiler build may
+    /// differ, so a persisted SPIR-V cache key includes this identity.
+    static const std::string& CompilerIdentity();
 
     // ===== Compilation =====
 
@@ -162,8 +174,17 @@ private:
     void* GetShaderLanguage(ShaderStage stage);  // EShLanguage
     void* CreateShader(void* language);          // glslang::TShader*
 
+    CompilationOutput CompileCached(
+        ShaderStage stage,
+        const std::string& source,
+        const std::string& sourceName,
+        const std::string& entryPoint,
+        const CompilationOptions& options
+    );
+
     // State
     bool initialized = false;
+    ShaderCacheManager* cache_ = nullptr;
 };
 
 /**

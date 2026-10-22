@@ -7,10 +7,6 @@
 #include <cstdint>
 #include <memory>
 
-namespace ShaderManagement {
-class ShaderCacheManager;
-}
-
 namespace Vixen::RenderGraph {
 
 class ShaderLibraryNode;
@@ -50,8 +46,7 @@ public:
     ~PhotonCellDepositNode() override = default;
 
     void ConfigureForRecordCount(uint32_t recordCount);
-    void RegisterShader(ShaderLibraryNode& shaderLibrary,
-                        ShaderManagement::ShaderCacheManager* cache) const;
+    void RegisterShader(ShaderLibraryNode& shaderLibrary) const;
 };
 
 class PhotonCellFoldNodeType : public TypedNodeType<ComputeStageNodeConfig> {
@@ -73,8 +68,7 @@ public:
     PhotonCellFoldNode(const std::string& instanceName, NodeType* nodeType);
     ~PhotonCellFoldNode() override = default;
 
-    void RegisterShader(ShaderLibraryNode& shaderLibrary,
-                        ShaderManagement::ShaderCacheManager* cache) const;
+    void RegisterShader(ShaderLibraryNode& shaderLibrary) const;
 };
 
 class PhotonCellClearNodeType : public TypedNodeType<ComputeStageNodeConfig> {
@@ -95,8 +89,7 @@ public:
     PhotonCellClearNode(const std::string& instanceName, NodeType* nodeType);
     ~PhotonCellClearNode() override = default;
 
-    void RegisterShader(ShaderLibraryNode& shaderLibrary,
-                        ShaderManagement::ShaderCacheManager* cache) const;
+    void RegisterShader(ShaderLibraryNode& shaderLibrary) const;
 
 protected:
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
