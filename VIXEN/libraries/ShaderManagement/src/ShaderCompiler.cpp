@@ -1,4 +1,6 @@
 #include "ShaderCompiler.h"
+#include "ShaderCacheManager.h"
+#include "Hash.h"
 #define ENABLE_HLSL  // unlock glslang HLSL frontend API (setHlslIoMapping, setEnvTargetHlslFunctionality1)
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
@@ -7,6 +9,7 @@
 #include <spirv-tools/libspirv.hpp>
 
 #include <fstream>
+#include <sstream>
 #include <mutex>
 
 namespace ShaderManagement {
@@ -15,12 +18,23 @@ namespace ShaderManagement {
 static bool s_glslangInitialized = false;
 static std::mutex s_initMutex;
 
-ShaderCompiler::ShaderCompiler() {
+ShaderCompiler::ShaderCompiler()
+    : cache_(&DefaultShaderCacheManager()) {
     InitializeGlslang();
 }
 
 ShaderCompiler::~ShaderCompiler() {
     FinalizeGlslang();
+}
+
+const std::string& ShaderCompiler::CompilerIdentity() {
+    static const std::string identity = [] {
+        const glslang::Version version = glslang::GetVersion();
+        return "glslang " + std::to_string(version.major) + "." + std::to_string(version.minor) + "." +
+               std::to_string(version.patch) + (version.flavor ? version.flavor : "") +
+               "|spirv-tools " + spvSoftwareVersionDetailsString();
+    }();
+    return identity;
 }
 
 void ShaderCompiler::InitializeGlslang() {
@@ -65,7 +79,7 @@ CompilationOutput ShaderCompiler::Compile(
     const std::string& entryPoint,
     const CompilationOptions& options)
 {
-    return CompileInternal(stage, source, "shader", entryPoint, options);
+    return CompileCached(stage, source, "shader", entryPoint, options);
 }
 
 CompilationOutput ShaderCompiler::CompileFile(
@@ -87,7 +101,51 @@ CompilationOutput ShaderCompiler::CompileFile(
     buffer << file.rdbuf();
     std::string source = buffer.str();
 
-    return CompileInternal(stage, source, filePath.string(), entryPoint, options);
+    return CompileCached(stage, source, filePath.string(), entryPoint, options);
+}
+
+CompilationOutput ShaderCompiler::CompileCached(
+    ShaderStage stage,
+    const std::string& source,
+    const std::string& sourceName,
+    const std::string& entryPoint,
+    const CompilationOptions& options)
+{
+    if (!cache_ || !cache_->IsEnabled()) {
+        return CompileInternal(stage, source, sourceName, entryPoint, options);
+    }
+
+    // The source is self-contained (no includer: ShaderPreprocessor inlines #includes before this),
+    // so the key covers everything glslang reads. The source name reaches debug info.
+    std::ostringstream keyStream;
+    keyStream << source << "|" << sourceName << "|"
+              << static_cast<int>(stage) << "|"
+              << entryPoint << "|"
+              << options.optimizePerformance << "|"
+              << options.optimizeSize << "|"
+              << options.generateDebugInfo << "|"
+              << options.treatWarningsAsErrors << "|"
+              << options.targetVulkanVersion << "|"
+              << options.targetSpirvVersion << "|"
+              << static_cast<int>(options.sourceLanguage) << "|"
+              << options.validateSpirv << "|"
+              << CompilerIdentity();
+    const std::string keyContent = keyStream.str();
+    const std::string cacheKey = ComputeSHA256Hex(keyContent.data(), keyContent.size());
+
+    if (auto cached = cache_->Lookup(cacheKey)) {
+        CompilationOutput output;
+        output.success = true;
+        output.spirv = std::move(*cached);
+        output.fromCache = true;
+        return output;
+    }
+
+    CompilationOutput output = CompileInternal(stage, source, sourceName, entryPoint, options);
+    if (output.success) {
+        cache_->Store(cacheKey, output.spirv);
+    }
+    return output;
 }
 
 CompilationOutput ShaderCompiler::CompileInternal(

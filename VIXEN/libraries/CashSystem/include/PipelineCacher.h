@@ -148,6 +148,12 @@ public:
         VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL
     );
 
+    // The device-wide VkPipelineCache every graphics pipeline uses, created on first use and seeded
+    // from the device/driver-keyed shared store (SharedPipelineCacheStore). Pipelines created
+    // outside this cacher (ray tracing, hand-built graphics) pass it too, so PersistWarmState()
+    // carries them across runs and build trees. VK_NULL_HANDLE only if no cache can be created.
+    VkPipelineCache SharedPipelineCache();
+
     // Serialization
     bool SerializePayloadToFile(const std::filesystem::path& path) const override;
     bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;

@@ -127,23 +127,6 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 #define USE_COMPRESSED_SHADER 1  // Default: compressed baseline
 #endif
 
-// Baked-perf-pipeline M2b (Task 2b.1): shaderCacheManager_'s config. Default cache dir is a
-// relative "cache/shaders" (gitignored via "cache/" at repo root -- same convention as the
-// app's other relative shader search paths like "shaders/"); VIXEN_SHADER_CACHE_DIR overrides
-// it, VIXEN_SHADER_CACHE_DISABLE=1 disables caching outright (e.g. for a clean-recompile A/B)
-// without deleting whatever is already on disk.
-ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig() {
-    ShaderManagement::ShaderCacheConfig config;
-    config.cacheDirectory = Vixen::RuntimeCacheDirectory() / "shaders";
-    if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR")) {
-        config.cacheDirectory = dirEnv;
-    }
-    if (const char* disableEnv = std::getenv("VIXEN_SHADER_CACHE_DISABLE")) {
-        config.enabled = (std::atoi(disableEnv) == 0);
-    }
-    return config;
-}
-
 VulkanGraphApplication::VulkanGraphApplication()
     : VulkanApplicationBase(),
       currentFrame(0),
@@ -4054,8 +4037,8 @@ void VulkanGraphApplication::CompileRenderGraph() {
     graphCompiled = true;
 
     // Baked-perf-pipeline M2b (Task 2b.2): log the process-wide shader-cache telemetry right
-    // after Compile() -- every ShaderLibraryNode::CompileImpl (the 4 live builders wired to
-    // shaderCacheManager_ in BuildRenderGraph.cpp) funnels into this ONE ShaderLogger::
+    // after Compile() -- every ShaderBundleBuilder::Build() (cached by default through
+    // ShaderManagement::DefaultShaderCacheManager()) funnels into this ONE ShaderLogger::
     // GetTelemetry() singleton's cacheHits/cacheMisses counters via ShaderBundleBuilder::Build().
     // Info level (not the cache-hit path's own Debug-level log line) so this is visible in a
     // default run without raising the whole app's log verbosity -- the evidence line the

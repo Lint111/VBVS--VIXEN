@@ -59,8 +59,10 @@ void VixenRmlRenderInterface::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags
 void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue,
                                    uint32_t queueFamilyIndex, const VkPhysicalDeviceMemoryProperties& memProps,
                                    VkCommandPool commandPool, VkRenderPass renderPass,
-                                   Vixen::LockCensus::QueueSubmitMutex* submitMutex) {
+                                   Vixen::LockCensus::QueueSubmitMutex* submitMutex,
+                                   VkPipelineCache pipelineCache) {
     device_ = device;
+    pipelineCache_ = pipelineCache;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
     submitMutex_ = submitMutex;
@@ -189,7 +191,7 @@ void VixenRmlRenderInterface::CreatePipeline() {
     gp.layout = pipelineLayout_;
     gp.renderPass = renderPass_;  // UI-owned, color-only → no depth-stencil state needed
     gp.subpass = 0;
-    Check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline_), "graphics pipeline");
+    Check(vkCreateGraphicsPipelines(device_, pipelineCache_, 1, &gp, nullptr, &pipeline_), "graphics pipeline");
 
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
@@ -282,7 +284,7 @@ void VixenRmlRenderInterface::CreateTextPipeline() {
     pipelineInfo.pDynamicState = &dynamic;
     pipelineInfo.layout = textPipelineLayout_;
     pipelineInfo.renderPass = renderPass_;
-    Check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &textPipeline_),
+    Check(vkCreateGraphicsPipelines(device_, pipelineCache_, 1, &pipelineInfo, nullptr, &textPipeline_),
           "text graphics pipeline");
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
@@ -698,6 +700,7 @@ void VixenRmlRenderInterface::Shutdown() {
     descriptorLayout_ = VK_NULL_HANDLE;
     textDescriptorLayout_ = VK_NULL_HANDLE;
     device_ = VK_NULL_HANDLE;
+    pipelineCache_ = VK_NULL_HANDLE;
 }
 
 } // namespace Vixen::Ui

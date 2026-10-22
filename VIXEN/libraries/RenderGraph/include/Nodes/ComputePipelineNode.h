@@ -11,6 +11,7 @@ namespace CashSystem {
     struct ComputePipelineWrapper;
     class PipelineLayoutCacher;
     struct PipelineLayoutWrapper;
+    struct ShaderModuleWrapper;
 }
 
 namespace ShaderManagement {
@@ -77,8 +78,9 @@ private:
     // Entry point name storage (must outlive GetOrCreate call)
     std::string entryPointName_;
 
-    // Shared wrappers from cachers
+    // Shared wrappers from cachers (the module is content-keyed by its SPIR-V)
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
+    std::shared_ptr<CashSystem::ShaderModuleWrapper> shaderModuleWrapper_;
     // Performance logging (disabled by default)
     std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
 
@@ -86,7 +88,8 @@ private:
     ITaskProfile* compileProfile_ = nullptr;
 
     // Helper methods
-    VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv);
+    VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv,
+                                      const std::string& programName, const std::string& entryPoint);
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(
         VulkanDevice* device,
         const std::shared_ptr<::ShaderManagement::ShaderDataBundle>& shaderBundle,

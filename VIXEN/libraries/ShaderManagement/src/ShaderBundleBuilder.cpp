@@ -142,6 +142,7 @@ ShaderBundleBuilder::ShaderBundleBuilder(ShaderBundleBuilder&& other) noexcept
     , preprocessor_(other.preprocessor_)
     , ownsPreprocessor_(other.ownsPreprocessor_)
     , cacheManager_(other.cacheManager_)
+    , cachingDisabled_(other.cachingDisabled_)
     , compiler_(other.compiler_)
     , ownsCompiler_(other.ownsCompiler_)
     , sdiConfig_(std::move(other.sdiConfig_))
@@ -175,6 +176,7 @@ ShaderBundleBuilder& ShaderBundleBuilder::operator=(ShaderBundleBuilder&& other)
         preprocessor_ = other.preprocessor_;
         ownsPreprocessor_ = other.ownsPreprocessor_;
         cacheManager_ = other.cacheManager_;
+        cachingDisabled_ = other.cachingDisabled_;
         compiler_ = other.compiler_;
         ownsCompiler_ = other.ownsCompiler_;
         sdiConfig_ = std::move(other.sdiConfig_);
@@ -349,6 +351,11 @@ ShaderBundleBuilder& ShaderBundleBuilder::EnableCaching(ShaderCacheManager* cach
     return *this;
 }
 
+ShaderBundleBuilder& ShaderBundleBuilder::DisableCaching() {
+    cachingDisabled_ = true;
+    return *this;
+}
+
 ShaderBundleBuilder& ShaderBundleBuilder::SetCompiler(ShaderCompiler* compiler) {
     if (ownsCompiler_ && compiler_) {
         delete compiler_;
@@ -439,6 +446,13 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     program.pipelineType = pipelineType_;
     program.compiledAt = std::chrono::steady_clock::now();
 
+    // Every build is cached unless the builder opted out: callers do not wire a cache. The
+    // compiler keys each stage by its final effective source (post-preprocess: every #include is
+    // inlined, so a changed include busts the entry), options and compiler identity.
+    ShaderCacheManager* const cacheManager =
+        cachingDisabled_ ? nullptr : (cacheManager_ ? cacheManager_ : &DefaultShaderCacheManager());
+    compiler_->SetCache(cacheManager);
+
     // Compile each stage
     for (const auto& stageSource : stages_) {
         auto stageStart = std::chrono::steady_clock::now();
@@ -465,54 +479,6 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
             // Preprocessing completed (no separate warnings field in PreprocessedSource)
         }
 
-        // Check cache if enabled
-        std::string cacheKey;
-        if (cacheManager_) {
-            // Baked-perf-pipeline M2b (Task 2b.1): cache key is a HASH of the final effective
-            // source (sourceToCompile is post-preprocess -- ShaderPreprocessor::ProcessRecursive
-            // textually inlines every #include, see ShaderPreprocessor.cpp -- so a changed
-            // #include naturally changes sourceToCompile and busts the cache) plus every
-            // compile-affecting option. Previously this used the raw concatenated key string
-            // itself as the cache key, which ShaderCacheManager uses directly as a filename
-            // component (cacheKey + ".spv") -- multi-KB/MB of GLSL source text as a filename
-            // silently fails Store/Lookup on real filesystems (path length limits) the moment a
-            // shader's source is nontrivial. Hashing also lets us fold in targetVulkanVersion/
-            // targetSpirvVersion, which the previous key omitted entirely -- the same source
-            // compiled for two different Vulkan/SPIR-V targets must not collide on one entry.
-            std::ostringstream keyStream;
-            keyStream << sourceToCompile << "|"
-                      << static_cast<int>(stageSource.stage) << "|"
-                      << stageSource.entryPoint << "|"
-                      << stageSource.options.optimizePerformance << "|"
-                      << stageSource.options.optimizeSize << "|"
-                      << stageSource.options.generateDebugInfo << "|"
-                      << stageSource.options.targetVulkanVersion << "|"
-                      << stageSource.options.targetSpirvVersion;
-            const std::string keyContent = keyStream.str();
-            cacheKey = ComputeSHA256Hex(keyContent.data(), keyContent.size());
-
-            auto cached = cacheManager_->Lookup(cacheKey);
-            if (cached) {
-                // Cache hit!
-                telemetry.cacheHits.fetch_add(1);
-                ShaderLogger::LogDebug("Cache hit for stage " +
-                    std::string(ShaderStageName(stageSource.stage)), "Builder");
-
-                CompiledShaderStage stage;
-                stage.stage = stageSource.stage;
-                stage.spirvCode = *cached;
-                stage.entryPoint = stageSource.entryPoint;
-                program.stages.push_back(stage);
-                result.usedCache = true;
-
-                // Update telemetry
-                telemetry.totalSpirvSizeBytes.fetch_add(cached->size() * sizeof(uint32_t));
-                continue;
-            } else {
-                telemetry.cacheMisses.fetch_add(1);
-            }
-        }
-
         // Compile
         ShaderLogger::LogInfo("Compiling stage: " +
             std::string(ShaderStageName(stageSource.stage)), "Compiler");
@@ -527,8 +493,14 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
             stageSource.options
         );
         auto compileEnd = std::chrono::steady_clock::now();
-        result.compileTime += std::chrono::duration_cast<std::chrono::milliseconds>(
-            compileEnd - compileStart);
+        if (compiled.fromCache) {
+            telemetry.cacheHits.fetch_add(1);
+            result.usedCache = true;
+        } else {
+            if (cacheManager) telemetry.cacheMisses.fetch_add(1);
+            result.compileTime += std::chrono::duration_cast<std::chrono::milliseconds>(
+                compileEnd - compileStart);
+        }
 
         // Update telemetry
         telemetry.totalSourceSizeBytes.fetch_add(sourceToCompile.size());
@@ -544,11 +516,6 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
         // Update SPIRV size telemetry
         telemetry.totalSpirvSizeBytes.fetch_add(compiled.spirv.size() * sizeof(uint32_t));
-
-        // Store in cache if enabled
-        if (cacheManager_ && !cacheKey.empty()) {
-            cacheManager_->Store(cacheKey, compiled.spirv);
-        }
 
         // Add to program
         CompiledShaderStage stage;

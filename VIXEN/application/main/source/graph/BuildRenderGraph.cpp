@@ -2425,11 +2425,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.g.glsl"
                // under libraries/SVO/shaders — a different tree than the paths above.
                .AddIncludePath("libraries/SVO/shaders")
-               .AddIncludePath("../libraries/SVO/shaders")
+               .AddIncludePath("../libraries/SVO/shaders");
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-               .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+        builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
-               .EnableCaching(&shaderCacheManager_);
         return builder;
     });
 
@@ -2561,11 +2560,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders");
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     };
@@ -2623,11 +2621,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders");
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     };
@@ -2655,11 +2652,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
+                   .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     auto exposureMeterFamily = makeLightingFamily("ExposureMeter.comp", "ExposureMeter");
@@ -2669,11 +2665,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
+                   .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     auto exposureReduceFamily = makeLightingFamily("ExposureReduce.comp", "ExposureReduce");
@@ -2686,11 +2681,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
+                   .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
 
@@ -2730,19 +2724,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         static_cast<PhotonCellDepositNode*>(
             renderGraph->GetInstance(photonCellDepositNode))->RegisterShader(
                 *static_cast<ShaderLibraryNode*>(
-                    renderGraph->GetInstance(photonCellDepositShaderLib)),
-                &shaderCacheManager_);
+                    renderGraph->GetInstance(photonCellDepositShaderLib)));
         static_cast<PhotonCellFoldNode*>(
             renderGraph->GetInstance(photonCellFoldNode))->RegisterShader(
                 *static_cast<ShaderLibraryNode*>(
-                    renderGraph->GetInstance(photonCellFoldShaderLib)),
-                &shaderCacheManager_);
+                    renderGraph->GetInstance(photonCellFoldShaderLib)));
         if (photonCellsClearEnabled) {
             static_cast<PhotonCellClearNode*>(
                 renderGraph->GetInstance(photonCellClearNode))->RegisterShader(
                     *static_cast<ShaderLibraryNode*>(
-                        renderGraph->GetInstance(photonCellClearShaderLib)),
-                    &shaderCacheManager_);
+                        renderGraph->GetInstance(photonCellClearShaderLib)));
         }
     }
     // W3c-2: the resolve pair. The cell shade is a SceneBindings consumer AND
@@ -2767,11 +2758,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders");
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     }
@@ -2803,11 +2793,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders");
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     }
@@ -2849,7 +2838,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .EnableCaching(&shaderCacheManager_)
                    .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
             return builder;
         });
@@ -2908,11 +2896,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 builder.SetTargetVulkanVersion(vulkanVer)
                        .SetTargetSpirvVersion(spirvVer)
                        .AddIncludePath("shaders")
-                       .AddIncludePath("../shaders")
+                       .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                       .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-                       .EnableCaching(&shaderCacheManager_);
                 return builder;
             });
         };
@@ -2954,7 +2941,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .EnableCaching(&shaderCacheManager_)
                    .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
                    .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
             return builder;
@@ -2992,7 +2978,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .EnableCaching(&shaderCacheManager_)
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      computePath, "main");
             return builder;
@@ -9619,11 +9604,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
+                   .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-                   .EnableCaching(&shaderCacheManager_);
             return builder;
         });
     };

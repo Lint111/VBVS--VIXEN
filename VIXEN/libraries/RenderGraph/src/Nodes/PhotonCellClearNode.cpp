@@ -19,10 +19,8 @@ PhotonCellClearNode::PhotonCellClearNode(const std::string& instanceName, NodeTy
     Detail::ConfigurePhotonProducer(*this, PhotonCellTableNode::kCapacity / 64u);
 }
 
-void PhotonCellClearNode::RegisterShader(
-    ShaderLibraryNode& shaderLibrary,
-    ShaderManagement::ShaderCacheManager* cache) const {
-    Detail::RegisterPhotonShader(shaderLibrary, cache,
+void PhotonCellClearNode::RegisterShader(ShaderLibraryNode& shaderLibrary) const {
+    Detail::RegisterPhotonShader(shaderLibrary,
                                  "PhotonCellClear.comp", Metadata::PROGRAM_NAME);
 }
 
