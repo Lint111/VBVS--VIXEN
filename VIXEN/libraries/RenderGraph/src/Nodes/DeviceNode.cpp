@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <utility>
 #include "Headers.h"
 #include <cstdlib>  // std::getenv for VIXEN_PIPELINE_STATS
 #include "ConfiguredOptionalPath.h"
@@ -301,6 +302,9 @@ void DeviceNode::CreateLogicalDevice() {
 
     // Create VulkanDevice wrapper - pass pointer to our member variable
     vulkanDevice = std::make_unique<VulkanDevice>(&selectedPhysicalDevice);
+    // R723: the graph owns the queue-submit drain; off-graph producers publish through the same
+    // lock-free bus that the graph processes at its frame boundary.
+    vulkanDevice->SetMessageBus(GetOwningGraph()->GetMessageBus());
 
     // Query queue families and properties
     vulkanDevice->GetPhysicalDeviceQueuesAndProperties();
@@ -699,7 +703,9 @@ void DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceReg
         vulkanDevice->graphicsQueueIndex,
         budgetManager.get(),
         uploaderConfig,
-        &vulkanDevice->SubmitMutex(vulkanDevice->queue)
+        [device = vulkanDevice.get()](Vixen::Vulkan::Resources::QueueSubmitRequest request) {
+            return device->PublishSubmitRequest(std::move(request));
+        }
     );
 
     // Sprint 5 Phase 4.1: Pre-warm staging buffer pool to avoid first-frame allocations

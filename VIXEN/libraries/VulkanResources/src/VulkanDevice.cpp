@@ -1,4 +1,5 @@
 #include "VulkanDevice.h"
+#include "MessageBus.h"
 
 // Upload infrastructure (Sprint 5 Phase 2.5.3)
 #include "Memory/BatchedUploader.h"
@@ -497,13 +498,18 @@ PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
     return vkQueuePresentKHR;
 }
 
-Vixen::LockCensus::QueueSubmitMutex& VulkanDevice::SubmitMutex(VkQueue queue) {
-    std::lock_guard lock(submitMutexMapLock_);
-    auto it = submitMutexes_.find(queue);
-    if (it == submitMutexes_.end()) {
-        it = submitMutexes_.emplace(queue, std::make_unique<Vixen::LockCensus::QueueSubmitMutex>()).first;
+std::shared_ptr<QueueSubmitCompletion> VulkanDevice::PublishSubmitRequest(QueueSubmitRequest request) {
+    if (!request.completion) request.completion = std::make_shared<QueueSubmitCompletion>();
+    auto completion = request.completion;
+    request.device = this;
+    if (request.queue == VK_NULL_HANDLE) request.queue = queue;
+    if (!messageBus_) {
+        completion->PublishFailed(VK_ERROR_INITIALIZATION_FAILED);
+        if (request.onRetired) request.onRetired();
+        return completion;
     }
-    return *it->second;
+    messageBus_->Publish(std::make_unique<Vixen::EventBus::QueueSubmitRequestMessage>(std::move(request)));
+    return completion;
 }
 
 // Helper to append a feature struct to the pNext chain

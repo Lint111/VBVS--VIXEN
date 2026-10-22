@@ -31,6 +31,7 @@ set(VULKANRESOURCES_HEADERS
     include/CapabilityGraph.h
     include/ConfiguredOptionalPath.h
     include/VulkanGlobalNames.h
+    include/QueueSubmitRequest.h
 )
 
 # ============================================================================
@@ -79,6 +80,7 @@ target_link_libraries(VulkanResources
         ${VULKAN_LIB_LIST}
         glm::glm
         glfw  # Cross-platform Vulkan surface (glfwCreateWindowSurface) + required-extension query
+        EventBus  # R723 lock-free queue-submit request messages
     PRIVATE
         ResourceManagement  # Sprint 5 Phase 2.5.3: Upload infrastructure
 )

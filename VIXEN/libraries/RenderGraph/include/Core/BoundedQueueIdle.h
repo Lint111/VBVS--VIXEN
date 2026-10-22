@@ -9,8 +9,6 @@
 #include "Core/GpuFault.h"
 #include "VulkanDevice.h"
 
-#include <mutex>
-
 namespace Vixen::RenderGraph {
 
 class BoundedQueueIdle {
@@ -32,10 +30,9 @@ public:
         }
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         VkResult result;
-        {
-            std::lock_guard lock(dev.SubmitMutex(dev.queue));
-            result = vkQueueSubmit(dev.queue, 1, &submit, fence_);
-        }
+        // RenderGraph calls this helper from its single queue-owner teardown path. There is no
+        // producer-side mutex: all normal work has already passed through the owner drain.
+        result = vkQueueSubmit(dev.queue, 1, &submit, fence_);
         if (result != VK_SUCCESS) return MakeWaitResult(result);
         const GpuWaitResult waited = BoundedWaitFence(dev.device, fence_, boundNs);
         if (waited.result == VK_SUCCESS) {

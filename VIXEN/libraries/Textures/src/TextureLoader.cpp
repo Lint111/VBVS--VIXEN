@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <utility>
 
 namespace Vixen::TextureHandling {
 
@@ -234,38 +235,30 @@ VulkanStatus TextureLoader::UploadOptimal(
 
     CommandBufferMgr::EndCommandBuffer(texture->cmdTexture);
 
-    // Submit and wait
-    VkFence fence;
-    VkFenceCreateInfo fenceCI{};
-    fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
-        vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
-        vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        return std::unexpected(VulkanError{result, "Failed to create fence (UploadOptimal)"});
-    }
-
+    // Publish the upload.  The queue owner adds its timeline signal and retires the staging
+    // allocation/command buffer after that value; this keeps texture creation off the queue's
+    // host-wait path while preserving queue order for the first consumer.
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &texture->cmdTexture;
 
-    CommandBufferMgr::SubmitCommandBuffer(deviceObj->queue, &texture->cmdTexture, &submitInfo, fence,
-                                           &deviceObj->SubmitMutex(deviceObj->queue));
-
-    result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
-        vkDestroyFence(deviceObj->device, fence, nullptr);
-        vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
-        vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
-        return std::unexpected(VulkanError{result, "Wait for fence timeout (UploadOptimal)"});
+    const VkCommandBuffer submittedCommand = texture->cmdTexture;
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        deviceObj, deviceObj->queue, submitInfo);
+    request.onRetired = [device = deviceObj->device, pool = cmdPool, submittedCommand,
+                         stagingBuffer, stagingMemory] {
+        vkFreeCommandBuffers(device, pool, 1, &submittedCommand);
+        vkFreeMemory(device, stagingMemory, nullptr);
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+    };
+    texture->uploadCompletion = deviceObj->PublishSubmitRequest(std::move(request));
+    texture->cmdTexture = VK_NULL_HANDLE;
+    if (texture->uploadCompletion->Result() != VK_NOT_READY &&
+        texture->uploadCompletion->Result() != VK_SUCCESS) {
+        return std::unexpected(VulkanError{texture->uploadCompletion->Result(),
+                                           "Texture upload request was rejected"});
     }
-
-    vkDestroyFence(deviceObj->device, fence, nullptr);
-    vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
-    vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
 
     // The sampler is owned and deduplicated by SamplerCacher.
     VK_PROPAGATE_ERROR(CreateImageView(texture, config.format, pixelData.mipLevels));

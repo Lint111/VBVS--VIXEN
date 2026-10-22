@@ -13,7 +13,6 @@
 #include <stb_image_write.h>
 
 #include <cstring>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -190,15 +189,10 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
-    bool submitOk;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(device->SubmitMutex(queue));
-        submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
-        if (submitOk) {
-            vkQueueWaitIdle(queue);
-        }
-    }
+    // This helper is called by the render-thread capture owner after graph work has drained; it
+    // is intentionally outside the producer path. R723's normal readbacks use QueueSubmitRequest.
+    const bool submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
+    if (submitOk) vkQueueWaitIdle(queue);
 
     bool ok = submitOk;
     if (ok) {

@@ -230,8 +230,7 @@ protected:
         uploaderConfig.flushDeadline = std::chrono::milliseconds{16};
         auto uploader = std::make_unique<ResourceManagement::BatchedUploader>(
             deviceShell_->device, deviceShell_->queue, deviceShell_->graphicsQueueIndex,
-            budgetManager_.get(), uploaderConfig,
-            &deviceShell_->SubmitMutex(deviceShell_->queue));
+            budgetManager_.get(), uploaderConfig);
         deviceShell_->SetUploader(std::move(uploader));
     }
 

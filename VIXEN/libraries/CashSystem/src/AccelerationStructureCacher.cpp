@@ -7,7 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <sstream>
-#include <mutex>
+#include <utility>
 
 namespace CashSystem {
 
@@ -455,20 +455,20 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
     vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildInfo, &pRangeInfo);
     VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (BLAS)");
 
-    // Submit and wait
+    // Publish; the graph's queue owner adds its retirement timeline signal.  BLAS/TLAS requests
+    // published by this cacher retain queue order without a host wait, and the command buffer is
+    // returned only after the owner observes the completion value.
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(m_device->SubmitMutex(m_device->queue));
-        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
-        vkQueueWaitIdle(m_device->queue);
-    }
-
-    vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        m_device, m_device->queue, submitInfo);
+    request.onRetired = [device = m_device->device, pool = m_buildCommandPool, cmdBuffer] {
+        vkFreeCommandBuffers(device, pool, 1, &cmdBuffer);
+    };
+    (void)m_device->PublishSubmitRequest(std::move(request));
 
     // Get BLAS device address
     VkAccelerationStructureDeviceAddressInfoKHR addressInfo{};
@@ -645,20 +645,19 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
     vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildInfo, &pRangeInfo);
     VK_CHECK_LOG(vkEndCommandBuffer(cmdBuffer), "End command buffer (TLAS)");
 
-    // Submit and wait
+    // Publish; the owner drains this after the BLAS request above, so the build dependency is
+    // carried by queue order rather than a vkQueueWaitIdle round trip.
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(m_device->SubmitMutex(m_device->queue));
-        VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
-        vkQueueWaitIdle(m_device->queue);
-    }
-
-    vkFreeCommandBuffers(m_device->device, m_buildCommandPool, 1, &cmdBuffer);
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        m_device, m_device->queue, submitInfo);
+    request.onRetired = [device = m_device->device, pool = m_buildCommandPool, cmdBuffer] {
+        vkFreeCommandBuffers(device, pool, 1, &cmdBuffer);
+    };
+    (void)m_device->PublishSubmitRequest(std::move(request));
 
     // Get TLAS device address
     VkAccelerationStructureDeviceAddressInfoKHR addressInfo{};
