@@ -382,12 +382,37 @@ void SwapChainNode::SetSwapChainWrapper(VulkanSwapChain* swapchain) {
     swapChainWrapper = swapchain;
 }
 
+void SwapChainNode::CheckSurfaceExtentDrift() {
+    const VkExtent2D surfaceExtent = swapChainWrapper->QueryCurrentSurfaceExtent(*GetDevice()->gpu);
+    const VkExtent2D& liveExtent = swapChainWrapper->scPublicVars.Extent;
+    const bool usable = surfaceExtent.width > 0 && surfaceExtent.height > 0;  // 0x0: minimised
+    if (!usable || (surfaceExtent.width == liveExtent.width && surfaceExtent.height == liveExtent.height)) {
+        extentDrifting_ = false;
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!extentDrifting_) {
+        extentDrifting_ = true;
+        extentDriftSince_ = now;
+        return;
+    }
+    if (std::chrono::duration<double>(now - extentDriftSince_).count() < kExtentDriftSeconds) return;
+
+    NODE_LOG_INFO("[SwapChainNode] surface extent " + std::to_string(surfaceExtent.width) + "x" +
+                  std::to_string(surfaceExtent.height) + " differs from swapchain " +
+                  std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height) +
+                  " with no resize signal -- recreating");
+    extentDrifting_ = false;
+    MarkNeedsRecompile();
+}
+
 uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     if (!swapChainWrapper) {
         std::string errorMsg = "SwapChainNode: swapchain wrapper not set";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+    CheckSurfaceExtentDrift();
 
     auto* devicePtr = GetDevice();
     const auto acquireStarted = std::chrono::steady_clock::now();

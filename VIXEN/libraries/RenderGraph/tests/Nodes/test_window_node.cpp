@@ -63,6 +63,50 @@ TEST_F(WindowNodeTest, TypeNameIsWindow) {
     EXPECT_STREQ(windowType.GetTypeName().c_str(), "Window");
 }
 
+// ResizeDebouncer: the size-observation state machine behind WindowNode's resize handling.
+TEST(ResizeDebouncerTest, SettlesOnTheFinalSizeOfADrag) {
+    ResizeDebouncer d(0.1);
+    double t = 0.0;
+    for (uint32_t w = 520; w <= 900; w += 20, t += 0.016) d.Observe(w, 700, 500, 500, t);
+    EXPECT_FALSE(d.Settled(t)) << "must not apply while the drag is still moving";
+    EXPECT_TRUE(d.Settled(t + 0.11));
+    EXPECT_EQ(d.Width(), 900u);
+    EXPECT_EQ(d.Height(), 700u);
+}
+
+TEST(ResizeDebouncerTest, ReturningToAppliedSizeCancelsThePendingSize) {
+    // 500x500 applied; the window is dragged to 800x600 and back to 500x500 before settling. The old
+    // code dropped the second event (it equalled the applied size) and later applied 800x600.
+    ResizeDebouncer d(0.1);
+    d.Observe(800, 600, 500, 500, 0.0);
+    ASSERT_TRUE(d.HasPending());
+    d.Observe(500, 500, 500, 500, 0.05);
+    EXPECT_FALSE(d.HasPending());
+    EXPECT_FALSE(d.Settled(1.0));
+}
+
+TEST(ResizeDebouncerTest, RepeatedPollOfTheSamePendingSizeDoesNotRestartTheClock) {
+    ResizeDebouncer d(0.1);
+    d.Observe(640, 480, 500, 500, 0.0);
+    for (double t = 0.01; t < 0.2; t += 0.01) d.Observe(640, 480, 500, 500, t);  // per-frame polling
+    EXPECT_TRUE(d.Settled(0.2));
+}
+
+TEST(ResizeDebouncerTest, MinimisedZeroSizeKeepsTheLastExtent) {
+    ResizeDebouncer d(0.1);
+    d.Observe(0, 0, 500, 500, 0.0);
+    EXPECT_FALSE(d.HasPending());
+}
+
+TEST(ResizeDebouncerTest, AMissedCallbackIsStillSeenByPolling) {
+    // No callback ever fired; the framebuffer simply reads a size the swapchain does not have.
+    ResizeDebouncer d(0.1);
+    d.Observe(884, 661, 500, 500, 3.0);
+    EXPECT_TRUE(d.Settled(3.2));
+    EXPECT_EQ(d.Width(), 884u);
+    EXPECT_EQ(d.Height(), 661u);
+}
+
 /**
  * Integration Test Placeholders (Require Window System):
  * - CreateWindow: GLFW/Win32 window creation
