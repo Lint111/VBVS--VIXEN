@@ -1,6 +1,7 @@
 #include "Text/GlyphAtlas.h"
 
 #include "Text/AtlasFormat.h"
+#include "Text/GlyphCellStore.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/PathInstance.g.hpp"
 #include "Recipe/generated/SdfCoreKernels.g.hpp"
@@ -175,6 +176,90 @@ struct GlyphAtlas::Impl {
         return true;
     }
 
+    // The texture handed to RmlUi shares the pixel vector; give writers a private copy first.
+    void DetachPublishedPixels() {
+        if (currentSource) {
+            retainedSources.push_back(std::move(currentSource));
+            pixels = std::make_shared<std::vector<std::uint8_t>>(*pixels);
+            std::copy(std::begin(kAtlasFormatMarker), std::end(kAtlasFormatMarker), pixels->begin());
+        }
+    }
+
+    void SetCellCoordinates(AtlasGlyph& glyph, int atlasX, int atlasY, int width, int height) const {
+        glyph.u0 = static_cast<float>(atlasX) / static_cast<float>(pageDimension);
+        glyph.v0 = static_cast<float>(atlasY) / static_cast<float>(pageDimension);
+        glyph.u1 = static_cast<float>(atlasX + width) / static_cast<float>(pageDimension);
+        glyph.v1 = static_cast<float>(atlasY + height) / static_cast<float>(pageDimension);
+    }
+
+    // Place a stored cell exactly where generation would have, with the stored bytes.
+    bool RestoreGlyph(const CachedGlyph& cached) {
+        AtlasGlyph glyph;
+        glyph.glyphIndex = cached.glyphIndex;
+        glyph.advance = cached.advance;
+        if (cached.width == 0) {
+            glyphs.emplace(glyph.glyphIndex, glyph);
+            return true;
+        }
+        int atlasX = 0;
+        int atlasY = 0;
+        if (!Pack(cached.width, cached.height, atlasX, atlasY))
+            return false;
+        DetachPublishedPixels();
+        for (int y = 0; y < cached.height; ++y) {
+            for (int x = 0; x < cached.width; ++x) {
+                const std::size_t destination = (static_cast<std::size_t>(atlasY + y) * pageDimension + atlasX + x) * 4;
+                const std::size_t source = (static_cast<std::size_t>(y) * cached.width + x) * 3;
+                (*pixels)[destination + 0] = cached.rgb[source + 0];
+                (*pixels)[destination + 1] = cached.rgb[source + 1];
+                (*pixels)[destination + 2] = cached.rgb[source + 2];
+                (*pixels)[destination + 3] = 255;
+            }
+        }
+        glyph.padding = cached.padding;
+        glyph.bearingX = cached.bearingX;
+        glyph.bearingY = cached.bearingY;
+        glyph.width = static_cast<float>(cached.width);
+        glyph.height = static_cast<float>(cached.height);
+        SetCellCoordinates(glyph, atlasX, atlasY, cached.width, cached.height);
+        glyphs.emplace(glyph.glyphIndex, glyph);
+        ++version;
+        return true;
+    }
+
+    // Queue a freshly generated glyph for the shutdown write. The atlas is single-threaded.
+    void RecordGenerated(std::uint32_t glyphIndex) {
+        if (!store)
+            return;
+        const auto found = glyphs.find(glyphIndex);
+        if (found == glyphs.end())
+            return;
+        const AtlasGlyph& glyph = found->second;
+        CachedGlyph cached;
+        cached.glyphIndex = glyphIndex;
+        cached.advance = glyph.advance;
+        cached.bearingX = glyph.bearingX;
+        cached.bearingY = glyph.bearingY;
+        cached.padding = glyph.padding;
+        cached.width = static_cast<std::int32_t>(glyph.width);
+        cached.height = static_cast<std::int32_t>(glyph.height);
+        if (cached.width > 0 && cached.height > 0) {
+            const int atlasX = static_cast<int>(std::lround(glyph.u0 * static_cast<float>(pageDimension)));
+            const int atlasY = static_cast<int>(std::lround(glyph.v0 * static_cast<float>(pageDimension)));
+            cached.rgb.resize(static_cast<std::size_t>(cached.width) * cached.height * 3);
+            for (int y = 0; y < cached.height; ++y) {
+                for (int x = 0; x < cached.width; ++x) {
+                    const std::size_t source = (static_cast<std::size_t>(atlasY + y) * pageDimension + atlasX + x) * 4;
+                    const std::size_t destination = (static_cast<std::size_t>(y) * cached.width + x) * 3;
+                    cached.rgb[destination + 0] = (*pixels)[source + 0];
+                    cached.rgb[destination + 1] = (*pixels)[source + 1];
+                    cached.rgb[destination + 2] = (*pixels)[source + 2];
+                }
+            }
+        }
+        generated.push_back(std::move(cached));
+    }
+
     bool StoreGlyph(AtlasGlyph glyph, msdfgen::Shape* shape, double xMin, double yMin, double xMax, double yMax,
                     double outlineStroke = 0.0) {
         if (!(xMax > xMin) || !(yMax > yMin)) {
@@ -196,11 +281,7 @@ struct GlyphAtlas::Impl {
         if (!Pack(width, height, atlasX, atlasY))
             return false;
 
-        if (currentSource) {
-            retainedSources.push_back(std::move(currentSource));
-            pixels = std::make_shared<std::vector<std::uint8_t>>(*pixels);
-            std::copy(std::begin(kAtlasFormatMarker), std::end(kAtlasFormatMarker), pixels->begin());
-        }
+        DetachPublishedPixels();
 
         msdfgen::Projection projection({1.0, 1.0}, {pixelRange - xMin, pixelRange - yMin});
         if (outlineStroke > 0.0) {
@@ -248,10 +329,7 @@ struct GlyphAtlas::Impl {
         glyph.bearingY = static_cast<float>(yMax + pixelRange);
         glyph.width = static_cast<float>(width);
         glyph.height = static_cast<float>(height);
-        glyph.u0 = static_cast<float>(atlasX) / static_cast<float>(pageDimension);
-        glyph.v0 = static_cast<float>(atlasY) / static_cast<float>(pageDimension);
-        glyph.u1 = static_cast<float>(atlasX + width) / static_cast<float>(pageDimension);
-        glyph.v1 = static_cast<float>(atlasY + height) / static_cast<float>(pageDimension);
+        SetCellCoordinates(glyph, atlasX, atlasY, width, height);
 
         glyphs.emplace(glyph.glyphIndex, glyph);
         ++version;
@@ -265,6 +343,11 @@ struct GlyphAtlas::Impl {
     std::uint32_t version = 1;
     std::unordered_map<std::uint32_t, AtlasGlyph> glyphs;
     std::unordered_map<std::uint32_t, std::shared_ptr<const GlyphOutlineInstance>> outlineInstances;
+    GlyphCacheKey storeKey;
+    std::filesystem::path storePath;
+    bool store = false;
+    std::shared_ptr<const GlyphCellSnapshot> snapshot; // immutable after AttachPersistentStore
+    std::vector<CachedGlyph> generated;                // misses, written once by Flush
     std::unique_ptr<Rml::CallbackTextureSource> currentSource;
     std::vector<std::unique_ptr<Rml::CallbackTextureSource>> retainedSources;
 };
@@ -272,7 +355,33 @@ struct GlyphAtlas::Impl {
 GlyphAtlas::GlyphAtlas(std::uint32_t pageDimension, float distanceRange)
     : impl_(std::make_unique<Impl>(pageDimension, distanceRange)) {}
 
-GlyphAtlas::~GlyphAtlas() = default;
+GlyphAtlas::~GlyphAtlas() {
+    Flush();
+}
+
+void GlyphAtlas::AttachPersistentStore(const GlyphCacheKey& key) {
+    if (!GlyphCellStore::Enabled() || key.fontContentHash == 0 || impl_->store || !impl_->glyphs.empty())
+        return;
+    impl_->storeKey = key;
+    impl_->storeKey.pageDimension = impl_->pageDimension;
+    impl_->storeKey.distanceRange = impl_->distanceRange;
+    impl_->storePath = GlyphCellStore::PathFor(impl_->storeKey);
+    impl_->snapshot = GlyphCellStore::Load(impl_->storePath, impl_->storeKey);
+    impl_->store = true;
+}
+
+bool GlyphAtlas::Flush() {
+    if (!impl_->store || impl_->generated.empty())
+        return true;
+    // Off the frame path: called at shutdown. A failed write only costs regeneration next run.
+    const bool written = GlyphCellStore::Merge(impl_->storePath, impl_->storeKey, impl_->generated);
+    impl_->generated.clear();
+    return written;
+}
+
+std::size_t GlyphAtlas::GeneratedGlyphCount() const noexcept {
+    return impl_->generated.size();
+}
 
 std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
     FT_Face face, std::uint32_t glyphIndex, GlyphOutlineBakeDiagnostic* diagnostic) {
@@ -311,7 +420,17 @@ bool GlyphAtlas::AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) 
         return true;
     if (glyphIndex == 0)
         return false;
+    if (impl_->snapshot) {
+        if (const CachedGlyph* cached = impl_->snapshot->Find(glyphIndex); cached && impl_->RestoreGlyph(*cached))
+            return true;
+    }
+    const bool generatedOk = GenerateGlyph(face, glyphIndex, fontSize);
+    if (generatedOk)
+        impl_->RecordGenerated(glyphIndex);
+    return generatedOk;
+}
 
+bool GlyphAtlas::GenerateGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize) {
     if (FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(fontSize) * 64, 0, 0) != 0 ||
         FT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP) != 0)
         return false;
@@ -375,6 +494,10 @@ bool GlyphAtlas::AddReplacementGlyph(FT_Face face, int fontSize) {
         return false;
     if (impl_->glyphs.contains(0))
         return true;
+    if (impl_->snapshot) {
+        if (const CachedGlyph* cached = impl_->snapshot->Find(0); cached && impl_->RestoreGlyph(*cached))
+            return true;
+    }
 
     const double xMin = 1.0;
     const double yMin = 0.0;
@@ -386,7 +509,10 @@ bool GlyphAtlas::AddReplacementGlyph(FT_Face face, int fontSize) {
 
     AtlasGlyph glyph;
     glyph.glyphIndex = 0;
-    return impl_->StoreGlyph(glyph, nullptr, xMin, yMin, xMax, yMax, stroke);
+    if (!impl_->StoreGlyph(glyph, nullptr, xMin, yMin, xMax, yMax, stroke))
+        return false;
+    impl_->RecordGenerated(0);
+    return true;
 }
 
 const AtlasGlyph* GlyphAtlas::FindGlyph(std::uint32_t glyphIndex) const {

@@ -12,6 +12,24 @@ if(TARGET GTest::gtest_main)
     set_target_properties(test_text_glyph_metrics PROPERTIES FOLDER "Tests/Text")
     vixen_gtest_discover_tests(Text test_text_glyph_metrics)
 
+    add_executable(test_text_glyph_cache
+        test_glyph_cache.cpp
+    )
+    target_link_libraries(test_text_glyph_cache PRIVATE
+        GTest::gtest_main
+        Text
+    )
+    target_compile_definitions(test_text_glyph_cache PRIVATE
+        TEXT_LATO_FONT_PATH="${CMAKE_CURRENT_LIST_DIR}/../../RenderGraph/assets/ui/LatoLatin-Regular.ttf"
+    )
+    if(MSVC)
+        target_compile_options(test_text_glyph_cache PRIVATE /W4 /WX)
+    else()
+        target_compile_options(test_text_glyph_cache PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    set_target_properties(test_text_glyph_cache PROPERTIES FOLDER "Tests/Text")
+    vixen_gtest_discover_tests(Text test_text_glyph_cache)
+
     add_executable(test_text_shaping
         test_text_shaping.cpp
     )

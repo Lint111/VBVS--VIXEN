@@ -41,6 +41,7 @@ set(TEXT_HEADERS
     include/Text/TextShaderSpirv.g.h
     include/Text/AtlasFormat.h
     include/Text/GlyphAtlas.h
+    include/Text/GlyphCellStore.h
     include/Text/GlyphOutline.h
     include/Text/Bidi.h
     include/Text/LineBreaker.h
@@ -54,6 +55,7 @@ set(TEXT_HEADERS
 set(TEXT_SOURCES
     src/Bidi.cpp
     src/GlyphAtlas.cpp
+    src/GlyphCellStore.cpp
     src/GlyphOutline.cpp
     src/LineBreaker.cpp
     src/RmlFontEngine.cpp
