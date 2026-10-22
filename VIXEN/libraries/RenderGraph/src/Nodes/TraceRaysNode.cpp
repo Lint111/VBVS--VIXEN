@@ -486,7 +486,6 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     info.signalSemaphoreInfoCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     info.pSignalSemaphoreInfos = &present;
     auto record = SubmitRecord::FromSubmitInfo2(info, inFlightFence);
-    record.tiled = true;
     record.submissionBudgetNs = budgetNs;
     for (uint64_t pixelCount : pixels)
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(pixelCount));

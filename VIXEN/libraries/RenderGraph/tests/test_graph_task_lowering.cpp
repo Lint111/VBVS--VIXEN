@@ -447,7 +447,6 @@ QueueTimeline FakeTimeline() {
 
 TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
     SubmitRecord record;
-    record.tiled = true;
     record.waits.resize(2);
     record.signals.resize(3);
     record.fence = reinterpret_cast<VkFence>(uintptr_t(7));
@@ -482,7 +481,6 @@ TEST(SubmitRecord, TilesConsumeWaitsOnceAndCompleteOnlyAfterFinalSubmit) {
 
 TEST(SubmitRecord, RetirementFailureStopsBeforeTheNextChunkAndFinalSignal) {
     SubmitRecord record;
-    record.tiled = true;
     record.signals.resize(1);
     for (uintptr_t i = 1; i <= 3; ++i) {
         VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
@@ -504,7 +502,6 @@ TEST(SubmitRecord, TimelineKeepsTwoBatchesOutstandingAcrossRecords) {
     // R503 + R715: the queue-wide timeline lets the second record's first batch follow the first
     // record's batch without a host round trip; the third batch waits for the oldest value only.
     SubmitRecord first, second;
-    first.tiled = second.tiled = true;
     for (uintptr_t i = 1; i <= 2; ++i) {
         VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
         command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
@@ -527,7 +524,6 @@ TEST(SubmitRecord, TimelineKeepsTwoBatchesOutstandingAcrossRecords) {
 TEST(SubmitRecord, ReachedOldestBatchIsPolledNotWaited) {
     // R715 pattern 5: when the GPU keeps up, reaching the cap costs one counter read and no wait.
     SubmitRecord record;
-    record.tiled = true;
     for (uintptr_t i = 1; i <= 3; ++i) {
         VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
         command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
@@ -566,7 +562,6 @@ TEST(SubmitRecord, ReleaseRunsOnlyOnceItsValueIsReached) {
 
 TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
     SubmitRecord record;
-    record.tiled = true;
     record.waits.resize(2);
     record.signals.resize(3);
     record.fence = reinterpret_cast<VkFence>(uintptr_t(9));
@@ -597,7 +592,6 @@ TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
 
 TEST(SubmitRecord, UnknownOrMissingCostReservesAWholeSubmission) {
     SubmitRecord record;
-    record.tiled = true;
     record.commandBuffers.resize(4);
     record.commandCostUpperBoundsNs = {500'000, 0, 500'000};
     const auto batches = record.SubmissionBatches();
@@ -609,33 +603,6 @@ TEST(SubmitRecord, UnknownOrMissingCostReservesAWholeSubmission) {
     EXPECT_EQ(exact[0].count, 2u);
     EXPECT_EQ(exact[1].count, 1u);
     EXPECT_EQ(exact[2].count, 1u);
-}
-
-TEST(SubmitRecord, UntiledRecordIsOneSubmissionThatNeverWaitsForTheCap) {
-    // An untiled producer keeps its single submission and reserves no R503 slot, even behind a
-    // full cap of tiled batches; its value still advances the timeline for releases.
-    QueueTimeline timeline = FakeTimeline();
-    timeline.lastSignaled = 2;
-    timeline.Issued(1);
-    timeline.Issued(2);
-    SubmitRecord record;
-    for (uintptr_t i = 1; i <= 3; ++i) {
-        VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-        command.commandBuffer = reinterpret_cast<VkCommandBuffer>(i);
-        record.commandBuffers.push_back(command);
-    }
-    ASSERT_EQ(record.Submit(CaptureIssue, timeline), VK_SUCCESS);
-    ASSERT_EQ(nativeSubmitCalls.size(), 1u);
-    EXPECT_EQ(nativeSubmitCalls[0].commands, 3u);
-    EXPECT_EQ(fakeWaitCalls, 0);
-    EXPECT_EQ(timeline.lastSignaled, 3u);
-    EXPECT_EQ(timeline.outstanding.size(), 2u);  // the tiled slots are unchanged
-    int released = 0;
-    timeline.Defer(3, [&released] { ++released; });
-    fakeCounter = 3;
-    ASSERT_EQ(timeline.Poll(), VK_SUCCESS);
-    for (auto& release : timeline.TakeCompleted()) release();
-    EXPECT_EQ(released, 1);
 }
 
 TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {

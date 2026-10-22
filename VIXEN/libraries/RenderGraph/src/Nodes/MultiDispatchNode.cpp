@@ -425,9 +425,8 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
         // R715: the graph's single submission point (published on the lowered executor, issued by
         // the owner at once on the sequential one).
-        SubmitRecord record = SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE);
-        record.tiled = true;  // one batch per recorded dispatch command buffer (R503)
-        if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
+        if (const VkResult result = GetOwningGraph()->SubmitNodeWork(
+                this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE));
             result != VK_SUCCESS) {
             NODE_LOG_ERROR("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
                            std::to_string(result));
