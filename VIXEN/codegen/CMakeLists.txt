@@ -337,6 +337,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # --callable-cpp branch), so sweeping the wider root is safe -- config-schemas/ has no
         # [KernelCallable] methods and contributes nothing to the emitted header.
         _codegen_to_wsl_path("${_cg}" _schema_callables_run)
+        # The material colour callable lives beside its C++ consumer, outside the codegen root, so
+        # the root sweep above keeps emitting the AppFlow header alone.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/schemas" _schema_material_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/MaterialColor.g.hpp" _out_material_color_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/MaterialColor.glsl" _out_material_color_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow" _out_appflow_data_run)
         # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
@@ -434,6 +439,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # See the WSL-bridge branch's comment above: --callable-cpp sweeps the codegen root so it
         # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
         set(_schema_callables_run "${_cg}")
+        set(_schema_material_run "${VIXEN_ROOT}/libraries/SVO/schemas")
+        set(_out_material_color_hdr_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/MaterialColor.g.hpp")
+        set(_out_material_color_glsl_run "${VIXEN_ROOT}/shaders/Generated/MaterialColor.glsl")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
         set(_out_appflow_data_run "${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow")
         # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
@@ -1289,6 +1297,34 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     add_custom_target(callables_regen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
         COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- Material colour table (R619.1): one [KernelCallable] in libraries/SVO/schemas/ generates the
+    # C++ face (SVORebuild's DXT colour derivation) and the GLSL face (Materials.glsl).
+    set(_material_color_cpp_args
+        "${_yk_dll_run}"
+        --schema "${_schema_material_run}" --callable-cpp
+        --out-header "${_out_material_color_hdr_run}")
+    set(_material_color_glsl_args
+        "${_yk_dll_run}"
+        --callable-glsl --schema "${_schema_material_run}"
+        --out-glsl "${_out_material_color_glsl_run}")
+    vixen_add_codegen_check(material_color_cpp_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args} --check
+        COMMENT "[codegen] golden check: MaterialColor.g.hpp matches the material colour callable"
+        VERBATIM)
+    vixen_add_codegen_check(material_color_glsl_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args} --check
+        COMMENT "[codegen] golden check: MaterialColor.glsl matches the material colour callable"
+        VERBATIM)
+    if(TARGET SVO)
+        add_dependencies(SVO material_color_cpp_check)
+    endif()
+    add_custom_target(material_color_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args}
+        COMMENT "[codegen] regenerate MaterialColor.g.hpp/.glsl"
         JOB_POOL msbuild
         VERBATIM)
 
