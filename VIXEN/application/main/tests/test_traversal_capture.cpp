@@ -52,8 +52,6 @@ class TraversalCaptureApplication final : public VulkanGraphApplication {
 public:
     TraversalCaptureApplication() { SetPresentationTarget(PresentationTarget::Offscreen); }
 
-    ~TraversalCaptureApplication() override { ReleaseSnapshot(); }
-
     void BuildRenderGraph() override {
         VulkanGraphApplication::BuildRenderGraph();
         auto* graph = GetRenderGraph();
@@ -70,6 +68,9 @@ public:
         wave->SetPostDispatchRecorderForTest([this, records](VkCommandBuffer cmd) {
             RecordSnapshotCopy(cmd, *records);
         });
+        graph->GetLifecycleHooks().RegisterNodeHook(Vixen::RenderGraph::NodeLifecyclePhase::PreCleanup,
+            [this](Vixen::RenderGraph::NodeInstance*) { ReleaseSnapshot(); },
+            "traversal capture snapshot cleanup", wave);
     }
 
     bool Render() override {

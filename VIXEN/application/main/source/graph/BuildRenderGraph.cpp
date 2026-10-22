@@ -10361,6 +10361,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::raySizeBias::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
+    // R716: the camera's fov/aspect give the wave the camera pixel cone, so a shadow ray
+    // marches procedural bodies at its shaded pixel's footprint (ShadowVisibilityWave.comp).
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::fov::INDEX,
+                          ExtractField(&CameraData::fov, SlotRole::Execute));
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::aspect::INDEX,
+                          ExtractField(&CameraData::aspect, SlotRole::Execute));
 
     // ------------------------------------------------------------------
     // W2a (reservoir path opt-in): SpatialReuseGather + the wave's
