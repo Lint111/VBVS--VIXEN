@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Text/GlyphCellStore.h"
 #include "Text/GlyphOutline.h"
 
 #include <ft2build.h>
@@ -41,6 +42,14 @@ public:
     GlyphAtlas(const GlyphAtlas&) = delete;
     GlyphAtlas& operator=(const GlyphAtlas&) = delete;
 
+    // Seed this atlas from, and collect new cells for, the persistent glyph store. Call once,
+    // before the first glyph. The key's page dimension and range are taken from the atlas.
+    void AttachPersistentStore(const GlyphCacheKey& key);
+    // Publish cells generated since the last flush (atomic rename). Runs at destruction; call it
+    // earlier only from a shutdown path, never per frame.
+    bool Flush();
+    [[nodiscard]] std::size_t GeneratedGlyphCount() const noexcept;
+
     bool AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize);
     // Rasterize the same bounded contour instance used by world-space recipes.
     // pointsToPixels converts FreeType's 26.6 outline units to atlas pixels.
@@ -60,6 +69,7 @@ public:
     [[nodiscard]] float DistanceRange() const noexcept;
 
 private:
+    bool GenerateGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

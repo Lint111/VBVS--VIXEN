@@ -26,6 +26,8 @@ constexpr FT_Int32 kSizedGlyphLoadFlags = FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP;
 struct FontFace {
     FT_Face face = nullptr;
     std::string path;
+    int faceIndex = 0;
+    std::uint64_t contentHash = 0;
     Rml::String family;
     Rml::Style::FontStyle style = Rml::Style::FontStyle::Normal;
     Rml::Style::FontWeight weight = Rml::Style::FontWeight::Normal;
@@ -127,6 +129,8 @@ struct RmlFontEngine::Impl {
         auto handle = std::make_unique<FontHandle>();
         handle->font = face;
         handle->size = std::max(size, 1);
+        handle->atlas.AttachPersistentStore(
+            {face->contentHash, face->faceIndex, handle->size, 0, 0.0f});
         FT_Face ftFace = face->face;
         handle->metrics.size = handle->size;
         handle->metrics.has_ellipsis = FT_Get_Char_Index(ftFace, 0x2026) != 0;
@@ -299,6 +303,8 @@ bool RmlFontEngine::LoadFontFace(const Rml::String& fileName, int faceIndex, con
 
     auto loaded = std::make_unique<FontFace>();
     loaded->path = path;
+    loaded->faceIndex = faceIndex;
+    loaded->contentHash = GlyphCellStore::HashFile(path);
     loaded->family = family;
     loaded->style = style;
     loaded->weight = weight;
