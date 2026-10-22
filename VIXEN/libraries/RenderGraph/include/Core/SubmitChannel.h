@@ -66,14 +66,15 @@ struct QueueTimeline {
     WaitFn waitFn = nullptr;             ///< bounded vkWaitSemaphores when null; injectable for tests
     uint64_t blockingWaits = 0;          ///< cap waits that found the oldest batch still running
 
-    /// Refresh `completed` from the counter and drop reached values. Never blocks.
+    /// Refresh `completed` from the counter (whenever anything issued is unreached) and drop reached
+    /// values. Never blocks.
     VkResult Poll();
     /// Make room for one more batch under the R503 cap: poll, then wait for the oldest value only.
     VkResult ReserveBatch(uint32_t cap);
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }
-    /// Record a successfully issued batch value.
-    void Issued(uint64_t value) { outstanding.push_back(value); }
+    /// Record a successfully issued batch value; `reservesSlot` is true for a tiled batch.
+    void Issued(uint64_t value, bool reservesSlot = true) { if (reservesSlot) outstanding.push_back(value); }
     /// Run `release` once `value` is reached (immediately when it already is).
     void Defer(uint64_t value, std::function<void()> release);
     /// Run every release whose value is reached. Returns them collected so the caller may run them
@@ -94,6 +95,11 @@ struct SubmitRecord {
     // Missing/zero entries reserve a whole submission; they can never enable batching.
     std::vector<uint64_t> commandCostUpperBoundsNs;
     uint64_t submissionBudgetNs = 2'000'000;
+    /// A tiled producer (ComputeDispatch, TraceRays, MultiDispatch) splits its command buffers into
+    /// budgeted batches, each reserving one of R503's outstanding slots. An untiled record is one
+    /// submission that reserves no slot (as on the sequential executor before the owner existed);
+    /// it still signals the queue timeline, so its releases retire on time.
+    bool tiled = false;
     struct Batch { std::size_t first, count; };
     [[nodiscard]] std::vector<Batch> SubmissionBatches() const;
     std::vector<VkSemaphoreSubmitInfo> signals;

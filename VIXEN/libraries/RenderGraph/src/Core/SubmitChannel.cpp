@@ -12,6 +12,7 @@ namespace Vixen::RenderGraph {
 
 std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
     if (commandBuffers.empty()) return {{0, 0}};
+    if (!tiled) return {{0, commandBuffers.size()}};
     std::vector<Batch> batches;
     const uint64_t budget = std::max(uint64_t{1}, submissionBudgetNs);
     uint64_t used = 0;
@@ -29,7 +30,7 @@ std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
 }
 
 VkResult QueueTimeline::Poll() {
-    if (outstanding.empty() || semaphore == VK_NULL_HANDLE) return VK_SUCCESS;
+    if (completed >= lastSignaled || semaphore == VK_NULL_HANDLE) return VK_SUCCESS;
     uint64_t value = completed;
     const VkResult result = counterFn ? counterFn(device, semaphore, &value)
                                       : vkGetSemaphoreCounterValue(device, semaphore, &value);
@@ -109,8 +110,10 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
     std::vector<VkSemaphoreSubmitInfo> finalSignals(signals);
     finalSignals.push_back(timelineSignal);
     for (std::size_t i = 0; i < count; ++i) {
-        if (const VkResult reserved = timeline.ReserveBatch(kOutstandingBatchCap); reserved != VK_SUCCESS)
-            return reserved;
+        if (tiled) {
+            if (const VkResult reserved = timeline.ReserveBatch(kOutstandingBatchCap); reserved != VK_SUCCESS)
+                return reserved;
+        }
 
         const bool last = i + 1 == count;
         const uint64_t value = timeline.lastSignaled + 1;
@@ -141,7 +144,7 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
                 i, count, ticks(started), ticks(Clock::now()), static_cast<int>(result));
         }
         if (result != VK_SUCCESS) return result;
-        timeline.Issued(timeline.NextValue());
+        timeline.Issued(timeline.NextValue(), tiled);
     }
     return VK_SUCCESS;
 }

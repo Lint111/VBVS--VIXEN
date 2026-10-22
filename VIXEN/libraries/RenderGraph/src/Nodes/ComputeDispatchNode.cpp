@@ -369,6 +369,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
     // order after the wave (a fault there surfaces device-loss). Inactive channel -> guarded submit.
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
+    record.tiled = true;
     record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
     for (uint32_t groups : tileWorkGroupCounts_[currentFrameIndex]) {
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
