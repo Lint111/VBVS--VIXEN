@@ -735,6 +735,18 @@ void main() {
     float bestRoughness  = recReadback.roughness;
     vec3  bestWorldPos   = recReadback.worldPos;
 
+#ifdef VIXEN_SDF_COVERAGE_DEBUG
+    // Presentation-only diagnostic: expose the value that survived the march ->
+    // HitRecord boundary. A miss is black; a hit is the quantized front coverage.
+    // This intentionally returns before lighting, temporal accumulation, and UI.
+    float coverageDebug = anyHitRT ? hitRecordCoverage(recReadback._pad0[2]) : 0.0;
+    vec4 coverageDebugColor = vec4(vec3(coverageDebug), 1.0);
+    imageStore(sceneRadianceImage, pixelCoords, coverageDebugColor);
+    imageStore(sceneRadianceHistoryOutput, pixelCoords, coverageDebugColor);
+    imageStore(worldPosHistoryOutput, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+    return;
+#endif
+
     // GATE INFRASTRUCTURE (M5, permanent -- read by the M5 shade-pass numeric gate):
     // unconditional (not gated by probeGridEnabled) anyHitRT pixel count, disambiguating
     // "camera sees nothing" from "sees geometry but zero indirect irradiance". Load-bearing;
@@ -763,6 +775,16 @@ void main() {
         // against the light-tree's independent emission sampling for indirect bounces.
         float emission = uintBitsToFloat(recReadback._pad0[1]);
         outColor += bestColor * emission;
+#ifdef VIXEN_REGIME3_COMPOSITE
+        // A front SDF with no farther hit uses the sky as its behind layer. The
+        // primary march records the coverage in the high bits of _pad0[2]; apply
+        // it here, after lighting the surface, so the sky case follows the same
+        // front-coverage rule as the hit-vs-hit path in BodyInstanceRayMarch.
+        float sdfCoverage = hitRecordCoverage(recReadback._pad0[2]);
+        if (!hitRecordHasBehind(recReadback._pad0[2]) && sdfCoverage < 0.999999) {
+            outColor = mix(skyColor, outColor, clamp(sdfCoverage, 0.0, 1.0));
+        }
+#endif
     } else {
         // Keep the existing assignment as the exact disabled path. An opt-in image marks valid
         // texels with alpha=1 and contributes only to ray misses, behind every scene body.

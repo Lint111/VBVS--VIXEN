@@ -53,9 +53,10 @@ uint g_recipeTraceExhaustedRays = 0u;
 // bisection resolves exactly. A zero footprint keeps the plain bounded sphere-trace.
 bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 rd,
                          float conservativeStepScale, float footprintBase, float footprintPerT,
-                         out vec3 hitNormal, out float hitT) {
+                         out vec3 hitNormal, out float hitT, out float hitCoverage) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
+    hitCoverage = 1.0;
 
     float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? abs(params.y) : 0.0;
     float shellR  = params.x + maxDisp;
@@ -87,9 +88,26 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
     float outsideT = tNear;
     float closestT = tNear;
     float closestGap = 1e30;
+#ifdef VIXEN_REGIME3_COMPOSITE
+    // aacov: the sample nearest the surface relative to the pixel cone feeds the coverage ramp.
+    bool  reachedFar = false;
+    float coverageDistance = 1e30;
+    float coverageFootprint = 1e-6;
+    float coverageT = tNear;
+    vec3  coverageP = ro + rd * tNear;
+#endif
     for (int i = 0; i < stepBudget; ++i) {
         vec3  p = ro + rd * t;
         float d = evalSdf(recipeId, p, center, params);
+#ifdef VIXEN_REGIME3_COMPOSITE
+        float pixelFootprint = max(max(t, 0.0) * max(footprintPerT, 0.0), 1e-6);
+        if (d / pixelFootprint < coverageDistance / coverageFootprint) {
+            coverageDistance = d;
+            coverageFootprint = pixelFootprint;
+            coverageT = t;
+            coverageP = p;
+        }
+#endif
         if (d <= 0.0) {
             if (haveOutside) {
                 float insideT = t;
@@ -126,9 +144,29 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
             hitT      = t;
             return true;
         }
-        if (t >= tFar) return false;
+        if (t >= tFar) {
+#ifdef VIXEN_REGIME3_COMPOSITE
+            reachedFar = true;
+            break;
+#else
+            return false;
+#endif
+        }
         t = min(nextT, tFar);
     }
+#ifdef VIXEN_REGIME3_COMPOSITE
+    if (!reachedFar) g_recipeTraceExhaustedRays += 1u;
+    if (coverageDistance < 1e30) {
+        float coverage = SdfCore_SilhouetteCoverage(coverageDistance, max(coverageFootprint, 1e-6));
+        if (coverage > 1e-6) {
+            hitNormal = sdfGradient(recipeId, coverageP, center, params);
+            hitT = coverageT;
+            hitCoverage = coverage;
+            return true;
+        }
+    }
+    return false;
+#else
     g_recipeTraceExhaustedRays += 1u;
     if (closestGap <= 0.0) {
         // The ray passed within its own footprint of the surface: the pixel holds surface.
@@ -137,6 +175,7 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
         return true;
     }
     return false;
+#endif
 }
 
 // ============================================================================
@@ -219,10 +258,12 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
                          float params[6],
-                         out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+                         out vec3 hitNormal, out float hitT, out uint stepsUsed,
+                         out float hitCoverage) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
     stepsUsed = 0u;
+    hitCoverage = 1.0;
 
     vec3  oc   = ro - boundCenter;
     float b    = dot(oc, rd);
@@ -261,6 +302,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
     float lastRefinementT = -1e30;
+#ifdef VIXEN_REGIME3_COMPOSITE
+    float closestDistance = 1e30;
+    float closestFootprint = 1e-6;
+    float closestT = tNear;
+    vec3 closestP = ro + rd * tNear;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
     float traceLastD = 1e30;
     float traceLastT = tNear;
@@ -272,6 +319,15 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p, params);
+#ifdef VIXEN_REGIME3_COMPOSITE
+        float footprint = max(max(t, 0.0) * max(pixelAngle, 0.0), 1e-6);
+        if (d / footprint < closestDistance / closestFootprint) {
+            closestDistance = d;
+            closestFootprint = footprint;
+            closestT = t;
+            closestP = p;
+        }
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
         traceLastD = d;
         traceLastT = t;
@@ -283,6 +339,11 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             vec3 gradient = recipeFieldGradient(recipeId, p, params);
             hitNormal = normalize(gradient);
             hitT      = t;
+#ifdef VIXEN_REGIME3_COMPOSITE
+            // The marcher found a real sign-crossing/root, so this sample is fully
+            // covered. Only the closest-approach fallback below is fractional.
+            hitCoverage = 1.0;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u, recipeId,
                                   gridDim, t, d, p, gradient, traceLastGridBound,
@@ -367,6 +428,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     vec3 gradient = recipeFieldGradient(recipeId, p, params);
                     hitNormal = normalize(gradient);
                     hitT = t;
+#ifdef VIXEN_REGIME3_COMPOSITE
+                    // The refined bracket certifies a real root, so keep hit-vs-hit
+                    // compositing opaque; fractional coverage comes from a miss's
+                    // closest approach, not the root's zero distance.
+                    hitCoverage = 1.0;
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
                     traceLastT = t;
                     traceLastD = evalRecipeField(recipeId, p, params);
@@ -416,6 +483,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #endif
         t += step;
         if (t > tFar) {
+#ifdef VIXEN_REGIME3_COMPOSITE
+            break;
+#else
 #ifdef VIXEN_RIMLEAK_TRACE
             vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
@@ -423,8 +493,21 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                                   traceLastGridBound, tNear, tFar, traceLastStep);
 #endif
             return false;
+#endif
         }
     }
+#ifdef VIXEN_REGIME3_COMPOSITE
+    if (closestDistance < 1e30) {
+        float coverageWidth = max(closestFootprint, 1e-6);
+        float coverage = SdfCore_SilhouetteCoverage(closestDistance, coverageWidth);
+        if (coverage > 1e-6) {
+            hitNormal = normalize(recipeFieldGradient(recipeId, closestP, params));
+            hitT = closestT;
+            hitCoverage = coverage;
+            return true;
+        }
+    }
+#endif
 #ifdef VIXEN_RIMLEAK_TRACE
     vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
     rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 3u, recipeId, gridDim,

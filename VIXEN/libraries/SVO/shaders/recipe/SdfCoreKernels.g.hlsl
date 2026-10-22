@@ -551,6 +551,11 @@ float SdfCore_MathClamp(float x, float lo, float hi) {
     return clamp(x, lo, hi);
 }
 
+float SdfCore_SilhouetteCoverage(float signedDistance, float footprint) {
+    float safeFootprint = max(footprint, 1e-6);
+    return clamp(0.5 - 0.5 * signedDistance / safeFootprint, 0.0, 1.0);
+}
+
 float SdfCore_MathAbs(float x) {
     return abs(x);
 }

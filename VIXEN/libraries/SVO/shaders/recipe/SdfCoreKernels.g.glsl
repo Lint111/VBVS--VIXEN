@@ -851,6 +851,11 @@ float SdfCore_Select(float cond, float a, float b, float thr) {
     { precise float _yeroketPreciseReturn = (cond > thr ? a : b); return _yeroketPreciseReturn; }
 }
 
+float SdfCore_SilhouetteCoverage(float signedDistance, float footprint) {
+    float safeFootprint = max(footprint, uintBitsToFloat(897988541u));
+    { precise float _yeroketPreciseReturn = clamp(uintBitsToFloat(1056964608u) - uintBitsToFloat(1056964608u) * signedDistance / safeFootprint, uintBitsToFloat(0u), uintBitsToFloat(1065353216u)); return _yeroketPreciseReturn; }
+}
+
 float SdfCore_SmoothIntersect(float a, float b, float k) {
     float h = clamp(uintBitsToFloat(1056964608u) - uintBitsToFloat(1056964608u) * (b - a) / k, 0.0, 1.0);
     { precise float _yeroketPreciseReturn = mix(b, a, h) + k * h * (uintBitsToFloat(1065353216u) - h); return _yeroketPreciseReturn; }

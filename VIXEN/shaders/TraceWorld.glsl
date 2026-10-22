@@ -62,6 +62,10 @@ struct WorldHit {
     // self-lit term for the Cornell ceiling light without a new SEM_* channel or any
     // change to the light-tree/GI path, which already samples emission independently.
     float emission;
+    // SDF silhouette coverage at the winning front sample. This is kept separate
+    // from residualT: the former is the front edge's pixel coverage, the latter is
+    // the compositing walk's remaining transmittance.
+    float coverage;
     // Round 9: does the pixel's FINAL winning hit come off the far-field mip-resolve
     // path? NOT the same as "some far-field candidate won its own per-instance
     // isCloserHit compare" (the round-8-located [FarFieldWon] conflation) -- this
@@ -77,6 +81,7 @@ struct WorldHit {
     // bookkeeping below) -- vec3(0.0) when no second candidate existed this frame.
     float residualT;
     vec3  behindColor;
+    bool  hasBehind;
     // E1-T1 probe-only terminal classification; not serialized into HitRecord.
     uint footprintRegime;
     uint sourceMask;
@@ -146,6 +151,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
     uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
+    float bestCoverage    = 1.0;          // SDF front-surface coverage; 1.0 for opaque/non-SDF hits
     bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
     uint  bestFootprintRegime = 1u;
     uint  sourceMask = 0u;
@@ -215,6 +221,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // mip representative via shadeFromMipSample on the far-field arm) is the
             // correct emission source here, mirroring the ESVO stored-branch fix below.
             bestEmission   = rqEmission;
+            bestCoverage   = 1.0;
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
             sourceMask |= 2u;
@@ -301,6 +308,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
             vec3 pNormal;
             float pT;
+            float pCoverage = 1.0;
             bool pHit = false;
 
             // recipeId 0/1 stay on the hand-written legacy analytic path (RECIPE_SPHERE /
@@ -316,12 +324,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
                                                rayFootprintBase, rayFootprintPerT,
-                                               pNormal, pT);
+                                               pNormal, pT, pCoverage);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
                                                rayFootprintBase / worldUnitsPerInstUnit,
-                                               rayFootprintPerT, pNormal, pT);
+                                               rayFootprintPerT, pNormal, pT, pCoverage);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -390,7 +398,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT,
+                                               pSteps, pCoverage);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -421,6 +430,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 bestInstIdx    = uint(instIdx);
+#ifdef VIXEN_REGIME3_COMPOSITE
+                bestResidualT = 1.0 - clamp(pCoverage, 0.0, 1.0);
+#endif
                 // M11.2: recipeParams[3..5] are unused by every registered Cornell recipe
                 // (recipeId>=2 bodies sample world p directly, see BuildRenderGraph.cpp's
                 // VIXEN_DDGI_CORNELL_VIRTUAL_DEMO seeding comment) and recipeId<2's legacy
@@ -428,9 +440,17 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // spare for both, so it carries the light body's emission intensity (0.0 for
                 // every non-emissive body) without a new BodyInstance field.
                 bestEmission   = inst.recipeParams[3];
+                bestCoverage   = clamp(pCoverage, 0.0, 1.0);
                 bestFootprintRegime = 1u;
                 anyHit         = true;
             }
+#ifdef VIXEN_REGIME3_COMPOSITE
+            else if (pHit && isCloserHit(pT, instanceIndex, secondT, secondInstIdx)) {
+                secondT = pT;
+                secondInstIdx = instanceIndex;
+                secondColor = inst.color;
+            }
+#endif
             continue;  // procedural body fully handled; skip the ESVO path
         }
 
@@ -826,15 +846,18 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.voxelIdx   = bestVoxelIdx;
     hit.instIdx    = bestInstIdx;
     hit.emission   = bestEmission;
+    hit.coverage   = bestCoverage;
     hit.wasFarField = anyHit && bestWasFarField;
     hit.footprintRegime = bestFootprintRegime;
     hit.sourceMask = sourceMask;
 #ifdef VIXEN_REGIME3_COMPOSITE
     hit.residualT   = bestResidualT;
     hit.behindColor = secondColor;
+    hit.hasBehind   = secondInstIdx != 0xFFFFFFFFu;
 #else
     hit.residualT   = 1.0;
     hit.behindColor = vec3(0.0);
+    hit.hasBehind   = false;
 #endif
     return anyHit;
 }
@@ -960,6 +983,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
             vec3 pNormal;
             float pT;
+            float shadowCoverage;
             bool pHit = false;
 
             if (inst.recipeId < 2u) {
@@ -968,12 +992,12 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
                                                footprintBase, footprintPerT,
-                                               pNormal, pT);
+                                               pNormal, pT, shadowCoverage);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
                                                footprintBase / worldUnitsPerInstUnit,
-                                               footprintPerT, pNormal, pT);
+                                               footprintPerT, pNormal, pT, shadowCoverage);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -989,7 +1013,8 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
-                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT,
+                                           pSteps, shadowCoverage);
                 g_recipeProvenStepOnly = false;
             }
 #endif
