@@ -226,6 +226,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     // -----------------------------------------------------------------------
     // INSTANCE LOOP
     // -----------------------------------------------------------------------
+    // R716: the camera ray's pixel-cone width at its origin, in world units.
+    const float rayFootprintBase = pc.raySizeBias;
+    const float rayFootprintPerT = VIXEN_QUERY_RAY_SIZE_COEF;
     int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
@@ -312,11 +315,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
+                                               rayFootprintBase, rayFootprintPerT,
                                                pNormal, pT);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               rayFootprintBase / worldUnitsPerInstUnit,
+                                               rayFootprintPerT, pNormal, pT);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -878,8 +883,12 @@ bool isPointLightSourceInstance(uint instanceIndex, BodyInstance inst, vec3 sour
            all(lessThanEqual(abs(instanceCenter - sourcePosition), vec3(1e-3)));
 }
 
+// footprintBase/footprintPerT: the shadow ray's pixel-cone width at its origin and its
+// growth per unit t (world units), for the procedural march's R716 last step. Zero keeps
+// the plain bounded march, whose budget exhaustion is counted.
 bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
-                          bool skipPointLightSource, vec3 pointLightPosition) {
+                          bool skipPointLightSource, vec3 pointLightPosition,
+                          float footprintBase, float footprintPerT) {
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
     g_lastShadowCompositionRegime = 1u;
@@ -958,11 +967,13 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 if (preserveLegacyProcedural) {
                     pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
                                                pParams, rayOrigin, rayDir, 1.0,
+                                               footprintBase, footprintPerT,
                                                pNormal, pT);
                 } else {
                     pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               pNormal, pT);
+                                               footprintBase / worldUnitsPerInstUnit,
+                                               footprintPerT, pNormal, pT);
                 }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
@@ -1130,12 +1141,25 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
 }
 
 bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
-    return TraceWorldShadowImpl(origin, dir, tmin, tmax, false, vec3(0.0));
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, false, vec3(0.0), 0.0, 0.0);
 }
 
 bool TraceWorldShadowToPoint(vec3 origin, vec3 dir, float tmin, float tmax,
                              vec3 pointLightPosition) {
-    return TraceWorldShadowImpl(origin, dir, tmin, tmax, true, pointLightPosition);
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, true, pointLightPosition, 0.0, 0.0);
+}
+
+// R716: shadow rays from a shaded camera pixel carry that pixel's cone (see ShadowVisibilityWave).
+bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax,
+                      float footprintBase, float footprintPerT) {
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, false, vec3(0.0),
+                                footprintBase, footprintPerT);
+}
+
+bool TraceWorldShadowToPoint(vec3 origin, vec3 dir, float tmin, float tmax,
+                             vec3 pointLightPosition, float footprintBase, float footprintPerT) {
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, true, pointLightPosition,
+                                footprintBase, footprintPerT);
 }
 
 #endif // TRACEWORLD_GLSL

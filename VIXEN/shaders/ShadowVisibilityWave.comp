@@ -260,8 +260,16 @@ void main() {
     bool leanSkip = (flags & HITRECORD_FLAG_CELL_RESOLVED) != 0u;
 
     if (!leanSkip && (flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
+        g_recipeTraceExhaustedRays = 0u;
         vec3 worldPos    = hitRecords[slot].worldPos;
         vec3 worldNormal = hitRecords[slot].worldNormal;
+        // R716: a shadow ray resolves its occluders at the camera pixel's own footprint.
+        // One HitRecord per camera pixel, so rows = sqrt(records / aspect); the cone is
+        // RaySizeCoefNode's 2*tan(fov/rows/2), not this pass's secondary LOD coefficient.
+        // fov/aspect are the camera's (BuildRenderGraph wires them into this push block).
+        float cameraRows = sqrt(float(hitRecords.length()) / max(pc.aspect, 1e-6));
+        float cameraPixelCone = 2.0 * tan(radians(pc.fov) * 0.5 / max(cameraRows, 1.0));
+        float shadowFootprintBase = max(hitRecords[slot].hitT, 0.0) * cameraPixelCone;
         for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
             Light light = lightingConfig.lights[i];
             float distanceToLight;
@@ -281,12 +289,16 @@ void main() {
             if (light.kind == 1u) maxShadowDistance = min(maxShadowDistance, distanceToLight);
             bool occluded = light.kind == 1u
                 ? TraceWorldShadowToPoint(shadowOrigin, lightDir, 0.0, maxShadowDistance,
-                                          light.direction_or_position)
-                : TraceWorldShadow(shadowOrigin, lightDir, 0.0, maxShadowDistance);
+                                          light.direction_or_position,
+                                          shadowFootprintBase, cameraPixelCone)
+                : TraceWorldShadow(shadowOrigin, lightDir, 0.0, maxShadowDistance,
+                                   shadowFootprintBase, cameraPixelCone);
             recordCompositionShadowWave(
                 1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
             if (occluded) visBits &= ~(1u << i);
         }
+        if (g_recipeTraceExhaustedRays != 0u)
+            hitRecords[slot].flags = flags | HITRECORD_FLAG_SHADOW_TRACE_EXHAUSTED;
     }
 
     // Mask to the analytic bits this phase owns. Preserve every other bit:
