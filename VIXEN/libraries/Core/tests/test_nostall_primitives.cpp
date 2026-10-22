@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <thread>
 #include <vector>
@@ -98,6 +99,48 @@ TEST(OverwriteRing, ConcurrentDrainWhileProducingNeverTears) {
     });
     EXPECT_EQ(torn.load(), 0u);
     EXPECT_EQ(delivered + ring.DroppedCount(), 200000u);
+}
+
+// Regression (sn-lockcpusan): producers that lapped the same slot interleaved payload words under one
+// valid-looking seq, so a torn element was delivered as good. Tiny capacity + many producers laps it.
+TEST(OverwriteRing, LappingProducersNeverDeliverTornAndDrainStaysLive) {
+    constexpr int kProducers = 24;
+    std::atomic<bool> producing{true};
+    Vixen::OverwriteRing<Pair, 2> ring;
+    std::atomic<bool> stop{false};
+    std::atomic<std::uint64_t> torn{0};
+    std::uint64_t delivered = 0;
+    std::vector<std::thread> producers;
+    for (int t = 0; t < kProducers; ++t) {
+        producers.emplace_back([&, t] {
+            for (std::uint64_t i = 0; producing.load(std::memory_order_relaxed); ++i) {
+                const std::uint64_t v = (std::uint64_t(t) << 40) | i;
+                ring.Push(Pair{v, ~v});
+            }
+        });
+    }
+    std::thread drainer([&] {
+        while (!stop.load()) {
+            ring.Drain([&](const Pair& p) {
+                if (p.b != ~p.a) torn.fetch_add(1);
+                ++delivered;
+            });
+        }
+    });
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    producing.store(false);
+    for (auto& p : producers) p.join();
+    stop.store(true);
+    drainer.join();
+    for (int i = 0; i < 100 && ring.HasPending(); ++i) {
+        ring.Drain([&](const Pair& p) {
+            if (p.b != ~p.a) torn.fetch_add(1);
+            ++delivered;
+        });
+    }
+    EXPECT_EQ(torn.load(), 0u);
+    EXPECT_FALSE(ring.HasPending());  // a skipped (lost-the-slot) index must not wedge the drain
+    EXPECT_EQ(delivered + ring.DroppedCount(), ring.PushedCount());
 }
 
 TEST(RcuSnapshot, PublishAndRead) {

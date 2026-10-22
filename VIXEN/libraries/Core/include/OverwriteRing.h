@@ -32,10 +32,12 @@ class OverwriteRing {
     static_assert(std::is_trivially_copyable_v<T>, "OverwriteRing payload must be trivially copyable");
     static_assert(N >= 2 && (N & (N - 1)) == 0, "OverwriteRing capacity must be a power of two");
 
+    static constexpr std::uint64_t kBusy = std::uint64_t{1} << 63;
     static constexpr std::size_t kWords = (sizeof(T) + 7) / 8;
 
     struct Slot {
-        std::atomic<std::uint64_t> seq{0};  // 0 = being written / never written, else index + 1
+        std::atomic<std::uint64_t> seq{0};  // 0 = never written, kBusy bit = a producer owns it, else index + 1
+        std::atomic<std::uint64_t> skip{0}; // highest index + 1 whose producer lost the slot (never published)
         std::atomic<std::uint64_t> words[kWords];
         Slot() {
             for (auto& w : words) w.store(0, std::memory_order_relaxed);
@@ -53,7 +55,15 @@ public:
     void Push(const T& value) noexcept {
         const std::uint64_t index = write_.fetch_add(1, std::memory_order_relaxed);
         Slot& slot = slots_[index & (N - 1)];
-        slot.seq.store(0, std::memory_order_relaxed);
+        // One producer owns a slot at a time. Two producers that lapped the same slot would otherwise
+        // interleave payload words under one valid-looking seq (a torn element delivered as good).
+        // The loser does not wait: its element is dropped and the index recorded as skipped.
+        std::uint64_t cur = slot.seq.load(std::memory_order_relaxed);
+        if ((cur & kBusy) != 0 || cur >= index + 1 ||
+            !slot.seq.compare_exchange_strong(cur, cur | kBusy, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+            MarkSkipped(slot, index);
+            return;
+        }
         std::atomic_thread_fence(std::memory_order_release);
         std::uint64_t buffer[kWords] = {};
         std::memcpy(buffer, &value, sizeof(T));
@@ -71,7 +81,7 @@ public:
 
         const std::uint64_t lo = (end - begin > N) ? end - N : begin;  // older ones were overwritten
         std::uint64_t hi = lo;
-        while (hi < end && slots_[hi & (N - 1)].seq.load(std::memory_order_acquire) >= hi + 1) ++hi;
+        while (hi < end && IsSettled(slots_[hi & (N - 1)], hi)) ++hi;
         if (hi == begin) return 0;  // nothing published at the head yet
         if (!read_.compare_exchange_strong(begin, hi, std::memory_order_acq_rel)) return 0;
 
@@ -111,6 +121,20 @@ public:
     std::uint64_t PushedCount() const noexcept { return write_.load(std::memory_order_relaxed); }
 
 private:
+    static void MarkSkipped(Slot& slot, std::uint64_t index) noexcept {
+        std::uint64_t seen = slot.skip.load(std::memory_order_relaxed);
+        while (seen < index + 1 &&
+               !slot.skip.compare_exchange_weak(seen, index + 1, std::memory_order_release, std::memory_order_relaxed)) {
+        }
+    }
+
+    /// Index is published, overwritten by a later lap, or skipped by a producer that lost the slot.
+    static bool IsSettled(const Slot& slot, std::uint64_t index) noexcept {
+        const std::uint64_t s = slot.seq.load(std::memory_order_acquire);
+        if ((s & kBusy) == 0 && s >= index + 1) return true;
+        return slot.skip.load(std::memory_order_acquire) >= index + 1;
+    }
+
     bool TryRead(std::uint64_t index, T& out) const noexcept {
         const Slot& slot = slots_[index & (N - 1)];
         const std::uint64_t before = slot.seq.load(std::memory_order_acquire);
