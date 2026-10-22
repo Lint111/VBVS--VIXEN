@@ -598,6 +598,26 @@ else()
 endif()
 
 # ===========================================================================
+# UI startup phase timing + cached/uncached fingerprint (needs a Vulkan device: queued GPU job)
+# ===========================================================================
+if(TARGET GTest::gtest_main)
+    add_executable(test_ui_startup_cache
+        test_ui_startup_cache.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/HudView.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/BuildingInspectorView.cpp
+    )
+    target_link_libraries(test_ui_startup_cache PRIVATE GTest::gtest_main RenderGraph)
+    target_include_directories(test_ui_startup_cache PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
+    add_custom_command(TARGET test_ui_startup_cache POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:test_ui_startup_cache>/assets/ui"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_UI_ASSETS_SRC}" "$<TARGET_FILE_DIR:test_ui_startup_cache>/assets/ui"
+        COMMENT "Staging UI assets for test_ui_startup_cache"
+    )
+    set_target_properties(test_ui_startup_cache PROPERTIES FOLDER "Tests/RenderGraph Tests")
+endif()
+
+# ===========================================================================
 # Step-6 M-ui: UI multi-document composition host (headless — no Vulkan required)
 # ===========================================================================
 # Proves the IUiCompositionHost mount/unmount mechanics + the building_inspector.rml fragment +

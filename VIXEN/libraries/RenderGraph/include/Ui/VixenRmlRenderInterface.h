@@ -37,6 +37,16 @@ public:
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
+    // Cumulative time RmlUi spent inside the two compile entry points (geometry buffers, texture
+    // uploads). Read by the startup measurement; compile happens on relayout, not per frame.
+    struct CompileStats {
+        double compileGeometryMs = 0.0;
+        double generateTextureMs = 0.0;
+        uint32_t geometries = 0;
+        uint32_t textures = 0;
+    };
+    [[nodiscard]] const CompileStats& Stats() const noexcept { return stats_; }
+
     // Per-frame: bind the active command buffer + context dimensions before context->Render().
     void BeginFrame(VkCommandBuffer cmd, VkExtent2D extent);
 
@@ -121,6 +131,8 @@ private:
     VkDescriptorSetLayout descriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+    CompileStats stats_{};
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // seeded from the shared user cache; null when off
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout textDescriptorLayout_ = VK_NULL_HANDLE;
