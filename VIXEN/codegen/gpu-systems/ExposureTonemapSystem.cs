@@ -1,6 +1,7 @@
 using System;
 using Undertow.Modding.Schema;
 using Undertow.Sim.Systems;
+using Vixen.Gpu;
 using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
@@ -20,8 +21,8 @@ public static class ExposureTonemapSystem
 {
     [GaiaQuery]
     public static QuerySpec Select() => Gaia.Query()
-        .All<StateFrameTargetsRef, Rgba16f>(row => row.SceneRadianceHistoryOutput)
-        .All<StateFrameTargetsRef, Rgba8>(row => row.OutputImage);
+        .All<FrameTargetsRef, Rgba16f>(row => row.SceneRadianceHistoryOutput)
+        .All<FrameTargetsRef, Rgba8>(row => row.OutputImage);
 
     [Update]
     public static void Run(

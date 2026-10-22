@@ -3,12 +3,623 @@ using Yeroket.Util.KernelFramework;
 namespace Vixen.Codegen.Gpu
 {
     /// <summary>The pair-target WILDCARD marker (query generic → ::gaia::ecs::All).</summary>
-    public readonly struct All { public const string SchemaKind = "all"; }
+    public readonly struct All
+    {
+        public const string SchemaKind = "all";
+        public static implicit operator All(global::Undertow.Modding.KindRef<All> _) => default;
+        public static implicit operator All(AggregateEconomyCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AggregateEconomyCellRef> _) => default;
+        public static implicit operator All(AggressorRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AggressorRef> _) => default;
+        public static implicit operator All(AggrievedFactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AggrievedFactionRef> _) => default;
+        public static implicit operator All(AppFlowContractRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AppFlowContractRef> _) => default;
+        public static implicit operator All(AppFlowStateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AppFlowStateRef> _) => default;
+        public static implicit operator All(AssetControlRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AssetControlRef> _) => default;
+        public static implicit operator All(BeltPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BeltPayloadRef> _) => default;
+        public static implicit operator All(BodyArchetypeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BodyArchetypeRef> _) => default;
+        public static implicit operator All(BodyGenerationProfileRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BodyGenerationProfileRef> _) => default;
+        public static implicit operator All(BodyGenerationSelectorRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BodyGenerationSelectorRef> _) => default;
+        public static implicit operator All(BuildingRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingRef> _) => default;
+        public static implicit operator All(BuildingDrawsOnRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingDrawsOnRef> _) => default;
+        public static implicit operator All(CelestialBodyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CelestialBodyRef> _) => default;
+        public static implicit operator All(CharacterRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CharacterRef> _) => default;
+        public static implicit operator All(CharacterDeathArgsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CharacterDeathArgsRef> _) => default;
+        public static implicit operator All(ChargeTargetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ChargeTargetRef> _) => default;
+        public static implicit operator All(CompositionProfileRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CompositionProfileRef> _) => default;
+        public static implicit operator All(ConceptRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ConceptRef> _) => default;
+        public static implicit operator All(ConflictTypeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ConflictTypeRef> _) => default;
+        public static implicit operator All(ContainmentCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ContainmentCellRef> _) => default;
+        public static implicit operator All(ContractRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ContractRef> _) => default;
+        public static implicit operator All(CrewBondRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CrewBondRef> _) => default;
+        public static implicit operator All(CrystallizedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CrystallizedRef> _) => default;
+        public static implicit operator All(DefenderRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DefenderRef> _) => default;
+        public static implicit operator All(DensityDecayRateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DensityDecayRateRef> _) => default;
+        public static implicit operator All(DialogueOpportunityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DialogueOpportunityRef> _) => default;
+        public static implicit operator All(DialoguePatternRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DialoguePatternRef> _) => default;
+        public static implicit operator All(DialogueTagRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DialogueTagRef> _) => default;
+        public static implicit operator All(DimRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DimRef> _) => default;
+        public static implicit operator All(EconomicRoleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EconomicRoleRef> _) => default;
+        public static implicit operator All(EdgeKindRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EdgeKindRef> _) => default;
+        public static implicit operator All(EdgePayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EdgePayloadRef> _) => default;
+        public static implicit operator All(EdgePayloadFieldRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EdgePayloadFieldRef> _) => default;
+        public static implicit operator All(EffectEmitRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectEmitRef> _) => default;
+        public static implicit operator All(EffectSetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectSetRef> _) => default;
+        public static implicit operator All(EntityKindRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EntityKindRef> _) => default;
+        public static implicit operator All(EventRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EventRef> _) => default;
+        public static implicit operator All(FactRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactRef> _) => default;
+        public static implicit operator All(FactSnapshotRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactSnapshotRef> _) => default;
+        public static implicit operator All(FactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionRef> _) => default;
+        public static implicit operator All(FactionAdjacencyCountRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionAdjacencyCountRef> _) => default;
+        public static implicit operator All(FactionKnowledgeEntryRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionKnowledgeEntryRef> _) => default;
+        public static implicit operator All(FactionMemberCountRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionMemberCountRef> _) => default;
+        public static implicit operator All(FaulterRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FaulterRef> _) => default;
+        public static implicit operator All(FontFaceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FontFaceRef> _) => default;
+        public static implicit operator All(FragmentRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FragmentRef> _) => default;
+        public static implicit operator All(FrontierSeedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FrontierSeedRef> _) => default;
+        public static implicit operator All(GenerationConfigRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<GenerationConfigRef> _) => default;
+        public static implicit operator All(GeneratorRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<GeneratorRef> _) => default;
+        public static implicit operator All(HookRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<HookRef> _) => default;
+        public static implicit operator All(HookQueryArgRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<HookQueryArgRef> _) => default;
+        public static implicit operator All(ImplicatedPartyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ImplicatedPartyRef> _) => default;
+        public static implicit operator All(InputPresetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<InputPresetRef> _) => default;
+        public static implicit operator All(KnowledgeDensityCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeDensityCellRef> _) => default;
+        public static implicit operator All(KnowledgeMapRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeMapRef> _) => default;
+        public static implicit operator All(KnowledgeNodeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeNodeRef> _) => default;
+        public static implicit operator All(KnowledgeNodeCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeNodeCellRef> _) => default;
+        public static implicit operator All(KnowledgeOwnerMapRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeOwnerMapRef> _) => default;
+        public static implicit operator All(LanguagePresetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LanguagePresetRef> _) => default;
+        public static implicit operator All(LayoutPresetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LayoutPresetRef> _) => default;
+        public static implicit operator All(LeveragingFactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LeveragingFactionRef> _) => default;
+        public static implicit operator All(LinkDownstreamRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LinkDownstreamRef> _) => default;
+        public static implicit operator All(LinkEdgeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LinkEdgeRef> _) => default;
+        public static implicit operator All(LinkGroupRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LinkGroupRef> _) => default;
+        public static implicit operator All(LocalKnowledgeMapDensityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LocalKnowledgeMapDensityRef> _) => default;
+        public static implicit operator All(LocalKnowledgeMapFragmentRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LocalKnowledgeMapFragmentRef> _) => default;
+        public static implicit operator All(LoserRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LoserRef> _) => default;
+        public static implicit operator All(ManifestRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ManifestRef> _) => default;
+        public static implicit operator All(ManifestCodeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ManifestCodeRef> _) => default;
+        public static implicit operator All(ManifestDependencyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ManifestDependencyRef> _) => default;
+        public static implicit operator All(ManifestPolicyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ManifestPolicyRef> _) => default;
+        public static implicit operator All(MapCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MapCellRef> _) => default;
+        public static implicit operator All(MapCellNestedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MapCellNestedRef> _) => default;
+        public static implicit operator All(MapCellNestedLayerRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MapCellNestedLayerRef> _) => default;
+        public static implicit operator All(MapCellNestedMixRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MapCellNestedMixRef> _) => default;
+        public static implicit operator All(MapCellSoaRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MapCellSoaRef> _) => default;
+        public static implicit operator All(ModuleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ModuleRef> _) => default;
+        public static implicit operator All(MoonPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MoonPayloadRef> _) => default;
+        public static implicit operator All(ObservedAttrRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ObservedAttrRef> _) => default;
+        public static implicit operator All(OfferRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<OfferRef> _) => default;
+        public static implicit operator All(OrbitalElementsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<OrbitalElementsRef> _) => default;
+        public static implicit operator All(PairPayloadFixturePayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PairPayloadFixturePayloadRef> _) => default;
+        public static implicit operator All(PairPayloadFixtureRelationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PairPayloadFixtureRelationRef> _) => default;
+        public static implicit operator All(PairPayloadFixtureResultRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PairPayloadFixtureResultRef> _) => default;
+        public static implicit operator All(PartOfRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PartOfRef> _) => default;
+        public static implicit operator All(ParticipationCounterpartRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ParticipationCounterpartRef> _) => default;
+        public static implicit operator All(ParticipationSubjectRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ParticipationSubjectRef> _) => default;
+        public static implicit operator All(PermissionCatalogRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PermissionCatalogRef> _) => default;
+        public static implicit operator All(PersonalityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PersonalityRef> _) => default;
+        public static implicit operator All(PersonalityConsiderationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PersonalityConsiderationRef> _) => default;
+        public static implicit operator All(PlaceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlaceRef> _) => default;
+        public static implicit operator All(PlanetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlanetRef> _) => default;
+        public static implicit operator All(PlanetLayerRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlanetLayerRef> _) => default;
+        public static implicit operator All(PlanetOrbitRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlanetOrbitRef> _) => default;
+        public static implicit operator All(PlanetPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlanetPayloadRef> _) => default;
+        public static implicit operator All(PracticeProfileRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PracticeProfileRef> _) => default;
+        public static implicit operator All(ProvocateurRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ProvocateurRef> _) => default;
+        public static implicit operator All(RecipeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RecipeRef> _) => default;
+        public static implicit operator All(RecipientFactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RecipientFactionRef> _) => default;
+        public static implicit operator All(RefListCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RefListCellRef> _) => default;
+        public static implicit operator All(RelationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RelationRef> _) => default;
+        public static implicit operator All(RelationshipKindRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RelationshipKindRef> _) => default;
+        public static implicit operator All(RenderRecipeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RenderRecipeRef> _) => default;
+        public static implicit operator All(ResourceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ResourceRef> _) => default;
+        public static implicit operator All(RivalFactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RivalFactionRef> _) => default;
+        public static implicit operator All(RoleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RoleRef> _) => default;
+        public static implicit operator All(RuleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RuleRef> _) => default;
+        public static implicit operator All(RuleQueryArgRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RuleQueryArgRef> _) => default;
+        public static implicit operator All(SalvageClaimRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<SalvageClaimRef> _) => default;
+        public static implicit operator All(ScoringPolicyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ScoringPolicyRef> _) => default;
+        public static implicit operator All(SourceFactionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<SourceFactionRef> _) => default;
+        public static implicit operator All(StarPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StarPayloadRef> _) => default;
+        public static implicit operator All(StockCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StockCellRef> _) => default;
+        public static implicit operator All(StockDrainCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StockDrainCellRef> _) => default;
+        public static implicit operator All(StorylineRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StorylineRef> _) => default;
+        public static implicit operator All(StringCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StringCellRef> _) => default;
+        public static implicit operator All(TagRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TagRef> _) => default;
+        public static implicit operator All(TagRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TagRowRef> _) => default;
+        public static implicit operator All(TextAnimationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TextAnimationRef> _) => default;
+        public static implicit operator All(TextTagRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TextTagRef> _) => default;
+        public static implicit operator All(TextTagArgRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TextTagArgRef> _) => default;
+        public static implicit operator All(TimelineRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TimelineRef> _) => default;
+        public static implicit operator All(TrendResponseRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TrendResponseRef> _) => default;
+        public static implicit operator All(TuningRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<TuningRef> _) => default;
+        public static implicit operator All(UiBindingFieldRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiBindingFieldRef> _) => default;
+        public static implicit operator All(UiBindingJoinRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiBindingJoinRef> _) => default;
+        public static implicit operator All(UiBindingSectionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiBindingSectionRef> _) => default;
+        public static implicit operator All(UiDocumentRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiDocumentRef> _) => default;
+        public static implicit operator All(UiSectionDescriptorRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiSectionDescriptorRef> _) => default;
+        public static implicit operator All(UiSectionDescriptorFieldRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<UiSectionDescriptorFieldRef> _) => default;
+        public static implicit operator All(ValueListCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ValueListCellRef> _) => default;
+        public static implicit operator All(ValueListCellAosRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ValueListCellAosRef> _) => default;
+        public static implicit operator All(VehicleRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<VehicleRowRef> _) => default;
+        public static implicit operator All(WinnerRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<WinnerRef> _) => default;
+        public static implicit operator All(WorldFactCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<WorldFactCellRef> _) => default;
+        public static implicit operator All(WrongedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<WrongedRef> _) => default;
+        public static implicit operator All(EffectAddDensityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAddDensityRef> _) => default;
+        public static implicit operator All(EffectAddTagRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAddTagRef> _) => default;
+        public static implicit operator All(EffectAddToStockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAddToStockRef> _) => default;
+        public static implicit operator All(EffectAdjustExtractEfficiencyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustExtractEfficiencyRef> _) => default;
+        public static implicit operator All(EffectAdjustKnowledgeDecayRateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustKnowledgeDecayRateRef> _) => default;
+        public static implicit operator All(EffectAdjustKnowledgePropagationRateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustKnowledgePropagationRateRef> _) => default;
+        public static implicit operator All(EffectAdjustPersuasionBonusRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustPersuasionBonusRef> _) => default;
+        public static implicit operator All(EffectAdjustPropulsionPowerRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustPropulsionPowerRef> _) => default;
+        public static implicit operator All(EffectAdjustRefineEfficiencyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustRefineEfficiencyRef> _) => default;
+        public static implicit operator All(EffectAdjustWarDensityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAdjustWarDensityRef> _) => default;
+        public static implicit operator All(EffectAllyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAllyRef> _) => default;
+        public static implicit operator All(EffectAssignEconomicRoleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectAssignEconomicRoleRef> _) => default;
+        public static implicit operator All(EffectChargeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectChargeRef> _) => default;
+        public static implicit operator All(EffectCollaborateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectCollaborateRef> _) => default;
+        public static implicit operator All(EffectCompleteQuestRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectCompleteQuestRef> _) => default;
+        public static implicit operator All(EffectConfiscateStockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectConfiscateStockRef> _) => default;
+        public static implicit operator All(EffectConsumeStockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectConsumeStockRef> _) => default;
+        public static implicit operator All(EffectContractDefaultRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectContractDefaultRef> _) => default;
+        public static implicit operator All(EffectConvergeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectConvergeRef> _) => default;
+        public static implicit operator All(EffectDamageModuleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectDamageModuleRef> _) => default;
+        public static implicit operator All(EffectDeclareWarRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectDeclareWarRef> _) => default;
+        public static implicit operator All(EffectDeduceFactionFactRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectDeduceFactionFactRef> _) => default;
+        public static implicit operator All(EffectFailQuestRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectFailQuestRef> _) => default;
+        public static implicit operator All(EffectFireEffectSetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectFireEffectSetRef> _) => default;
+        public static implicit operator All(EffectGrantClaimRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectGrantClaimRef> _) => default;
+        public static implicit operator All(EffectGrudgeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectGrudgeRef> _) => default;
+        public static implicit operator All(EffectHaulStockSpendRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectHaulStockSpendRef> _) => default;
+        public static implicit operator All(EffectHaulVehicleLaunchRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectHaulVehicleLaunchRef> _) => default;
+        public static implicit operator All(EffectInterpersonalGrudgesRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectInterpersonalGrudgesRef> _) => default;
+        public static implicit operator All(EffectKnowledgeModifierRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectKnowledgeModifierRef> _) => default;
+        public static implicit operator All(EffectLearnAccountRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectLearnAccountRef> _) => default;
+        public static implicit operator All(EffectLearnFactRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectLearnFactRef> _) => default;
+        public static implicit operator All(EffectLinkRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectLinkRef> _) => default;
+        public static implicit operator All(EffectMakePeaceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectMakePeaceRef> _) => default;
+        public static implicit operator All(EffectObserveRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectObserveRef> _) => default;
+        public static implicit operator All(EffectParticipationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectParticipationRef> _) => default;
+        public static implicit operator All(EffectPolarizeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectPolarizeRef> _) => default;
+        public static implicit operator All(EffectPressureRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectPressureRef> _) => default;
+        public static implicit operator All(EffectProductionBonusRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectProductionBonusRef> _) => default;
+        public static implicit operator All(EffectProvokeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectProvokeRef> _) => default;
+        public static implicit operator All(EffectPublishCoarseHaulRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectPublishCoarseHaulRef> _) => default;
+        public static implicit operator All(EffectPublishCoarseStockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectPublishCoarseStockRef> _) => default;
+        public static implicit operator All(EffectRecordEventRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectRecordEventRef> _) => default;
+        public static implicit operator All(EffectRecordLeverageRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectRecordLeverageRef> _) => default;
+        public static implicit operator All(EffectRecordParticipationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectRecordParticipationRef> _) => default;
+        public static implicit operator All(EffectResearchNodeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectResearchNodeRef> _) => default;
+        public static implicit operator All(EffectRevealFactionFactRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectRevealFactionFactRef> _) => default;
+        public static implicit operator All(EffectRunRecipeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectRunRecipeRef> _) => default;
+        public static implicit operator All(EffectScanRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectScanRef> _) => default;
+        public static implicit operator All(EffectSeizeConceptRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectSeizeConceptRef> _) => default;
+        public static implicit operator All(EffectShareRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectShareRef> _) => default;
+        public static implicit operator All(EffectSpawnPlaceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectSpawnPlaceRef> _) => default;
+        public static implicit operator All(EffectSteerIdeologyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectSteerIdeologyRef> _) => default;
+        public static implicit operator All(EffectStoreFlowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectStoreFlowRef> _) => default;
+        public static implicit operator All(EffectTransferConceptRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectTransferConceptRef> _) => default;
+        public static implicit operator All(EffectTransferCreditsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectTransferCreditsRef> _) => default;
+        public static implicit operator All(EffectTransmitFlowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectTransmitFlowRef> _) => default;
+        public static implicit operator All(EffectTriggerTimelineRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EffectTriggerTimelineRef> _) => default;
+        public static implicit operator All(AgentAssociationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentAssociationRef> _) => default;
+        public static implicit operator All(AgentAwarenessRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentAwarenessRef> _) => default;
+        public static implicit operator All(AgentEdgeAwarenessRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentEdgeAwarenessRef> _) => default;
+        public static implicit operator All(AgentFoundAccountRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentFoundAccountRowRef> _) => default;
+        public static implicit operator All(AgentHeldFactRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentHeldFactRef> _) => default;
+        public static implicit operator All(AgentInvestigatedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentInvestigatedRef> _) => default;
+        public static implicit operator All(AgentPositionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentPositionRef> _) => default;
+        public static implicit operator All(AggregateEconomyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AggregateEconomyRef> _) => default;
+        public static implicit operator All(BudgetEntryRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BudgetEntryRowRef> _) => default;
+        public static implicit operator All(BuildingEmitRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingEmitRef> _) => default;
+        public static implicit operator All(BuildingHandleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingHandleRef> _) => default;
+        public static implicit operator All(BuildingInstanceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingInstanceRef> _) => default;
+        public static implicit operator All(BuildingKnowledgeModifierRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingKnowledgeModifierRef> _) => default;
+        public static implicit operator All(BuildingLinkRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingLinkRef> _) => default;
+        public static implicit operator All(BuildingRunRecipeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingRunRecipeRef> _) => default;
+        public static implicit operator All(BuildingStoreFlowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingStoreFlowRef> _) => default;
+        public static implicit operator All(BuildingTransmitFlowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<BuildingTransmitFlowRef> _) => default;
+        public static implicit operator All(CharacterBindingRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CharacterBindingRowRef> _) => default;
+        public static implicit operator All(ClaimOwnerRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ClaimOwnerRowRef> _) => default;
+        public static implicit operator All(ClaimRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ClaimRowRef> _) => default;
+        public static implicit operator All(CoarseArrearsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<CoarseArrearsRef> _) => default;
+        public static implicit operator All(ConceptIdRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ConceptIdRowRef> _) => default;
+        public static implicit operator All(ConceptOwnerRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ConceptOwnerRowRef> _) => default;
+        public static implicit operator All(DealDecisionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealDecisionRef> _) => default;
+        public static implicit operator All(DealPartyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealPartyRef> _) => default;
+        public static implicit operator All(DealPolicyCadenceRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealPolicyCadenceRef> _) => default;
+        public static implicit operator All(DealRequirementRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealRequirementRef> _) => default;
+        public static implicit operator All(DealSessionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealSessionRef> _) => default;
+        public static implicit operator All(DealSettlementRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealSettlementRef> _) => default;
+        public static implicit operator All(DealStepRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DealStepRef> _) => default;
+        public static implicit operator All(DeepFieldCellRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DeepFieldCellRef> _) => default;
+        public static implicit operator All(DepletionBodyRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DepletionBodyRowRef> _) => default;
+        public static implicit operator All(DepletionLayerRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DepletionLayerRowRef> _) => default;
+        public static implicit operator All(DepletionMaterialRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<DepletionMaterialRowRef> _) => default;
+        public static implicit operator All(EvictionKickEnvelopeRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<EvictionKickEnvelopeRowRef> _) => default;
+        public static implicit operator All(ExtractionProcessRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ExtractionProcessRef> _) => default;
+        public static implicit operator All(FactionAmountRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionAmountRowRef> _) => default;
+        public static implicit operator All(FactionBindingRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FactionBindingRowRef> _) => default;
+        public static implicit operator All(FoundingIdeologyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FoundingIdeologyRef> _) => default;
+        public static implicit operator All(FrameTargetsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
+        public static implicit operator All(GateRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<GateRowRef> _) => default;
+        public static implicit operator All(GeneratedTimelineRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<GeneratedTimelineRowRef> _) => default;
+        public static implicit operator All(KnowledgeBudgetRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeBudgetRef> _) => default;
+        public static implicit operator All(KnowledgeBuildingRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeBuildingRef> _) => default;
+        public static implicit operator All(KnowledgeCentralRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeCentralRef> _) => default;
+        public static implicit operator All(KnowledgeCharacterRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeCharacterRef> _) => default;
+        public static implicit operator All(KnowledgeFragmentInstanceRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeFragmentInstanceRowRef> _) => default;
+        public static implicit operator All(KnowledgeFragmentOwnershipRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeFragmentOwnershipRef> _) => default;
+        public static implicit operator All(KnowledgeLocalRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeLocalRef> _) => default;
+        public static implicit operator All(KnowledgeUnlockFiredRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnowledgeUnlockFiredRef> _) => default;
+        public static implicit operator All(KnownNodeCellRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<KnownNodeCellRowRef> _) => default;
+        public static implicit operator All(LeverageUsedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LeverageUsedRef> _) => default;
+        public static implicit operator All(LeveragedRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LeveragedRef> _) => default;
+        public static implicit operator All(LinkChargeEnvelopeRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LinkChargeEnvelopeRowRef> _) => default;
+        public static implicit operator All(LinkTransitRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<LinkTransitRef> _) => default;
+        public static implicit operator All(MarketArrearsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketArrearsRef> _) => default;
+        public static implicit operator All(MarketContractRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketContractRef> _) => default;
+        public static implicit operator All(MarketContribRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketContribRowRef> _) => default;
+        public static implicit operator All(MarketDebtRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketDebtRef> _) => default;
+        public static implicit operator All(MarketOfferRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketOfferRef> _) => default;
+        public static implicit operator All(MarketPoolRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MarketPoolRef> _) => default;
+        public static implicit operator All(MassTrackerRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<MassTrackerRowRef> _) => default;
+        public static implicit operator All(ObserverAdmissionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ObserverAdmissionRef> _) => default;
+        public static implicit operator All(ObserverParkedStockBaseRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ObserverParkedStockBaseRef> _) => default;
+        public static implicit operator All(ObserverStateRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<ObserverStateRef> _) => default;
+        public static implicit operator All(PlaceNodeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlaceNodeRef> _) => default;
+        public static implicit operator All(PlaceRoleAssignmentRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlaceRoleAssignmentRef> _) => default;
+        public static implicit operator All(PlacesAuthoredRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PlacesAuthoredRef> _) => default;
+        public static implicit operator All(PopulationRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PopulationRowRef> _) => default;
+        public static implicit operator All(PracticeLastRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PracticeLastRef> _) => default;
+        public static implicit operator All(PracticeLedgerRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PracticeLedgerRef> _) => default;
+        public static implicit operator All(PracticeSaturationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PracticeSaturationRef> _) => default;
+        public static implicit operator All(PriceQuoteRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<PriceQuoteRef> _) => default;
+        public static implicit operator All(QuestCompletionRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<QuestCompletionRowRef> _) => default;
+        public static implicit operator All(QuestStatusRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<QuestStatusRef> _) => default;
+        public static implicit operator All(RecipeFlowRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RecipeFlowRowRef> _) => default;
+        public static implicit operator All(RefineHeadRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RefineHeadRowRef> _) => default;
+        public static implicit operator All(RegionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RegionRef> _) => default;
+        public static implicit operator All(RegionHeatTransferRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RegionHeatTransferRef> _) => default;
+        public static implicit operator All(RegionHeatTransferPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RegionHeatTransferPayloadRef> _) => default;
+        public static implicit operator All(RegionPressureTransferRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RegionPressureTransferRef> _) => default;
+        public static implicit operator All(RegionPressureTransferPayloadRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RegionPressureTransferPayloadRef> _) => default;
+        public static implicit operator All(RuleFireRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<RuleFireRef> _) => default;
+        public static implicit operator All(SimActionRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<SimActionRowRef> _) => default;
+        public static implicit operator All(SpatialFireRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<SpatialFireRef> _) => default;
+        public static implicit operator All(StateAgentKnowledgeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateAgentKnowledgeRef> _) => default;
+        public static implicit operator All(StateCoarseHistoryRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateCoarseHistoryRef> _) => default;
+        public static implicit operator All(StateCoarseLeverageRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateCoarseLeverageRef> _) => default;
+        public static implicit operator All(StateDealProtocolRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateDealProtocolRef> _) => default;
+        public static implicit operator All(StateDeepFieldGenerationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateDeepFieldGenerationRef> _) => default;
+        public static implicit operator All(StateDepletionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateDepletionRef> _) => default;
+        public static implicit operator All(StateExtractionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateExtractionRef> _) => default;
+        public static implicit operator All(StateKnowledgeRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateKnowledgeRef> _) => default;
+        public static implicit operator All(StateKnowledgeFragmentsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateKnowledgeFragmentsRef> _) => default;
+        public static implicit operator All(StateObserverAdmissionRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateObserverAdmissionRef> _) => default;
+        public static implicit operator All(StatePlacesRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StatePlacesRef> _) => default;
+        public static implicit operator All(StatePracticeDensityRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StatePracticeDensityRef> _) => default;
+        public static implicit operator All(StatePricingPolicyRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StatePricingPolicyRef> _) => default;
+        public static implicit operator All(StateQuestsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateQuestsRef> _) => default;
+        public static implicit operator All(StateRentRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateRentRef> _) => default;
+        public static implicit operator All(StateRosterRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateRosterRef> _) => default;
+        public static implicit operator All(StateRuleCooldownsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateRuleCooldownsRef> _) => default;
+        public static implicit operator All(StateStockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateStockRef> _) => default;
+        public static implicit operator All(StateWorldEventsRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StateWorldEventsRef> _) => default;
+        public static implicit operator All(StockRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<StockRef> _) => default;
+        public static implicit operator All(VehicleRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<VehicleRef> _) => default;
+        public static implicit operator All(WorldEventRowRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<WorldEventRowRef> _) => default;
+        public static implicit operator All(AgentBeliefRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentBeliefRef> _) => default;
+        public static implicit operator All(AgentConversationRef _) => default;
+        public static implicit operator All(global::Undertow.Modding.KindRef<AgentConversationRef> _) => default;
+    }
 
     /// <summary>Schema path for aggregate_economy_cell; lowered before native dispatch.</summary>
     public struct AggregateEconomyCellRef
     {
         public const string SchemaKind = "aggregate_economy_cell";
+        public static implicit operator AggregateEconomyCellRef(global::Undertow.Modding.KindRef<AggregateEconomyCellRef> _) => default;
         public long ArrivalTick
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -20,6 +631,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct AggressorRef
     {
         public const string SchemaKind = "aggressor";
+        public static implicit operator AggressorRef(global::Undertow.Modding.KindRef<AggressorRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -27,6 +639,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct AggrievedFactionRef
     {
         public const string SchemaKind = "aggrieved_faction";
+        public static implicit operator AggrievedFactionRef(global::Undertow.Modding.KindRef<AggrievedFactionRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -34,6 +647,7 @@ namespace Vixen.Codegen.Gpu
     public struct AppFlowContractRef
     {
         public const string SchemaKind = "app_flow_contract";
+        public static implicit operator AppFlowContractRef(global::Undertow.Modding.KindRef<AppFlowContractRef> _) => default;
         public uint Version
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -50,6 +664,7 @@ namespace Vixen.Codegen.Gpu
     public struct AppFlowStateRef
     {
         public const string SchemaKind = "app_flow_state";
+        public static implicit operator AppFlowStateRef(global::Undertow.Modding.KindRef<AppFlowStateRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -76,6 +691,7 @@ namespace Vixen.Codegen.Gpu
     public struct AssetControlRef
     {
         public const string SchemaKind = "asset_control";
+        public static implicit operator AssetControlRef(global::Undertow.Modding.KindRef<AssetControlRef> _) => default;
         public long Asset
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -107,6 +723,7 @@ namespace Vixen.Codegen.Gpu
     public struct BeltPayloadRef
     {
         public const string SchemaKind = "belt_payload";
+        public static implicit operator BeltPayloadRef(global::Undertow.Modding.KindRef<BeltPayloadRef> _) => default;
         public const string AttachTarget = "celestial_body";
         public double InnerAu
         {
@@ -129,6 +746,7 @@ namespace Vixen.Codegen.Gpu
     public struct BodyArchetypeRef
     {
         public const string SchemaKind = "body_archetype";
+        public static implicit operator BodyArchetypeRef(global::Undertow.Modding.KindRef<BodyArchetypeRef> _) => default;
         public string DisplayName
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -140,6 +758,7 @@ namespace Vixen.Codegen.Gpu
     public struct BodyGenerationProfileRef
     {
         public const string SchemaKind = "body_generation_profile";
+        public static implicit operator BodyGenerationProfileRef(global::Undertow.Modding.KindRef<BodyGenerationProfileRef> _) => default;
         public int Priority
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -153,6 +772,7 @@ namespace Vixen.Codegen.Gpu
     public struct BodyGenerationSelectorRef
     {
         public const string SchemaKind = "body_generation_selector";
+        public static implicit operator BodyGenerationSelectorRef(global::Undertow.Modding.KindRef<BodyGenerationSelectorRef> _) => default;
         public const string AttachTarget = "body_generation_profile";
         public byte Class
         {
@@ -181,6 +801,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingRef
     {
         public const string SchemaKind = "building";
+        public static implicit operator BuildingRef(global::Undertow.Modding.KindRef<BuildingRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -209,6 +830,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingDrawsOnRef
     {
         public const string SchemaKind = "building_draws_on";
+        public static implicit operator BuildingDrawsOnRef(global::Undertow.Modding.KindRef<BuildingDrawsOnRef> _) => default;
         public const string AttachTarget = "building";
         public string SubAttr
         {
@@ -226,6 +848,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct CelestialBodyRef
     {
         public const string SchemaKind = "celestial_body";
+        public static implicit operator CelestialBodyRef(global::Undertow.Modding.KindRef<CelestialBodyRef> _) => default;
         public BodyArchetypeRef Archetype => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public CelestialBodyRef Parent => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public OrbitalElementsRef Orbit => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -245,6 +868,7 @@ namespace Vixen.Codegen.Gpu
     public struct CharacterRef
     {
         public const string SchemaKind = "character";
+        public static implicit operator CharacterRef(global::Undertow.Modding.KindRef<CharacterRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -285,6 +909,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct CharacterDeathArgsRef
     {
         public const string SchemaKind = "character_death_args";
+        public static implicit operator CharacterDeathArgsRef(global::Undertow.Modding.KindRef<CharacterDeathArgsRef> _) => default;
         public CharacterRef Who => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public CharacterRef Killer => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -293,6 +918,7 @@ namespace Vixen.Codegen.Gpu
     public struct ChargeTargetRef
     {
         public const string SchemaKind = "charge_target";
+        public static implicit operator ChargeTargetRef(global::Undertow.Modding.KindRef<ChargeTargetRef> _) => default;
         public float Buffer
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -309,12 +935,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct CompositionProfileRef
     {
         public const string SchemaKind = "composition_profile";
+        public static implicit operator CompositionProfileRef(global::Undertow.Modding.KindRef<CompositionProfileRef> _) => default;
     }
 
     /// <summary>Schema path for concept; lowered before native dispatch.</summary>
     public struct ConceptRef
     {
         public const string SchemaKind = "concept";
+        public static implicit operator ConceptRef(global::Undertow.Modding.KindRef<ConceptRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -357,6 +985,7 @@ namespace Vixen.Codegen.Gpu
     public struct ConflictTypeRef
     {
         public const string SchemaKind = "conflict_type";
+        public static implicit operator ConflictTypeRef(global::Undertow.Modding.KindRef<ConflictTypeRef> _) => default;
         public string Deposits
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -378,6 +1007,7 @@ namespace Vixen.Codegen.Gpu
     public struct ContainmentCellRef
     {
         public const string SchemaKind = "containment_cell";
+        public static implicit operator ContainmentCellRef(global::Undertow.Modding.KindRef<ContainmentCellRef> _) => default;
         public bool Contains
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -389,6 +1019,7 @@ namespace Vixen.Codegen.Gpu
     public struct ContractRef
     {
         public const string SchemaKind = "contract";
+        public static implicit operator ContractRef(global::Undertow.Modding.KindRef<ContractRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -450,6 +1081,7 @@ namespace Vixen.Codegen.Gpu
     public struct CrewBondRef
     {
         public const string SchemaKind = "crew_bond";
+        public static implicit operator CrewBondRef(global::Undertow.Modding.KindRef<CrewBondRef> _) => default;
         public float Strength
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -462,6 +1094,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct CrystallizedRef
     {
         public const string SchemaKind = "crystallized";
+        public static implicit operator CrystallizedRef(global::Undertow.Modding.KindRef<CrystallizedRef> _) => default;
         public ConceptRef ConceptRef => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -469,6 +1102,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct DefenderRef
     {
         public const string SchemaKind = "defender";
+        public static implicit operator DefenderRef(global::Undertow.Modding.KindRef<DefenderRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -476,6 +1110,7 @@ namespace Vixen.Codegen.Gpu
     public struct DensityDecayRateRef
     {
         public const string SchemaKind = "density_decay_rate";
+        public static implicit operator DensityDecayRateRef(global::Undertow.Modding.KindRef<DensityDecayRateRef> _) => default;
         public float Frac
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -487,6 +1122,7 @@ namespace Vixen.Codegen.Gpu
     public struct DialogueOpportunityRef
     {
         public const string SchemaKind = "dialogue_opportunity";
+        public static implicit operator DialogueOpportunityRef(global::Undertow.Modding.KindRef<DialogueOpportunityRef> _) => default;
         public float Secrecy
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -500,6 +1136,7 @@ namespace Vixen.Codegen.Gpu
     public struct DialoguePatternRef
     {
         public const string SchemaKind = "dialogue_pattern";
+        public static implicit operator DialoguePatternRef(global::Undertow.Modding.KindRef<DialoguePatternRef> _) => default;
         public int MaxBeats
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -516,6 +1153,7 @@ namespace Vixen.Codegen.Gpu
     public struct DialogueTagRef
     {
         public const string SchemaKind = "dialogue_tag";
+        public static implicit operator DialogueTagRef(global::Undertow.Modding.KindRef<DialogueTagRef> _) => default;
         public const string AttachTarget = "dialogue_opportunity";
         public string Tag
         {
@@ -533,6 +1171,7 @@ namespace Vixen.Codegen.Gpu
     public struct DimRef
     {
         public const string SchemaKind = "dim";
+        public static implicit operator DimRef(global::Undertow.Modding.KindRef<DimRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -569,12 +1208,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EconomicRoleRef
     {
         public const string SchemaKind = "economic_role";
+        public static implicit operator EconomicRoleRef(global::Undertow.Modding.KindRef<EconomicRoleRef> _) => default;
     }
 
     /// <summary>Schema path for edge_kind; lowered before native dispatch.</summary>
     public struct EdgeKindRef
     {
         public const string SchemaKind = "edge_kind";
+        public static implicit operator EdgeKindRef(global::Undertow.Modding.KindRef<EdgeKindRef> _) => default;
         public string Description
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -586,6 +1227,7 @@ namespace Vixen.Codegen.Gpu
     public struct EdgePayloadRef
     {
         public const string SchemaKind = "edge_payload";
+        public static implicit operator EdgePayloadRef(global::Undertow.Modding.KindRef<EdgePayloadRef> _) => default;
         public string Description
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -599,6 +1241,7 @@ namespace Vixen.Codegen.Gpu
     public struct EdgePayloadFieldRef
     {
         public const string SchemaKind = "edge_payload_field";
+        public static implicit operator EdgePayloadFieldRef(global::Undertow.Modding.KindRef<EdgePayloadFieldRef> _) => default;
         public const string AttachTarget = "edge_payload";
         public string Name
         {
@@ -636,6 +1279,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectEmitRef
     {
         public const string SchemaKind = "effect_emit";
+        public static implicit operator EffectEmitRef(global::Undertow.Modding.KindRef<EffectEmitRef> _) => default;
         public byte Mode
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -652,12 +1296,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectSetRef
     {
         public const string SchemaKind = "effect_set";
+        public static implicit operator EffectSetRef(global::Undertow.Modding.KindRef<EffectSetRef> _) => default;
     }
 
     /// <summary>Schema path for entity_kind; lowered before native dispatch.</summary>
     public struct EntityKindRef
     {
         public const string SchemaKind = "entity_kind";
+        public static implicit operator EntityKindRef(global::Undertow.Modding.KindRef<EntityKindRef> _) => default;
         public string LegacyKind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -669,12 +1315,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EventRef
     {
         public const string SchemaKind = "event";
+        public static implicit operator EventRef(global::Undertow.Modding.KindRef<EventRef> _) => default;
     }
 
     /// <summary>Schema path for fact; lowered before native dispatch.</summary>
     public struct FactRef
     {
         public const string SchemaKind = "fact";
+        public static implicit operator FactRef(global::Undertow.Modding.KindRef<FactRef> _) => default;
         public string Description
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -690,6 +1338,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactSnapshotRef
     {
         public const string SchemaKind = "fact_snapshot";
+        public static implicit operator FactSnapshotRef(global::Undertow.Modding.KindRef<FactSnapshotRef> _) => default;
         public const string AttachTarget = "fact";
         public byte Source
         {
@@ -718,6 +1367,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactionRef
     {
         public const string SchemaKind = "faction";
+        public static implicit operator FactionRef(global::Undertow.Modding.KindRef<FactionRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -746,6 +1396,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactionAdjacencyCountRef
     {
         public const string SchemaKind = "faction_adjacency_count";
+        public static implicit operator FactionAdjacencyCountRef(global::Undertow.Modding.KindRef<FactionAdjacencyCountRef> _) => default;
         public float Members
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -757,6 +1408,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactionKnowledgeEntryRef
     {
         public const string SchemaKind = "faction_knowledge_entry";
+        public static implicit operator FactionKnowledgeEntryRef(global::Undertow.Modding.KindRef<FactionKnowledgeEntryRef> _) => default;
         public const string AttachTarget = "faction";
         public string Tag
         {
@@ -774,6 +1426,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactionMemberCountRef
     {
         public const string SchemaKind = "faction_member_count";
+        public static implicit operator FactionMemberCountRef(global::Undertow.Modding.KindRef<FactionMemberCountRef> _) => default;
         public const string AttachTarget = "faction";
         public int MemberCount
         {
@@ -786,6 +1439,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct FaulterRef
     {
         public const string SchemaKind = "faulter";
+        public static implicit operator FaulterRef(global::Undertow.Modding.KindRef<FaulterRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -793,12 +1447,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct FontFaceRef
     {
         public const string SchemaKind = "font_face";
+        public static implicit operator FontFaceRef(global::Undertow.Modding.KindRef<FontFaceRef> _) => default;
     }
 
     /// <summary>Schema path for fragment; lowered before native dispatch.</summary>
     public struct FragmentRef
     {
         public const string SchemaKind = "fragment";
+        public static implicit operator FragmentRef(global::Undertow.Modding.KindRef<FragmentRef> _) => default;
         public string Id
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -845,12 +1501,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct FrontierSeedRef
     {
         public const string SchemaKind = "frontier_seed";
+        public static implicit operator FrontierSeedRef(global::Undertow.Modding.KindRef<FrontierSeedRef> _) => default;
     }
 
     /// <summary>Schema path for generation_config; lowered before native dispatch.</summary>
     public struct GenerationConfigRef
     {
         public const string SchemaKind = "generation_config";
+        public static implicit operator GenerationConfigRef(global::Undertow.Modding.KindRef<GenerationConfigRef> _) => default;
         public int FoundingYear
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -897,6 +1555,7 @@ namespace Vixen.Codegen.Gpu
     public struct GeneratorRef
     {
         public const string SchemaKind = "generator";
+        public static implicit operator GeneratorRef(global::Undertow.Modding.KindRef<GeneratorRef> _) => default;
         public float EtaEarth
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -923,6 +1582,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct HookRef
     {
         public const string SchemaKind = "hook";
+        public static implicit operator HookRef(global::Undertow.Modding.KindRef<HookRef> _) => default;
         public HookQueryArgRef HookQueryArg => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -930,6 +1590,7 @@ namespace Vixen.Codegen.Gpu
     public struct HookQueryArgRef
     {
         public const string SchemaKind = "hook_query_arg";
+        public static implicit operator HookQueryArgRef(global::Undertow.Modding.KindRef<HookQueryArgRef> _) => default;
         public const string AttachTarget = "hook";
         public string Name
         {
@@ -959,6 +1620,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ImplicatedPartyRef
     {
         public const string SchemaKind = "implicated_party";
+        public static implicit operator ImplicatedPartyRef(global::Undertow.Modding.KindRef<ImplicatedPartyRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -966,12 +1628,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct InputPresetRef
     {
         public const string SchemaKind = "input_preset";
+        public static implicit operator InputPresetRef(global::Undertow.Modding.KindRef<InputPresetRef> _) => default;
     }
 
     /// <summary>Schema path for knowledge_density_cell; lowered before native dispatch.</summary>
     public struct KnowledgeDensityCellRef
     {
         public const string SchemaKind = "knowledge_density_cell";
+        public static implicit operator KnowledgeDensityCellRef(global::Undertow.Modding.KindRef<KnowledgeDensityCellRef> _) => default;
         public float Value
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -984,6 +1648,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct KnowledgeMapRef
     {
         public const string SchemaKind = "knowledge_map";
+        public static implicit operator KnowledgeMapRef(global::Undertow.Modding.KindRef<KnowledgeMapRef> _) => default;
         public TagRef RootTag => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -991,6 +1656,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeNodeRef
     {
         public const string SchemaKind = "knowledge_node";
+        public static implicit operator KnowledgeNodeRef(global::Undertow.Modding.KindRef<KnowledgeNodeRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1027,6 +1693,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct KnowledgeNodeCellRef
     {
         public const string SchemaKind = "knowledge_node_cell";
+        public static implicit operator KnowledgeNodeCellRef(global::Undertow.Modding.KindRef<KnowledgeNodeCellRef> _) => default;
         public KnowledgeNodeRef Node => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1034,6 +1701,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeOwnerMapRef
     {
         public const string SchemaKind = "knowledge_owner_map";
+        public static implicit operator KnowledgeOwnerMapRef(global::Undertow.Modding.KindRef<KnowledgeOwnerMapRef> _) => default;
         public long Faction
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1050,6 +1718,7 @@ namespace Vixen.Codegen.Gpu
     public struct LanguagePresetRef
     {
         public const string SchemaKind = "language_preset";
+        public static implicit operator LanguagePresetRef(global::Undertow.Modding.KindRef<LanguagePresetRef> _) => default;
         public string Locale
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1105,12 +1774,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct LayoutPresetRef
     {
         public const string SchemaKind = "layout_preset";
+        public static implicit operator LayoutPresetRef(global::Undertow.Modding.KindRef<LayoutPresetRef> _) => default;
     }
 
     /// <summary>Schema path for leveraging_faction; lowered before native dispatch.</summary>
     public readonly struct LeveragingFactionRef
     {
         public const string SchemaKind = "leveraging_faction";
+        public static implicit operator LeveragingFactionRef(global::Undertow.Modding.KindRef<LeveragingFactionRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1118,6 +1789,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct LinkDownstreamRef
     {
         public const string SchemaKind = "link_downstream";
+        public static implicit operator LinkDownstreamRef(global::Undertow.Modding.KindRef<LinkDownstreamRef> _) => default;
         public PlaceRef Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1125,6 +1797,7 @@ namespace Vixen.Codegen.Gpu
     public struct LinkEdgeRef
     {
         public const string SchemaKind = "link_edge";
+        public static implicit operator LinkEdgeRef(global::Undertow.Modding.KindRef<LinkEdgeRef> _) => default;
         public float Buffer
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1152,6 +1825,7 @@ namespace Vixen.Codegen.Gpu
     public struct LinkGroupRef
     {
         public const string SchemaKind = "link_group";
+        public static implicit operator LinkGroupRef(global::Undertow.Modding.KindRef<LinkGroupRef> _) => default;
         public byte Transition
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1163,6 +1837,7 @@ namespace Vixen.Codegen.Gpu
     public struct LocalKnowledgeMapDensityRef
     {
         public const string SchemaKind = "local_knowledge_map_density";
+        public static implicit operator LocalKnowledgeMapDensityRef(global::Undertow.Modding.KindRef<LocalKnowledgeMapDensityRef> _) => default;
         public const string AttachTarget = "local_knowledge_map_fragment";
         public string Tag
         {
@@ -1180,6 +1855,7 @@ namespace Vixen.Codegen.Gpu
     public struct LocalKnowledgeMapFragmentRef
     {
         public const string SchemaKind = "local_knowledge_map_fragment";
+        public static implicit operator LocalKnowledgeMapFragmentRef(global::Undertow.Modding.KindRef<LocalKnowledgeMapFragmentRef> _) => default;
         public byte ReadMode
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1213,6 +1889,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct LoserRef
     {
         public const string SchemaKind = "loser";
+        public static implicit operator LoserRef(global::Undertow.Modding.KindRef<LoserRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1220,6 +1897,7 @@ namespace Vixen.Codegen.Gpu
     public struct ManifestRef
     {
         public const string SchemaKind = "manifest";
+        public static implicit operator ManifestRef(global::Undertow.Modding.KindRef<ManifestRef> _) => default;
         public string Version
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1242,6 +1920,7 @@ namespace Vixen.Codegen.Gpu
     public struct ManifestCodeRef
     {
         public const string SchemaKind = "manifest_code";
+        public static implicit operator ManifestCodeRef(global::Undertow.Modding.KindRef<ManifestCodeRef> _) => default;
         public const string AttachTarget = "manifest";
         public string Artifact
         {
@@ -1259,6 +1938,7 @@ namespace Vixen.Codegen.Gpu
     public struct ManifestDependencyRef
     {
         public const string SchemaKind = "manifest_dependency";
+        public static implicit operator ManifestDependencyRef(global::Undertow.Modding.KindRef<ManifestDependencyRef> _) => default;
         public const string AttachTarget = "manifest";
         public string MinVersion
         {
@@ -1271,6 +1951,7 @@ namespace Vixen.Codegen.Gpu
     public struct ManifestPolicyRef
     {
         public const string SchemaKind = "manifest_policy";
+        public static implicit operator ManifestPolicyRef(global::Undertow.Modding.KindRef<ManifestPolicyRef> _) => default;
         public const string AttachTarget = "manifest";
         public string PolicyId
         {
@@ -1288,6 +1969,7 @@ namespace Vixen.Codegen.Gpu
     public struct MapCellRef
     {
         public const string SchemaKind = "map_cell";
+        public static implicit operator MapCellRef(global::Undertow.Modding.KindRef<MapCellRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1299,6 +1981,7 @@ namespace Vixen.Codegen.Gpu
     public struct MapCellNestedRef
     {
         public const string SchemaKind = "map_cell_nested";
+        public static implicit operator MapCellNestedRef(global::Undertow.Modding.KindRef<MapCellNestedRef> _) => default;
         public float Radius
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1310,6 +1993,7 @@ namespace Vixen.Codegen.Gpu
     public struct MapCellNestedLayerRef
     {
         public const string SchemaKind = "map_cell_nested_layer";
+        public static implicit operator MapCellNestedLayerRef(global::Undertow.Modding.KindRef<MapCellNestedLayerRef> _) => default;
         public double Mass
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1321,6 +2005,7 @@ namespace Vixen.Codegen.Gpu
     public struct MapCellNestedMixRef
     {
         public const string SchemaKind = "map_cell_nested_mix";
+        public static implicit operator MapCellNestedMixRef(global::Undertow.Modding.KindRef<MapCellNestedMixRef> _) => default;
         public double Fraction
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1332,6 +2017,7 @@ namespace Vixen.Codegen.Gpu
     public struct MapCellSoaRef
     {
         public const string SchemaKind = "map_cell_soa";
+        public static implicit operator MapCellSoaRef(global::Undertow.Modding.KindRef<MapCellSoaRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1343,12 +2029,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ModuleRef
     {
         public const string SchemaKind = "module";
+        public static implicit operator ModuleRef(global::Undertow.Modding.KindRef<ModuleRef> _) => default;
     }
 
     /// <summary>Schema path for moon_payload; lowered before native dispatch.</summary>
     public struct MoonPayloadRef
     {
         public const string SchemaKind = "moon_payload";
+        public static implicit operator MoonPayloadRef(global::Undertow.Modding.KindRef<MoonPayloadRef> _) => default;
         public const string AttachTarget = "celestial_body";
         public byte Origin
         {
@@ -1376,6 +2064,7 @@ namespace Vixen.Codegen.Gpu
     public struct ObservedAttrRef
     {
         public const string SchemaKind = "observed_attr";
+        public static implicit operator ObservedAttrRef(global::Undertow.Modding.KindRef<ObservedAttrRef> _) => default;
         public long Subject
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1397,6 +2086,7 @@ namespace Vixen.Codegen.Gpu
     public struct OfferRef
     {
         public const string SchemaKind = "offer";
+        public static implicit operator OfferRef(global::Undertow.Modding.KindRef<OfferRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1463,6 +2153,7 @@ namespace Vixen.Codegen.Gpu
     public struct OrbitalElementsRef
     {
         public const string SchemaKind = "orbital_elements";
+        public static implicit operator OrbitalElementsRef(global::Undertow.Modding.KindRef<OrbitalElementsRef> _) => default;
         public const string AttachTarget = "celestial_body";
         public double SemiMajorAxisAu
         {
@@ -1510,6 +2201,7 @@ namespace Vixen.Codegen.Gpu
     public struct PairPayloadFixturePayloadRef
     {
         public const string SchemaKind = "pair_payload_fixture_payload";
+        public static implicit operator PairPayloadFixturePayloadRef(global::Undertow.Modding.KindRef<PairPayloadFixturePayloadRef> _) => default;
         public float Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1531,14 +2223,15 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PairPayloadFixtureRelationRef
     {
         public const string SchemaKind = "pair_payload_fixture_relation";
+        public static implicit operator PairPayloadFixtureRelationRef(global::Undertow.Modding.KindRef<PairPayloadFixtureRelationRef> _) => default;
         public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        public PairPayloadFixturePayloadRef Payload => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for pair_payload_fixture_result; lowered before native dispatch.</summary>
     public struct PairPayloadFixtureResultRef
     {
         public const string SchemaKind = "pair_payload_fixture_result";
+        public static implicit operator PairPayloadFixtureResultRef(global::Undertow.Modding.KindRef<PairPayloadFixtureResultRef> _) => default;
         public float Sum
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1550,6 +2243,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PartOfRef
     {
         public const string SchemaKind = "part_of";
+        public static implicit operator PartOfRef(global::Undertow.Modding.KindRef<PartOfRef> _) => default;
         public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1557,6 +2251,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ParticipationCounterpartRef
     {
         public const string SchemaKind = "participation_counterpart";
+        public static implicit operator ParticipationCounterpartRef(global::Undertow.Modding.KindRef<ParticipationCounterpartRef> _) => default;
         public EventRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1564,6 +2259,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ParticipationSubjectRef
     {
         public const string SchemaKind = "participation_subject";
+        public static implicit operator ParticipationSubjectRef(global::Undertow.Modding.KindRef<ParticipationSubjectRef> _) => default;
         public CharacterRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1571,12 +2267,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PermissionCatalogRef
     {
         public const string SchemaKind = "permission_catalog";
+        public static implicit operator PermissionCatalogRef(global::Undertow.Modding.KindRef<PermissionCatalogRef> _) => default;
     }
 
     /// <summary>Schema path for personality; lowered before native dispatch.</summary>
     public struct PersonalityRef
     {
         public const string SchemaKind = "personality";
+        public static implicit operator PersonalityRef(global::Undertow.Modding.KindRef<PersonalityRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1615,6 +2313,7 @@ namespace Vixen.Codegen.Gpu
     public struct PersonalityConsiderationRef
     {
         public const string SchemaKind = "personality_consideration";
+        public static implicit operator PersonalityConsiderationRef(global::Undertow.Modding.KindRef<PersonalityConsiderationRef> _) => default;
         public const string AttachTarget = "personality";
         public string Intent
         {
@@ -1652,6 +2351,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlaceRef
     {
         public const string SchemaKind = "place";
+        public static implicit operator PlaceRef(global::Undertow.Modding.KindRef<PlaceRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1675,6 +2375,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlanetRef
     {
         public const string SchemaKind = "planet";
+        public static implicit operator PlanetRef(global::Undertow.Modding.KindRef<PlanetRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1694,6 +2395,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlanetLayerRef
     {
         public const string SchemaKind = "planet_layer";
+        public static implicit operator PlanetLayerRef(global::Undertow.Modding.KindRef<PlanetLayerRef> _) => default;
         public const string AttachTarget = "planet";
         public string Layer
         {
@@ -1711,6 +2413,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlanetOrbitRef
     {
         public const string SchemaKind = "planet_orbit";
+        public static implicit operator PlanetOrbitRef(global::Undertow.Modding.KindRef<PlanetOrbitRef> _) => default;
         public const string AttachTarget = "planet";
         public double Au
         {
@@ -1733,6 +2436,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlanetPayloadRef
     {
         public const string SchemaKind = "planet_payload";
+        public static implicit operator PlanetPayloadRef(global::Undertow.Modding.KindRef<PlanetPayloadRef> _) => default;
         public const string AttachTarget = "celestial_body";
         public byte Class
         {
@@ -1780,12 +2484,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PracticeProfileRef
     {
         public const string SchemaKind = "practice_profile";
+        public static implicit operator PracticeProfileRef(global::Undertow.Modding.KindRef<PracticeProfileRef> _) => default;
     }
 
     /// <summary>Schema path for provocateur; lowered before native dispatch.</summary>
     public readonly struct ProvocateurRef
     {
         public const string SchemaKind = "provocateur";
+        public static implicit operator ProvocateurRef(global::Undertow.Modding.KindRef<ProvocateurRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1793,6 +2499,7 @@ namespace Vixen.Codegen.Gpu
     public struct RecipeRef
     {
         public const string SchemaKind = "recipe";
+        public static implicit operator RecipeRef(global::Undertow.Modding.KindRef<RecipeRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1819,6 +2526,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct RecipientFactionRef
     {
         public const string SchemaKind = "recipient_faction";
+        public static implicit operator RecipientFactionRef(global::Undertow.Modding.KindRef<RecipientFactionRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1826,6 +2534,7 @@ namespace Vixen.Codegen.Gpu
     public struct RefListCellRef
     {
         public const string SchemaKind = "ref_list_cell";
+        public static implicit operator RefListCellRef(global::Undertow.Modding.KindRef<RefListCellRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1838,6 +2547,7 @@ namespace Vixen.Codegen.Gpu
     public struct RelationRef
     {
         public const string SchemaKind = "relation";
+        public static implicit operator RelationRef(global::Undertow.Modding.KindRef<RelationRef> _) => default;
         public string Edge
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1854,6 +2564,7 @@ namespace Vixen.Codegen.Gpu
     public struct RelationshipKindRef
     {
         public const string SchemaKind = "relationship_kind";
+        public static implicit operator RelationshipKindRef(global::Undertow.Modding.KindRef<RelationshipKindRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1876,6 +2587,7 @@ namespace Vixen.Codegen.Gpu
     public struct RenderRecipeRef
     {
         public const string SchemaKind = "render_recipe";
+        public static implicit operator RenderRecipeRef(global::Undertow.Modding.KindRef<RenderRecipeRef> _) => default;
         public byte Provider
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1893,6 +2605,7 @@ namespace Vixen.Codegen.Gpu
     public struct ResourceRef
     {
         public const string SchemaKind = "resource";
+        public static implicit operator ResourceRef(global::Undertow.Modding.KindRef<ResourceRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1924,6 +2637,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct RivalFactionRef
     {
         public const string SchemaKind = "rival_faction";
+        public static implicit operator RivalFactionRef(global::Undertow.Modding.KindRef<RivalFactionRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -1931,6 +2645,7 @@ namespace Vixen.Codegen.Gpu
     public struct RoleRef
     {
         public const string SchemaKind = "role";
+        public static implicit operator RoleRef(global::Undertow.Modding.KindRef<RoleRef> _) => default;
         public byte Preference
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1942,6 +2657,7 @@ namespace Vixen.Codegen.Gpu
     public struct RuleRef
     {
         public const string SchemaKind = "rule";
+        public static implicit operator RuleRef(global::Undertow.Modding.KindRef<RuleRef> _) => default;
         public int Cooldown
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -1954,6 +2670,7 @@ namespace Vixen.Codegen.Gpu
     public struct RuleQueryArgRef
     {
         public const string SchemaKind = "rule_query_arg";
+        public static implicit operator RuleQueryArgRef(global::Undertow.Modding.KindRef<RuleQueryArgRef> _) => default;
         public const string AttachTarget = "rule";
         public string Name
         {
@@ -1983,6 +2700,7 @@ namespace Vixen.Codegen.Gpu
     public struct SalvageClaimRef
     {
         public const string SchemaKind = "salvage_claim";
+        public static implicit operator SalvageClaimRef(global::Undertow.Modding.KindRef<SalvageClaimRef> _) => default;
         public long Asset
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2004,6 +2722,7 @@ namespace Vixen.Codegen.Gpu
     public struct ScoringPolicyRef
     {
         public const string SchemaKind = "scoring_policy";
+        public static implicit operator ScoringPolicyRef(global::Undertow.Modding.KindRef<ScoringPolicyRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2035,6 +2754,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct SourceFactionRef
     {
         public const string SchemaKind = "source_faction";
+        public static implicit operator SourceFactionRef(global::Undertow.Modding.KindRef<SourceFactionRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -2042,6 +2762,7 @@ namespace Vixen.Codegen.Gpu
     public struct StarPayloadRef
     {
         public const string SchemaKind = "star_payload";
+        public static implicit operator StarPayloadRef(global::Undertow.Modding.KindRef<StarPayloadRef> _) => default;
         public const string AttachTarget = "celestial_body";
         public byte SpectralType
         {
@@ -2119,6 +2840,7 @@ namespace Vixen.Codegen.Gpu
     public struct StockCellRef
     {
         public const string SchemaKind = "stock_cell";
+        public static implicit operator StockCellRef(global::Undertow.Modding.KindRef<StockCellRef> _) => default;
         public long Faction
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2141,6 +2863,7 @@ namespace Vixen.Codegen.Gpu
     public struct StockDrainCellRef
     {
         public const string SchemaKind = "stock_drain_cell";
+        public static implicit operator StockDrainCellRef(global::Undertow.Modding.KindRef<StockDrainCellRef> _) => default;
         public float Kg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2152,6 +2875,7 @@ namespace Vixen.Codegen.Gpu
     public struct StorylineRef
     {
         public const string SchemaKind = "storyline";
+        public static implicit operator StorylineRef(global::Undertow.Modding.KindRef<StorylineRef> _) => default;
         public string Roles
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2168,6 +2892,7 @@ namespace Vixen.Codegen.Gpu
     public struct StringCellRef
     {
         public const string SchemaKind = "string_cell";
+        public static implicit operator StringCellRef(global::Undertow.Modding.KindRef<StringCellRef> _) => default;
         public string Label
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2189,6 +2914,7 @@ namespace Vixen.Codegen.Gpu
     public struct TagRef
     {
         public const string SchemaKind = "tag";
+        public static implicit operator TagRef(global::Undertow.Modding.KindRef<TagRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2205,6 +2931,7 @@ namespace Vixen.Codegen.Gpu
     public struct TagRowRef
     {
         public const string SchemaKind = "tag_row";
+        public static implicit operator TagRowRef(global::Undertow.Modding.KindRef<TagRowRef> _) => default;
         public string Category
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2221,6 +2948,7 @@ namespace Vixen.Codegen.Gpu
     public struct TextAnimationRef
     {
         public const string SchemaKind = "text_animation";
+        public static implicit operator TextAnimationRef(global::Undertow.Modding.KindRef<TextAnimationRef> _) => default;
         public byte Kind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2247,6 +2975,7 @@ namespace Vixen.Codegen.Gpu
     public struct TextTagRef
     {
         public const string SchemaKind = "text_tag";
+        public static implicit operator TextTagRef(global::Undertow.Modding.KindRef<TextTagRef> _) => default;
         public byte Class
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2260,6 +2989,7 @@ namespace Vixen.Codegen.Gpu
     public struct TextTagArgRef
     {
         public const string SchemaKind = "text_tag_arg";
+        public static implicit operator TextTagArgRef(global::Undertow.Modding.KindRef<TextTagArgRef> _) => default;
         public const string AttachTarget = "text_tag";
         public string Name
         {
@@ -2282,6 +3012,7 @@ namespace Vixen.Codegen.Gpu
     public struct TimelineRef
     {
         public const string SchemaKind = "timeline";
+        public static implicit operator TimelineRef(global::Undertow.Modding.KindRef<TimelineRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2303,6 +3034,7 @@ namespace Vixen.Codegen.Gpu
     public struct TrendResponseRef
     {
         public const string SchemaKind = "trend_response";
+        public static implicit operator TrendResponseRef(global::Undertow.Modding.KindRef<TrendResponseRef> _) => default;
         public string Category
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2354,12 +3086,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct TuningRef
     {
         public const string SchemaKind = "tuning";
+        public static implicit operator TuningRef(global::Undertow.Modding.KindRef<TuningRef> _) => default;
     }
 
     /// <summary>Schema path for ui_binding_field; lowered before native dispatch.</summary>
     public struct UiBindingFieldRef
     {
         public const string SchemaKind = "ui_binding_field";
+        public static implicit operator UiBindingFieldRef(global::Undertow.Modding.KindRef<UiBindingFieldRef> _) => default;
         public const string AttachTarget = "ui_binding_section";
         public string Variable
         {
@@ -2392,6 +3126,7 @@ namespace Vixen.Codegen.Gpu
     public struct UiBindingJoinRef
     {
         public const string SchemaKind = "ui_binding_join";
+        public static implicit operator UiBindingJoinRef(global::Undertow.Modding.KindRef<UiBindingJoinRef> _) => default;
         public const string AttachTarget = "ui_binding_section";
         public string Kind
         {
@@ -2424,6 +3159,7 @@ namespace Vixen.Codegen.Gpu
     public struct UiBindingSectionRef
     {
         public const string SchemaKind = "ui_binding_section";
+        public static implicit operator UiBindingSectionRef(global::Undertow.Modding.KindRef<UiBindingSectionRef> _) => default;
         public const string AttachTarget = "ui_document";
         public string Name
         {
@@ -2460,6 +3196,7 @@ namespace Vixen.Codegen.Gpu
     public struct UiDocumentRef
     {
         public const string SchemaKind = "ui_document";
+        public static implicit operator UiDocumentRef(global::Undertow.Modding.KindRef<UiDocumentRef> _) => default;
         public string Rml
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2474,6 +3211,7 @@ namespace Vixen.Codegen.Gpu
     public struct UiSectionDescriptorRef
     {
         public const string SchemaKind = "ui_section_descriptor";
+        public static implicit operator UiSectionDescriptorRef(global::Undertow.Modding.KindRef<UiSectionDescriptorRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2492,6 +3230,7 @@ namespace Vixen.Codegen.Gpu
     public struct UiSectionDescriptorFieldRef
     {
         public const string SchemaKind = "ui_section_descriptor_field";
+        public static implicit operator UiSectionDescriptorFieldRef(global::Undertow.Modding.KindRef<UiSectionDescriptorFieldRef> _) => default;
         public const string AttachTarget = "ui_section_descriptor";
         public string Name
         {
@@ -2509,6 +3248,7 @@ namespace Vixen.Codegen.Gpu
     public struct ValueListCellRef
     {
         public const string SchemaKind = "value_list_cell";
+        public static implicit operator ValueListCellRef(global::Undertow.Modding.KindRef<ValueListCellRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2520,6 +3260,7 @@ namespace Vixen.Codegen.Gpu
     public struct ValueListCellAosRef
     {
         public const string SchemaKind = "value_list_cell_aos";
+        public static implicit operator ValueListCellAosRef(global::Undertow.Modding.KindRef<ValueListCellAosRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2531,6 +3272,7 @@ namespace Vixen.Codegen.Gpu
     public struct VehicleRowRef
     {
         public const string SchemaKind = "vehicle_row";
+        public static implicit operator VehicleRowRef(global::Undertow.Modding.KindRef<VehicleRowRef> _) => default;
         public int PlanetIndex
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2552,6 +3294,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct WinnerRef
     {
         public const string SchemaKind = "winner";
+        public static implicit operator WinnerRef(global::Undertow.Modding.KindRef<WinnerRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -2559,6 +3302,7 @@ namespace Vixen.Codegen.Gpu
     public struct WorldFactCellRef
     {
         public const string SchemaKind = "world_fact_cell";
+        public static implicit operator WorldFactCellRef(global::Undertow.Modding.KindRef<WorldFactCellRef> _) => default;
         public bool Held
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2575,6 +3319,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct WrongedRef
     {
         public const string SchemaKind = "wronged";
+        public static implicit operator WrongedRef(global::Undertow.Modding.KindRef<WrongedRef> _) => default;
         public FactionRef Participant => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -2582,6 +3327,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAddDensityRef
     {
         public const string SchemaKind = "effect_add_density";
+        public static implicit operator EffectAddDensityRef(global::Undertow.Modding.KindRef<EffectAddDensityRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2598,6 +3344,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAddTagRef
     {
         public const string SchemaKind = "effect_add_tag";
+        public static implicit operator EffectAddTagRef(global::Undertow.Modding.KindRef<EffectAddTagRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2609,6 +3356,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAddToStockRef
     {
         public const string SchemaKind = "effect_add_to_stock";
+        public static implicit operator EffectAddToStockRef(global::Undertow.Modding.KindRef<EffectAddToStockRef> _) => default;
         public int Place
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2626,6 +3374,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustExtractEfficiencyRef
     {
         public const string SchemaKind = "effect_adjust_extract_efficiency";
+        public static implicit operator EffectAdjustExtractEfficiencyRef(global::Undertow.Modding.KindRef<EffectAdjustExtractEfficiencyRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2637,6 +3386,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustKnowledgeDecayRateRef
     {
         public const string SchemaKind = "effect_adjust_knowledge_decay_rate";
+        public static implicit operator EffectAdjustKnowledgeDecayRateRef(global::Undertow.Modding.KindRef<EffectAdjustKnowledgeDecayRateRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2648,6 +3398,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustKnowledgePropagationRateRef
     {
         public const string SchemaKind = "effect_adjust_knowledge_propagation_rate";
+        public static implicit operator EffectAdjustKnowledgePropagationRateRef(global::Undertow.Modding.KindRef<EffectAdjustKnowledgePropagationRateRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2659,6 +3410,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustPersuasionBonusRef
     {
         public const string SchemaKind = "effect_adjust_persuasion_bonus";
+        public static implicit operator EffectAdjustPersuasionBonusRef(global::Undertow.Modding.KindRef<EffectAdjustPersuasionBonusRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2670,6 +3422,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustPropulsionPowerRef
     {
         public const string SchemaKind = "effect_adjust_propulsion_power";
+        public static implicit operator EffectAdjustPropulsionPowerRef(global::Undertow.Modding.KindRef<EffectAdjustPropulsionPowerRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2681,6 +3434,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustRefineEfficiencyRef
     {
         public const string SchemaKind = "effect_adjust_refine_efficiency";
+        public static implicit operator EffectAdjustRefineEfficiencyRef(global::Undertow.Modding.KindRef<EffectAdjustRefineEfficiencyRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2692,6 +3446,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectAdjustWarDensityRef
     {
         public const string SchemaKind = "effect_adjust_war_density";
+        public static implicit operator EffectAdjustWarDensityRef(global::Undertow.Modding.KindRef<EffectAdjustWarDensityRef> _) => default;
         public float Delta
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2703,12 +3458,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectAllyRef
     {
         public const string SchemaKind = "effect_ally";
+        public static implicit operator EffectAllyRef(global::Undertow.Modding.KindRef<EffectAllyRef> _) => default;
     }
 
     /// <summary>Schema path for effect_assign_economic_role; lowered before native dispatch.</summary>
     public struct EffectAssignEconomicRoleRef
     {
         public const string SchemaKind = "effect_assign_economic_role";
+        public static implicit operator EffectAssignEconomicRoleRef(global::Undertow.Modding.KindRef<EffectAssignEconomicRoleRef> _) => default;
         public int Place
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2725,6 +3482,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectChargeRef
     {
         public const string SchemaKind = "effect_charge";
+        public static implicit operator EffectChargeRef(global::Undertow.Modding.KindRef<EffectChargeRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2736,6 +3494,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectCollaborateRef
     {
         public const string SchemaKind = "effect_collaborate";
+        public static implicit operator EffectCollaborateRef(global::Undertow.Modding.KindRef<EffectCollaborateRef> _) => default;
         public float Magnitude
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2747,12 +3506,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectCompleteQuestRef
     {
         public const string SchemaKind = "effect_complete_quest";
+        public static implicit operator EffectCompleteQuestRef(global::Undertow.Modding.KindRef<EffectCompleteQuestRef> _) => default;
     }
 
     /// <summary>Schema path for effect_confiscate_stock; lowered before native dispatch.</summary>
     public struct EffectConfiscateStockRef
     {
         public const string SchemaKind = "effect_confiscate_stock";
+        public static implicit operator EffectConfiscateStockRef(global::Undertow.Modding.KindRef<EffectConfiscateStockRef> _) => default;
         public int Place
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2764,6 +3525,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectConsumeStockRef
     {
         public const string SchemaKind = "effect_consume_stock";
+        public static implicit operator EffectConsumeStockRef(global::Undertow.Modding.KindRef<EffectConsumeStockRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2776,6 +3538,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectContractDefaultRef
     {
         public const string SchemaKind = "effect_contract_default";
+        public static implicit operator EffectContractDefaultRef(global::Undertow.Modding.KindRef<EffectContractDefaultRef> _) => default;
         public float Magnitude
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2787,6 +3550,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectConvergeRef
     {
         public const string SchemaKind = "effect_converge";
+        public static implicit operator EffectConvergeRef(global::Undertow.Modding.KindRef<EffectConvergeRef> _) => default;
         public double Rate
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2798,6 +3562,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectDamageModuleRef
     {
         public const string SchemaKind = "effect_damage_module";
+        public static implicit operator EffectDamageModuleRef(global::Undertow.Modding.KindRef<EffectDamageModuleRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2810,6 +3575,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectDeclareWarRef
     {
         public const string SchemaKind = "effect_declare_war";
+        public static implicit operator EffectDeclareWarRef(global::Undertow.Modding.KindRef<EffectDeclareWarRef> _) => default;
         public float Magnitude
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2821,6 +3587,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectDeduceFactionFactRef
     {
         public const string SchemaKind = "effect_deduce_faction_fact";
+        public static implicit operator EffectDeduceFactionFactRef(global::Undertow.Modding.KindRef<EffectDeduceFactionFactRef> _) => default;
         public string HeldFact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2837,12 +3604,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectFailQuestRef
     {
         public const string SchemaKind = "effect_fail_quest";
+        public static implicit operator EffectFailQuestRef(global::Undertow.Modding.KindRef<EffectFailQuestRef> _) => default;
     }
 
     /// <summary>Schema path for effect_fire_effect_set; lowered before native dispatch.</summary>
     public struct EffectFireEffectSetRef
     {
         public const string SchemaKind = "effect_fire_effect_set";
+        public static implicit operator EffectFireEffectSetRef(global::Undertow.Modding.KindRef<EffectFireEffectSetRef> _) => default;
         public string Set
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2854,6 +3623,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectGrantClaimRef
     {
         public const string SchemaKind = "effect_grant_claim";
+        public static implicit operator EffectGrantClaimRef(global::Undertow.Modding.KindRef<EffectGrantClaimRef> _) => default;
         public int Body
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2870,6 +3640,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectGrudgeRef
     {
         public const string SchemaKind = "effect_grudge";
+        public static implicit operator EffectGrudgeRef(global::Undertow.Modding.KindRef<EffectGrudgeRef> _) => default;
         public float Weight
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2881,6 +3652,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectHaulStockSpendRef
     {
         public const string SchemaKind = "effect_haul_stock_spend";
+        public static implicit operator EffectHaulStockSpendRef(global::Undertow.Modding.KindRef<EffectHaulStockSpendRef> _) => default;
         public int FromBody
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2897,6 +3669,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectHaulVehicleLaunchRef
     {
         public const string SchemaKind = "effect_haul_vehicle_launch";
+        public static implicit operator EffectHaulVehicleLaunchRef(global::Undertow.Modding.KindRef<EffectHaulVehicleLaunchRef> _) => default;
         public double PropellantBurn
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2933,12 +3706,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectInterpersonalGrudgesRef
     {
         public const string SchemaKind = "effect_interpersonal_grudges";
+        public static implicit operator EffectInterpersonalGrudgesRef(global::Undertow.Modding.KindRef<EffectInterpersonalGrudgesRef> _) => default;
     }
 
     /// <summary>Schema path for effect_knowledge_modifier; lowered before native dispatch.</summary>
     public struct EffectKnowledgeModifierRef
     {
         public const string SchemaKind = "effect_knowledge_modifier";
+        public static implicit operator EffectKnowledgeModifierRef(global::Undertow.Modding.KindRef<EffectKnowledgeModifierRef> _) => default;
         public double Decay
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2955,6 +3730,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectLearnAccountRef
     {
         public const string SchemaKind = "effect_learn_account";
+        public static implicit operator EffectLearnAccountRef(global::Undertow.Modding.KindRef<EffectLearnAccountRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2971,6 +3747,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectLearnFactRef
     {
         public const string SchemaKind = "effect_learn_fact";
+        public static implicit operator EffectLearnFactRef(global::Undertow.Modding.KindRef<EffectLearnFactRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -2987,6 +3764,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectLinkRef
     {
         public const string SchemaKind = "effect_link";
+        public static implicit operator EffectLinkRef(global::Undertow.Modding.KindRef<EffectLinkRef> _) => default;
         public double Capacity
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3018,18 +3796,21 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectMakePeaceRef
     {
         public const string SchemaKind = "effect_make_peace";
+        public static implicit operator EffectMakePeaceRef(global::Undertow.Modding.KindRef<EffectMakePeaceRef> _) => default;
     }
 
     /// <summary>Schema path for effect_observe; lowered before native dispatch.</summary>
     public readonly struct EffectObserveRef
     {
         public const string SchemaKind = "effect_observe";
+        public static implicit operator EffectObserveRef(global::Undertow.Modding.KindRef<EffectObserveRef> _) => default;
     }
 
     /// <summary>Schema path for effect_participation; lowered before native dispatch.</summary>
     public struct EffectParticipationRef
     {
         public const string SchemaKind = "effect_participation";
+        public static implicit operator EffectParticipationRef(global::Undertow.Modding.KindRef<EffectParticipationRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3046,6 +3827,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectPolarizeRef
     {
         public const string SchemaKind = "effect_polarize";
+        public static implicit operator EffectPolarizeRef(global::Undertow.Modding.KindRef<EffectPolarizeRef> _) => default;
         public double Rate
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3057,6 +3839,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectPressureRef
     {
         public const string SchemaKind = "effect_pressure";
+        public static implicit operator EffectPressureRef(global::Undertow.Modding.KindRef<EffectPressureRef> _) => default;
         public float Magnitude
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3068,6 +3851,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectProductionBonusRef
     {
         public const string SchemaKind = "effect_production_bonus";
+        public static implicit operator EffectProductionBonusRef(global::Undertow.Modding.KindRef<EffectProductionBonusRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3079,6 +3863,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectProvokeRef
     {
         public const string SchemaKind = "effect_provoke";
+        public static implicit operator EffectProvokeRef(global::Undertow.Modding.KindRef<EffectProvokeRef> _) => default;
         public float Magnitude
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3090,6 +3875,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectPublishCoarseHaulRef
     {
         public const string SchemaKind = "effect_publish_coarse_haul";
+        public static implicit operator EffectPublishCoarseHaulRef(global::Undertow.Modding.KindRef<EffectPublishCoarseHaulRef> _) => default;
         public int FromBody
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3116,6 +3902,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectPublishCoarseStockRef
     {
         public const string SchemaKind = "effect_publish_coarse_stock";
+        public static implicit operator EffectPublishCoarseStockRef(global::Undertow.Modding.KindRef<EffectPublishCoarseStockRef> _) => default;
         public int Body
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3137,6 +3924,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectRecordEventRef
     {
         public const string SchemaKind = "effect_record_event";
+        public static implicit operator EffectRecordEventRef(global::Undertow.Modding.KindRef<EffectRecordEventRef> _) => default;
         public string Kind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3168,6 +3956,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectRecordLeverageRef
     {
         public const string SchemaKind = "effect_record_leverage";
+        public static implicit operator EffectRecordLeverageRef(global::Undertow.Modding.KindRef<EffectRecordLeverageRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3179,6 +3968,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectRecordParticipationRef
     {
         public const string SchemaKind = "effect_record_participation";
+        public static implicit operator EffectRecordParticipationRef(global::Undertow.Modding.KindRef<EffectRecordParticipationRef> _) => default;
         public string Event
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3200,6 +3990,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectResearchNodeRef
     {
         public const string SchemaKind = "effect_research_node";
+        public static implicit operator EffectResearchNodeRef(global::Undertow.Modding.KindRef<EffectResearchNodeRef> _) => default;
         public string Node
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3211,6 +4002,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectRevealFactionFactRef
     {
         public const string SchemaKind = "effect_reveal_faction_fact";
+        public static implicit operator EffectRevealFactionFactRef(global::Undertow.Modding.KindRef<EffectRevealFactionFactRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3222,6 +4014,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectRunRecipeRef
     {
         public const string SchemaKind = "effect_run_recipe";
+        public static implicit operator EffectRunRecipeRef(global::Undertow.Modding.KindRef<EffectRunRecipeRef> _) => default;
         public RecipeRef Recipe => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -3229,6 +4022,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectScanRef
     {
         public const string SchemaKind = "effect_scan";
+        public static implicit operator EffectScanRef(global::Undertow.Modding.KindRef<EffectScanRef> _) => default;
         public float Density
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3245,12 +4039,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectSeizeConceptRef
     {
         public const string SchemaKind = "effect_seize_concept";
+        public static implicit operator EffectSeizeConceptRef(global::Undertow.Modding.KindRef<EffectSeizeConceptRef> _) => default;
     }
 
     /// <summary>Schema path for effect_share; lowered before native dispatch.</summary>
     public struct EffectShareRef
     {
         public const string SchemaKind = "effect_share";
+        public static implicit operator EffectShareRef(global::Undertow.Modding.KindRef<EffectShareRef> _) => default;
         public float Rate
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3267,6 +4063,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectSpawnPlaceRef
     {
         public const string SchemaKind = "effect_spawn_place";
+        public static implicit operator EffectSpawnPlaceRef(global::Undertow.Modding.KindRef<EffectSpawnPlaceRef> _) => default;
         public int Body
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3283,6 +4080,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectSteerIdeologyRef
     {
         public const string SchemaKind = "effect_steer_ideology";
+        public static implicit operator EffectSteerIdeologyRef(global::Undertow.Modding.KindRef<EffectSteerIdeologyRef> _) => default;
         public string Axis
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3304,6 +4102,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectStoreFlowRef
     {
         public const string SchemaKind = "effect_store_flow";
+        public static implicit operator EffectStoreFlowRef(global::Undertow.Modding.KindRef<EffectStoreFlowRef> _) => default;
         public string Resource
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3320,12 +4119,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct EffectTransferConceptRef
     {
         public const string SchemaKind = "effect_transfer_concept";
+        public static implicit operator EffectTransferConceptRef(global::Undertow.Modding.KindRef<EffectTransferConceptRef> _) => default;
     }
 
     /// <summary>Schema path for effect_transfer_credits; lowered before native dispatch.</summary>
     public struct EffectTransferCreditsRef
     {
         public const string SchemaKind = "effect_transfer_credits";
+        public static implicit operator EffectTransferCreditsRef(global::Undertow.Modding.KindRef<EffectTransferCreditsRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3337,6 +4138,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectTransmitFlowRef
     {
         public const string SchemaKind = "effect_transmit_flow";
+        public static implicit operator EffectTransmitFlowRef(global::Undertow.Modding.KindRef<EffectTransmitFlowRef> _) => default;
         public double Capacity
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3348,6 +4150,7 @@ namespace Vixen.Codegen.Gpu
     public struct EffectTriggerTimelineRef
     {
         public const string SchemaKind = "effect_trigger_timeline";
+        public static implicit operator EffectTriggerTimelineRef(global::Undertow.Modding.KindRef<EffectTriggerTimelineRef> _) => default;
         public string Timeline
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3359,6 +4162,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentAssociationRef
     {
         public const string SchemaKind = "agent_association";
+        public static implicit operator AgentAssociationRef(global::Undertow.Modding.KindRef<AgentAssociationRef> _) => default;
         public bool Asserted
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3380,6 +4184,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentAwarenessRef
     {
         public const string SchemaKind = "agent_awareness";
+        public static implicit operator AgentAwarenessRef(global::Undertow.Modding.KindRef<AgentAwarenessRef> _) => default;
         public byte Level
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3396,6 +4201,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentEdgeAwarenessRef
     {
         public const string SchemaKind = "agent_edge_awareness";
+        public static implicit operator AgentEdgeAwarenessRef(global::Undertow.Modding.KindRef<AgentEdgeAwarenessRef> _) => default;
         public long Edge
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3412,6 +4218,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentFoundAccountRowRef
     {
         public const string SchemaKind = "agent_found_account_row";
+        public static implicit operator AgentFoundAccountRowRef(global::Undertow.Modding.KindRef<AgentFoundAccountRowRef> _) => default;
         public byte Index
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3428,6 +4235,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentHeldFactRef
     {
         public const string SchemaKind = "agent_held_fact";
+        public static implicit operator AgentHeldFactRef(global::Undertow.Modding.KindRef<AgentHeldFactRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3450,12 +4258,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct AgentInvestigatedRef
     {
         public const string SchemaKind = "agent_investigated";
+        public static implicit operator AgentInvestigatedRef(global::Undertow.Modding.KindRef<AgentInvestigatedRef> _) => default;
     }
 
     /// <summary>Schema path for agent_position; lowered before native dispatch.</summary>
     public struct AgentPositionRef
     {
         public const string SchemaKind = "agent_position";
+        public static implicit operator AgentPositionRef(global::Undertow.Modding.KindRef<AgentPositionRef> _) => default;
         public float X
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3482,6 +4292,7 @@ namespace Vixen.Codegen.Gpu
     public struct AggregateEconomyRef
     {
         public const string SchemaKind = "aggregate_economy";
+        public static implicit operator AggregateEconomyRef(global::Undertow.Modding.KindRef<AggregateEconomyRef> _) => default;
         public byte Kind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3520,6 +4331,7 @@ namespace Vixen.Codegen.Gpu
     public struct BudgetEntryRowRef
     {
         public const string SchemaKind = "budget_entry_row";
+        public static implicit operator BudgetEntryRowRef(global::Undertow.Modding.KindRef<BudgetEntryRowRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3536,6 +4348,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingEmitRef
     {
         public const string SchemaKind = "building_emit";
+        public static implicit operator BuildingEmitRef(global::Undertow.Modding.KindRef<BuildingEmitRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3549,6 +4362,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingHandleRef
     {
         public const string SchemaKind = "building_handle";
+        public static implicit operator BuildingHandleRef(global::Undertow.Modding.KindRef<BuildingHandleRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3567,6 +4381,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingInstanceRef
     {
         public const string SchemaKind = "building_instance";
+        public static implicit operator BuildingInstanceRef(global::Undertow.Modding.KindRef<BuildingInstanceRef> _) => default;
         public double Integrity
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3595,6 +4410,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingKnowledgeModifierRef
     {
         public const string SchemaKind = "building_knowledge_modifier";
+        public static implicit operator BuildingKnowledgeModifierRef(global::Undertow.Modding.KindRef<BuildingKnowledgeModifierRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3608,6 +4424,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingLinkRef
     {
         public const string SchemaKind = "building_link";
+        public static implicit operator BuildingLinkRef(global::Undertow.Modding.KindRef<BuildingLinkRef> _) => default;
         public double Buffer
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3623,6 +4440,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingRunRecipeRef
     {
         public const string SchemaKind = "building_run_recipe";
+        public static implicit operator BuildingRunRecipeRef(global::Undertow.Modding.KindRef<BuildingRunRecipeRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3656,6 +4474,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingStoreFlowRef
     {
         public const string SchemaKind = "building_store_flow";
+        public static implicit operator BuildingStoreFlowRef(global::Undertow.Modding.KindRef<BuildingStoreFlowRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3674,6 +4493,7 @@ namespace Vixen.Codegen.Gpu
     public struct BuildingTransmitFlowRef
     {
         public const string SchemaKind = "building_transmit_flow";
+        public static implicit operator BuildingTransmitFlowRef(global::Undertow.Modding.KindRef<BuildingTransmitFlowRef> _) => default;
         public int Ordinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3687,12 +4507,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct CharacterBindingRowRef
     {
         public const string SchemaKind = "character_binding_row";
+        public static implicit operator CharacterBindingRowRef(global::Undertow.Modding.KindRef<CharacterBindingRowRef> _) => default;
     }
 
     /// <summary>Schema path for claim_owner_row; lowered before native dispatch.</summary>
     public struct ClaimOwnerRowRef
     {
         public const string SchemaKind = "claim_owner_row";
+        public static implicit operator ClaimOwnerRowRef(global::Undertow.Modding.KindRef<ClaimOwnerRowRef> _) => default;
         public int PlanetIndex
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3705,6 +4527,7 @@ namespace Vixen.Codegen.Gpu
     public struct ClaimRowRef
     {
         public const string SchemaKind = "claim_row";
+        public static implicit operator ClaimRowRef(global::Undertow.Modding.KindRef<ClaimRowRef> _) => default;
         public byte Kind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3718,6 +4541,7 @@ namespace Vixen.Codegen.Gpu
     public struct CoarseArrearsRef
     {
         public const string SchemaKind = "coarse_arrears";
+        public static implicit operator CoarseArrearsRef(global::Undertow.Modding.KindRef<CoarseArrearsRef> _) => default;
         public int Body
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3736,12 +4560,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct ConceptIdRowRef
     {
         public const string SchemaKind = "concept_id_row";
+        public static implicit operator ConceptIdRowRef(global::Undertow.Modding.KindRef<ConceptIdRowRef> _) => default;
     }
 
     /// <summary>Schema path for concept_owner_row; lowered before native dispatch.</summary>
     public readonly struct ConceptOwnerRowRef
     {
         public const string SchemaKind = "concept_owner_row";
+        public static implicit operator ConceptOwnerRowRef(global::Undertow.Modding.KindRef<ConceptOwnerRowRef> _) => default;
         public const string FactionRelation = "FactionOfConceptOwnerRowRel";
         public FactionRef Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public ConceptIdRowRef[] Ids => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3751,6 +4577,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealDecisionRef
     {
         public const string SchemaKind = "deal_decision";
+        public static implicit operator DealDecisionRef(global::Undertow.Modding.KindRef<DealDecisionRef> _) => default;
         public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3777,6 +4604,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealPartyRef
     {
         public const string SchemaKind = "deal_party";
+        public static implicit operator DealPartyRef(global::Undertow.Modding.KindRef<DealPartyRef> _) => default;
         public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3798,6 +4626,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealPolicyCadenceRef
     {
         public const string SchemaKind = "deal_policy_cadence";
+        public static implicit operator DealPolicyCadenceRef(global::Undertow.Modding.KindRef<DealPolicyCadenceRef> _) => default;
         public string Policy
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3816,6 +4645,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealRequirementRef
     {
         public const string SchemaKind = "deal_requirement";
+        public static implicit operator DealRequirementRef(global::Undertow.Modding.KindRef<DealRequirementRef> _) => default;
         public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3852,6 +4682,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealSessionRef
     {
         public const string SchemaKind = "deal_session";
+        public static implicit operator DealSessionRef(global::Undertow.Modding.KindRef<DealSessionRef> _) => default;
         public ulong FirstDealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3883,6 +4714,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealSettlementRef
     {
         public const string SchemaKind = "deal_settlement";
+        public static implicit operator DealSettlementRef(global::Undertow.Modding.KindRef<DealSettlementRef> _) => default;
         public ulong DealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -3939,6 +4771,7 @@ namespace Vixen.Codegen.Gpu
     public struct DealStepRef
     {
         public const string SchemaKind = "deal_step";
+        public static implicit operator DealStepRef(global::Undertow.Modding.KindRef<DealStepRef> _) => default;
         public int StepOrdinal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4032,6 +4865,7 @@ namespace Vixen.Codegen.Gpu
     public struct DeepFieldCellRef
     {
         public const string SchemaKind = "deep_field_cell";
+        public static implicit operator DeepFieldCellRef(global::Undertow.Modding.KindRef<DeepFieldCellRef> _) => default;
         public int CellX
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4113,6 +4947,7 @@ namespace Vixen.Codegen.Gpu
     public struct DepletionBodyRowRef
     {
         public const string SchemaKind = "depletion_body_row";
+        public static implicit operator DepletionBodyRowRef(global::Undertow.Modding.KindRef<DepletionBodyRowRef> _) => default;
         public int Index
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4130,6 +4965,7 @@ namespace Vixen.Codegen.Gpu
     public struct DepletionLayerRowRef
     {
         public const string SchemaKind = "depletion_layer_row";
+        public static implicit operator DepletionLayerRowRef(global::Undertow.Modding.KindRef<DepletionLayerRowRef> _) => default;
         public double MassKg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4142,6 +4978,7 @@ namespace Vixen.Codegen.Gpu
     public struct DepletionMaterialRowRef
     {
         public const string SchemaKind = "depletion_material_row";
+        public static implicit operator DepletionMaterialRowRef(global::Undertow.Modding.KindRef<DepletionMaterialRowRef> _) => default;
         public string Material
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4158,6 +4995,7 @@ namespace Vixen.Codegen.Gpu
     public struct EvictionKickEnvelopeRowRef
     {
         public const string SchemaKind = "eviction_kick_envelope_row";
+        public static implicit operator EvictionKickEnvelopeRowRef(global::Undertow.Modding.KindRef<EvictionKickEnvelopeRowRef> _) => default;
         public long Epoch
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4223,6 +5061,7 @@ namespace Vixen.Codegen.Gpu
     public struct ExtractionProcessRef
     {
         public const string SchemaKind = "extraction_process";
+        public static implicit operator ExtractionProcessRef(global::Undertow.Modding.KindRef<ExtractionProcessRef> _) => default;
         public int PlanetIndex
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4273,6 +5112,7 @@ namespace Vixen.Codegen.Gpu
     public struct FactionAmountRowRef
     {
         public const string SchemaKind = "faction_amount_row";
+        public static implicit operator FactionAmountRowRef(global::Undertow.Modding.KindRef<FactionAmountRowRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4286,12 +5126,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct FactionBindingRowRef
     {
         public const string SchemaKind = "faction_binding_row";
+        public static implicit operator FactionBindingRowRef(global::Undertow.Modding.KindRef<FactionBindingRowRef> _) => default;
     }
 
     /// <summary>Schema path for founding_ideology; lowered before native dispatch.</summary>
     public struct FoundingIdeologyRef
     {
         public const string SchemaKind = "founding_ideology";
+        public static implicit operator FoundingIdeologyRef(global::Undertow.Modding.KindRef<FoundingIdeologyRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4306,16 +5148,32 @@ namespace Vixen.Codegen.Gpu
         public FactionRef Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
+    /// <summary>Schema path for frame_targets; lowered before native dispatch.</summary>
+    public struct FrameTargetsRef
+    {
+        public const string SchemaKind = "frame_targets";
+        public static implicit operator FrameTargetsRef(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
+        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> SceneRadianceHistoryOutput => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba8> OutputImage => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public uint PresentationMode
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
     /// <summary>Schema path for gate_row; lowered before native dispatch.</summary>
     public readonly struct GateRowRef
     {
         public const string SchemaKind = "gate_row";
+        public static implicit operator GateRowRef(global::Undertow.Modding.KindRef<GateRowRef> _) => default;
     }
 
     /// <summary>Schema path for generated_timeline_row; lowered before native dispatch.</summary>
     public struct GeneratedTimelineRowRef
     {
         public const string SchemaKind = "generated_timeline_row";
+        public static implicit operator GeneratedTimelineRowRef(global::Undertow.Modding.KindRef<GeneratedTimelineRowRef> _) => default;
         public string Name
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4327,6 +5185,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct KnowledgeBudgetRef
     {
         public const string SchemaKind = "knowledge_budget";
+        public static implicit operator KnowledgeBudgetRef(global::Undertow.Modding.KindRef<KnowledgeBudgetRef> _) => default;
         public const string FactionRelation = "FactionOfKnowledgeBudgetRel";
         public FactionRef Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public BudgetEntryRowRef[] Entries => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4336,6 +5195,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeBuildingRef
     {
         public const string SchemaKind = "knowledge_building";
+        public static implicit operator KnowledgeBuildingRef(global::Undertow.Modding.KindRef<KnowledgeBuildingRef> _) => default;
         public uint Map
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4350,6 +5210,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeCentralRef
     {
         public const string SchemaKind = "knowledge_central";
+        public static implicit operator KnowledgeCentralRef(global::Undertow.Modding.KindRef<KnowledgeCentralRef> _) => default;
         public uint Map
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4364,6 +5225,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeCharacterRef
     {
         public const string SchemaKind = "knowledge_character";
+        public static implicit operator KnowledgeCharacterRef(global::Undertow.Modding.KindRef<KnowledgeCharacterRef> _) => default;
         public uint Map
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4376,6 +5238,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeFragmentInstanceRowRef
     {
         public const string SchemaKind = "knowledge_fragment_instance_row";
+        public static implicit operator KnowledgeFragmentInstanceRowRef(global::Undertow.Modding.KindRef<KnowledgeFragmentInstanceRowRef> _) => default;
         public ulong InstanceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4407,6 +5270,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeFragmentOwnershipRef
     {
         public const string SchemaKind = "knowledge_fragment_ownership";
+        public static implicit operator KnowledgeFragmentOwnershipRef(global::Undertow.Modding.KindRef<KnowledgeFragmentOwnershipRef> _) => default;
         public uint Map
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4420,6 +5284,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeLocalRef
     {
         public const string SchemaKind = "knowledge_local";
+        public static implicit operator KnowledgeLocalRef(global::Undertow.Modding.KindRef<KnowledgeLocalRef> _) => default;
         public uint Map
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4436,6 +5301,7 @@ namespace Vixen.Codegen.Gpu
     public struct KnowledgeUnlockFiredRef
     {
         public const string SchemaKind = "knowledge_unlock_fired";
+        public static implicit operator KnowledgeUnlockFiredRef(global::Undertow.Modding.KindRef<KnowledgeUnlockFiredRef> _) => default;
         public string Concept
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4449,12 +5315,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct KnownNodeCellRowRef
     {
         public const string SchemaKind = "known_node_cell_row";
+        public static implicit operator KnownNodeCellRowRef(global::Undertow.Modding.KindRef<KnownNodeCellRowRef> _) => default;
     }
 
     /// <summary>Schema path for leverage_used; lowered before native dispatch.</summary>
     public struct LeverageUsedRef
     {
         public const string SchemaKind = "leverage_used";
+        public static implicit operator LeverageUsedRef(global::Undertow.Modding.KindRef<LeverageUsedRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4466,6 +5334,7 @@ namespace Vixen.Codegen.Gpu
     public struct LeveragedRef
     {
         public const string SchemaKind = "leveraged";
+        public static implicit operator LeveragedRef(global::Undertow.Modding.KindRef<LeveragedRef> _) => default;
         public string Fact
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4481,6 +5350,7 @@ namespace Vixen.Codegen.Gpu
     public struct LinkChargeEnvelopeRowRef
     {
         public const string SchemaKind = "link_charge_envelope_row";
+        public static implicit operator LinkChargeEnvelopeRowRef(global::Undertow.Modding.KindRef<LinkChargeEnvelopeRowRef> _) => default;
         public long Epoch
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4531,6 +5401,7 @@ namespace Vixen.Codegen.Gpu
     public struct LinkTransitRef
     {
         public const string SchemaKind = "link_transit";
+        public static implicit operator LinkTransitRef(global::Undertow.Modding.KindRef<LinkTransitRef> _) => default;
         public byte Transition
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4548,6 +5419,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketArrearsRef
     {
         public const string SchemaKind = "market_arrears";
+        public static implicit operator MarketArrearsRef(global::Undertow.Modding.KindRef<MarketArrearsRef> _) => default;
         public double Amount
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4561,6 +5433,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketContractRef
     {
         public const string SchemaKind = "market_contract";
+        public static implicit operator MarketContractRef(global::Undertow.Modding.KindRef<MarketContractRef> _) => default;
         public ulong Id
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4592,6 +5465,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketContribRowRef
     {
         public const string SchemaKind = "market_contrib_row";
+        public static implicit operator MarketContribRowRef(global::Undertow.Modding.KindRef<MarketContribRowRef> _) => default;
         public double Kg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4603,6 +5477,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketDebtRef
     {
         public const string SchemaKind = "market_debt";
+        public static implicit operator MarketDebtRef(global::Undertow.Modding.KindRef<MarketDebtRef> _) => default;
         public double Principal
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4623,6 +5498,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketOfferRef
     {
         public const string SchemaKind = "market_offer";
+        public static implicit operator MarketOfferRef(global::Undertow.Modding.KindRef<MarketOfferRef> _) => default;
         public ulong Id
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4664,6 +5540,7 @@ namespace Vixen.Codegen.Gpu
     public struct MarketPoolRef
     {
         public const string SchemaKind = "market_pool";
+        public static implicit operator MarketPoolRef(global::Undertow.Modding.KindRef<MarketPoolRef> _) => default;
         public string Resource
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4683,6 +5560,7 @@ namespace Vixen.Codegen.Gpu
     public struct MassTrackerRowRef
     {
         public const string SchemaKind = "mass_tracker_row";
+        public static implicit operator MassTrackerRowRef(global::Undertow.Modding.KindRef<MassTrackerRowRef> _) => default;
         public int PlanetIndex
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4704,6 +5582,7 @@ namespace Vixen.Codegen.Gpu
     public struct ObserverAdmissionRef
     {
         public const string SchemaKind = "observer_admission";
+        public static implicit operator ObserverAdmissionRef(global::Undertow.Modding.KindRef<ObserverAdmissionRef> _) => default;
         public int Level
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4740,6 +5619,7 @@ namespace Vixen.Codegen.Gpu
     public struct ObserverParkedStockBaseRef
     {
         public const string SchemaKind = "observer_parked_stock_base";
+        public static implicit operator ObserverParkedStockBaseRef(global::Undertow.Modding.KindRef<ObserverParkedStockBaseRef> _) => default;
         public int Level
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4783,6 +5663,7 @@ namespace Vixen.Codegen.Gpu
     public struct ObserverStateRef
     {
         public const string SchemaKind = "observer_state";
+        public static implicit operator ObserverStateRef(global::Undertow.Modding.KindRef<ObserverStateRef> _) => default;
         public double PositionXAu
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4816,6 +5697,7 @@ namespace Vixen.Codegen.Gpu
     public struct PlaceNodeRef
     {
         public const string SchemaKind = "place_node";
+        public static implicit operator PlaceNodeRef(global::Undertow.Modding.KindRef<PlaceNodeRef> _) => default;
         public int Body
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4835,6 +5717,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PlaceRoleAssignmentRef
     {
         public const string SchemaKind = "place_role_assignment";
+        public static implicit operator PlaceRoleAssignmentRef(global::Undertow.Modding.KindRef<PlaceRoleAssignmentRef> _) => default;
         public const string FactionRelation = "FactionOfPlaceRoleAssignmentRel";
         public FactionRef Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public const string RoleRelation = "RoleOfPlaceRoleAssignmentRel";
@@ -4845,6 +5728,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PlacesAuthoredRef
     {
         public const string SchemaKind = "places_authored";
+        public static implicit operator PlacesAuthoredRef(global::Undertow.Modding.KindRef<PlacesAuthoredRef> _) => default;
         public const string EntityRelation = "EntityOfPlacesAuthoredRel";
         public PlaceNodeRef Entity => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -4853,12 +5737,14 @@ namespace Vixen.Codegen.Gpu
     public readonly struct PopulationRowRef
     {
         public const string SchemaKind = "population_row";
+        public static implicit operator PopulationRowRef(global::Undertow.Modding.KindRef<PopulationRowRef> _) => default;
     }
 
     /// <summary>Schema path for practice_last; lowered before native dispatch.</summary>
     public struct PracticeLastRef
     {
         public const string SchemaKind = "practice_last";
+        public static implicit operator PracticeLastRef(global::Undertow.Modding.KindRef<PracticeLastRef> _) => default;
         public int Count
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4874,6 +5760,7 @@ namespace Vixen.Codegen.Gpu
     public struct PracticeLedgerRef
     {
         public const string SchemaKind = "practice_ledger";
+        public static implicit operator PracticeLedgerRef(global::Undertow.Modding.KindRef<PracticeLedgerRef> _) => default;
         public int Count
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4889,6 +5776,7 @@ namespace Vixen.Codegen.Gpu
     public struct PracticeSaturationRef
     {
         public const string SchemaKind = "practice_saturation";
+        public static implicit operator PracticeSaturationRef(global::Undertow.Modding.KindRef<PracticeSaturationRef> _) => default;
         public string Tag
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4909,6 +5797,7 @@ namespace Vixen.Codegen.Gpu
     public struct PriceQuoteRef
     {
         public const string SchemaKind = "price_quote";
+        public static implicit operator PriceQuoteRef(global::Undertow.Modding.KindRef<PriceQuoteRef> _) => default;
         public string Resource
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4935,6 +5824,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct QuestCompletionRowRef
     {
         public const string SchemaKind = "quest_completion_row";
+        public static implicit operator QuestCompletionRowRef(global::Undertow.Modding.KindRef<QuestCompletionRowRef> _) => default;
         public const string QuestRelation = "QuestOfQuestCompletionRowRel";
         public StorylineRef Quest => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -4943,6 +5833,7 @@ namespace Vixen.Codegen.Gpu
     public struct QuestStatusRef
     {
         public const string SchemaKind = "quest_status";
+        public static implicit operator QuestStatusRef(global::Undertow.Modding.KindRef<QuestStatusRef> _) => default;
         public byte Status
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4956,6 +5847,7 @@ namespace Vixen.Codegen.Gpu
     public struct RecipeFlowRowRef
     {
         public const string SchemaKind = "recipe_flow_row";
+        public static implicit operator RecipeFlowRowRef(global::Undertow.Modding.KindRef<RecipeFlowRowRef> _) => default;
         public string Resource
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4972,6 +5864,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct RefineHeadRowRef
     {
         public const string SchemaKind = "refine_head_row";
+        public static implicit operator RefineHeadRowRef(global::Undertow.Modding.KindRef<RefineHeadRowRef> _) => default;
         public const string FactionRelation = "FactionOfRefineHeadRowRel";
         public FactionRef Faction => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public RecipeFlowRowRef[] Inputs => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -4983,6 +5876,7 @@ namespace Vixen.Codegen.Gpu
     public struct RegionRef
     {
         public const string SchemaKind = "region";
+        public static implicit operator RegionRef(global::Undertow.Modding.KindRef<RegionRef> _) => default;
         public byte ParentKind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5001,6 +5895,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct RegionHeatTransferRef
     {
         public const string SchemaKind = "region_heat_transfer";
+        public static implicit operator RegionHeatTransferRef(global::Undertow.Modding.KindRef<RegionHeatTransferRef> _) => default;
         public const string AttachTarget = "building_store_flow";
         public const string TargetRelation = "TargetOfRegionHeatTransferRel";
         public RegionRef Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5012,6 +5907,7 @@ namespace Vixen.Codegen.Gpu
     public struct RegionHeatTransferPayloadRef
     {
         public const string SchemaKind = "region_heat_transfer_payload";
+        public static implicit operator RegionHeatTransferPayloadRef(global::Undertow.Modding.KindRef<RegionHeatTransferPayloadRef> _) => default;
         public double Joules
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5023,6 +5919,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct RegionPressureTransferRef
     {
         public const string SchemaKind = "region_pressure_transfer";
+        public static implicit operator RegionPressureTransferRef(global::Undertow.Modding.KindRef<RegionPressureTransferRef> _) => default;
         public const string AttachTarget = "region";
         public const string TargetRelation = "TargetOfRegionPressureTransferRel";
         public All Target => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5034,6 +5931,7 @@ namespace Vixen.Codegen.Gpu
     public struct RegionPressureTransferPayloadRef
     {
         public const string SchemaKind = "region_pressure_transfer_payload";
+        public static implicit operator RegionPressureTransferPayloadRef(global::Undertow.Modding.KindRef<RegionPressureTransferPayloadRef> _) => default;
         public double Pascals
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5045,6 +5943,7 @@ namespace Vixen.Codegen.Gpu
     public struct RuleFireRef
     {
         public const string SchemaKind = "rule_fire";
+        public static implicit operator RuleFireRef(global::Undertow.Modding.KindRef<RuleFireRef> _) => default;
         public long LastTick
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5060,6 +5959,7 @@ namespace Vixen.Codegen.Gpu
     public struct SimActionRowRef
     {
         public const string SchemaKind = "sim_action_row";
+        public static implicit operator SimActionRowRef(global::Undertow.Modding.KindRef<SimActionRowRef> _) => default;
         public int TargetBodyIndex
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5105,6 +6005,7 @@ namespace Vixen.Codegen.Gpu
     public struct SpatialFireRef
     {
         public const string SchemaKind = "spatial_fire";
+        public static implicit operator SpatialFireRef(global::Undertow.Modding.KindRef<SpatialFireRef> _) => default;
         public byte Scope
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5128,6 +6029,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateAgentKnowledgeRef
     {
         public const string SchemaKind = "state:agent-knowledge";
+        public static implicit operator StateAgentKnowledgeRef(global::Undertow.Modding.KindRef<StateAgentKnowledgeRef> _) => default;
         public AgentAwarenessRef[] Awareness => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public AgentInvestigatedRef[] Investigated => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public AgentHeldFactRef[] HeldFacts => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5141,6 +6043,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateCoarseHistoryRef
     {
         public const string SchemaKind = "state:coarse-history";
+        public static implicit operator StateCoarseHistoryRef(global::Undertow.Modding.KindRef<StateCoarseHistoryRef> _) => default;
         public AggregateEconomyRef[] Cells => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public CoarseArrearsRef[] Arrears => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5149,6 +6052,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateCoarseLeverageRef
     {
         public const string SchemaKind = "state:coarse-leverage";
+        public static implicit operator StateCoarseLeverageRef(global::Undertow.Modding.KindRef<StateCoarseLeverageRef> _) => default;
         public LeveragedRef[] Leveraged => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -5156,6 +6060,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateDealProtocolRef
     {
         public const string SchemaKind = "state:deal-protocol";
+        public static implicit operator StateDealProtocolRef(global::Undertow.Modding.KindRef<StateDealProtocolRef> _) => default;
         public ulong NextDealId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5184,6 +6089,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateDeepFieldGenerationRef
     {
         public const string SchemaKind = "state:deep-field-generation";
+        public static implicit operator StateDeepFieldGenerationRef(global::Undertow.Modding.KindRef<StateDeepFieldGenerationRef> _) => default;
         public DeepFieldCellRef[] Cells => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public RegionRef[] Regions => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public RegionHeatTransferRef[] HeatTransfers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5196,6 +6102,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateDepletionRef
     {
         public const string SchemaKind = "state:depletion";
+        public static implicit operator StateDepletionRef(global::Undertow.Modding.KindRef<StateDepletionRef> _) => default;
         public DepletionBodyRowRef[] Bodies => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -5203,6 +6110,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateExtractionRef
     {
         public const string SchemaKind = "state:extraction";
+        public static implicit operator StateExtractionRef(global::Undertow.Modding.KindRef<StateExtractionRef> _) => default;
         public string EvictionPipeId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5244,23 +6152,11 @@ namespace Vixen.Codegen.Gpu
         public BuildingHandleRef[] BuildingHandles => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
-    /// <summary>Schema path for state:frame-targets; lowered before native dispatch.</summary>
-    public struct StateFrameTargetsRef
-    {
-        public const string SchemaKind = "state:frame-targets";
-        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> SceneRadianceHistoryOutput => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
-        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba8> OutputImage => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
-        public uint PresentationMode
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
-    }
-
     /// <summary>Schema path for state:knowledge; lowered before native dispatch.</summary>
     public readonly struct StateKnowledgeRef
     {
         public const string SchemaKind = "state:knowledge";
+        public static implicit operator StateKnowledgeRef(global::Undertow.Modding.KindRef<StateKnowledgeRef> _) => default;
         public KnowledgeBudgetRef[] Budget => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public KnowledgeCentralRef[] Central => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public KnowledgeLocalRef[] Local => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5276,6 +6172,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateKnowledgeFragmentsRef
     {
         public const string SchemaKind = "state:knowledge-fragments";
+        public static implicit operator StateKnowledgeFragmentsRef(global::Undertow.Modding.KindRef<StateKnowledgeFragmentsRef> _) => default;
         public ulong NextInstanceId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5288,6 +6185,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateObserverAdmissionRef
     {
         public const string SchemaKind = "state:observer-admission";
+        public static implicit operator StateObserverAdmissionRef(global::Undertow.Modding.KindRef<StateObserverAdmissionRef> _) => default;
         public ObserverStateRef[] Observers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public ObserverAdmissionRef[] Admissions => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public ObserverParkedStockBaseRef[] ParkedStock => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5297,6 +6195,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StatePlacesRef
     {
         public const string SchemaKind = "state:places";
+        public static implicit operator StatePlacesRef(global::Undertow.Modding.KindRef<StatePlacesRef> _) => default;
         public PlacesAuthoredRef[] Authored => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public PlaceNodeRef[] Nodes => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5305,6 +6204,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StatePracticeDensityRef
     {
         public const string SchemaKind = "state:practice-density";
+        public static implicit operator StatePracticeDensityRef(global::Undertow.Modding.KindRef<StatePracticeDensityRef> _) => default;
         public PracticeLastRef[] Last => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public PracticeSaturationRef[] Saturation => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5313,6 +6213,7 @@ namespace Vixen.Codegen.Gpu
     public struct StatePricingPolicyRef
     {
         public const string SchemaKind = "state:pricing-policy";
+        public static implicit operator StatePricingPolicyRef(global::Undertow.Modding.KindRef<StatePricingPolicyRef> _) => default;
         public ulong Revision
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5335,6 +6236,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateQuestsRef
     {
         public const string SchemaKind = "state:quests";
+        public static implicit operator StateQuestsRef(global::Undertow.Modding.KindRef<StateQuestsRef> _) => default;
         public QuestStatusRef[] Status => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public QuestCompletionRowRef[] Completed => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5343,6 +6245,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateRentRef
     {
         public const string SchemaKind = "state:rent";
+        public static implicit operator StateRentRef(global::Undertow.Modding.KindRef<StateRentRef> _) => default;
         public ulong NextContractId
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5366,6 +6269,7 @@ namespace Vixen.Codegen.Gpu
     public struct StateRosterRef
     {
         public const string SchemaKind = "state:roster";
+        public static implicit operator StateRosterRef(global::Undertow.Modding.KindRef<StateRosterRef> _) => default;
         public bool PlayerAlive
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5382,6 +6286,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateRuleCooldownsRef
     {
         public const string SchemaKind = "state:rule-cooldowns";
+        public static implicit operator StateRuleCooldownsRef(global::Undertow.Modding.KindRef<StateRuleCooldownsRef> _) => default;
         public RuleFireRef[] RuleFire => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public SpatialFireRef[] SpatialFire => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5390,6 +6295,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateStockRef
     {
         public const string SchemaKind = "state:stock";
+        public static implicit operator StateStockRef(global::Undertow.Modding.KindRef<StateStockRef> _) => default;
         public StockRef[] Holdings => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
@@ -5397,6 +6303,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct StateWorldEventsRef
     {
         public const string SchemaKind = "state:world-events";
+        public static implicit operator StateWorldEventsRef(global::Undertow.Modding.KindRef<StateWorldEventsRef> _) => default;
         public WorldEventRowRef[] Events => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public GeneratedTimelineRowRef[] GeneratedTimelines => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
@@ -5405,6 +6312,7 @@ namespace Vixen.Codegen.Gpu
     public struct StockRef
     {
         public const string SchemaKind = "stock";
+        public static implicit operator StockRef(global::Undertow.Modding.KindRef<StockRef> _) => default;
         public double Kg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5422,6 +6330,7 @@ namespace Vixen.Codegen.Gpu
     public struct VehicleRef
     {
         public const string SchemaKind = "vehicle";
+        public static implicit operator VehicleRef(global::Undertow.Modding.KindRef<VehicleRef> _) => default;
         public double IspSeconds
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5497,6 +6406,7 @@ namespace Vixen.Codegen.Gpu
     public struct WorldEventRowRef
     {
         public const string SchemaKind = "world_event_row";
+        public static implicit operator WorldEventRowRef(global::Undertow.Modding.KindRef<WorldEventRowRef> _) => default;
         public string Kind
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5614,6 +6524,7 @@ namespace Vixen.Codegen.Gpu
     public struct AgentBeliefRef
     {
         public const string SchemaKind = "agent_belief";
+        public static implicit operator AgentBeliefRef(global::Undertow.Modding.KindRef<AgentBeliefRef> _) => default;
         public string Attr
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
@@ -5635,6 +6546,7 @@ namespace Vixen.Codegen.Gpu
     public readonly struct AgentConversationRef
     {
         public const string SchemaKind = "agent_conversation";
+        public static implicit operator AgentConversationRef(global::Undertow.Modding.KindRef<AgentConversationRef> _) => default;
     }
 
     public struct AggregateEconomyCell
@@ -6025,7 +6937,6 @@ namespace Vixen.Codegen.Gpu
         public float capacity;
         public float releaseRate;
         public float loss;
-        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.PlaceRef> downstream;
     }
 
     public struct LinkGroup
@@ -6817,7 +7728,13 @@ namespace Vixen.Codegen.Gpu
         public string timeline;
     }
 
-    public struct FrameTargetsState
+    public static partial class Make
+    {
+        public static LinkDownstream LinkDownstream<TTarget>() => default;
+        public static PartOf PartOf<TTarget>() => default;
+    }
+
+    public struct FrameTargets
     {
         public uint presentationMode;
     }
@@ -7722,8 +8639,6 @@ namespace Vixen.Codegen.Gpu
         public long delta;
         public long ticksPerDispatch;
     }
-
-    public readonly struct FrameTargetsStateKind { public const string CatalogKey = "state:frame-targets"; }
 
     public readonly struct BodyStateKind { public const string CatalogKey = "state:bodies"; }
 

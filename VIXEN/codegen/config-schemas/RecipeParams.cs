@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Recipe-Load-Tier-Contract M2 (precision tier): the FIRST [GpuStruct] schema for a recipe
 // render-param block (previously hand-authored in ShellOctreeGpu.h's BodyInstanceGpu::recipeParams
 // / RecipeInstanceBucketing.comp's BodyInstance::recipeParams — recipeId/providerKind stay outside
