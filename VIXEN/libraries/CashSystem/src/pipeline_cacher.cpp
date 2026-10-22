@@ -357,19 +357,20 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
     LOG_DEBUG("Using shared VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(wrapper.pipelineLayoutWrapper->layout)));
 }
 
-void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
+void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& /*ci*/, PipelineWrapper& wrapper) {
+    wrapper.cache = SharedPipelineCache();
+}
+
+VkPipelineCache PipelineCacher::SharedPipelineCache() {
     if (!GetDevice()) {
-        return;
+        return VK_NULL_HANDLE;
     }
 
-    // If we have a global cache, merge it with the new cache
-    // This allows new pipelines to benefit from cached data. Atomic read: m_globalCache can be
-    // set concurrently by DeserializeFromFile() via the blocking lane (audit V-M9).
+    // Atomic read: m_globalCache can be set concurrently by DeserializeFromFile() via the
+    // blocking lane (audit V-M9).
     if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
         globalCache != VK_NULL_HANDLE) {
-        // Just use the global cache directly instead of creating individual caches
-        wrapper.cache = globalCache;
-        return;
+        return globalCache;
     }
 
     // One shared cache for every graphics pipeline, seeded from the device/driver-keyed store so
@@ -384,19 +385,17 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
         cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
         if (vkCreatePipelineCache(GetDevice()->device, &cacheInfo, nullptr, &created) != VK_SUCCESS) {
             // Non-fatal - can still create pipelines without cache
-            wrapper.cache = VK_NULL_HANDLE;
-            return;
+            return VK_NULL_HANDLE;
         }
     }
 
     VkPipelineCache expected = VK_NULL_HANDLE;
     if (m_globalCache.compare_exchange_strong(expected, created, std::memory_order_acq_rel)) {
         if (seeded) LOG_INFO("[PipelineCacher] Seeded graphics pipeline cache from the shared store");
-        wrapper.cache = created;
-    } else {
-        vkDestroyPipelineCache(GetDevice()->device, created, nullptr);
-        wrapper.cache = expected;
+        return created;
     }
+    vkDestroyPipelineCache(GetDevice()->device, created, nullptr);
+    return expected;
 }
 
 bool PipelineCacher::MergeCachesToBlob(std::vector<uint8_t>& cacheData, size_t& mergedCacheCount) const {
@@ -454,6 +453,19 @@ bool PipelineCacher::MergeCachesToBlob(std::vector<uint8_t>& cacheData, size_t& 
 
 void PipelineCacher::PersistWarmState() const {
     if (!GetDevice()) return;
+    // The shared cache also holds the pipelines created outside this cacher's entries
+    // (SharedPipelineCache() callers), so it is persisted whole.
+    if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
+        globalCache != VK_NULL_HANDLE) {
+        std::string reason;
+        if (PersistPipelineCacheToSharedStore(GetDevice()->device, globalCache, GetDevice()->gpuProperties,
+                                              kSharedCacheKind, &reason)) {
+            LOG_INFO("[PipelineCacher] Persisted graphics pipeline cache to the shared store");
+        } else {
+            LOG_INFO("[PipelineCacher] Shared pipeline cache not persisted: " + reason);
+        }
+        return;
+    }
     std::vector<uint8_t> blob;
     size_t count = 0;
     try {

@@ -8,6 +8,8 @@
 #include "PipelineLayoutCacher.h"
 #include "DescriptorSetLayoutCacher.h"
 #include "PipelineCacher.h"
+#include "ShaderModuleCacher.h"
+#include "NodeHelpers/CacherHelpers.h"
 #include "ShaderDataBundle.h"
 #include "ShaderProgram.h"
 #include "Hash.h"  // ComputeSHA256HexFromUint32Vec — SPIR-V content hash for pipeline cache key
@@ -97,7 +99,9 @@ void ComputePipelineNode::TypedCompileImpl(TypedCompileContext& ctx) {
     if (spirv.empty()) {
         throw std::runtime_error("[ComputePipelineNode] No compute shader SPIRV");
     }
-    VkShaderModule shaderModule = CreateShaderModule(devicePtr, spirv);
+    VkShaderModule shaderModule = CreateShaderModule(
+        devicePtr, spirv, shaderBundle->GetProgramName(),
+        shaderBundle->GetEntryPoint(ShaderManagement::ShaderStage::Compute));
 
     // Create pipeline layout
     auto layoutWrapper = CreatePipelineLayout(devicePtr, shaderBundle, descriptorSetLayout);
@@ -124,13 +128,9 @@ void ComputePipelineNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 void ComputePipelineNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Cleaning up...");
 
-    if (shaderModule_ != VK_NULL_HANDLE) {
-        VulkanDevice* devicePtr = GetDevice();
-        if (devicePtr) {
-            vkDestroyShaderModule(devicePtr->device, shaderModule_, nullptr);
-        }
-        shaderModule_ = VK_NULL_HANDLE;
-    }
+    // The module belongs to ShaderModuleCacher.
+    shaderModuleWrapper_.reset();
+    shaderModule_ = VK_NULL_HANDLE;
 
     pipelineWrapper_.reset();
     pipeline_ = VK_NULL_HANDLE;
@@ -142,27 +142,31 @@ void ComputePipelineNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
 
 VkShaderModule ComputePipelineNode::CreateShaderModule(
     VulkanDevice* device,
-    const std::vector<uint32_t>& spirv
+    const std::vector<uint32_t>& spirv,
+    const std::string& programName,
+    const std::string& entryPoint
 ) {
-    VkShaderModuleCreateInfo moduleCreateInfo{};
-    moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    moduleCreateInfo.codeSize = spirv.size() * sizeof(uint32_t);
-    moduleCreateInfo.pCode = spirv.data();
+    auto* moduleCacher = ::RenderGraph::NodeHelpers::RegisterCacherIfNeeded<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(GetOwningGraph(), device, "ShaderModule");
 
-    VkShaderModule shaderModule = VK_NULL_HANDLE;
-    VkResult result = vkCreateShaderModule(device->device, &moduleCreateInfo, nullptr, &shaderModule);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputePipelineNode] Failed to create shader module: " + std::to_string(result));
+    // Content-keyed by the SPIR-V: every node compiling the same code shares one module.
+    shaderModuleWrapper_ = moduleCacher->GetOrCreateFromSpirv(
+        spirv, entryPoint, {}, VK_SHADER_STAGE_COMPUTE_BIT, programName);
+    if (!shaderModuleWrapper_ || shaderModuleWrapper_->shaderModule == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ComputePipelineNode] Failed to create shader module for " + programName);
     }
 
-    NODE_LOG_INFO("[ComputePipelineNode] Created VkShaderModule: " +
-                  std::to_string(reinterpret_cast<uint64_t>(shaderModule)));
+    NODE_LOG_INFO("[ComputePipelineNode] VkShaderModule: " +
+                  std::to_string(reinterpret_cast<uint64_t>(shaderModuleWrapper_->shaderModule)));
 
     if (perfLogger_) {
         perfLogger_->LogShaderModule(spirv.size() * sizeof(uint32_t), 1);
     }
 
-    return shaderModule;
+    return shaderModuleWrapper_->shaderModule;
 }
 
 std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePipelineLayout(

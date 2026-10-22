@@ -7,6 +7,7 @@
 #include "MainCacher.h"
 #include "DescriptorCacher.h"
 #include "DescriptorSetLayoutCacher.h"  // Phase 5: Helper functions
+#include "NodeHelpers/CacherHelpers.h"
 #include "Debug/DescriptorResourceTracker.h"  // Debug tracking
 #include <ShaderDataBundle.h>
 #include <glm/glm.hpp>
@@ -146,21 +147,20 @@ void DescriptorSetNode::CreateDescriptorSetLayout(const std::vector<ShaderManage
                       ", name=" + spirvBinding.name);
     }
 
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
-    layoutInfo.pBindings = vkBindings.data();
-
-    VkResult result = vkCreateDescriptorSetLayout(
-        device->device,
-        &layoutInfo,
-        nullptr,
-        &descriptorSetLayout
-    );
-
-    if (result != VK_SUCCESS) {
+    auto* setLayoutCacher = ::RenderGraph::NodeHelpers::RegisterCacherIfNeeded<
+        CashSystem::DescriptorSetLayoutCacher,
+        CashSystem::DescriptorSetLayoutWrapper,
+        CashSystem::DescriptorSetLayoutCreateParams
+    >(GetOwningGraph(), device, "DescriptorSetLayout");
+    CashSystem::DescriptorSetLayoutCreateParams layoutParams;
+    layoutParams.manualBindings = std::move(vkBindings);
+    layoutParams.layoutKey = "reflected.set0";  // the binding content is the identity
+    layoutParams.device = device;
+    setLayoutWrapper = setLayoutCacher->GetOrCreate(layoutParams);
+    if (!setLayoutWrapper || setLayoutWrapper->layout == VK_NULL_HANDLE) {
         throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout from reflection");
     }
+    descriptorSetLayout = setLayoutWrapper->layout;
 
     NODE_LOG_INFO("[DescriptorSetNode::CreateLayout] Created descriptor set layout from reflection");
     NODE_LOG_DEBUG("[DescriptorSetNode::CreateLayout] Layout handle: " + std::to_string(reinterpret_cast<uint64_t>(descriptorSetLayout)));
@@ -1021,16 +1021,9 @@ void DescriptorSetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         NODE_LOG_DEBUG("Cleanup: Descriptor pool destroyed");
     }
 
-    // Destroy descriptor set layout
-    if (descriptorSetLayout != VK_NULL_HANDLE && device) {
-        vkDestroyDescriptorSetLayout(
-            device->device,
-            descriptorSetLayout,
-            nullptr
-        );
-        descriptorSetLayout = VK_NULL_HANDLE;
-        NODE_LOG_DEBUG("Cleanup: Descriptor set layout destroyed");
-    }
+    // The descriptor set layout belongs to DescriptorSetLayoutCacher.
+    setLayoutWrapper.reset();
+    descriptorSetLayout = VK_NULL_HANDLE;
 }
 
 } // namespace Vixen::RenderGraph

@@ -30,10 +30,10 @@ public:
     // submitMutex must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on `queue`
     // elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this interface's one-shot
     // texture-upload submit (audit V-M11) is externally synchronized against those, not just
-    // against itself.
+    // against itself. pipelineCache (not owned) is the device's shared persistent graphics cache.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
               const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
-              Vixen::LockCensus::QueueSubmitMutex* submitMutex);
+              Vixen::LockCensus::QueueSubmitMutex* submitMutex, VkPipelineCache pipelineCache);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
@@ -110,6 +110,7 @@ private:
     std::vector<std::pair<uint64_t, TextDrawResources*>> pendingTextDrawDeletes_;
 
     VkDevice device_ = VK_NULL_HANDLE;
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // shared, owned by PipelineCacher
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)

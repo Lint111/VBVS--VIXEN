@@ -8,6 +8,7 @@
 #include "Core/NodeLogging.h"
 
 #include "VulkanDevice.h"
+#include "NodeHelpers/SharedPipelineCaches.h"
 #include "VulkanSwapChain.h"
 #include "Core/GPUQueryManager.h"
 
@@ -267,7 +268,8 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // RmlUi global init, the context, and the document.
         renderInterface_.Init(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
                               device->gpuMemoryProperties, commandPool_, renderPass_,
-                              &device->SubmitMutex(device->queue));
+                              &device->SubmitMutex(device->queue),
+                              ::RenderGraph::NodeHelpers::SharedGraphicsPipelineCache(GetOwningGraph(), device));
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());

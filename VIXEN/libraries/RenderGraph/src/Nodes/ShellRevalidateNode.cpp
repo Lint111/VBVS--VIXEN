@@ -6,6 +6,12 @@
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
+#include "Core/RenderGraph.h"
+#include "NodeHelpers/CacherHelpers.h"
+#include "ComputePipelineCacher.h"
+#include "DescriptorSetLayoutCacher.h"
+#include "PipelineLayoutCacher.h"
+#include "Hash.h"
 
 #include <array>
 #include <cstring>
@@ -198,43 +204,37 @@ void ShellRevalidateNode::BuildPipeline() {
         lb.stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
         return lb;
     };
-    const std::array<VkDescriptorSetLayoutBinding, 5> bindings = {
-        bindL(0), bindL(1), bindL(2), bindL(3), bindL(4)
-    };
-    VkDescriptorSetLayoutCreateInfo dslci{};
-    dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    dslci.bindingCount = static_cast<uint32_t>(bindings.size());
-    dslci.pBindings    = bindings.data();
-    if (vkCreateDescriptorSetLayout(vulkanDevice_->device, &dslci, nullptr, &descriptorSetLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkCreateDescriptorSetLayout failed");
-    }
+    using namespace ::RenderGraph::NodeHelpers;
+    auto* graph = GetOwningGraph();
+    auto* setLayoutCacher = RegisterCacherIfNeeded<CashSystem::DescriptorSetLayoutCacher,
+        CashSystem::DescriptorSetLayoutWrapper, CashSystem::DescriptorSetLayoutCreateParams>(
+        graph, vulkanDevice_, "DescriptorSetLayout");
+    CashSystem::DescriptorSetLayoutCreateParams setLayoutParams;
+    setLayoutParams.manualBindings = {bindL(0), bindL(1), bindL(2), bindL(3), bindL(4)};
+    setLayoutParams.layoutKey = "ShellDerive.set0";
+    setLayoutParams.device = vulkanDevice_;
+    setLayoutWrapper_ = GetOrCreateCached<CashSystem::DescriptorSetLayoutCacher,
+        CashSystem::DescriptorSetLayoutWrapper>(setLayoutCacher, setLayoutParams, "ShellDerive set layout");
+    descriptorSetLayout_ = setLayoutWrapper_->layout;
 
-    VkPushConstantRange pcr{};
-    pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    pcr.offset     = 0;
-    pcr.size       = sizeof(PushConstants);
-    VkPipelineLayoutCreateInfo plci{};
-    plci.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    plci.setLayoutCount         = 1;
-    plci.pSetLayouts            = &descriptorSetLayout_;
-    plci.pushConstantRangeCount = 1;
-    plci.pPushConstantRanges    = &pcr;
-    if (vkCreatePipelineLayout(vulkanDevice_->device, &plci, nullptr, &pipelineLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkCreatePipelineLayout failed");
-    }
-
-    VkComputePipelineCreateInfo cpci{};
-    cpci.sType        = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    cpci.stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    cpci.stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
-    cpci.stage.module = shaderModule_;
-    cpci.stage.pName  = "main";
-    cpci.layout       = pipelineLayout_;
-    cpci.flags        = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
-    // Hand-rolled creation site, bypasses ComputePipelineCacher -- not covered by VIXEN_PIPELINE_STATS.
-    if (vkCreateComputePipelines(vulkanDevice_->device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkCreateComputePipelines failed");
-    }
+    // The pipeline layout comes from PipelineLayoutCacher through the compute cacher's fallback.
+    RegisterCacherIfNeeded<CashSystem::PipelineLayoutCacher, CashSystem::PipelineLayoutWrapper,
+        CashSystem::PipelineLayoutCreateParams>(graph, vulkanDevice_, "PipelineLayout");
+    auto* pipelineCacher = RegisterCacherIfNeeded<CashSystem::ComputePipelineCacher,
+        CashSystem::ComputePipelineWrapper, CashSystem::ComputePipelineCreateParams>(
+        graph, vulkanDevice_, "ComputePipeline");
+    CashSystem::ComputePipelineCreateParams pipelineParams;
+    pipelineParams.descriptorSetLayout = descriptorSetLayout_;
+    pipelineParams.pushConstantRanges = {{VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(PushConstants))}};
+    pipelineParams.shaderModule = shaderModule_;
+    pipelineParams.entryPoint = "main";
+    // Code identity, as ComputePipelineNode keys it: program name plus the SPIR-V content.
+    pipelineParams.shaderKey = "ShellDerive:" + ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
+    pipelineParams.layoutKey = "ShellDerive.layout";
+    pipelineWrapper_ = GetOrCreateCached<CashSystem::ComputePipelineCacher,
+        CashSystem::ComputePipelineWrapper>(pipelineCacher, pipelineParams, "ShellDerive pipeline");
+    pipeline_ = pipelineWrapper_->pipeline;
+    pipelineLayout_ = pipelineWrapper_->pipelineLayoutWrapper->layout;
 
     const std::array<VkDescriptorPoolSize, 1> poolSizes = {{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10}
@@ -266,9 +266,12 @@ void ShellRevalidateNode::DestroyPipeline() {
 
     if (descriptorPool_ != VK_NULL_HANDLE) { vkDestroyDescriptorPool(dev, descriptorPool_, nullptr); descriptorPool_ = VK_NULL_HANDLE; }
     descriptorSet_ = VK_NULL_HANDLE;  // freed implicitly with the pool
-    if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(dev, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
-    if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
-    if (descriptorSetLayout_ != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(dev, descriptorSetLayout_, nullptr); descriptorSetLayout_ = VK_NULL_HANDLE; }
+    // Pipeline, pipeline layout and set layout belong to the cachers.
+    pipelineWrapper_.reset();
+    setLayoutWrapper_.reset();
+    pipeline_ = VK_NULL_HANDLE;
+    pipelineLayout_ = VK_NULL_HANDLE;
+    descriptorSetLayout_ = VK_NULL_HANDLE;
     if (shaderModule_ != VK_NULL_HANDLE) { vkDestroyShaderModule(dev, shaderModule_, nullptr); shaderModule_ = VK_NULL_HANDLE; }
 }
 
