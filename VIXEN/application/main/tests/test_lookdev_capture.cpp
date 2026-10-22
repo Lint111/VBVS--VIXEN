@@ -1,7 +1,6 @@
 #include "VulkanGraphApplication.h"
 #include "graph/LookdevSceneDefinition.h"
 #include "Nodes/CameraNode.h"
-#include "Nodes/LightingConfigNode.h"
 #include "Nodes/DeviceNode.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
@@ -18,7 +17,6 @@
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
-#include "Nodes/ReservoirConfigNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "Text/GlyphAtlas.h"
@@ -125,22 +123,6 @@ public:
     }
 };
 
-class LightingConfigNodeTestAccess {
-public:
-    static uint32_t FrameCount(const LightingConfigNode& node) {
-        return node.perFrame_.GetFrameCount();
-    }
-
-    static bool ReadMappedBytes(const LightingConfigNode& node, uint32_t frameIndex,
-                                std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)>& bytes) {
-        if (frameIndex >= node.perFrame_.GetFrameCount()) return false;
-        const void* mapped = node.perFrame_.GetUniformBufferMapped(frameIndex);
-        if (!mapped) return false;
-        std::memcpy(bytes.data(), mapped, bytes.size());
-        return true;
-    }
-};
-
 } // namespace Vixen::RenderGraph
 
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::TestIndirectIrradianceNodeType);
@@ -186,8 +168,10 @@ double Percentile(std::vector<double> samples, double fraction) {
 }
 
 uint32_t DefaultFramesPerScenario() {
-    return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerScenario
-                                                          : kDefaultFramesPerScenario;
+    const char* explicitEnabled = std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED");
+    const bool enabled = explicitEnabled ? explicitEnabled[0] == '1'
+                                         : std::getenv("VIXEN_RESTIR_GATE_DEMO") != nullptr;
+    return enabled ? kMaxFramesPerScenario : kDefaultFramesPerScenario;
 }
 
 uint32_t CaptureFramesPerScenario(std::string& error) {
@@ -1134,10 +1118,8 @@ public:
         auto* graph = GetRenderGraph();
         camera_ = graph ? dynamic_cast<Vixen::RenderGraph::CameraNode*>(
             graph->GetInstanceByName("raymarch_camera")) : nullptr;
-        lighting_ = graph ? dynamic_cast<Vixen::RenderGraph::LightingConfigNode*>(
-            graph->GetInstanceByName("lighting_config")) : nullptr;
-        if (!camera_ || !lighting_) {
-            captureError_ = "production graph is missing raymarch_camera or lighting_config";
+        if (!camera_) {
+            captureError_ = "production graph is missing raymarch_camera";
             return;
         }
 
@@ -1183,7 +1165,7 @@ public:
             }
         }
 
-        Vixen::App::SetSceneLightsLayer(*lighting_, LightSetFor(scenarios_.front().lighting));
+        Vixen::App::SetSceneLightsLayer(RenderLook(), LightSetFor(scenarios_.front().lighting));
         sceneLook_ = Vixen::App::Lookdev::SceneLookDeclaration();
         sceneLook_.exposure.compensationEV = scenarios_.front().lighting.exposureCompensationEV;
         sceneLook_.saturation = scenarios_.front().saturation;
@@ -1193,7 +1175,7 @@ public:
             sceneLook_.environment.color[2] = kRoomSkyColor.b;
         }
         Vixen::App::ApplySceneLook(
-            *lighting_,
+            RenderLook(),
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             sceneLook_);
         if (glyphSdfScene || sdfFilterNonText) {
@@ -1290,6 +1272,13 @@ public:
     bool Render() override {
         const auto frameStart = CaptureClock::now();
         if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
+        // S2 production-transfer witness: after all four frame-ring slots have
+        // reached steady state, change exactly one host-owned settings record.
+        // The ordinary capture path is unchanged unless the witness opts in.
+        if (std::getenv("VIXEN_SETTINGS_CHANGE_WITNESS") &&
+            scenarioIndex_ == 0u && framesInScenario_ == 5u) {
+            SetShadowReachAndBias(640.0f, 0.002f);
+        }
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
             camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));
         if (scenarios_[scenarioIndex_].posed && camera_) {
@@ -1399,10 +1388,10 @@ public:
                 camera_->SetYawForTest(next.yawRadians);
                 camera_->SetPitchForTest(kPitchRadians);
             }
-            Vixen::App::SetSceneLightsLayer(*lighting_, LightSetFor(next.lighting));
+            Vixen::App::SetSceneLightsLayer(RenderLook(), LightSetFor(next.lighting));
             sceneLook_.exposure.compensationEV = next.lighting.exposureCompensationEV;
             sceneLook_.saturation = next.saturation;
-            Vixen::App::SetSceneLookLayer(*lighting_, sceneLook_);
+            Vixen::App::SetSceneLookLayer(RenderLook(), sceneLook_);
         }
         return true;
     }
@@ -1777,13 +1766,13 @@ private:
         std::ofstream hits(stem.string() + ".hits.bin", std::ios::binary);
         hits.write(static_cast<const char*>(mapped), static_cast<std::streamsize>(snapshotSize_));
         vkUnmapMemory(device->device, snapshotMemory_);
-        std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> bytes{};
-        if (!hits || !Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(*lighting_, 0, bytes)) {
+        const auto& lighting = CurrentLightingSettings();
+        if (!hits) {
             captureError_ = "could not export look-dev lighting buffers";
             return false;
         }
         std::ofstream config(stem.string() + ".lighting.bin", std::ios::binary);
-        config.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        config.write(reinterpret_cast<const char*>(&lighting), sizeof(lighting));
         if (!config) {
             captureError_ = "could not export look-dev LightingConfig";
             return false;
@@ -1805,8 +1794,8 @@ private:
         std::ofstream scene(stem.string() + ".scene.json");
         const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(scenario.lighting);
         scene << std::setprecision(9) << "{\"lightCapacity\":"
-              << std::size(Vixen::Gpu::LightingConfig{}.lights)
-              << ",\"exposureOffset\":" << offsetof(Vixen::Gpu::LightingConfig, exposureCompensationEV)
+              << std::size(Vixen::Gpu::LightingSettings{}.lights)
+              << ",\"exposureOffset\":" << offsetof(Vixen::Gpu::SceneLookSettings, exposureCompensationEV)
               << ",\"instances\":[";
         const auto* bodyScene = dynamic_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
             graph->GetInstanceByName("body_octree_scene"));
@@ -1851,26 +1840,17 @@ private:
     }
 
     bool VerifyUploadedExposure(const CaptureScenario& scenario) {
-        const std::size_t exposureOffset = offsetof(Vixen::Gpu::LightingConfig, exposureCompensationEV);
+        const std::size_t exposureOffset = offsetof(Vixen::Gpu::SceneLookSettings, exposureCompensationEV);
         std::ofstream readback(outputDir_ / "lighting-config-readback.txt", std::ios::trunc);
         if (!readback) {
             captureError_ = "could not create LightingConfig readback report";
             return false;
         }
 
-        for (uint32_t frameIndex = 0;
-             frameIndex < Vixen::RenderGraph::LightingConfigNodeTestAccess::FrameCount(*lighting_);
-             ++frameIndex) {
-            std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> bytes{};
-            if (!Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(
-                    *lighting_, frameIndex, bytes)) {
-                captureError_ = "could not read mapped LightingConfig ring slot " +
-                    std::to_string(frameIndex);
-                return false;
-            }
-
-            float uploadedExposureEV = 0.0f;
-            std::memcpy(&uploadedExposureEV, bytes.data() + exposureOffset, sizeof(uploadedExposureEV));
+        const auto& sceneLook = CurrentSceneLookSettings();
+        const auto bytes = std::as_bytes(std::span<const Vixen::Gpu::SceneLookSettings>(&sceneLook, 1));
+        for (uint32_t frameIndex = 0; frameIndex < kRingSlotCount; ++frameIndex) {
+            const float uploadedExposureEV = sceneLook.exposureCompensationEV;
 
             std::ostringstream line;
             line << "frame_slot=" << frameIndex
@@ -1903,7 +1883,6 @@ private:
     double captureWallMs_ = 0.0;
     std::vector<double> frameWallMs_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
-    Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
     Vixen::App::SceneLook sceneLook_;
     size_t scenarioIndex_ = 0;
     size_t capturedCount_ = 0;

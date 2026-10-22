@@ -7,4 +7,55 @@ struct EmitterSample {
     vec3 radiance;
     float pdf;
 };
+
+#ifdef VIXEN_SOA_EmitterSample_BUFFER
+EmitterSample EmitterSample_Load(uint index)
+{
+    EmitterSample value;
+    value.position = uintBitsToFloat(uvec3(VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 2u]));
+    value.key = VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u];
+    value.radiance = uintBitsToFloat(uvec3(VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 2u]));
+    value.pdf = uintBitsToFloat(VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+
+void EmitterSample_Store(uint index, EmitterSample value)
+{
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 0u] = floatBitsToUint(value.position[0]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 1u] = floatBitsToUint(value.position[1]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[0u] >> 2u) + index * 3u)) + 2u] = floatBitsToUint(value.position[2]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = value.key;
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 0u] = floatBitsToUint(value.radiance[0]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 1u] = floatBitsToUint(value.radiance[1]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[2u] >> 2u) + index * 3u)) + 2u] = floatBitsToUint(value.radiance[2]);
+    VIXEN_SOA_EmitterSample_BUFFER.words[(((VIXEN_SOA_EmitterSample_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.pdf);
+}
+
+uint EmitterSample_key_Word(uint index)
+{
+    return (VIXEN_SOA_EmitterSample_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+uint EmitterSample_key_Load(uint index)
+{
+    return VIXEN_SOA_EmitterSample_BUFFER.words[EmitterSample_key_Word(index)];
+}
+void EmitterSample_key_Store(uint index, uint value)
+{
+    VIXEN_SOA_EmitterSample_BUFFER.words[EmitterSample_key_Word(index)] = value;
+}
+
+uint EmitterSample_pdf_Word(uint index)
+{
+    return (VIXEN_SOA_EmitterSample_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+float EmitterSample_pdf_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_EmitterSample_BUFFER.words[EmitterSample_pdf_Word(index)]);
+}
+void EmitterSample_pdf_Store(uint index, float value)
+{
+    VIXEN_SOA_EmitterSample_BUFFER.words[EmitterSample_pdf_Word(index)] = floatBitsToUint(value);
+}
+#undef VIXEN_SOA_EmitterSample_BUFFER
+#endif
 #endif // EMITTERSAMPLE_GLSL

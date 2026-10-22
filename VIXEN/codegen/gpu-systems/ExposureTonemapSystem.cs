@@ -1,6 +1,5 @@
 using System;
 using Undertow.Modding.Schema;
-using Undertow.Sim.Systems;
 using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
@@ -27,19 +26,20 @@ public static class ExposureTonemapSystem
     public static void Run(
         in Texture2D<Rgba16f> sceneRadianceHistoryOutput,
         ref Texture2D<Rgba8> outputImage,
-        in float[] meter,
-        in LightingConfig[] LightingConfigSSBO,
+        in ExposureMeterState[] meter,
+        in SceneLookSettings[] sceneLook,
+        in uint _Frame,
         int i)
     {
         Rgba16f source = sceneRadianceHistoryOutput.Current[i];
-        float exposure = math.pow(2.0f, meter[0] + LightingConfigSSBO[0].exposureCompensationEV);
+        float exposure = math.pow(2.0f, meter[0].log2Exposure + sceneLook[0].exposureCompensationEV);
 
         float red = math.max(source.x * exposure, 0.0f);
         float green = math.max(source.y * exposure, 0.0f);
         float blue = math.max(source.z * exposure, 0.0f);
 
         // Look saturation in linear space before the curve; the neutral value skips the mix so default output is bit-exact.
-        float saturation = LightingConfigSSBO[0].lookSaturation;
+        float saturation = sceneLook[0].lookSaturation;
         bool neutral = saturation == 1.0f;
         float luma = 0.2126f * red + 0.7152f * green + 0.0722f * blue;
         red = math.select(math.max(red * saturation + luma * (1.0f - saturation), 0.0f), red, neutral);
@@ -65,7 +65,7 @@ public static class ExposureTonemapSystem
         // Rgba8 UNORM store. The avalanche is the MurmurHash3 finalizer shape (link-only prior art):
         // https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
         // FrameSync's existing frame seed keeps the sequence deterministic without another upload.
-        uint pixelSeed = (uint)i ^ (LightingConfigSSBO[0].frameSeed * 0x9e3779b9u);
+        uint pixelSeed = (uint)i ^ (_Frame * 0x9e3779b9u);
         pixelSeed ^= pixelSeed >> 16;
         pixelSeed *= 0x85ebca6bu;
         pixelSeed ^= pixelSeed >> 13;
@@ -73,7 +73,7 @@ public static class ExposureTonemapSystem
         pixelSeed ^= pixelSeed >> 16;
         // Eight half-LSB spans give the low-gradient sky enough code values to avoid
         // visible plateaus while the zero-mean hash keeps the average luma unchanged.
-        float ditherStep = math.select(0.0f, 8.0f / 255.0f, LightingConfigSSBO[0].presentationMode == 1u);
+        float ditherStep = math.select(0.0f, 8.0f / 255.0f, sceneLook[0].presentationMode == 1u);
         red += ((float)(pixelSeed & 0xffu) / 255.0f - 0.5f) * ditherStep;
         green += ((float)((pixelSeed >> 8) & 0xffu) / 255.0f - 0.5f) * ditherStep;
         blue += ((float)((pixelSeed >> 16) & 0xffu) / 255.0f - 0.5f) * ditherStep;

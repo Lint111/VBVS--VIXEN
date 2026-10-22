@@ -7,6 +7,9 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/norm.hpp>
+#include <algorithm>
 #include <mutex>
 #include <stdexcept>
 
@@ -32,6 +35,12 @@ static uint32_t FindSuitableMemoryType(
 namespace Vixen::RenderGraph {
 
 using namespace Vixen::Vulkan::Resources;
+
+namespace {
+constexpr float kAccumPosEpsilon = 1e-4f;
+constexpr float kAccumDirEpsilon = 1e-5f;
+
+} // namespace
 
 // ====== AccumulationHistoryNodeType ======
 
@@ -69,6 +78,10 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[AccumulationHistoryNode] WIDTH/HEIGHT must be > 0 (got " +
                                  std::to_string(width_) + "x" + std::to_string(height_) + ")");
     }
+
+    // A compile may recreate the history images. Force the first subsequent Execute to
+    // publish frame 1 so no shader samples an uninitialized previous image.
+    frameCounterEverEvaluated_ = false;
 
     // The image pair is persistent across a same-size recompile, but MUST follow the render extent --
     // stale images left at the startup size would be out of bounds after a resize (mirrors
@@ -113,12 +126,31 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
             static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[previousIndex]));
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET,
             static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[currentIndex]));
+    ctx.Out(AccumulationHistoryNodeConfig::FRAME_COUNTER, 1u);
 
     NODE_LOG_INFO("[AccumulationHistoryNode] History image pair published (" + std::to_string(width_) + "x" +
                   std::to_string(height_) + ", R16G16B16A16_SFLOAT storage images)");
 }
 
 void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
+    if (!settings_) {
+        throw std::runtime_error("[AccumulationHistoryNode] AccumulationSettings source is not set");
+    }
+    const Vixen::Gpu::AccumulationSettings& policy = *settings_;
+    const CameraData& camera = ctx.In(AccumulationHistoryNodeConfig::CAMERA_DATA);
+    const bool first = !frameCounterEverEvaluated_;
+    const bool moved = first ||
+        glm::distance2(camera.cameraPos, lastCameraPos_) > kAccumPosEpsilon ||
+        glm::distance2(camera.cameraDir, lastCameraDir_) > kAccumDirEpsilon;
+    frameCounterEverEvaluated_ = true;
+    lastCameraPos_ = camera.cameraPos;
+    lastCameraDir_ = camera.cameraDir;
+    if (first || (moved && policy.resetOnMotion != 0u && policy.reprojectionEnabled == 0u)) {
+        accumFrameCounter_ = 1u;
+    } else {
+        accumFrameCounter_ = std::min(accumFrameCounter_ + 1u, policy.maxFrames);
+    }
+
     const uint32_t currentIndex = nextWriteImageIndex_;
     const uint32_t previousIndex = 1u - currentIndex;
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, views_[previousIndex]);
@@ -129,6 +161,7 @@ void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[previousIndex]));
     ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET,
             static_cast<Vixen::Vulkan::Resources::IRenderTarget*>(&targets_[currentIndex]));
+    ctx.Out(AccumulationHistoryNodeConfig::FRAME_COUNTER, accumFrameCounter_);
     nextWriteImageIndex_ = previousIndex;
 }
 

@@ -34,6 +34,8 @@
 
 #include "ProbeUpdateCommon.glsl"
 
+layout(push_constant) uniform ApplyPush { uint _Frame; } pc;
+
 layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
 
 // 1 = visible (unoccluded, or invalid slot), 0 = occluded — the wave's answer.
@@ -153,7 +155,7 @@ void main() {
     if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
 
     uint probeCount = ProbeUpdateProbeCount();
-    uint probeIndex = ProbeUpdateProbeIndex();
+    uint probeIndex = ProbeUpdateProbeIndex(pc._Frame);
     if (probeIndex >= probeCount) return;  // ceil-division over-dispatch discard
 
     // M4 leak-test self-test gather: MUST run before any atlas write this

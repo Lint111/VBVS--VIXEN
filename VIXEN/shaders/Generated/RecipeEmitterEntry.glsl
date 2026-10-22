@@ -13,4 +13,156 @@ struct RecipeEmitterEntry {
     vec3 gridAabbMin;
     float areaInst;
 };
+
+#ifdef VIXEN_SOA_RecipeEmitterEntry_BUFFER
+RecipeEmitterEntry RecipeEmitterEntry_Load(uint index)
+{
+    RecipeEmitterEntry value;
+    value.instIdx = VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u];
+    value.phi = uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u]);
+    value.cdf = uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u]);
+    value.flags = VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u];
+    value.cellOffset = VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u];
+    value.cellCount = VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u];
+    value.gridDim = VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u];
+    value.cellSize = uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u]);
+    value.gridAabbMin = uintBitsToFloat(uvec3(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 0u], VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 1u], VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 2u]));
+    value.areaInst = uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[9u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+
+void RecipeEmitterEntry_Store(uint index, RecipeEmitterEntry value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u] = value.instIdx;
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.phi);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.cdf);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = value.flags;
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u] = value.cellOffset;
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u] = value.cellCount;
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u] = value.gridDim;
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.cellSize);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 0u] = floatBitsToUint(value.gridAabbMin[0]);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 1u] = floatBitsToUint(value.gridAabbMin[1]);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[8u] >> 2u) + index * 3u)) + 2u] = floatBitsToUint(value.gridAabbMin[2]);
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[(((VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[9u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.areaInst);
+}
+
+uint RecipeEmitterEntry_instIdx_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u;
+}
+uint RecipeEmitterEntry_instIdx_Load(uint index)
+{
+    return VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_instIdx_Word(index)];
+}
+void RecipeEmitterEntry_instIdx_Store(uint index, uint value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_instIdx_Word(index)] = value;
+}
+
+uint RecipeEmitterEntry_phi_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+float RecipeEmitterEntry_phi_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_phi_Word(index)]);
+}
+void RecipeEmitterEntry_phi_Store(uint index, float value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_phi_Word(index)] = floatBitsToUint(value);
+}
+
+uint RecipeEmitterEntry_cdf_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u;
+}
+float RecipeEmitterEntry_cdf_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cdf_Word(index)]);
+}
+void RecipeEmitterEntry_cdf_Store(uint index, float value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cdf_Word(index)] = floatBitsToUint(value);
+}
+
+uint RecipeEmitterEntry_flags_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+uint RecipeEmitterEntry_flags_Load(uint index)
+{
+    return VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_flags_Word(index)];
+}
+void RecipeEmitterEntry_flags_Store(uint index, uint value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_flags_Word(index)] = value;
+}
+
+uint RecipeEmitterEntry_cellOffset_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u;
+}
+uint RecipeEmitterEntry_cellOffset_Load(uint index)
+{
+    return VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellOffset_Word(index)];
+}
+void RecipeEmitterEntry_cellOffset_Store(uint index, uint value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellOffset_Word(index)] = value;
+}
+
+uint RecipeEmitterEntry_cellCount_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u;
+}
+uint RecipeEmitterEntry_cellCount_Load(uint index)
+{
+    return VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellCount_Word(index)];
+}
+void RecipeEmitterEntry_cellCount_Store(uint index, uint value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellCount_Word(index)] = value;
+}
+
+uint RecipeEmitterEntry_gridDim_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u;
+}
+uint RecipeEmitterEntry_gridDim_Load(uint index)
+{
+    return VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_gridDim_Word(index)];
+}
+void RecipeEmitterEntry_gridDim_Store(uint index, uint value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_gridDim_Word(index)] = value;
+}
+
+uint RecipeEmitterEntry_cellSize_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u;
+}
+float RecipeEmitterEntry_cellSize_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellSize_Word(index)]);
+}
+void RecipeEmitterEntry_cellSize_Store(uint index, float value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_cellSize_Word(index)] = floatBitsToUint(value);
+}
+
+uint RecipeEmitterEntry_areaInst_Word(uint index)
+{
+    return (VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[9u] >> 2u) + index * 1u;
+}
+float RecipeEmitterEntry_areaInst_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_areaInst_Word(index)]);
+}
+void RecipeEmitterEntry_areaInst_Store(uint index, float value)
+{
+    VIXEN_SOA_RecipeEmitterEntry_BUFFER.words[RecipeEmitterEntry_areaInst_Word(index)] = floatBitsToUint(value);
+}
+#undef VIXEN_SOA_RecipeEmitterEntry_BUFFER
+#endif
 #endif // RECIPEEMITTERENTRY_GLSL

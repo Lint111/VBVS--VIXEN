@@ -60,7 +60,6 @@
 #include "Nodes/PhotonCellTableNode.h"         // C0/C1: node-owned photon table/readback
 #include "Nodes/FrameSyncNode.h"              // B2 (batch-23): GetCurrentFrameIndex() for the params ring's PreTick write
 #include "graph/UpscalerModules.h"
-#include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
 #include "LightTree.h"                        // Sampled Lighting Inc3 M4: Vixen::SVO::LightTreeNode for the DIAG readback recomputation
@@ -471,6 +470,10 @@ bool VulkanGraphApplication::Render() {
         auto* historyWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
             renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
         const uint64_t historySerial = historyWriter ? historyWriter->GetSubmissionSerial() : 0;
+        // The host settings write is the producer of the six settings records; it runs here,
+        // after every host's Update(), so editor and capture hosts that override PreTick() fill too.
+        RefreshResolvedLookSettings();
+        FillSettingsTransferBuffers();
         VkResult result = renderGraph->RenderFrame();
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -830,6 +833,35 @@ void VulkanGraphApplication::PreTick() {
     } catch (...) {
         lastError_ = "PreTick failed: unknown (non-std) exception";
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    }
+}
+
+void VulkanGraphApplication::FillSettingsTransferBuffers() {
+    if (!renderGraph || !settingsTransferPlan_) return;
+    auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstanceByName("frame_sync"));
+    if (!frameSync) return;
+    const uint32_t predictedSlot = frameSync->GetCurrentFrameIndex();
+    size_t bytesWritten = 0;
+    std::string recordsWritten;
+    lastSettingsTransferLedger_ = settingsTransferPlan_->Fill(
+        predictedSlot, settingsTransferSources_,
+        [&](const GpuTransferPlanRow& row, uint32_t slot, std::span<const std::byte> bytes) {
+            bytesWritten += bytes.size();
+            recordsWritten += (recordsWritten.empty() ? "" : ",") + row.identity.kind;
+            auto* node = static_cast<StorageBufferNode*>(renderGraph->GetInstance(settingsResources_.Source(row.identity)));
+            if (!node || bytes.size() > node->GetSizeBytes()) {
+                throw std::runtime_error("settings transfer buffer is unavailable or undersized for " +
+                                         row.identity.Text());
+            }
+            void* mapped = node->MapCurrentForWrite(slot);
+            if (!mapped) throw std::runtime_error("settings transfer buffer is not mapped for " + row.identity.Text());
+            std::memcpy(mapped, bytes.data(), bytes.size());
+        });
+    if (std::getenv("VIXEN_SETTINGS_TRANSFER_LEDGER")) {
+        std::cout << "[SettingsTransfer] frame=" << frameCounter_
+                  << " bytes=" << lastSettingsTransferLedger_.steady_state_bytes_uploaded
+                  << " buffers=" << lastSettingsTransferLedger_.buffersUploaded
+                  << " written=" << bytesWritten << " records=" << recordsWritten << '\n';
     }
 }
 
@@ -1859,8 +1891,14 @@ void VulkanGraphApplication::PostTick() {
     if (auto* exposureReduce = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_reduce"))) {
         passes.push_back({"exposure_reduce", exposureReduce->GetGPUPerformanceLogger()});
     }
+    // The hand reference tone map (capture-test hook) or the composition's generated systems.
     if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
         passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
+    for (const auto& generated : generatedSystems_.Stages()) {
+        if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(generated.stage))) {
+            passes.push_back({generated.entry->className, stage->GetGPUPerformanceLogger()});
+        }
     }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});
@@ -2080,10 +2118,9 @@ void VulkanGraphApplication::Update() {
                 auto* bufB = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("reservoir_buffer_b"));
                 auto* hitRecordBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
                 auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
-                auto* reservoirConfigInst = static_cast<ReservoirConfigNode*>(renderGraph->GetInstanceByName("reservoir_config"));
                 auto* renderTargetInst = renderGraph->GetInstanceByName("compute_render_target");
                 if (bufA && bufB && hitRecordBuf && deviceInst && deviceInst->GetVulkanDevice() &&
-                    reservoirConfigInst && renderTargetInst && g_restirGateWorldCut) {
+                    renderTargetInst && g_restirGateWorldCut) {
                     auto* device = deviceInst->GetVulkanDevice();
                     // Ensure every in-flight dispatch that could still be writing these buffers
                     // has fully retired before mapping -- mirrors WorldPosHistoryNode's own
@@ -2091,7 +2128,8 @@ void VulkanGraphApplication::Update() {
                     vkDeviceWaitIdle(device->device);
 
                     // parityEven mirrors DirectLighting.comp's own selector exactly: frameParity&1==0 -> A is current.
-                    const bool parityEven = (reservoirConfigInst->GetLastFrameParity() & 1u) == 0u;
+                    const uint64_t renderedFrame = frameCounter_ == 0u ? 0u : frameCounter_ - 1u;
+                    const bool parityEven = (renderedFrame & 1u) == 0u;
                     StorageBufferNode* currentBuf = parityEven ? bufA : bufB;
 
                     // RenderTargetNodeConfig::WIDTH_OUT/HEIGHT_OUT are slots 2/3 (see that config's

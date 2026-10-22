@@ -7,4 +7,77 @@ struct ReservoirRecord {
     uint sampleCount;
     float targetPdf;
 };
+
+#ifdef VIXEN_SOA_ReservoirRecord_BUFFER
+ReservoirRecord ReservoirRecord_Load(uint index)
+{
+    ReservoirRecord value;
+    value.y = VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u];
+    value.weightSum = uintBitsToFloat(VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u]);
+    value.sampleCount = VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u];
+    value.targetPdf = uintBitsToFloat(VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    return value;
+}
+
+void ReservoirRecord_Store(uint index, ReservoirRecord value)
+{
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u] = value.y;
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.weightSum);
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u] = value.sampleCount;
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[(((VIXEN_SOA_ReservoirRecord_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.targetPdf);
+}
+
+uint ReservoirRecord_y_Word(uint index)
+{
+    return (VIXEN_SOA_ReservoirRecord_BUFFER.words[0u] >> 2u) + index * 1u;
+}
+uint ReservoirRecord_y_Load(uint index)
+{
+    return VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_y_Word(index)];
+}
+void ReservoirRecord_y_Store(uint index, uint value)
+{
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_y_Word(index)] = value;
+}
+
+uint ReservoirRecord_weightSum_Word(uint index)
+{
+    return (VIXEN_SOA_ReservoirRecord_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+float ReservoirRecord_weightSum_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_weightSum_Word(index)]);
+}
+void ReservoirRecord_weightSum_Store(uint index, float value)
+{
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_weightSum_Word(index)] = floatBitsToUint(value);
+}
+
+uint ReservoirRecord_sampleCount_Word(uint index)
+{
+    return (VIXEN_SOA_ReservoirRecord_BUFFER.words[2u] >> 2u) + index * 1u;
+}
+uint ReservoirRecord_sampleCount_Load(uint index)
+{
+    return VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_sampleCount_Word(index)];
+}
+void ReservoirRecord_sampleCount_Store(uint index, uint value)
+{
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_sampleCount_Word(index)] = value;
+}
+
+uint ReservoirRecord_targetPdf_Word(uint index)
+{
+    return (VIXEN_SOA_ReservoirRecord_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+float ReservoirRecord_targetPdf_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_targetPdf_Word(index)]);
+}
+void ReservoirRecord_targetPdf_Store(uint index, float value)
+{
+    VIXEN_SOA_ReservoirRecord_BUFFER.words[ReservoirRecord_targetPdf_Word(index)] = floatBitsToUint(value);
+}
+#undef VIXEN_SOA_ReservoirRecord_BUFFER
+#endif
 #endif // RESERVOIRRECORD_GLSL

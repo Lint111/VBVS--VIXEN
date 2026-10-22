@@ -8,4 +8,98 @@ struct BodyInstanceMotion {
     uint _pad1;
     uint _pad2;
 };
+
+#ifdef VIXEN_SOA_BodyInstanceMotion_BUFFER
+BodyInstanceMotion BodyInstanceMotion_Load(uint index)
+{
+    BodyInstanceMotion value;
+    value.previousLocalToWorld = mat4(
+        uintBitsToFloat(uvec4(VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 0u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 1u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 2u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 3u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 4u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 5u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 6u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 7u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 8u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 9u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 10u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 11u])),
+        uintBitsToFloat(uvec4(VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 12u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 13u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 14u], VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 15u])));
+    value.valid = VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u];
+    value._pad0 = VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u];
+    value._pad1 = VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u];
+    value._pad2 = VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u];
+    return value;
+}
+
+void BodyInstanceMotion_Store(uint index, BodyInstanceMotion value)
+{
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 0u] = floatBitsToUint(value.previousLocalToWorld[0][0]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 1u] = floatBitsToUint(value.previousLocalToWorld[0][1]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 2u] = floatBitsToUint(value.previousLocalToWorld[0][2]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 3u] = floatBitsToUint(value.previousLocalToWorld[0][3]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 4u] = floatBitsToUint(value.previousLocalToWorld[1][0]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 5u] = floatBitsToUint(value.previousLocalToWorld[1][1]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 6u] = floatBitsToUint(value.previousLocalToWorld[1][2]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 7u] = floatBitsToUint(value.previousLocalToWorld[1][3]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 8u] = floatBitsToUint(value.previousLocalToWorld[2][0]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 9u] = floatBitsToUint(value.previousLocalToWorld[2][1]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 10u] = floatBitsToUint(value.previousLocalToWorld[2][2]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 11u] = floatBitsToUint(value.previousLocalToWorld[2][3]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 12u] = floatBitsToUint(value.previousLocalToWorld[3][0]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 13u] = floatBitsToUint(value.previousLocalToWorld[3][1]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 14u] = floatBitsToUint(value.previousLocalToWorld[3][2]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[0u] >> 2u) + index * 16u)) + 15u] = floatBitsToUint(value.previousLocalToWorld[3][3]);
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = value.valid;
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u] = value._pad0;
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = value._pad1;
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[(((VIXEN_SOA_BodyInstanceMotion_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u] = value._pad2;
+}
+
+uint BodyInstanceMotion_valid_Word(uint index)
+{
+    return (VIXEN_SOA_BodyInstanceMotion_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+uint BodyInstanceMotion_valid_Load(uint index)
+{
+    return VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion_valid_Word(index)];
+}
+void BodyInstanceMotion_valid_Store(uint index, uint value)
+{
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion_valid_Word(index)] = value;
+}
+
+uint BodyInstanceMotion__pad0_Word(uint index)
+{
+    return (VIXEN_SOA_BodyInstanceMotion_BUFFER.words[2u] >> 2u) + index * 1u;
+}
+uint BodyInstanceMotion__pad0_Load(uint index)
+{
+    return VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad0_Word(index)];
+}
+void BodyInstanceMotion__pad0_Store(uint index, uint value)
+{
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad0_Word(index)] = value;
+}
+
+uint BodyInstanceMotion__pad1_Word(uint index)
+{
+    return (VIXEN_SOA_BodyInstanceMotion_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+uint BodyInstanceMotion__pad1_Load(uint index)
+{
+    return VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad1_Word(index)];
+}
+void BodyInstanceMotion__pad1_Store(uint index, uint value)
+{
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad1_Word(index)] = value;
+}
+
+uint BodyInstanceMotion__pad2_Word(uint index)
+{
+    return (VIXEN_SOA_BodyInstanceMotion_BUFFER.words[4u] >> 2u) + index * 1u;
+}
+uint BodyInstanceMotion__pad2_Load(uint index)
+{
+    return VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad2_Word(index)];
+}
+void BodyInstanceMotion__pad2_Store(uint index, uint value)
+{
+    VIXEN_SOA_BodyInstanceMotion_BUFFER.words[BodyInstanceMotion__pad2_Word(index)] = value;
+}
+#undef VIXEN_SOA_BodyInstanceMotion_BUFFER
+#endif
 #endif // BODYINSTANCEMOTION_GLSL

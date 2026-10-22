@@ -1,16 +1,14 @@
 using Yeroket.Util.KernelFramework;
 
-// Canonical Light / LightingConfig — one source for C++ (Vixen::Gpu) + GLSL.
-// Sampled Lighting Inc0 M1: lights become generated, drift-guarded data types.
+// Canonical Light — one source for C++ (Vixen::Gpu) + GLSL, consumed by the
+// LightingSettings record (RenderSettings.cs).
 //
 // kind: 0 = directional (direction_or_position is a normalized direction,
 // range unused), 1 = point (direction_or_position is a world-space position,
 // range is the falloff radius). Both kinds feed the shared shading path.
 //
-// std430 offsets (see LightingConfig.g.h for the emitted static_asserts):
 // Light keeps its original 32-byte stride so Lambert+GGX addresses every
-// existing light exactly as before. LightingConfig stores the per-light cel
-// spill-purpose scales after the lights array at byte 144, then cel settings.
+// existing light exactly as before.
 [GpuStruct]
 public struct Light
 {
@@ -25,69 +23,4 @@ public struct Light
 public static class LightingConfigLimits
 {
     public const int kMaxLightsInc0 = 4;
-}
-
-[GpuStruct]
-public struct LightingConfig
-{
-    public uint lightCount;
-    public float ambientIntensity;
-
-    [GpuArray(LightingConfigLimits.kMaxLightsInc0)] public Light lights;
-
-    // 1 is a regular source, lower values spread softly, and higher values
-    // produce stronger, more regional spill. Kept parallel to lights[] so its
-    // addition does not change the legacy Light array stride.
-    [GpuArray(LightingConfigLimits.kMaxLightsInc0)] public float celSpillPurposeScales;
-
-    // Runtime node parameters for the selectable Lambert+GGX and cel modes.
-    public uint shadingMode;
-    public uint celBandCount;
-    public float celShadowThreshold;
-    public float celLitThreshold;
-    public float celRampSoftness;
-    public float celLitHueShiftDegrees;
-    public float celShadowHueShiftDegrees;
-    public float celBandFalloffStart;
-    public float celBandFalloffEnd;
-    public float celLightSpillScale;
-    // Per-scene tonemap bias in EV. LightingConfigNode clamps this to [-16, 16].
-    public float exposureCompensationEV;
-    // Cel profile: value of the darkest band (band 0) as a fraction of the lit
-    // band. 0 keeps the classic black shadow step; a planet profile raises it
-    // so grazing light still reads as a dim band instead of black.
-    public float dimBandFloor;
-
-    // Environment (sky) declaration. skyMode: 0 = vertical gradient
-    // (skyColor * (1 - uv.y * skyGradientSlope)), 1 = solid skyColor.
-    // The procedural starfield is a separate additive layer fed by SkySphereNode.
-    public Float3 skyColor;
-    public uint skyMode;
-    public float skyGradientSlope;
-
-    // Dynamic exposure (eye adaptation), read by ExposureReduce.comp. The meter
-    // averages log2 luminance between the low/high histogram percentiles,
-    // clamps it to [exposureMinEV100, exposureMaxEV100] (EV100 of scene units
-    // with the K = 12.5 reflected-meter constant), targets exposureKeyValue
-    // (middle grey) and adapts toward that target with separate rates (1/s)
-    // for brightening and darkening scenes. exposureDeltaSeconds is this
-    // frame's adaptation step; a zero step or rate snaps to the target.
-    public float exposureKeyValue;
-    public float exposureMinEV100;
-    public float exposureMaxEV100;
-    public float exposureLowPercent;
-    public float exposureHighPercent;
-    public float exposureSpeedUp;
-    public float exposureSpeedDown;
-    public float exposureDeltaSeconds;
-    // Look saturation, applied by the tone map in linear space before the tone curve:
-    // 0 = greyscale, 1 = unchanged (the neutral value), 2 = doubled chroma.
-    // LightingConfigNode clamps this to [0, 2].
-    public float lookSaturation;
-    // 0 = canonical capture/parity (dither off), 1 = presentation (dither on).
-    // This is the resolved value of SceneLook.presentationMode and reuses the
-    // existing LightingConfig upload consumed by the generated tone-map system.
-    public uint presentationMode;
-    // Scheduler-derived frame seed, carried in the existing per-frame lighting ring.
-    public uint frameSeed;
 }

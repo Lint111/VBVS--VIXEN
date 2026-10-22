@@ -11,4 +11,137 @@ struct SparseEmitterEntry {
     uint _pad1;
     uint _pad2;
 };
+
+#ifdef VIXEN_SOA_SparseEmitterEntry_BUFFER
+SparseEmitterEntry SparseEmitterEntry_Load(uint index)
+{
+    SparseEmitterEntry value;
+    value.instIdx = VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u];
+    value.octreeIdx = VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u];
+    value.phi = uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u]);
+    value.cdf = uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u]);
+    value.areaScale = uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u]);
+    value._pad0 = VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u];
+    value._pad1 = VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u];
+    value._pad2 = VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u];
+    return value;
+}
+
+void SparseEmitterEntry_Store(uint index, SparseEmitterEntry value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u)) + 0u] = value.instIdx;
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u)) + 0u] = value.octreeIdx;
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.phi);
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.cdf);
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u)) + 0u] = floatBitsToUint(value.areaScale);
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u)) + 0u] = value._pad0;
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u)) + 0u] = value._pad1;
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[(((VIXEN_SOA_SparseEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u)) + 0u] = value._pad2;
+}
+
+uint SparseEmitterEntry_instIdx_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[0u] >> 2u) + index * 1u;
+}
+uint SparseEmitterEntry_instIdx_Load(uint index)
+{
+    return VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_instIdx_Word(index)];
+}
+void SparseEmitterEntry_instIdx_Store(uint index, uint value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_instIdx_Word(index)] = value;
+}
+
+uint SparseEmitterEntry_octreeIdx_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[1u] >> 2u) + index * 1u;
+}
+uint SparseEmitterEntry_octreeIdx_Load(uint index)
+{
+    return VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_octreeIdx_Word(index)];
+}
+void SparseEmitterEntry_octreeIdx_Store(uint index, uint value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_octreeIdx_Word(index)] = value;
+}
+
+uint SparseEmitterEntry_phi_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[2u] >> 2u) + index * 1u;
+}
+float SparseEmitterEntry_phi_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_phi_Word(index)]);
+}
+void SparseEmitterEntry_phi_Store(uint index, float value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_phi_Word(index)] = floatBitsToUint(value);
+}
+
+uint SparseEmitterEntry_cdf_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[3u] >> 2u) + index * 1u;
+}
+float SparseEmitterEntry_cdf_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_cdf_Word(index)]);
+}
+void SparseEmitterEntry_cdf_Store(uint index, float value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_cdf_Word(index)] = floatBitsToUint(value);
+}
+
+uint SparseEmitterEntry_areaScale_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[4u] >> 2u) + index * 1u;
+}
+float SparseEmitterEntry_areaScale_Load(uint index)
+{
+    return uintBitsToFloat(VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_areaScale_Word(index)]);
+}
+void SparseEmitterEntry_areaScale_Store(uint index, float value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry_areaScale_Word(index)] = floatBitsToUint(value);
+}
+
+uint SparseEmitterEntry__pad0_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[5u] >> 2u) + index * 1u;
+}
+uint SparseEmitterEntry__pad0_Load(uint index)
+{
+    return VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad0_Word(index)];
+}
+void SparseEmitterEntry__pad0_Store(uint index, uint value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad0_Word(index)] = value;
+}
+
+uint SparseEmitterEntry__pad1_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[6u] >> 2u) + index * 1u;
+}
+uint SparseEmitterEntry__pad1_Load(uint index)
+{
+    return VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad1_Word(index)];
+}
+void SparseEmitterEntry__pad1_Store(uint index, uint value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad1_Word(index)] = value;
+}
+
+uint SparseEmitterEntry__pad2_Word(uint index)
+{
+    return (VIXEN_SOA_SparseEmitterEntry_BUFFER.words[7u] >> 2u) + index * 1u;
+}
+uint SparseEmitterEntry__pad2_Load(uint index)
+{
+    return VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad2_Word(index)];
+}
+void SparseEmitterEntry__pad2_Store(uint index, uint value)
+{
+    VIXEN_SOA_SparseEmitterEntry_BUFFER.words[SparseEmitterEntry__pad2_Word(index)] = value;
+}
+#undef VIXEN_SOA_SparseEmitterEntry_BUFFER
+#endif
 #endif // SPARSEEMITTERENTRY_GLSL
