@@ -34,6 +34,7 @@ target_link_libraries(GaiaArchetypes
     PUBLIC
         gaia       # Gaia ECS library
         glm        # Math library
+        Core       # RcuSnapshot.h (header-only no-stall primitives)
 )
 
 # C++23 standard (same as rest of project)
