@@ -914,6 +914,14 @@ public:
     /// then NOT submit itself); false if the channel is inactive (the node submits directly, guarded).
     bool PublishSubmit(NodeInstance* producer, SubmitRecord&& record);
 
+    /// Keep the host's OS message pump running while a graph recompile drains the GPU.
+    /// The callback runs on the registering thread approximately every 16 ms during the wait.
+    /// Pass an empty function to clear it.
+    void SetIdleWaitPump(std::function<void()> pump) {
+        idleWaitPump_ = std::move(pump);
+        idleWaitPumpThread_ = std::this_thread::get_id();
+    }
+
 private:
     std::unordered_map<VkRenderPass, VkImageLayout> renderPassFinalLayouts_;
     /// Queue owner: issue the submits published by the nodes in `wave`, in canonical ordinal order,
@@ -1044,16 +1052,6 @@ private:
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 public:
     // Fail-scenario fault injection (test builds only): dormant unless a scenario arms it.
-    /// Keeps the host's OS message pump running while the graph blocks on the GPU (recompile drains
-    /// the device, which takes seconds when other processes share it). `pump` runs on the calling
-    /// thread, only if that is the thread that registered it, every ~16 ms during the wait. Without
-    /// it the window is "Not Responding" for the whole wait and the compositor shows the old image at
-    /// the old size with black beyond it. Pass an empty function to clear it.
-    void SetIdleWaitPump(std::function<void()> pump) {
-        idleWaitPump_ = std::move(pump);
-        idleWaitPumpThread_ = std::this_thread::get_id();
-    }
-
     FailScenario::FaultInjector* GetFaultInjector() {
         if (!faultInjector_) faultInjector_ = std::make_unique<FailScenario::FaultInjector>();
         return faultInjector_.get();
