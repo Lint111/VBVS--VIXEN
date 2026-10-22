@@ -79,6 +79,15 @@ endif()
 # ----------------------------------------------------------------------------
 add_library(VixenApp STATIC ${VIXEN_APP_SOURCES} ${HPP_FILES})
 target_compile_definitions(VixenApp PRIVATE VIXEN_WITH_FSR3=${_vixen_fsr3_configured})
+# BuildRenderGraph.cpp is ~11k lines of graph construction that runs once at startup. At -O3,
+# GCC spends 85% of its ~145 s compile optimising it, and every edit to it or to a header it
+# includes waits on that. Source options follow the config flags, so this -O1 wins. GCC refuses
+# the target's -O3 precompiled header at -O1 (-Winvalid-pch), so the file skips it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+        PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CONFIG:Debug>>:-O1>"
+                   SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 # ----------------------------------------------------------------------------
 # M3: generate the node-usage manifest by scanning the graph-builder TUs and registered module
