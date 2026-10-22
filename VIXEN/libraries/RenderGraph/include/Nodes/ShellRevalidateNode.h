@@ -4,6 +4,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/ShellRevalidateNodeConfig.h"
+#include "QueueSubmitRequest.h"
 
 #include <vulkan/vulkan.h>
 #include <cstdint>
