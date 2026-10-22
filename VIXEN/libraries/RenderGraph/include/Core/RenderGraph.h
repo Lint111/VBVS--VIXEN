@@ -917,6 +917,11 @@ public:
     VkResult SubmitOneShot(NodeInstance* producer, VkCommandPool pool, VkCommandBuffer cmd,
                            std::function<void()> release = {});
 
+    /// Run `release` once every submission `producer` has handed to the owner so far is reached
+    /// (an empty marker batch rides the stream behind them). For a failure path that must free a
+    /// pool its earlier one-shots still reference.
+    VkResult ReleaseAfterIssued(NodeInstance* producer, std::function<void()> release);
+
     /// Opt-in synchronous retirement (PresentNode's waitForIdle, demo graphs only): a bounded wait
     /// for the newest batch the owner issued on `device`'s queue. Polls first; never takes VK2 and
     /// never submits. On the lowered executor nothing of this frame is issued yet, so it returns.

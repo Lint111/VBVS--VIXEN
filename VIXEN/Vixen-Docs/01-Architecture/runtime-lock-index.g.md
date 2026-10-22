@@ -3,7 +3,7 @@
 
 One row per non-test file under `libraries/` and `application/` that carries std mutex/guard syntax (the census lexer of `2026-09-08-runtime-lock-inventory-and-classification.md`). Families come from `scripts/no-new-mutex.allowlist`; sites are `enclosing symbol -> lock alias` and carry no line numbers, so an unrelated edit does not move them. An alias is a declared lock (`mutex m_mutex`, `mutex& m`), a guard over its lock expression (`lock_guard(m_mutex)`), or a guard parameter/variable (`unique_lock lk`).
 
-65 files, 47 owning declarations.
+64 files, 47 owning declarations.
 
 | Source file | Owned | Families | Acquisition sites (symbol -> lock alias) |
 |---|---|---|---|
@@ -31,7 +31,6 @@ One row per non-test file under `libraries/` and `application/` that carries std
 | `libraries/RenderGraph/include/Nodes/LightTreeBufferNode.h` | 1 | RG5 | `LightTreeBufferNode` -> `mutex cutMutex_` |
 | `libraries/RenderGraph/include/Nodes/WindowNode.h` | 2 | RG4 | `WindowNode` -> `Mutex<Vixen::LockCensus::Family::RG4, std::recursive_mutex> eventMutex` |
 | `libraries/RenderGraph/src/Core/RenderGraph.cpp` | 0 | VK2-borrowed | `RenderGraph::IssueRecord` -> `lock_guard(queueLock)` |
-| `libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp` | 0 | VK2-borrowed | `BodyOctreeSceneNode::EnsureRtQueryTlasBuilt` -> `lock_guard(device->SubmitMutex(device->queue))` |
 | `libraries/RenderGraph/src/Nodes/InputNode.cpp` | 0 | RG3 | `InputNode::ClearInputOnFocusLoss` -> `lock_guard(eventMutex_)`<br>`InputNode::ProcessPendingInput` -> `lock_guard(eventMutex_)`<br>`InputNode::QueueEvent` -> `lock_guard(eventMutex_)` |
 | `libraries/RenderGraph/src/Nodes/LightTreeBufferNode.cpp` | 0 | RG5 | `LightTreeBufferNode::SetLightTreeCut` -> `lock_guard(cutMutex_)`<br>`LightTreeBufferNode::TypedExecuteImpl` -> `lock_guard(cutMutex_)` |
 | `libraries/RenderGraph/src/Nodes/ShellRevalidateNode.cpp` | 0 | VK2-borrowed | `ShellRevalidateNode::TypedExecuteImpl` -> `lock_guard(vulkanDevice_->SubmitMutex(vulkanDevice_->queue))` |

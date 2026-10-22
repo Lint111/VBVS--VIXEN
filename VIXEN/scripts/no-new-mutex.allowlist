@@ -29,7 +29,6 @@ VIXEN/libraries/RenderGraph/include/Nodes/InputNode.h	1	RG3
 VIXEN/libraries/RenderGraph/include/Nodes/LightTreeBufferNode.h	1	RG5
 VIXEN/libraries/RenderGraph/include/Nodes/WindowNode.h	2	RG4
 VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp	0	VK2-borrowed
-VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/InputNode.cpp	0	RG3
 VIXEN/libraries/RenderGraph/src/Nodes/LightTreeBufferNode.cpp	0	RG5
 VIXEN/libraries/RenderGraph/src/Nodes/ShellRevalidateNode.cpp	0	VK2-borrowed

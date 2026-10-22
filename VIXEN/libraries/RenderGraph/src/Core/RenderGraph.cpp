@@ -1297,6 +1297,12 @@ VkResult RenderGraph::SubmitOneShot(NodeInstance* producer, VkCommandPool pool, 
     return SubmitNodeWork(producer, std::move(record));
 }
 
+VkResult RenderGraph::ReleaseAfterIssued(NodeInstance* producer, std::function<void()> release) {
+    SubmitRecord marker;
+    marker.onRetired = std::move(release);
+    return SubmitNodeWork(producer, std::move(marker));
+}
+
 VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
     VulkanDevice* const device = rec.device;
     if (!device) return VK_ERROR_INITIALIZATION_FAILED;
