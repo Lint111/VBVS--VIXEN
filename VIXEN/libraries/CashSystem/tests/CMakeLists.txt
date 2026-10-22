@@ -157,8 +157,6 @@ vixen_gtest_discover_tests(CashSystem test_pipeline_cache_header)
 # Type registry and factory pattern tests
 # TODO: Update these tests to use new registration-by-type API
 # add_executable(test_cashsystem_registry
-#     test_cashsystem_registry.cpp
-#     test_type_registry.cpp
 #     test_factory_pattern.cpp
 # )
 # target_compile_features(test_cashsystem_registry PRIVATE cxx_std_23)

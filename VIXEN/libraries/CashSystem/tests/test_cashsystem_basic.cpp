@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <CashSystem.h>
-#include <TypeRegistry.h>
 #include <MainCacher.h>
 #include <PipelineCacher.h>
 #include <ShaderCompilationCacher.h>

@@ -12,7 +12,6 @@
 #include <optional>
 #include <limits>
 #include <unordered_map>
-#include <shared_mutex>  // For std::shared_mutex concurrency control
 
 using namespace Vixen::GaiaVoxel;
 using namespace Vixen::VoxelData;
@@ -187,19 +186,8 @@ public:
      */
     void removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth);
 
-    /**
-     * Lock octree for read-only access during frame rendering.
-     * Prevents rebuild/update operations that would invalidate EntityBrickView spans.
-     *
-     * USAGE:
-     *   octree.lockForRendering();  // At frame start
-     *   // ... ray casting ...
-     *   octree.unlockAfterRendering();  // At frame end
-     *
-     * NOTE: rebuild() and updateBlock() will block if rendering lock is held.
-     */
-    void lockForRendering();
-    void unlockAfterRendering();
+    // rebuild()/updateBlock()/removeBlock() are not synchronised: the caller must have
+    // exclusive access to the octree (no concurrent query or mutation) while they run.
 
     // ========================================================================
     // DXT Compression API (Week 3)
@@ -325,10 +313,6 @@ private:
 
     // Entity-based storage (NEW architecture)
     GaiaVoxelWorld* m_voxelWorld = nullptr;  // Non-owning pointer to voxel world
-
-    // Concurrency control - prevents rebuild during frame rendering
-    mutable std::shared_mutex m_renderLock;
-    // Write lock held during rendering, read lock held during rebuild/update
 
     // DEPRECATED: Will be removed once migration to entity-based storage is complete
     AttributeRegistry* m_registry = nullptr; // Non-owning pointer

@@ -21,10 +21,8 @@ add_library(ResourceManagement STATIC
     include/Memory/DirectAllocator.h
     include/Memory/VMAAllocator.h
     include/Memory/ResourceBudgetManager.h
-    include/Memory/HostBudgetManager.h
     include/Memory/DeviceBudgetManager.h
     include/Memory/MemoryPressure.h
-    include/Memory/BudgetBridge.h
     include/Memory/StagingBufferPool.h
     include/Memory/BatchedUploader.h
 
@@ -36,10 +34,8 @@ add_library(ResourceManagement STATIC
     src/Memory/DirectAllocator.cpp
     src/Memory/VMAAllocator.cpp
     src/Memory/ResourceBudgetManager.cpp
-    src/Memory/HostBudgetManager.cpp
     src/Memory/DeviceBudgetManager.cpp
     src/Memory/MemoryPressure.cpp
-    src/Memory/BudgetBridge.cpp
     src/Memory/StagingBufferPool.cpp
     src/Memory/BatchedUploader.cpp
 
@@ -114,9 +110,7 @@ source_group("Memory\\Headers" FILES
     include/Memory/DirectAllocator.h
     include/Memory/VMAAllocator.h
     include/Memory/ResourceBudgetManager.h
-    include/Memory/HostBudgetManager.h
     include/Memory/DeviceBudgetManager.h
-    include/Memory/BudgetBridge.h
     include/Memory/StagingBufferPool.h
     include/Memory/BatchedUploader.h
 )
@@ -125,9 +119,7 @@ source_group("Memory\\Sources" FILES
     src/Memory/DirectAllocator.cpp
     src/Memory/VMAAllocator.cpp
     src/Memory/ResourceBudgetManager.cpp
-    src/Memory/HostBudgetManager.cpp
     src/Memory/DeviceBudgetManager.cpp
-    src/Memory/BudgetBridge.cpp
     src/Memory/StagingBufferPool.cpp
     src/Memory/BatchedUploader.cpp
 )
