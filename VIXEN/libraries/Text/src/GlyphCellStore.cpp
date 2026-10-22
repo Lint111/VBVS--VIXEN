@@ -1,3 +1,7 @@
+// std::getenv (VIXEN_GLYPH_CACHE) is C4996 under MSVC /WX; Core opts out the same way (Headers.h).
+#if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
+#define _CRT_SECURE_NO_WARNINGS
+#endif
 #include "Text/GlyphCellStore.h"
 
 #include "RuntimeCachePaths.h"

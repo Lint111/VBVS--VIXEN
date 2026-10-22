@@ -1,3 +1,7 @@
+// std::getenv is C4996 under MSVC /WX.
+#if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
+#define _CRT_SECURE_NO_WARNINGS
+#endif
 #include "Text/GlyphAtlas.h"
 #include "Text/GlyphCellStore.h"
 #include "Text/RmlFontEngine.h"
