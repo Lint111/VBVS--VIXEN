@@ -51,7 +51,7 @@ protected:
     void TypedSetupImpl(TypedSetupContext& ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
-    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedDeviceReleaseImpl(TypedCleanupContext& ctx) override;
 
 private:
     static const uint32_t kRingSize;

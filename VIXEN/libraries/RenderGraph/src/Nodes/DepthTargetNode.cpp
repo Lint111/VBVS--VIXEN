@@ -96,13 +96,10 @@ void DepthTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(DepthTargetNodeConfig::DEPTH_READ_VIEW,  views_[writeSlot ^ 1u]);
 }
 
-void DepthTargetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Same persist-across-recompile / DeviceLost guard as WorldPosHistoryNode.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[DepthTargetNode] Cleanup (recompile) - keeping depth ping-pong pair");
-        return;
-    }
-    NODE_LOG_INFO("[DepthTargetNode] Cleanup (final teardown) - destroying depth ping-pong pair");
+void DepthTargetNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[DepthTargetNode] DeviceRelease - destroying depth ping-pong pair");
     DestroyImages();
 }
 

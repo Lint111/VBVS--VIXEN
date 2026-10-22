@@ -493,6 +493,8 @@ protected:
     using NodeInstance::CompileImpl;
     using NodeInstance::ExecuteImpl;
     using NodeInstance::CleanupImpl;
+    using NodeInstance::DeviceReleaseImpl;
+    using NodeInstance::ShutdownImpl;
 
 public:
     void SetupImpl() override {
@@ -524,8 +526,23 @@ public:
         const uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedCleanupContext ctx = CreateCleanupContext(taskIndex);
-            ctx.reason = cleanupReason_;
             TypedCleanupImpl(ctx);
+        }
+    }
+
+    void DeviceReleaseImpl() override {
+        const uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedCleanupContext ctx = CreateCleanupContext(taskIndex);
+            TypedDeviceReleaseImpl(ctx);
+        }
+    }
+
+    void ShutdownImpl() override {
+        const uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedCleanupContext ctx = CreateCleanupContext(taskIndex);
+            TypedShutdownImpl(ctx);
         }
     }
 
@@ -573,20 +590,25 @@ protected:
     }
 
     /**
-     * @brief TypedCleanupImpl with TypedCleanupContext - override this in derived classes
+     * @brief Release what TypedCompileImpl built - runs on EVERY teardown (recompile, device loss,
+     *        shutdown). No I/O access during cleanup.
      *
-     * Called during Cleanup phase. No I/O access during cleanup.
+     * CONTRACT (FR-7): put each resource in the event matching its lifetime instead of asking why
+     * cleanup runs:
+     * - TypedCleanupImpl:       rebuilt by every Compile. No vkDeviceWaitIdle/fence wait here.
+     * - TypedDeviceReleaseImpl: device-child state kept across recompiles (device loss + shutdown).
+     * - TypedShutdownImpl:      state that outlives the device (shutdown only).
+     * Reference nodes: WindowNode, SwapChainNode, UIRenderNode.
      *
-     * CONTRACT (FR-7): Cleanup runs on BOTH recompile (e.g. swapchain resize) and final teardown —
-     * branch on `ctx.reason`. On `CleanupReason::Recompile`/`DeviceLost` keep persistent resources
-     * and do NOT `vkDeviceWaitIdle`/fence-wait (the graph skips device-idle on recompile; a wait here
-     * deadlocks resize). Release everything only on `FinalTeardown`. See `CleanupReason` in
-     * NodeContext.h and the recipe in Vixen-Docs Libraries/RenderGraph.md §3.1; reference nodes:
-     * WindowNode, SwapChainNode, UIRenderNode.
-     *
-     * @param ctx Cleanup context (no I/O access; carries `reason`)
+     * @param ctx Cleanup context (no I/O access)
      */
     virtual void TypedCleanupImpl(TypedCleanupContext& ctx) {}
+
+    /// @brief Device-child state kept across recompiles; runs on device loss and shutdown.
+    virtual void TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {}
+
+    /// @brief State that outlives the device; runs on final teardown only.
+    virtual void TypedShutdownImpl(TypedCleanupContext& ctx) {}
 
     // Task orchestration is handled at NodeInstance level
     // TypedNode only provides Typed*Impl(Context&) virtual methods for downstream nodes

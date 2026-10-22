@@ -83,17 +83,10 @@ void InstanceBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Static buffer — filled at compile time. Nothing to do per-frame.
 }
 
-void InstanceBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // FR-7: persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
-    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[InstanceBufferNode] Cleanup (recompile) - keeping persistent instance buffer");
-        return;
-    }
-
-    NODE_LOG_INFO("[InstanceBufferNode] Cleanup (final teardown) - destroying instance buffer");
+void InstanceBufferNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[InstanceBufferNode] DeviceRelease - destroying instance buffer");
     DestroyBuffer();
 }
 

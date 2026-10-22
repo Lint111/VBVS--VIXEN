@@ -116,29 +116,40 @@ class NodeInstance {
 };
 ```
 
-### 3.1 Cleanup: recompile vs final teardown (FR-7)
+### 3.1 Teardown and recompile events (FR-7)
 
-`Cleanup()` runs on **both** a transient recompile (e.g. swapchain resize) and final teardown — the
-reason is carried in `ctx.reason` (`CleanupReason::Recompile` / `DeviceLost` / `FinalTeardown`, see
-`Core/NodeContext.h`). The mechanism already exists; the contract for a stateful node's
-`CleanupImpl(ctx)`:
+The graph says why it tears a node down; the node never asks. `NodeInstance::Cleanup(reason)` maps
+the graph's reason to the node's own events, run inner to outer, and the cleanup context carries no
+reason, so nothing can branch on it:
 
-- **Recompile must be lightweight — no `vkDeviceWaitIdle` / fence waits.** The graph deliberately
-  skips device-idle during recompile; a wait here **deadlocks resize** (a submit blocked on an
-  un-signalled acquire semaphore never completes).
-- **Keep persistent-across-recompile state** (OS window/surface, long-lived GPU sync objects); release
-  only per-recompile resources. Tear everything down **only** when `ctx.reason == FinalTeardown`.
-- Most nodes own nothing persistent and can ignore `ctx.reason`. Correct reference implementations:
-  `WindowNode`, `SwapChainNode`, `UIRenderNode`, `ConstantNode`.
+| event (typed form) | recompile | device loss | shutdown | put here |
+|---|---|---|---|---|
+| `TypedCleanupImpl` | yes | yes | yes | what `Compile` rebuilds every time |
+| `TypedDeviceReleaseImpl` | no | yes | yes | device-child state kept across recompiles (ring buffers, history images, swapchain handle, per-image command buffers) |
+| `TypedShutdownImpl` | no | no | yes | state that outlives the device (OS window, RmlUi, CPU-side config) |
+
+- **`TypedCleanupImpl` must stay lightweight — no `vkDeviceWaitIdle` / fence waits.** The recompile
+  wave drains the graph devices once before any node cleanup; a node-level wait on a recompile can
+  deadlock resize (a submit blocked on an un-signalled acquire semaphore never completes). A resize
+  never reaches `TypedDeviceReleaseImpl`/`TypedShutdownImpl`, so a natural full teardown there is safe
+  (`test_node_lifecycle_events` ResizeRecompileNeverReachesBlockingShutdownTeardown).
+- `RecompileImpl(RecompileCause)` runs before the recompile teardown with why the node recompiles:
+  `SurfaceResized` (the swapchain/window marked itself on resize), `InputsChanged` (marked dirty) or
+  `UpstreamRecompiled` (a node it depends on is in the same wave).
+- Reference nodes: `WindowNode` (surface in device release, window in shutdown), `SwapChainNode`
+  (views / swapchain + surface / wrapper), `UIRenderNode`, `ConstantNode`, `FrameSyncNode`.
 
 ```cpp
-void MyNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason != CleanupReason::FinalTeardown) {
-        return;  // recompile / device-loss: keep persistent resources, NO device wait
-    }
-    // FinalTeardown only: release everything
-}
+void MyNode::TypedCleanupImpl(TypedCleanupContext&)       { /* per-compile objects */ }
+void MyNode::TypedDeviceReleaseImpl(TypedCleanupContext&) { /* persistent device-child objects */ }
+void MyNode::TypedShutdownImpl(TypedCleanupContext&)      { /* window / library teardown */ }
 ```
+
+Cross-node lifecycle has no registry either: a variadic node (`VariadicTypedNode`) reads each declared
+slot's upstream output (`VariadicSlotInfo::sourceNode/sourceOutput`) itself — at its Compile for
+Dependency-role slots, and before every Execute for Execute-role slots through a flat list resolved at
+Compile. `VariadicConnectionRule` only declares the slot. Graph-wide phases (topology built,
+compilation finished) remain `GraphLifecycleHooks`.
 
 ### 3.2 Render-to-swapchain recipe (FR-8)
 

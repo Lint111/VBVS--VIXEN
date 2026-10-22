@@ -1274,8 +1274,10 @@ public:
                 vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT,
                                      0, 1, &barrier, 0, nullptr, 0, nullptr);
             });
-            graph->GetLifecycleHooks().RegisterNodeHook(Vixen::RenderGraph::NodeLifecyclePhase::PreCleanup,
-                [this](Vixen::RenderGraph::NodeInstance*) {
+            // The snapshot buffer is a child of main_device: release it at shutdown, before the device
+            // node's own cleanup (a recompile of the wave keeps it).
+            graph->RegisterExternalCleanup("main_device",
+                [this]() {
                     if (!snapshotDevice_) return;
                     vkDeviceWaitIdle(snapshotDevice_);
                     vkDestroyBuffer(snapshotDevice_, snapshotBuffer_, nullptr);
@@ -1283,7 +1285,7 @@ public:
                     snapshotBuffer_ = VK_NULL_HANDLE;
                     snapshotMemory_ = VK_NULL_HANDLE;
                     snapshotDevice_ = VK_NULL_HANDLE;
-        }, "lookdev shadow snapshot cleanup", wave);
+        }, "lookdev shadow snapshot");
         }
     }
 

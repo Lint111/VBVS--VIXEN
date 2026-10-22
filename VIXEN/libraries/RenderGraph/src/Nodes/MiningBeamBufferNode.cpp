@@ -100,8 +100,9 @@ void MiningBeamBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void MiningBeamBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) return;
+void MiningBeamBufferNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
     perFrame_.Cleanup();
 }
 

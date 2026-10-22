@@ -559,16 +559,17 @@ void InputNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         mouseCaptured = false;
     }
 
-    // Final teardown only (recompile keeps window/callbacks alive, same as WindowNode's own
-    // window/surface persistence — see WindowNode::CleanupImpl). Drop this node's registry entry
-    // so a stray in-flight callback after this node is gone can't dereference a dangling `this`;
-    // WindowNode may still own + eventually destroy the same GLFWwindow*, so the registry (not
-    // the window) is what must be cleaned up here.
-    if (ctx.reason == CleanupReason::FinalTeardown && window) {
+    keyStates.clear();
+}
+
+void InputNode::TypedShutdownImpl(TypedCleanupContext& ctx) {
+    // Shutdown only (recompile and device loss keep window/callbacks alive, same as WindowNode's own
+    // window persistence). Drop this node's registry entry so a stray in-flight callback after this
+    // node is gone can't dereference a dangling `this`; WindowNode may still own + eventually destroy
+    // the same GLFWwindow*, so the registry (not the window) is what must be cleaned up here.
+    if (window) {
         WindowToInputNodeRegistry().erase(window);
     }
-
-    keyStates.clear();
 }
 
 // ====== Helper Methods ======

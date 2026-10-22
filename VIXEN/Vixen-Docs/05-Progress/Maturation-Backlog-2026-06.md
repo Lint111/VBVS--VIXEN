@@ -246,7 +246,9 @@ Correctness bugs + the only-consumer's pain + legal hygiene. Wasted on no possib
   author-facing `TypedNodeInstance::CleanupImpl` doc-comment + new §3.1/§3.2 in [[RenderGraph]]
   (recompile must be lightweight, no device wait; consume RenderPass/Framebuffers as inputs, don't
   build them in-node). A structural hook-split was considered + rejected (high blast radius across all
-  nodes; debatable vs the working `ctx.reason` design).
+  nodes; debatable vs the working `ctx.reason` design). **Superseded 2026-10-22 (owner R719, lane
+  vixennodehooks2):** the split landed — `TypedCleanupImpl` / `TypedDeviceReleaseImpl` /
+  `TypedShutdownImpl` + `RecompileImpl(RecompileCause)`; `ctx.reason` is gone (see [[RenderGraph]] §3.1).
 - [ ] **Bring the sprint branch onto main's merged GLFW port** [AR#11] — windowing/input is already
   GLFW end-to-end on `main`; `production/sprint-6-timeline-foundation` predates it (Win32-only).
 - [x] **Embedding docs + API stability story** [AR#12/#13] — **AR#12 docs DONE 2026-06-14:**

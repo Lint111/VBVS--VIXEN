@@ -4,13 +4,11 @@
 #include <functional>
 #include <vector>
 #include <string>
-#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
 // Forward declarations
 class RenderGraph;
-class NodeInstance;
 
 /**
  * @brief Graph-level lifecycle phases
@@ -29,34 +27,18 @@ enum class GraphLifecyclePhase {
 };
 
 /**
- * @brief Node-level lifecycle phases
- *
- * These hooks execute per-node during compilation. Use for node-specific
- * setup that depends on other nodes (e.g., variadic slot creation after
- * source node setup completes).
- */
-enum class NodeLifecyclePhase {
-    PreSetup,             // Before Setup() called on this node
-    PostSetup,            // After Setup() completes successfully
-    PreCompile,           // Before Compile() called on this node
-    PostCompile,          // After Compile() completes successfully
-    PreExecute,           // Before Execute() called on this node (per-frame)
-    PostExecute,          // After Execute() completes successfully (per-frame)
-    PreCleanup,           // Before Cleanup() called on this node
-    PostCleanup           // After Cleanup() completes successfully
-};
-
-/**
  * @brief Type-safe hook callback types
  */
 using GraphLifecycleCallback = std::function<void(RenderGraph*)>;
-using NodeLifecycleCallback = std::function<void(NodeInstance*)>;
 
 /**
- * @brief Hook registration with phase-specific callbacks
+ * @brief Graph-wide lifecycle hooks
  *
- * Centralized hook management for render graph lifecycle events.
- * Callbacks are executed in registration order within each phase.
+ * Callbacks for phases that belong to the whole graph (topology built, compilation finished),
+ * executed in registration order within each phase. A node's own lifecycle is not here: it reacts
+ * through its own typed events (Setup/Compile/Execute, CleanupImpl/DeviceReleaseImpl/ShutdownImpl,
+ * RecompileImpl with its RecompileCause; see NodeInstance), and a variadic node refreshes its
+ * declared slots itself (VariadicTypedNode).
  */
 class GraphLifecycleHooks : public ILoggable {
 public:
@@ -81,40 +63,12 @@ public:
     );
 
     /**
-     * @brief Register a node-level lifecycle callback
-     *
-     * @param phase When to execute the callback
-     * @param callback Function to execute (receives node instance)
-     * @param debugName Optional name for debugging/logging
-     * @param targetNode If non-null, the callback only runs when ExecuteNodeHooks
-     *        is called for this exact node, so ExecuteNodeHooks avoids invoking
-     *        hooks that belong to every other node in the graph. If null, the
-     *        callback is a global hook and runs for every node in the phase
-     *        (matches prior self-filtering-by-identity behavior for callers
-     *        that don't know their target node up front).
-     */
-    void RegisterNodeHook(
-        NodeLifecyclePhase phase,
-        NodeLifecycleCallback callback,
-        const std::string& debugName = "",
-        NodeInstance* targetNode = nullptr
-    );
-
-    /**
      * @brief Execute all registered graph hooks for a specific phase
      *
      * @param phase Current lifecycle phase
      * @param graph RenderGraph instance
      */
     void ExecuteGraphHooks(GraphLifecyclePhase phase, RenderGraph* graph);
-
-    /**
-     * @brief Execute all registered node hooks for a specific phase
-     *
-     * @param phase Current lifecycle phase
-     * @param node NodeInstance being processed
-     */
-    void ExecuteNodeHooks(NodeLifecyclePhase phase, NodeInstance* node);
 
     /**
      * @brief Clear all registered hooks
@@ -129,15 +83,9 @@ public:
     void ClearGraphHooks(GraphLifecyclePhase phase);
 
     /**
-     * @brief Clear hooks for a specific node phase
-     */
-    void ClearNodeHooks(NodeLifecyclePhase phase);
-
-    /**
      * @brief Get human-readable phase name for debugging
      */
     static const char* GetPhaseName(GraphLifecyclePhase phase);
-    static const char* GetPhaseName(NodeLifecyclePhase phase);
 
 private:
     struct GraphHookEntry {
@@ -145,21 +93,9 @@ private:
         std::string debugName;
     };
 
-    struct NodeHookEntry {
-        NodeLifecycleCallback callback;
-        std::string debugName;
-    };
-
     // Storage for each phase (indexed by enum value)
     std::vector<GraphHookEntry> graphHooks_[6];  // 6 GraphLifecyclePhase values
 
-    // Untargeted (global) node hooks: run for every node in the phase.
-    std::vector<NodeHookEntry> nodeHooks_[8];    // 8 NodeLifecyclePhase values
-
-    // Targeted node hooks: only run when ExecuteNodeHooks is called for the
-    // specific node they were registered against, so a node's Execute() no
-    // longer walks every other node's hooks just to self-filter them out.
-    std::unordered_map<NodeInstance*, std::vector<NodeHookEntry>[8]> targetedNodeHooks_;
 };
 
 } // namespace Vixen::RenderGraph

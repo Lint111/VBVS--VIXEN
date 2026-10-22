@@ -318,8 +318,9 @@ void SkySphereNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(SkySphereNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
-void SkySphereNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) return;
+void SkySphereNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
     DestroyImage();
 }
 

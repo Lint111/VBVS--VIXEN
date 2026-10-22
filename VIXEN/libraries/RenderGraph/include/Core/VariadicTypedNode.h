@@ -611,14 +611,17 @@ protected:
     }
 
     void CompileImpl() override {
+        RefreshDependencySlotsFromSources();
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicCompileContext ctx(this, taskIndex);
             VariadicCompileImpl(ctx);
         }
+        BuildExecuteSlotRefreshList();
     }
 
     void ExecuteImpl() override {
+        RefreshExecuteSlotsFromSources();
         // Sequential execution over all tasks
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
@@ -631,7 +634,6 @@ protected:
         const uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicCleanupContext ctx = this->CreateCleanupContext(taskIndex);
-            ctx.reason = this->cleanupReason_;
             VariadicCleanupImpl(ctx);
         }
     }
@@ -667,6 +669,67 @@ protected:
      * @param ctx Cleanup context (no I/O access, no variadic extensions needed)
      */
     virtual void VariadicCleanupImpl(VariadicCleanupContext& ctx) {}
+
+    // ============================================================================
+    // BUILT-IN VARIADIC LIFECYCLE - owned by the node type, never registered
+    // ============================================================================
+    // A connected variadic slot declares its upstream (VariadicSlotInfo::sourceNode/sourceOutput,
+    // written by VariadicConnectionRule). The node re-reads that output itself:
+    // - at Compile, for Dependency-role slots (the Dependency role orders the source first);
+    // - before every Execute, for Execute-role (transient) slots, through a flat list resolved at
+    //   Compile, so the per-frame path does no lookup and no filtering.
+
+    struct ExecuteSlotRefresh {
+        NodeInstance* source = nullptr;
+        uint32_t sourceOutput = 0;
+        uint32_t bundleIndex = 0;
+        uint32_t slotIndex = 0;
+    };
+
+    static void RefreshSlotFromSource(VariadicSlotInfo& slot, NodeInstance* source, uint32_t sourceOutput) {
+        Resource* sourceRes = source->GetOutput(sourceOutput, 0);
+        if (!sourceRes || !sourceRes->IsValid()) {
+            return;  // Upstream output not produced yet: keep the slot as it is
+        }
+        slot.resource = sourceRes;
+        slot.resourceType = sourceRes->GetType();
+    }
+
+    void RefreshDependencySlotsFromSources() {
+        for (auto& bundle : variadicBundles_) {
+            for (auto& slot : bundle.variadicSlots) {
+                if (!HasDependency(slot.slotRole)) continue;
+                if (NodeInstance* source = this->ResolveGraphNode(slot.sourceNode)) {
+                    RefreshSlotFromSource(slot, source, slot.sourceOutput);
+                }
+            }
+        }
+    }
+
+    void BuildExecuteSlotRefreshList() {
+        executeSlotRefresh_.clear();
+        for (size_t b = 0; b < variadicBundles_.size(); ++b) {
+            const auto& slots = variadicBundles_[b].variadicSlots;
+            for (size_t i = 0; i < slots.size(); ++i) {
+                if (!HasExecute(slots[i].slotRole)) continue;
+                if (NodeInstance* source = this->ResolveGraphNode(slots[i].sourceNode)) {
+                    executeSlotRefresh_.push_back({source, slots[i].sourceOutput,
+                                                   static_cast<uint32_t>(b), static_cast<uint32_t>(i)});
+                }
+            }
+        }
+    }
+
+    void RefreshExecuteSlotsFromSources() {
+        for (const auto& entry : executeSlotRefresh_) {
+            if (entry.bundleIndex >= variadicBundles_.size()) continue;
+            auto& slots = variadicBundles_[entry.bundleIndex].variadicSlots;
+            if (entry.slotIndex >= slots.size()) continue;
+            RefreshSlotFromSource(slots[entry.slotIndex], entry.source, entry.sourceOutput);
+        }
+    }
+
+    std::vector<ExecuteSlotRefresh> executeSlotRefresh_;
 
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)

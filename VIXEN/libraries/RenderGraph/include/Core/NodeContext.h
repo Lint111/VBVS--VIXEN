@@ -79,19 +79,26 @@ public:
 };
 
 /**
- * @brief Why a node is being cleaned up.
+ * @brief Why the graph is tearing a node down.
  *
- * Lets a node distinguish a transient **recompile** (e.g. swapchain recreation — release per-recompile
- * resources but KEEP persistent ones, like the OS window) from **final teardown** (release everything).
- * Most nodes ignore it; only nodes owning persistent-across-recompile resources need to branch on it.
+ * Passed by the graph to NodeInstance::Cleanup(), which maps it to the node's teardown events
+ * (CleanupImpl / DeviceReleaseImpl / ShutdownImpl). Nodes do not see it: each event already means
+ * one scope, so a node never branches on why it is being cleaned up.
  */
 enum class CleanupReason {
     Recompile,      // RecompileDirtyNodes: this node is dirty and will be Setup+Compiled again
-    DeviceLost,     // RecoverFromDeviceLoss: the GPU device was lost. Release ALL device-child resources
-                    // (like Recompile — every node already does this); persistent NON-device resources
-                    // (the OS window + surface) still survive (reason != FinalTeardown). Any vkDeviceWaitIdle
-                    // / fence wait in CleanupImpl is harmless: on a lost device it returns immediately.
-    FinalTeardown   // ExecuteCleanup: the whole graph is shutting down
+    DeviceLost,     // RecoverFromDeviceLoss: the GPU device was lost. CleanupImpl + DeviceReleaseImpl run;
+                    // state that outlives the device (the OS window) survives (no ShutdownImpl).
+    FinalTeardown   // ExecuteCleanup: the whole graph is shutting down (all three events)
+};
+
+/**
+ * @brief Why a node is recompiled (handed to NodeInstance::RecompileImpl)
+ */
+enum class RecompileCause {
+    InputsChanged,       // the node invalidated itself or was marked dirty (parameter/input change)
+    SurfaceResized,      // the node's presentation surface changed size (swapchain recreation)
+    UpstreamRecompiled   // a node it depends on is recompiled in the same wave
 };
 
 /**
@@ -100,10 +107,6 @@ enum class CleanupReason {
  * Cleanup cannot access inputs/outputs - resources being destroyed.
  */
 struct CleanupContext : public BaseContext {
-    // Why this cleanup is happening. Set by NodeInstance::CleanupImpl() from the Cleanup(reason) call;
-    // defaults to FinalTeardown so destructor/CleanupStack paths (which pass no reason) are safe.
-    CleanupReason reason = CleanupReason::FinalTeardown;
-
     CleanupContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}  // No tasks in Cleanup
 

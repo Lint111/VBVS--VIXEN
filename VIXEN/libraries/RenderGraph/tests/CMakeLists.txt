@@ -388,7 +388,7 @@ endif()
 # file-scope `struct MockBindingRef` with a DIFFERENT member layout than
 # test_connection_concepts's own `struct MockBindingRef` (2 fields vs. 3,
 # including a const char* name) — an ODR violation if both land in one binary.
-# NOT merged with test_graph_lifecycle_hooks either (its other natural
+# NOT merged with the former test_graph_lifecycle_hooks either (its other natural
 # neighbor after test_graph_topology got excluded for a different collision,
 # see below): both test_connection_rule.cpp and test_graph_lifecycle_hooks.cpp
 # define their own `int main()` (leftover boilerplate identical to what
@@ -419,48 +419,54 @@ else()
 endif()
 
 # ===========================================================================
-# Graph Lifecycle Hooks Tests — kept standalone, PDB-consolidation Milestone 1
+# Node Lifecycle Events Tests (replaces test_graph_lifecycle_hooks)
 # ===========================================================================
-# Validates GraphLifecycleHooks node-hook targeting:
-# - A hook registered against a specific target node only runs for that node
-# - Untargeted (global) hooks still run for every node (legacy behavior)
-# - ClearNodeHooks clears both targeted and global storage
-#
-# Formerly in test_graph_systems.cmake, alongside test_graph_topology. NOT
-# merged with test_graph_topology: both define an out-of-line static
-# `MockNodeType MockNode::mockType("MockNode");`, a duplicate-symbol link
-# error if both TUs land in one binary (test_graph_topology instead moved
-# into test_rendergraph_syncbarrier below). NOT merged with test_connection_rule
-# either — see that target's own comment just above for why (both define their
-# own redundant `int main()`).
+# A node's lifecycle reactions are its own typed events:
+# - teardown events follow the graph's reason (CleanupImpl / DeviceReleaseImpl / ShutdownImpl)
+# - a resize recompile never reaches a blocking shutdown teardown (FR-7)
+# - RecompileImpl receives the recompile cause
+# - variadic nodes read their declared slot sources themselves (no registered hooks)
+# - graph-wide GraphLifecycleHooks phases still run once per phase
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_graph_lifecycle_hooks
-        test_graph_lifecycle_hooks.cpp
+    add_executable(test_node_lifecycle_events
+        test_node_lifecycle_events.cpp
     )
 
-    target_include_directories(test_graph_lifecycle_hooks PRIVATE
+    target_include_directories(test_node_lifecycle_events PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
-    target_link_libraries(test_graph_lifecycle_hooks PRIVATE
+    target_link_libraries(test_node_lifecycle_events PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
-    set_target_properties(test_graph_lifecycle_hooks PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    set_target_properties(test_node_lifecycle_events PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
         if(TARGET Vulkan::Vulkan)
-            target_link_libraries(test_graph_lifecycle_hooks PRIVATE Vulkan::Vulkan)
+            target_link_libraries(test_node_lifecycle_events PRIVATE Vulkan::Vulkan)
         endif()
     endif()
 
-    vixen_gtest_discover_tests(RenderGraph test_graph_lifecycle_hooks)
+    vixen_gtest_discover_tests(RenderGraph test_node_lifecycle_events)
 
-    message(STATUS "✓ test_graph_lifecycle_hooks configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
+    message(STATUS "✓ test_node_lifecycle_events configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
 else()
-    message(STATUS "⊗ test_graph_lifecycle_hooks skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_node_lifecycle_events skipped (GoogleTest not available)")
+endif()
+
+# Opt-in native CPU benchmark of the per-frame node execute path (VIXEN_BENCH_EXECUTE_PATH=1).
+if(TARGET GTest::gtest_main)
+    add_executable(bench_node_execute_path bench_node_execute_path.cpp)
+    target_include_directories(bench_node_execute_path PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+    target_link_libraries(bench_node_execute_path PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(bench_node_execute_path PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE AND TARGET Vulkan::Vulkan)
+        target_link_libraries(bench_node_execute_path PRIVATE Vulkan::Vulkan)
+    endif()
+    vixen_gtest_discover_tests(RenderGraph bench_node_execute_path)
 endif()
 
 # ===========================================================================
