@@ -35,7 +35,7 @@ uint64_t SharedPipelineCacheIdentity(const VkPhysicalDeviceProperties& props) no
 std::filesystem::path SharedPipelineCachePath(const VkPhysicalDeviceProperties& props, std::string_view kind) {
     char deviceDirectory[48];
     std::snprintf(deviceDirectory, sizeof(deviceDirectory), "Device_%08x_%08x", props.vendorID, props.deviceID);
-    return Vixen::SharedDeviceCacheDirectory() / "pipeline-cache" / deviceDirectory / (std::string(kind) + ".bin");
+    return ::Vixen::SharedDeviceCacheDirectory() / "pipeline-cache" / deviceDirectory / (std::string(kind) + ".bin");
 }
 
 CacheFileStatus LoadSharedPipelineCacheBlob(
