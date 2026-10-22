@@ -76,7 +76,7 @@ SdiRegistryManager::~SdiRegistryManager() {
 }
 
 bool SdiRegistryManager::RegisterShader(const SdiRegistryEntry& entry) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     // Validate entry
     if (entry.uuid.empty()) {
@@ -126,7 +126,7 @@ bool SdiRegistryManager::RegisterShader(const SdiRegistryEntry& entry) {
 }
 
 bool SdiRegistryManager::UnregisterShader(const std::string& uuid, bool deleteFromDisk) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     auto it = entries_.find(uuid);
     if (it == entries_.end()) {
@@ -159,14 +159,14 @@ bool SdiRegistryManager::UnregisterShader(const std::string& uuid, bool deleteFr
 }
 
 bool SdiRegistryManager::IsRegistered(const std::string& uuid) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     auto it = entries_.find(uuid);
     return it != entries_.end() && it->second.isActive;
 }
 
 std::optional<SdiRegistryEntry> SdiRegistryManager::GetEntry(const std::string& uuid) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     auto it = entries_.find(uuid);
     if (it != entries_.end() && it->second.isActive) {
@@ -179,7 +179,7 @@ std::optional<SdiRegistryEntry> SdiRegistryManager::GetEntry(const std::string& 
 }
 
 bool SdiRegistryManager::UpdateAlias(const std::string& uuid, const std::string& aliasName) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     auto it = entries_.find(uuid);
     if (it == entries_.end()) {
@@ -214,7 +214,7 @@ bool SdiRegistryManager::UpdateAlias(const std::string& uuid, const std::string&
 }
 
 std::vector<std::string> SdiRegistryManager::GetRegisteredUuids(bool activeOnly) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     std::vector<std::string> uuids;
     uuids.reserve(entries_.size());
@@ -229,7 +229,7 @@ std::vector<std::string> SdiRegistryManager::GetRegisteredUuids(bool activeOnly)
 }
 
 std::vector<SdiRegistryEntry> SdiRegistryManager::GetAllEntries(bool activeOnly) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     std::vector<SdiRegistryEntry> result;
     result.reserve(entries_.size());
@@ -244,7 +244,7 @@ std::vector<SdiRegistryEntry> SdiRegistryManager::GetAllEntries(bool activeOnly)
 }
 
 size_t SdiRegistryManager::GetRegisteredCount(bool activeOnly) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     if (!activeOnly) {
         return entries_.size();
@@ -255,14 +255,14 @@ size_t SdiRegistryManager::GetRegisteredCount(bool activeOnly) const {
 }
 
 std::string SdiRegistryManager::FindByAlias(const std::string& aliasName) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     auto it = aliasToUuid_.find(aliasName);
     return it != aliasToUuid_.end() ? it->second : "";
 }
 
 bool SdiRegistryManager::RegenerateRegistry() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     try {
         // Generate code
@@ -435,12 +435,12 @@ bool SdiRegistryManager::NeedsRegeneration() const {
 }
 
 void SdiRegistryManager::MarkDirty() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
     changesSinceRegeneration_ = config_.regenerationThreshold;
 }
 
 uint32_t SdiRegistryManager::CleanupInactive(std::chrono::hours olderThan) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     uint32_t count = 0;
     auto now = std::chrono::system_clock::now();
@@ -469,7 +469,7 @@ uint32_t SdiRegistryManager::CleanupInactive(std::chrono::hours olderThan) {
 }
 
 uint32_t SdiRegistryManager::ValidateRegistry() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     uint32_t invalidCount = 0;
 
@@ -493,7 +493,7 @@ uint32_t SdiRegistryManager::ValidateRegistry() {
 }
 
 uint32_t SdiRegistryManager::ClearAll(bool deleteFromDisk) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     uint32_t count = static_cast<uint32_t>(entries_.size());
 
@@ -518,7 +518,7 @@ uint32_t SdiRegistryManager::ClearAll(bool deleteFromDisk) {
 }
 
 SdiRegistryManager::Stats SdiRegistryManager::GetStats() const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    AssertOwner();
 
     Stats stats;
     stats.totalRegistered = entries_.size();

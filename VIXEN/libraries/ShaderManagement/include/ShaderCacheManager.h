@@ -41,7 +41,8 @@ struct ShaderCacheStats {
  * @brief Shader cache manager (device-agnostic)
  *
  * Manages persistent caching of compiled SPIR-V bytecode to disk.
- * Thread-safe: All operations are internally synchronized.
+ * Lock-free: stats and knobs are relaxed atomics; entry files are written by rename, and the
+ * in-memory `entries` map (RebuildMetadata) is owner-phase, touched only by the owning thread.
  *
  * Design:
  * - Stores SPIR-V bytecode only (no Vulkan objects)
@@ -171,11 +172,18 @@ private:
     // Metadata tracking (in-memory)
     std::unordered_map<std::string, CacheEntry> entries;
 
-    // Statistics
-    mutable ShaderCacheStats stats;
-
-    // Thread safety
-    mutable std::mutex cacheMutex;
+    // Statistics and runtime knobs: relaxed atomics, no lock (GetStatistics returns a snapshot)
+    struct AtomicStats {
+        std::atomic<size_t> totalCacheHits{0};
+        std::atomic<size_t> totalCacheMisses{0};
+        std::atomic<size_t> totalBytesRead{0};
+        std::atomic<size_t> totalBytesWritten{0};
+        std::atomic<size_t> currentCacheSizeBytes{0};
+        std::atomic<uint32_t> cachedShaderCount{0};
+    };
+    mutable AtomicStats stats;
+    std::atomic<bool> enabled_;
+    std::atomic<size_t> maxCacheSizeMB_;
 };
 
 } // namespace ShaderManagement
