@@ -43,6 +43,8 @@
 #include "Core/NodeTypeRegistry.h"
 #include "MainCacher.h"
 #include "VulkanDevice.h"
+#include "MessageBus.h"
+#include "QueueSubmitRequest.h"
 
 #include "ShellOctreeGpu.h"
 #include "ShellDerive.h"
@@ -92,6 +94,8 @@ protected:
     bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
+    Vixen::EventBus::MessageBus submitBus_;
+    std::vector<Vixen::Vulkan::Resources::QueueSubmitRequest> pendingSubmits_;
 
     // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
     // fallback when no real GPU is visible.
@@ -136,6 +140,14 @@ protected:
         // populated at real device creation) — the harness must set it explicitly since
         // VulkanDevice's ctor does not query a queue itself.
         deviceShell_->queue = queue_;
+        submitBus_.Subscribe(
+            Vixen::EventBus::QueueSubmitRequestMessage::TYPE,
+            [this](const Vixen::EventBus::BaseEventMessage& base) {
+                const auto& message = static_cast<const Vixen::EventBus::QueueSubmitRequestMessage&>(base);
+                pendingSubmits_.push_back(message.request);
+                return true;
+            });
+        deviceShell_->SetMessageBus(&submitBus_);
     }
 
     void TearDown() override {
@@ -208,6 +220,47 @@ protected:
         pi.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pi.queueFamilyIndex = queueFamily_;
         ASSERT_EQ(vkCreateCommandPool(logicalDevice_, &pi, nullptr, &commandPool_), VK_SUCCESS);
+    }
+
+    void DrainSubmitRequests() {
+        submitBus_.ProcessMessages();
+        for (auto& request : pendingSubmits_) {
+            std::vector<VkSemaphore> waits;
+            std::vector<VkPipelineStageFlags> waitStages;
+            waits.reserve(request.waits.size());
+            waitStages.reserve(request.waits.size());
+            for (const auto& wait : request.waits) {
+                waits.push_back(wait.semaphore);
+                waitStages.push_back(static_cast<VkPipelineStageFlags>(wait.stageMask));
+            }
+            std::vector<VkCommandBuffer> commandBuffers;
+            commandBuffers.reserve(request.commandBuffers.size());
+            for (const auto& command : request.commandBuffers)
+                commandBuffers.push_back(command.commandBuffer);
+            std::vector<VkSemaphore> signals;
+            signals.reserve(request.signals.size());
+            for (const auto& signal : request.signals) signals.push_back(signal.semaphore);
+            VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submit.waitSemaphoreCount = static_cast<uint32_t>(waits.size());
+            submit.pWaitSemaphores = waits.data();
+            submit.pWaitDstStageMask = waitStages.data();
+            submit.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+            submit.pCommandBuffers = commandBuffers.data();
+            submit.signalSemaphoreCount = static_cast<uint32_t>(signals.size());
+            submit.pSignalSemaphores = signals.data();
+            const VkResult result = vkQueueSubmit(queue_, 1, &submit, request.fence);
+            if (result == VK_SUCCESS) {
+                request.completion->PublishSubmitted(0);
+                ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+                if (request.onRetired) request.onRetired();
+                request.completion->PublishRetired();
+            } else {
+                request.completion->PublishFailed(result);
+                if (request.onRetired) request.onRetired();
+                ADD_FAILURE() << "queue owner rejected test submit: " << result;
+            }
+        }
+        pendingSubmits_.clear();
     }
 
     template <typename T>
@@ -319,6 +372,7 @@ TEST_P(ShellRevalidateNodeTest, GpuDispatchMatchesCanonicalFlagsAndCompactedByte
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
     ASSERT_NO_THROW(node->Execute());
+    DrainSubmitRequests();
 
     Resource* flagsOut = node->GetOutput(C::SHELL_FLAGS_BUFFER_Slot::index, 0);
     ASSERT_NE(flagsOut, nullptr);
@@ -662,6 +716,7 @@ TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
     for (uint32_t frame = 0; frame < 4u; ++frame) {
         SetHandleVal<uint32_t>(frameRes, frame % 2u);
         ASSERT_NO_THROW(node->Execute());
+        DrainSubmitRequests();
         if (node->PublishedShellGeneration() == oldGeneration) {
             shellBufferOut = node->GetOutput(C::SHELL_DATA_BUFFER_Slot::index, 0);
             ASSERT_NE(shellBufferOut, nullptr);
@@ -673,6 +728,7 @@ TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
          node->PublishedShellGeneration() == oldGeneration; ++frame) {
         SetHandleVal<uint32_t>(frameRes, frame % 2u);
         ASSERT_NO_THROW(node->Execute());
+        DrainSubmitRequests();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_GT(node->PublishedShellGeneration(), oldGeneration) << "edited generation timed out";
@@ -701,6 +757,7 @@ TEST_F(ShellRevalidateNodeTest, EditPublishesFreshGenerationAcrossFourFrames) {
     for (uint32_t frame = 0; frame < 4u; ++frame) {
         SetHandleVal<uint32_t>(frameRes, frame % 2u);
         ASSERT_NO_THROW(node->Execute());
+        DrainSubmitRequests();
         EXPECT_EQ(node->PublishedShellGeneration(), newGeneration);
         EXPECT_EQ(node->ShellPool().compact.channelPool, stableBytes);
     }

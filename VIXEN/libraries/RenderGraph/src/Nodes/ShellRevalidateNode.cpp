@@ -378,9 +378,8 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                 vkFreeCommandBuffers(device, pool, 1, &chunkCommand);
             };
             lastSubmission_ = vulkanDevice_->PublishSubmitRequest(std::move(request));
-            if (!lastSubmission_ || lastSubmission_->Result() != VK_NOT_READY &&
-                lastSubmission_->Result() != VK_SUCCESS) {
-                vkFreeCommandBuffers(vulkanDevice_->device, commandPool_, 1, &chunkCommand);
+            if (!lastSubmission_ || (lastSubmission_->Result() != VK_NOT_READY &&
+                                     lastSubmission_->Result() != VK_SUCCESS)) {
                 throw std::runtime_error("[ShellRevalidateNode] queue owner rejected chunk submit");
             }
             ++chunks;
