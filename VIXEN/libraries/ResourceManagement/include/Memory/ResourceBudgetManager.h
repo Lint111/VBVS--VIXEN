@@ -1,10 +1,9 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
-#include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vulkan/vulkan.h>
@@ -105,12 +104,15 @@ struct AtomicResourceUsage {
  * - Warning thresholds for approaching limits
  * - Optional strict enforcement (fail allocations over budget)
  * - Query available budget before allocation
- * - Thread-safe for concurrent allocation/deallocation
+ * - Thread-safe for concurrent allocation/deallocation without locks: standard types are a
+ *   fixed array of atomic slots; custom types are an append-only lock-free list
  */
 class ResourceBudgetManager {
 public:
     ResourceBudgetManager() = default;
-    ~ResourceBudgetManager() = default;
+    ~ResourceBudgetManager();
+    ResourceBudgetManager(const ResourceBudgetManager&) = delete;
+    ResourceBudgetManager& operator=(const ResourceBudgetManager&) = delete;
 
     // Budget configuration
     void SetBudget(BudgetResourceType type, const ResourceBudget& budget);
@@ -152,25 +154,44 @@ public:
     void ResetUsage(const std::string& customType);
 
 private:
-    // Thread synchronization
-    mutable std::shared_mutex mutex_;  // Protects budget maps and ensures consistency
+    /// One budget + its usage counters, all atomics. `configured` is release-stored after the
+    /// budget fields, so a reader that acquires it sees a complete budget. SetBudget is an
+    /// owner-phase call (startup / budget retune); usage updates come from any thread.
+    struct Slot {
+        std::atomic<bool> configured{false};
+        std::atomic<uint64_t> maxBytes{0};
+        std::atomic<uint64_t> warningThreshold{0};
+        std::atomic<bool> strict{false};
+        AtomicResourceUsage usage;
 
-    // Standard resource type budgets
-    std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
-    std::unordered_map<BudgetResourceType, AtomicResourceUsage> usage_;
+        void Set(const ResourceBudget& budget) noexcept;
+        std::optional<ResourceBudget> Get() const noexcept;
+        void ResetAll() noexcept;
+    };
 
-    // Custom/user-defined resource budgets
-    std::unordered_map<std::string, ResourceBudget> customBudgets_;
-    std::unordered_map<std::string, AtomicResourceUsage> customUsage_;
+    /// Named slot for user-defined types: an append-only lock-free list (push by CAS, never
+    /// removed, freed with the manager), so lookups walk immutable nodes without a lock.
+    struct CustomSlot : Slot {
+        explicit CustomSlot(std::string slotName) : name(std::move(slotName)) {}
+        const std::string name;
+        CustomSlot* next = nullptr;  // set before the node is published, immutable afterwards
+    };
 
-    // Internal helpers (caller must hold appropriate lock)
-    bool TryAllocateImpl(const ResourceBudget* budget, AtomicResourceUsage* usage, uint64_t bytes);
-    void RecordAllocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
-    void RecordDeallocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
+    static constexpr size_t kStandardTypeCount = static_cast<size_t>(BudgetResourceType::UserDefined) + 1;
 
-    // Get or create usage entry (caller must hold exclusive lock)
-    AtomicResourceUsage* GetOrCreateUsage(BudgetResourceType type);
-    AtomicResourceUsage* GetOrCreateUsage(const std::string& customType);
+    std::array<Slot, kStandardTypeCount> slots_;
+    std::atomic<CustomSlot*> customHead_{nullptr};
+
+    Slot* FindSlot(BudgetResourceType type) noexcept;
+    const Slot* FindSlot(BudgetResourceType type) const noexcept;
+    CustomSlot* FindCustom(const std::string& name) const noexcept;
+    CustomSlot* GetOrCreateCustom(const std::string& name);
+
+    static bool TryAllocateImpl(const Slot& slot, uint64_t bytes);
+    static uint64_t AvailableBytesImpl(const Slot* slot);
+    static bool NearWarningImpl(const Slot* slot);
+    static void RecordAllocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
+    static void RecordDeallocationImpl(AtomicResourceUsage* usage, uint64_t bytes);
 };
 
 } // namespace ResourceManagement

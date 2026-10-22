@@ -7,7 +7,6 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-#include <mutex>
 #include <stop_token>
 #include <unordered_map>
 #include <vector>
@@ -292,8 +291,22 @@ private:
     Vixen::KernelDispatch::TaskExecutor taskExecutor_;
 
     // Active build tracking
-    std::unordered_map<std::string, std::shared_ptr<AsyncBuildHandle>> activeBuilds_;
-    mutable std::mutex buildsMutex_;
+    /// Build registry: an append-only lock-free list (newest first). Submitters CAS-push a node;
+    /// lookups walk immutable nodes; CleanupCompleted() only flags a finished node `removed` (the
+    /// node and handle stay allocated until the builder is destroyed, so a concurrent walker never
+    /// dangles). Nodes with the same uuid shadow older ones, matching the old map's overwrite.
+    struct BuildNode {
+        std::shared_ptr<AsyncBuildHandle> handle;
+        BuildNode* older = nullptr;
+        std::atomic<bool> removed{false};
+    };
+    std::atomic<BuildNode*> buildsHead_{nullptr};
+
+    /// Newest live node for `uuid`, or nullptr.
+    BuildNode* FindBuild(const std::string& uuid) const;
+    /// Calls fn(node) for each live, unshadowed node, newest first.
+    template <typename Fn>
+    void ForEachLiveBuild(Fn&& fn) const;
 
 };
 
