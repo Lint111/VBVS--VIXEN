@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <glm/glm.hpp>
+namespace Vixen::Gpu {
 struct BodyInstanceMotion {
     glm::mat4 previousLocalToWorld;
     uint32_t valid;
@@ -16,3 +17,4 @@ static_assert(offsetof(BodyInstanceMotion, valid) == 64, "valid@64");
 static_assert(offsetof(BodyInstanceMotion, _pad0) == 68, "_pad0@68");
 static_assert(offsetof(BodyInstanceMotion, _pad1) == 72, "_pad1@72");
 static_assert(offsetof(BodyInstanceMotion, _pad2) == 76, "_pad2@76");
+} // namespace Vixen::Gpu

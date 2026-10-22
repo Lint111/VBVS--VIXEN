@@ -14,16 +14,9 @@
 // tool output must match a fixed callable signature even when a specific body ignores an arg)
 // are emitted [[maybe_unused]] by --callable-cpp itself, so no diagnostic exemption is needed.
 #include "generated/AppFlowCallables.generated.g.hpp"
-#include "generated/UndertowViewCallables.generated.g.hpp"
 #include <RmlUi/Core/Types.h>   // Rml::String
 
 namespace Vixen::AppFlow::Generated {
-
-// --callable-cpp emits each [KernelCallable] in its declared C# namespace (one header per namespace):
-// AppFlowCallables -> Vixen::AppFlow::Reference, UndertowViewCallables -> Vixen::ViewSchemas. The
-// consumers name them as Vixen::AppFlow::Generated::<callable>; qualified lookup follows these.
-using namespace ::Vixen::AppFlow::Reference;
-using namespace ::Vixen::ViewSchemas;
 
 // UndertowHudInspect.typed.g.h's cause() accessor: a pure name-binding identity projection
 // (view field `cause` <- C# source member `el.CauseString`, no value transform) -- see

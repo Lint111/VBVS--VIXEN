@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <glm/glm.hpp>
+namespace Vixen::Gpu {
 struct ChannelDesc {
     uint32_t semanticId;
     uint32_t elemCount;
@@ -75,3 +76,4 @@ static_assert(offsetof(OctreeConfig, brickResident) == 356, "brickResident@356")
 static_assert(offsetof(OctreeConfig, tierRefTableBase) == 360, "tierRefTableBase@360");
 static_assert(offsetof(OctreeConfig, brickLookupBase) == 364, "brickLookupBase@364");
 static_assert(offsetof(OctreeConfig, _tailPad) == 368, "_tailPad@368");
+} // namespace Vixen::Gpu
