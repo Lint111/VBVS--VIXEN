@@ -430,6 +430,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                           traceLastT, traceLastD, traceLastP, gradient, traceLastGridBound,
                           tNear, tFar, traceLastStep);
 #endif
+    g_recipeTraceExhaustedRays += 1u;  // R716: counted, never a silent miss
     return false;
 }
 #endif // VIXEN_UBER_RECIPE_SPLICED
