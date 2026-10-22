@@ -1,5 +1,8 @@
 include_guard(GLOBAL)
 
+set(_vixen_compiler_paths_dir "${CMAKE_CURRENT_LIST_DIR}")
+find_package(Python3 COMPONENTS Interpreter QUIET)
+
 function(vixen_configure_compiler_paths)
     # This engine uses headers, not named C++ modules. CMP0155 otherwise enables
     # scanning on recent GCC/MSVC, adding module maps and uncacheable flags to
@@ -27,6 +30,29 @@ function(vixen_configure_compiler_paths)
             endforeach()
         endif()
     endforeach()
+endfunction()
+
+# The user's effective ccache sloppiness plus the two PCH needs. Queried once per ccache.
+function(_vixen_ccache_pch_sloppiness ccache out)
+    string(MAKE_C_IDENTIFIER "${ccache}" _key)
+    get_property(_known GLOBAL PROPERTY "_vixen_ccache_sloppiness_${_key}" SET)
+    if(NOT _known)
+        execute_process(COMMAND "${ccache}" --get-config sloppiness
+            OUTPUT_VARIABLE _configured OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE _result ERROR_QUIET)
+        if(NOT _result EQUAL 0)
+            set(_configured "$ENV{CCACHE_SLOPPINESS}")
+        endif()
+        string(REGEX REPLACE "[ \t]*,[ \t]*" ";" _flags "${_configured}")
+        list(APPEND _flags pch_defines time_macros)
+        list(FILTER _flags EXCLUDE REGEX "^$")
+        list(REMOVE_DUPLICATES _flags)
+        list(JOIN _flags "," _merged)
+        set_property(GLOBAL PROPERTY "_vixen_ccache_sloppiness_${_key}" "${_merged}")
+        message(STATUS "ccache sloppiness for PCH targets: ${_merged}")
+    endif()
+    get_property(_merged GLOBAL PROPERTY "_vixen_ccache_sloppiness_${_key}")
+    set(${out} "${_merged}" PARENT_SCOPE)
 endfunction()
 
 # Call after subdirectories have declared their targets. Stable angle includes
@@ -64,20 +90,26 @@ function(vixen_cache_compatible_pch directory)
             target_compile_options(${_target} PRIVATE -fno-pch-timestamp)
         endif()
         get_target_property(_launcher ${_target} CXX_COMPILER_LAUNCHER)
-        set(_ccache FALSE)
+        set(_ccache "")
         foreach(_part IN LISTS _launcher)
             get_filename_component(_program "${_part}" NAME)
             if(NOT _part MATCHES "=" AND _program MATCHES "^ccache(\\.exe)?$")
-                set(_ccache TRUE)
+                set(_ccache "${_part}")
             endif()
         endforeach()
         if(_ccache)
-            set(_sloppiness "pch_defines,time_macros")
-            if(NOT "$ENV{CCACHE_SLOPPINESS}" STREQUAL "")
-                string(APPEND _sloppiness ",$ENV{CCACHE_SLOPPINESS}")
+            # CCACHE_SLOPPINESS in the environment replaces the configured value, so add PCH's
+            # two flags to the user's effective setting (ccache.conf plus environment) instead.
+            _vixen_ccache_pch_sloppiness("${_ccache}" _sloppiness)
+            set(_pch_environment "CCACHE_SLOPPINESS=${_sloppiness}")
+            # GCC .gch bytes are not reproducible, so consumers hash the PCH's inputs instead
+            # (vixen_pch_checksum.py writes <pch>.gch.sum; ccache pch_external_checksum).
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_HOST_UNIX AND Python3_EXECUTABLE)
+                list(APPEND _pch_environment CCACHE_PCH_EXTSUM=1
+                    /bin/sh "${_vixen_compiler_paths_dir}/vixen_pch_launcher.sh" "${Python3_EXECUTABLE}")
             endif()
             set_property(TARGET ${_target} PROPERTY CXX_COMPILER_LAUNCHER
-                "${CMAKE_COMMAND};-E;env;CCACHE_SLOPPINESS=${_sloppiness};${_launcher}")
+                "${CMAKE_COMMAND};-E;env;${_pch_environment};${_launcher}")
         endif()
     endforeach()
     get_property(_subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)

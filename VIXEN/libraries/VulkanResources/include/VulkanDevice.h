@@ -78,6 +78,16 @@ public:
     PFN_vkCmdPipelineBarrier2KHR fpCmdPipelineBarrier2 = nullptr;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2 = nullptr;
 
+    // R503 batch retirement on `queue`: the graph's queue owner signals `semaphore` with
+    // `submitted + 1` on every frame-path batch and, at the outstanding cap, waits only for the
+    // oldest batch's value instead of draining the queue. Owned by the drain thread alone.
+    // A null semaphore (timelineSemaphore unsupported) keeps the vkQueueWaitIdle retirement.
+    struct SubmitTimeline {
+        VkSemaphore semaphore = VK_NULL_HANDLE;
+        uint64_t submitted = 0;
+        uint64_t retired = 0;
+    } submitTimeline;
+
     // Optional ray-query lighting entry points. These are resolved per logical device so an
     // AS lifecycle cannot accidentally dispatch through another device after device recreation.
     // A null set is valid on non-RT hardware; the CapabilityGraph selects the composed-DDA twin.
