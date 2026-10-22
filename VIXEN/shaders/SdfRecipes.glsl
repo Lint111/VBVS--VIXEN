@@ -76,9 +76,10 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
     // entry footprint bounds the steps the interval can take. A zero footprint (LOD-free
     // harnesses) keeps the plain march's budget, and its exhaustion is counted below.
     const int MAX_STEPS = 128;
+    const int MAX_BOUNDED_STEPS = 2048;  // traceUberRecipeBody's march ceiling; past it, counted
     float entryFootprint = footprintBase + tNear * footprintPerT;
     int stepBudget = entryFootprint > 0.0
-        ? int(min(ceil((tFar - tNear) / entryFootprint), 1048576.0)) + 1
+        ? int(min(ceil((tFar - tNear) / entryFootprint), float(MAX_BOUNDED_STEPS))) + 1
         : MAX_STEPS;
     float stepScale = clamp(conservativeStepScale, 0.0, 1.0) /
                       recipeLipschitzBound(recipeId, params);

@@ -122,9 +122,10 @@ inline TraceHit traceProcedural(uint32_t recipeId, const glm::vec3& ro, const gl
     // entry footprint bounds the steps the interval can take. A zero footprint keeps the
     // plain march's budget, and its exhaustion is reported.
     const int   MAX_STEPS  = 128;
+    const int   MAX_BOUNDED_STEPS = 2048;  // the uber march's ceiling; past it, reported
     const float entryFootprint = footprintBase + tNear * footprintPerT;
     const int   stepBudget = entryFootprint > 0.0f
-        ? static_cast<int>(glm::min(std::ceil((tFar - tNear) / entryFootprint), 1048576.0f)) + 1
+        ? static_cast<int>(glm::min(std::ceil((tFar - tNear) / entryFootprint), float(MAX_BOUNDED_STEPS))) + 1
         : MAX_STEPS;
     const float stepScale  = 1.0f / recipeLipschitzBound(recipeId, rp);
     bool  haveOutside = false;
