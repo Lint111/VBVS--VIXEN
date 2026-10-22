@@ -410,7 +410,7 @@ public:
      * @brief Persist warm driver state (pipeline cache blobs) now, without a full SaveAll
      */
     void PersistWarmState() const {
-        std::shared_lock deviceLock(m_deviceRegistriesMutex);
+        // Registry membership is owner-phase (C3/C4): read on the graph owner thread, no lock.
         for (const auto& [deviceId, registry] : m_deviceRegistries) {
             registry.PersistWarmState();
         }

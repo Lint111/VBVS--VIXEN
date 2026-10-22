@@ -3,43 +3,9 @@
 // std430-v1 rules: scalar alignment is its width; vec2 aligns to 8; vec3/vec4 align to 16 (vec3 payload is 12); matrices use column-vector alignment and stride; arrays use element-aligned stride; structs align and round size to their maximum member alignment.
 #include <cstdint>
 #include <cstddef>
-namespace Yeroket::Sdf::Generated {
-#ifndef YEROKET__SDF__GENERATED_PATHPOINT_CPP
-#define YEROKET__SDF__GENERATED_PATHPOINT_CPP
-struct PathPoint {
-    float X;
-    float Y;
-    float Z;
-};
-static_assert(sizeof(PathPoint) == 12, "PathPoint std430 size");
-static_assert(offsetof(PathPoint, X) == 0, "X@0");
-static_assert(offsetof(PathPoint, Y) == 4, "Y@4");
-static_assert(offsetof(PathPoint, Z) == 8, "Z@8");
-#endif // YEROKET__SDF__GENERATED_PATHPOINT_CPP
-#ifndef YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
-#define YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
-inline constexpr std::uint32_t Line = 0u;
-inline constexpr std::uint32_t QuadraticBezier = 1u;
-inline constexpr std::uint32_t CubicBezier = 2u;
-
-struct PathSegment {
-    PathPoint P0;
-    PathPoint P1;
-    PathPoint P2;
-    PathPoint P3;
-    uint32_t Kind;
-    uint32_t ContourStart;
-};
-static_assert(sizeof(PathSegment) == 56, "PathSegment std430 size");
-static_assert(offsetof(PathSegment, P0) == 0, "P0@0");
-static_assert(offsetof(PathSegment, P1) == 12, "P1@12");
-static_assert(offsetof(PathSegment, P2) == 24, "P2@24");
-static_assert(offsetof(PathSegment, P3) == 36, "P3@36");
-static_assert(offsetof(PathSegment, Kind) == 48, "Kind@48");
-static_assert(offsetof(PathSegment, ContourStart) == 52, "ContourStart@52");
-#endif // YEROKET__SDF__GENERATED_PATHSEGMENT_CPP
-#ifndef YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
-#define YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
+#include "PathSegment.g.hpp"
+#include "PathPoint.g.hpp"
+namespace Yeroket::Sdf::Kernels {
 inline constexpr std::int32_t SegmentCapacity = 64;
 
 struct GlyphOutlineInstance {
@@ -57,5 +23,4 @@ static_assert(offsetof(GlyphOutlineInstance, BoundsMax) == 3600, "BoundsMax@3600
 static_assert(offsetof(GlyphOutlineInstance, FillRule) == 3612, "FillRule@3612");
 
 inline constexpr char GlyphOutlineInstanceLayoutHash[] = "240e48fe5b3a9a80323271c7083ee932a32439c4a3f64513f210138def963d07";
-#endif // YEROKET__SDF__GENERATED_GLYPHOUTLINEINSTANCE_CPP
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels
