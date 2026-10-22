@@ -6,8 +6,7 @@
 #include "InputEvents.h"
 #include <unordered_map>
 #include <vector>
-#include "LockCensus.h"
-#include <mutex>
+#include "OverwriteRing.h"
 #include <chrono>
 
 struct GLFWwindow;  // GLFW/glfw3.h is included in the .cpp; the header only needs the handle type.
@@ -146,7 +145,7 @@ private:
     static void OnScroll(GLFWwindow* w, double xoffset, double yoffset);
     static void OnKey(GLFWwindow* w, int key, int scancode, int action, int mods);
 
-    // Push one event onto pendingInput_ under eventMutex_ (shared body for the 4 trampolines).
+    // Publish one event into pendingInput_ (shared body for the 4 trampolines; wait-free).
     void QueueEvent(const InputEvent& event);
 
     // Fold one drained InputEvent into canonical state (cursor/buttons/wheel/keys) + append to
@@ -177,11 +176,11 @@ private:
     // resizeSubscribed_ idiom).
     bool focusSubscribed_ = false;
 
-    // --- Event queue (GLFW callback thread... in practice GLFW callbacks fire synchronously
-    // inside glfwPollEvents() on the main thread, but the mutex is cheap insurance + matches the
-    // WindowNode::pendingEvents idiom this mirrors) ---
-    std::vector<InputEvent> pendingInput_;
-    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RG3> eventMutex_;
+    // --- Event queue (GLFW callbacks fire synchronously inside glfwPollEvents() on the main thread;
+    // the fold runs in Execute). A wait-free overwrite ring replaces the old mutex-guarded vector:
+    // producers never wait for the fold and the fold never waits for a producer. 1024 events per
+    // frame is far above any input rate; beyond that the oldest events are overwritten (ring policy). ---
+    Vixen::OverwriteRing<InputEvent, 1024> pendingInput_;
 
     // --- Canonical state, event-derived (updated by FoldEvent via ProcessPendingInput) ---
     glm::vec2 cursorPos_{0.0f};           // Last known absolute cursor position

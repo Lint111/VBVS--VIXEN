@@ -13,100 +13,89 @@ RelationshipObserver::RelationshipObserver(gaia::ecs::World& world)
     : m_world(world) {
 }
 
+size_t RelationshipObserver::addCallbackEntry(gaia::ecs::Entity relationTag, CallbackEntry entry) {
+    entry.handle = m_nextHandle.fetch_add(1, std::memory_order_relaxed);
+    const CallbackKey key = relationTag.id();
+    const size_t handle = entry.handle;
+    // Immutable publish: build the new callback table off to the side, swap it in.
+    m_callbacks.Update([&](const CallbackMap& current) {
+        auto next = std::make_unique<CallbackMap>(current);
+        (*next)[key].push_back(entry);
+        return next;
+    });
+    return handle;
+}
+
 size_t RelationshipObserver::onRelationshipAdded(
     gaia::ecs::Entity relationTag,
     OnAddedCallback callback) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    CallbackKey key = relationTag.id();
-    auto& entries = m_callbacks[key];
-
-    size_t handle = m_nextHandle++;
-    entries.push_back(CallbackEntry{
-        .handle = handle,
+    return addCallbackEntry(relationTag, CallbackEntry{
+        .handle = 0,
         .onAdded = std::move(callback),
         .onRemoved = nullptr,
         .onBatchAdded = nullptr,
         .onBatchRemoved = nullptr
     });
-
-    return handle;
 }
 
 size_t RelationshipObserver::onRelationshipRemoved(
     gaia::ecs::Entity relationTag,
     OnRemovedCallback callback) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    CallbackKey key = relationTag.id();
-    auto& entries = m_callbacks[key];
-
-    size_t handle = m_nextHandle++;
-    entries.push_back(CallbackEntry{
-        .handle = handle,
+    return addCallbackEntry(relationTag, CallbackEntry{
+        .handle = 0,
         .onAdded = nullptr,
         .onRemoved = std::move(callback),
         .onBatchAdded = nullptr,
         .onBatchRemoved = nullptr
     });
-
-    return handle;
 }
 
 size_t RelationshipObserver::onBatchAdded(
     gaia::ecs::Entity relationTag,
     OnBatchAddedCallback callback) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    CallbackKey key = relationTag.id();
-    auto& entries = m_callbacks[key];
-
-    size_t handle = m_nextHandle++;
-    entries.push_back(CallbackEntry{
-        .handle = handle,
+    return addCallbackEntry(relationTag, CallbackEntry{
+        .handle = 0,
         .onAdded = nullptr,
         .onRemoved = nullptr,
         .onBatchAdded = std::move(callback),
         .onBatchRemoved = nullptr
     });
-
-    return handle;
 }
 
 size_t RelationshipObserver::onBatchRemoved(
     gaia::ecs::Entity relationTag,
     OnBatchRemovedCallback callback) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    CallbackKey key = relationTag.id();
-    auto& entries = m_callbacks[key];
-
-    size_t handle = m_nextHandle++;
-    entries.push_back(CallbackEntry{
-        .handle = handle,
+    return addCallbackEntry(relationTag, CallbackEntry{
+        .handle = 0,
         .onAdded = nullptr,
         .onRemoved = nullptr,
         .onBatchAdded = nullptr,
         .onBatchRemoved = std::move(callback)
     });
-
-    return handle;
 }
 
 void RelationshipObserver::unregisterCallback(size_t handle) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    m_callbacks.Update([&](const CallbackMap& current) -> std::unique_ptr<CallbackMap> {
+        const bool present = std::any_of(current.begin(), current.end(), [handle](const auto& kv) {
+            return std::any_of(kv.second.begin(), kv.second.end(),
+                               [handle](const CallbackEntry& e) { return e.handle == handle; });
+        });
+        if (!present) return nullptr;  // unknown handle: nothing to publish
 
-    for (auto& [key, entries] : m_callbacks) {
-        entries.erase(
-            std::remove_if(entries.begin(), entries.end(),
-                [handle](const CallbackEntry& e) { return e.handle == handle; }),
-            entries.end()
-        );
-    }
+        auto next = std::make_unique<CallbackMap>(current);
+        for (auto& [key, entries] : *next) {
+            entries.erase(
+                std::remove_if(entries.begin(), entries.end(),
+                    [handle](const CallbackEntry& e) { return e.handle == handle; }),
+                entries.end()
+            );
+        }
+        return next;
+    });
 }
 
 bool RelationshipObserver::addRelationship(
@@ -123,7 +112,6 @@ bool RelationshipObserver::addRelationship(
 
     // Handle callbacks
     if (m_deferredMode) {
-        std::lock_guard<std::mutex> lock(m_mutex);
         m_deferredOps.push_back(DeferredOp{
             .type = DeferredOp::Type::Add,
             .source = source,
@@ -163,7 +151,6 @@ size_t RelationshipObserver::addRelationshipBatch(
 
     // Invoke callbacks
     if (m_deferredMode) {
-        std::lock_guard<std::mutex> lock(m_mutex);
         for (auto source : validSources) {
             m_deferredOps.push_back(DeferredOp{
                 .type = DeferredOp::Type::Add,
@@ -196,7 +183,6 @@ bool RelationshipObserver::removeRelationship(
 
     // Invoke callbacks before removal
     if (m_deferredMode) {
-        std::lock_guard<std::mutex> lock(m_mutex);
         m_deferredOps.push_back(DeferredOp{
             .type = DeferredOp::Type::Remove,
             .source = source,
@@ -301,11 +287,8 @@ size_t RelationshipObserver::countRelationships(
 void RelationshipObserver::flush() {
     std::vector<DeferredOp> ops;
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        ops = std::move(m_deferredOps);
-        m_deferredOps.clear();
-    }
+    ops = std::move(m_deferredOps);
+    m_deferredOps.clear();
 
     // Group operations by type and target for batch processing
     std::unordered_map<uint64_t, std::vector<gaia::ecs::Entity>> addsByTarget;
@@ -349,11 +332,11 @@ void RelationshipObserver::invokeAddedCallbacks(
     gaia::ecs::Entity target,
     gaia::ecs::Entity relationTag) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto callbacks = m_callbacks.Read();  // pins the table; callbacks may register more callbacks
 
     CallbackKey key = relationTag.id();
-    auto it = m_callbacks.find(key);
-    if (it == m_callbacks.end()) return;
+    auto it = callbacks->find(key);
+    if (it == callbacks->end()) return;
 
     RelationshipContext ctx{
         .world = m_world,
@@ -374,11 +357,11 @@ void RelationshipObserver::invokeRemovedCallbacks(
     gaia::ecs::Entity target,
     gaia::ecs::Entity relationTag) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto callbacks = m_callbacks.Read();  // pins the table; callbacks may register more callbacks
 
     CallbackKey key = relationTag.id();
-    auto it = m_callbacks.find(key);
-    if (it == m_callbacks.end()) return;
+    auto it = callbacks->find(key);
+    if (it == callbacks->end()) return;
 
     RelationshipContext ctx{
         .world = m_world,
@@ -399,11 +382,11 @@ void RelationshipObserver::invokeBatchAddedCallbacks(
     gaia::ecs::Entity target,
     gaia::ecs::Entity relationTag) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto callbacks = m_callbacks.Read();  // pins the table; callbacks may register more callbacks
 
     CallbackKey key = relationTag.id();
-    auto it = m_callbacks.find(key);
-    if (it == m_callbacks.end()) return;
+    auto it = callbacks->find(key);
+    if (it == callbacks->end()) return;
 
     // Check if batch callback exists and threshold is met
     bool useBatch = sources.size() >= m_batchThreshold;

@@ -13,10 +13,11 @@
 #include <cstdint>
 #include <cstdlib>    // std::strtof
 #include <iostream>   // std::cerr (one-time fail-open log on image-mask load failure)
-#include <mutex>
+#include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
+
+#include "RcuSnapshot.h"
 
 namespace Vixen::RenderGraph {
 
@@ -49,33 +50,29 @@ struct CachedMask {
     std::vector<uint8_t> rgba;  // size == width*height*4 when loaded
 };
 
-std::mutex&                                    MaskCacheMutex() {
-    static std::mutex m;
-    return m;
-}
-std::unordered_map<std::string, CachedMask>&   MaskCache() {
-    static std::unordered_map<std::string, CachedMask> cache;
+// Immutable publish (no-stall pattern 2): the cache is one immutable path -> mask map. A lookup pins the
+// current map; a first load builds a new map (copy + one entry) and swaps it in. Entries are shared_ptr
+// and every later map copies them forward, so a returned mask pointer stays valid for the process lifetime
+// (entries are never erased) exactly as before.
+using MaskMap = std::unordered_map<std::string, std::shared_ptr<const CachedMask>>;
+
+RcuSnapshot<MaskMap>& MaskCache() {
+    static RcuSnapshot<MaskMap> cache;
     return cache;
 }
-std::unordered_set<std::string>&               LoggedFailures() {
-    static std::unordered_set<std::string> logged;
-    return logged;
-}
 
-// Return the cached mask for `path`, loading it on first request. Caller holds no lock; this takes
-// the cache lock internally. The returned pointer is stable for the process lifetime (entries are
-// never erased), so reading it outside the lock is safe.
+// Return the cached mask for `path`, loading it on first request. Never waits: a concurrent loader for
+// the same path also loads (harmless, same bytes); the first to publish wins and the other adopts it.
 const CachedMask* GetOrLoadMask(const std::string& path) {
     {
-        std::lock_guard<std::mutex> lock(MaskCacheMutex());
-        auto it = MaskCache().find(path);
-        if (it != MaskCache().end()) {
-            return &it->second;
+        const auto snapshot = MaskCache().Read();
+        auto it = snapshot->find(path);
+        if (it != snapshot->end()) {
+            return it->second.get();
         }
     }
 
-    // Load OUTSIDE the lock (stbi_load can be slow); then publish under the lock. A concurrent loader
-    // for the same path would also load — harmless (last writer wins, same bytes).
+    // Load OUTSIDE any publish (stbi_load can be slow).
     CachedMask mask;
     int w = 0, h = 0, channels = 0;
     stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
@@ -89,18 +86,29 @@ const CachedMask* GetOrLoadMask(const std::string& path) {
         stbi_image_free(pixels);
     }
 
-    if (!mask.loaded) {
-        std::lock_guard<std::mutex> lock(MaskCacheMutex());
-        if (LoggedFailures().insert(path).second) {
-            std::cerr << "[UiHitMask] hit-mask image failed to load (treating as box, fail-open): "
-                      << path << '\n';
+    const auto fresh = std::make_shared<const CachedMask>(std::move(mask));
+    const CachedMask* result = fresh.get();
+    bool inserted = false;
+    MaskCache().Update([&](const MaskMap& current) -> std::unique_ptr<MaskMap> {
+        const auto existing = current.find(path);
+        if (existing != current.end()) {
+            result = existing->second.get();  // another thread published this path first
+            inserted = false;
+            return nullptr;
         }
-    }
+        auto next = std::make_unique<MaskMap>(current);
+        next->emplace(path, fresh);
+        result = fresh.get();
+        inserted = true;
+        return next;
+    });
 
-    std::lock_guard<std::mutex> lock(MaskCacheMutex());
-    auto [it, inserted] = MaskCache().emplace(path, std::move(mask));
-    (void)inserted;
-    return &it->second;
+    // Log a failed load once: only the thread whose entry was published reports it.
+    if (inserted && !fresh->loaded) {
+        std::cerr << "[UiHitMask] hit-mask image failed to load (treating as box, fail-open): "
+                  << path << '\n';
+    }
+    return result;
 }
 
 // ---- shape tests ------------------------------------------------------------------------------

@@ -315,7 +315,7 @@ target_link_libraries(MyApp PRIVATE ShaderManagement)
 ### src/main.cpp
 
 ```cpp
-#include <ShaderManagement/ShaderLibrary.h>
+#include <ShaderManagement/ShaderDataBundle.h>
 #include <SDI_Registry.g.h>
 #include <iostream>
 

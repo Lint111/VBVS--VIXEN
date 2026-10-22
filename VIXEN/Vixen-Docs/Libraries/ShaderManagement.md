@@ -23,7 +23,6 @@ flowchart TB
         SC[ShaderCompiler]
         SR[SPIRVReflection]
         SDI[SDIGenerator]
-        SL[ShaderLibrary]
     end
 
     subgraph Input
@@ -167,38 +166,10 @@ namespace SDI {
 
 ## 6. Hot Reload
 
-Monitor shader files and recompile on change.
-
-```cpp
-ShaderLibrary library;
-library.EnableHotReload(true);
-
-// Register shader
-library.LoadShader("VoxelRayMarch", "shaders/VoxelRayMarch.comp");
-
-// Check for changes (call each frame or periodically)
-if (library.CheckAndReload()) {
-    // Shader changed, rebuild pipeline
-    InvalidatePipeline();
-}
-```
-
-### 6.1 Reload Flow
-
-```mermaid
-sequenceDiagram
-    participant FS as FileSystem
-    participant SL as ShaderLibrary
-    participant SC as ShaderCompiler
-    participant EB as EventBus
-
-    FS->>SL: File modified
-    SL->>SC: Recompile shader
-    SC-->>SL: New SPIRV
-    SL->>EB: Emit(ShaderReloadedEvent)
-    EB->>Pipeline: OnEvent(ShaderReloaded)
-    Pipeline->>Pipeline: SetDirty(true)
-```
+The standalone `ShaderLibrary` class (a program registry with a placeholder background compiler) had no
+callers anywhere in the tree and was removed (lock family SH2, VIXEN no-stall program). There is no
+registry-level hot-reload API in this library now; reloading builds a new bundle through
+`ShaderBundleBuilder` / `AsyncShaderBundleBuilder`.
 
 ---
 
@@ -209,7 +180,6 @@ sequenceDiagram
 | `libraries/ShaderManagement/include/ShaderCompiler.h` | GLSL compilation |
 | `libraries/ShaderManagement/include/SPIRVReflection.h` | Reflection API |
 | `libraries/ShaderManagement/include/SDIGenerator.h` | Header generation |
-| `libraries/ShaderManagement/include/ShaderLibrary.h` | Hot reload support |
 
 ---
 

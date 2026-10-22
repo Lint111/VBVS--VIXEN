@@ -156,10 +156,7 @@ void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // only exists during a real node Execute() -- i.e. exactly the case renderPaused skips, so a resize
     // queued while paused is instead re-applied by CompileImpl on the next (unpaused) recompile.
     std::vector<WindowEvent> eventsToProcess;
-    {
-        std::lock_guard lock(eventMutex);
-        eventsToProcess.swap(pendingEvents);
-    }
+    pendingEvents.Drain([&eventsToProcess](const WindowEvent& event) { eventsToProcess.push_back(event); });
 
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
@@ -215,10 +212,7 @@ void WindowNode::ProcessPendingEvents() {
     }
 
     std::vector<WindowEvent> eventsToProcess;
-    {
-        std::lock_guard lock(eventMutex);
-        eventsToProcess.swap(pendingEvents);
-    }
+    pendingEvents.Drain([&eventsToProcess](const WindowEvent& event) { eventsToProcess.push_back(event); });
 
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
@@ -299,39 +293,33 @@ void WindowNode::OnFramebufferSize(GLFWwindow* w, int width, int height) {
     if (!self || width <= 0 || height <= 0) return;  // 0-size = minimised; ignore
     auto uw = static_cast<uint32_t>(width), uh = static_cast<uint32_t>(height);
     if (uw == self->width && uh == self->height) return;  // only on a real change
-    std::lock_guard lock(self->eventMutex);
-    self->pendingEvents.push_back({WindowEvent::Type::Resize, uw, uh});
+    self->pendingEvents.Push({WindowEvent::Type::Resize, uw, uh});
 }
 
 void WindowNode::OnWindowClose(GLFWwindow* w) {
     WindowNode* self = FromGlfw(w);
     if (!self) return;
-    std::lock_guard lock(self->eventMutex);
-    self->pendingEvents.push_back({WindowEvent::Type::Close});
+    self->pendingEvents.Push({WindowEvent::Type::Close});
 }
 
 void WindowNode::OnWindowFocus(GLFWwindow* w, int focused) {
     WindowNode* self = FromGlfw(w);
     if (!self) return;
-    std::lock_guard lock(self->eventMutex);
-    self->pendingEvents.push_back({focused ? WindowEvent::Type::Focus : WindowEvent::Type::Unfocus});
+    self->pendingEvents.Push({focused ? WindowEvent::Type::Focus : WindowEvent::Type::Unfocus});
 }
 
 void WindowNode::OnWindowIconify(GLFWwindow* w, int iconified) {
     WindowNode* self = FromGlfw(w);
     if (!self) return;
-    std::lock_guard lock(self->eventMutex);
-    self->pendingEvents.push_back({iconified ? WindowEvent::Type::Minimize : WindowEvent::Type::Restore});
+    self->pendingEvents.Push({iconified ? WindowEvent::Type::Minimize : WindowEvent::Type::Restore});
 }
 
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 void WindowNode::InjectWindowEvent(WindowEvent::Type type, uint32_t w, uint32_t h) {
-    std::lock_guard lock(eventMutex);
-    pendingEvents.push_back(WindowEvent{ type, w, h });
+    pendingEvents.Push(WindowEvent{ type, w, h });
 }
 size_t WindowNode::PendingEventCountForTest() const {
-    std::lock_guard lock(eventMutex);
-    return pendingEvents.size();
+    return pendingEvents.PendingCount();
 }
 #endif
 

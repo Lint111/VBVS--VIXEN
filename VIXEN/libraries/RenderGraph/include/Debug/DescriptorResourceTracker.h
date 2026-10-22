@@ -20,13 +20,15 @@
 #include <source_location>
 #include <chrono>
 #include <vector>
+#include <algorithm>
 #include <unordered_map>
-#include <mutex>
 #include <functional>
 #include <atomic>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+
+#include "PerThreadLog.h"
 
 // Per-frame descriptor tracking is OFF by default — it emits a [ResourceTracker] line per
 // descriptor extraction/bind every frame (tens of thousands per run) straight to the console,
@@ -192,13 +194,14 @@ public:
     }
 
 #if VIXEN_DEBUG_DESCRIPTOR_TRACKING
+    // Thread-local + merge (no-stall pattern 4): each thread appends to its own log; the readers below
+    // merge all logs by timestamp. Recording takes no lock of ours.
     void RecordEvent(const ResourceEvent& event) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        events_.push_back(event);
+        events_.Append(event);
 
-        // Also print immediately for real-time debugging
-        if (printEventsImmediately_) {
-            std::cout << "[ResourceTracker] " << event.ToString() << std::endl;
+        // Also print immediately for real-time debugging (one string, one stream insertion)
+        if (printEventsImmediately_.load(std::memory_order_relaxed)) {
+            std::cout << ("[ResourceTracker] " + event.ToString() + "\n") << std::flush;
         }
     }
 
@@ -225,9 +228,8 @@ public:
 
     // Get all events for a specific tracking ID
     std::vector<ResourceEvent> GetEventsForId(TrackingId id) const {
-        std::lock_guard<std::mutex> lock(mutex_);
         std::vector<ResourceEvent> result;
-        for (const auto& event : events_) {
+        for (const auto& event : MergedEvents()) {
             if (event.trackingId == id) {
                 result.push_back(event);
             }
@@ -237,9 +239,8 @@ public:
 
     // Get all events for a specific binding
     std::vector<ResourceEvent> GetEventsForBinding(uint32_t binding) const {
-        std::lock_guard<std::mutex> lock(mutex_);
         std::vector<ResourceEvent> result;
-        for (const auto& event : events_) {
+        for (const auto& event : MergedEvents()) {
             if (event.binding == binding) {
                 result.push_back(event);
             }
@@ -249,12 +250,12 @@ public:
 
     // Find handle value mismatches (stored vs extracted)
     std::vector<std::pair<ResourceEvent, ResourceEvent>> FindHandleMismatches() const {
-        std::lock_guard<std::mutex> lock(mutex_);
         std::vector<std::pair<ResourceEvent, ResourceEvent>> mismatches;
 
-        // Group events by tracking ID
+        // Group events by tracking ID (timestamp order across threads)
+        const std::vector<ResourceEvent> merged = MergedEvents();
         std::unordered_map<TrackingId, std::vector<const ResourceEvent*>> byId;
-        for (const auto& event : events_) {
+        for (const auto& event : merged) {
             byId[event.trackingId].push_back(&event);
         }
 
@@ -276,11 +277,11 @@ public:
 
     // Dump all events to console
     void DumpAllEvents() const {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::vector<ResourceEvent> merged = MergedEvents();
         std::cout << "\n========== DESCRIPTOR RESOURCE TRACKING DUMP ==========\n";
-        std::cout << "Total events: " << events_.size() << "\n\n";
+        std::cout << "Total events: " << merged.size() << "\n\n";
 
-        for (const auto& event : events_) {
+        for (const auto& event : merged) {
             std::cout << event.ToString() << "\n";
         }
 
@@ -298,22 +299,28 @@ public:
     }
 
     void Clear() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        events_.clear();
+        events_.Clear();
     }
 
-    void SetPrintEventsImmediately(bool print) { printEventsImmediately_ = print; }
-    bool GetPrintEventsImmediately() const { return printEventsImmediately_; }
+    void SetPrintEventsImmediately(bool print) { printEventsImmediately_.store(print, std::memory_order_relaxed); }
+    bool GetPrintEventsImmediately() const { return printEventsImmediately_.load(std::memory_order_relaxed); }
 
     size_t GetEventCount() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return events_.size();
+        return events_.Size();
     }
 
 private:
-    mutable std::mutex mutex_;
-    std::vector<ResourceEvent> events_;
-    bool printEventsImmediately_ = true;  // Default: print as they happen
+    // Merge of every thread's log, oldest first (stable, so one thread's events keep their order).
+    std::vector<ResourceEvent> MergedEvents() const {
+        std::vector<ResourceEvent> merged;
+        events_.ForEach([&](const ResourceEvent& event) { merged.push_back(event); });
+        std::stable_sort(merged.begin(), merged.end(),
+                         [](const ResourceEvent& a, const ResourceEvent& b) { return a.timestamp < b.timestamp; });
+        return merged;
+    }
+
+    Vixen::PerThreadLog<ResourceEvent> events_;
+    std::atomic<bool> printEventsImmediately_{true};  // Default: print as they happen
 #else
     // Release: all operations are no-ops
     void RecordEvent(const ResourceEvent&) {}

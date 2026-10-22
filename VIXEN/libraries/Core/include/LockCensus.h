@@ -45,9 +45,6 @@ namespace Vixen::LockCensus {
 enum class Family : uint8_t {
     VK1,   // VulkanDevice::submitMutexMapLock_        (queue -> submit-mutex directory lookup)
     VK2,   // VulkanDevice::submitMutexes_ elements    (per-physical-queue host serialization)
-    EB1,   // MessageBus::queueMutex                   (publish queue)
-    EB2,   // MessageBus::subscriptionMutex            (dispatch + registry)
-    EB3,   // MessageBus::statsMutex                   (bus statistics)
     RM1,   // DeferredDestructionQueue::mutex_         (retirement ring)
     RM7,   // StagingBufferPool::SizeClassBucket::mutex (per-size-class deque)
     RM8,   // StagingBufferPool::recordsMutex_         (handle -> record map)
@@ -58,9 +55,6 @@ enum class Family : uint8_t {
     C1,    // TypedCacher::m_lock (shared)             (cache hit / publication, 15 cachers)
     C3,    // MainCacher::m_globalRegistryMutex (shared)
     C4,    // MainCacher::m_deviceRegistriesMutex (shared)
-    RG2,   // ITaskProfile::samplesMutex_              (profile samples)
-    RG3,   // InputNode::eventMutex_                   (input pump vs fold)
-    RG4,   // WindowNode::eventMutex (recursive)       (window pump vs drain)
     Count
 };
 
@@ -68,8 +62,8 @@ constexpr std::size_t kFamilyCount = static_cast<std::size_t>(Family::Count);
 
 constexpr std::string_view FamilyName(Family family) noexcept {
     constexpr std::string_view names[kFamilyCount] = {
-        "VK1", "VK2", "EB1", "EB2", "EB3", "RM1", "RM7", "RM8", "RM9", "RM10", "RM11", "RM12",
-        "C1", "C3", "C4", "RG2", "RG3", "RG4",
+        "VK1", "VK2", "RM1", "RM7", "RM8", "RM9", "RM10", "RM11", "RM12",
+        "C1", "C3", "C4",
     };
     return names[static_cast<std::size_t>(family)];
 }

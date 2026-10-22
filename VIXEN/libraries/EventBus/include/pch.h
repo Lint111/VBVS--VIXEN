@@ -28,7 +28,6 @@
 #include <atomic>
 #include <thread>
 #include <future>
-#include <condition_variable>
 
 // Standard Library - I/O
 #include <iostream>

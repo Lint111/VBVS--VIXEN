@@ -240,24 +240,17 @@ void OctreeNode::OnEvent(const Event& event) {
 
 ## 8. Thread Safety
 
-> [!warning] Current Limitation
-> The EventBus is **not thread-safe**. All event operations must occur on the main thread.
+`MessageBus` has no mutex (lock families EB1-EB3 removed by the VIXEN no-stall program). Every thread may
+call `Publish`, `PublishImmediate`, `Subscribe` and `Unsubscribe`; nothing waits for another thread.
 
-### 8.1 Future Improvement
+| Part | Pattern | Contract |
+|------|---------|----------|
+| Publish queue | Intrusive lock-free MPSC list (`BaseEventMessage::busNext`) | `Publish` is one atomic exchange. `ProcessMessages` / `ClearQueue` have one owner at a time: a call that arrives while another drains returns at once and the owner delivers. Messages published by handlers during a drain ride the next `ProcessMessages`. |
+| Subscriptions | Immutable dispatch table (`RcuSnapshot`) | Dispatch pins the table it started with; `Subscribe`/`Unsubscribe` build a new table and swap it in. A handler removed by `Unsubscribe` may still run for a dispatch that began before `Unsubscribe` returned, so unsubscribe from the thread that owns the handler's captured state. Handlers may subscribe, unsubscribe and publish re-entrantly. |
+| Statistics | Relaxed atomics, per-type slot table | `GetStats()` is a consistent-enough snapshot, not a transaction. |
 
-```cpp
-// Planned: Thread-safe event queue
-class ThreadSafeEventBus {
-    std::mutex queueMutex_;
-    std::queue<std::unique_ptr<Event>> eventQueue_;
-
-public:
-    void EmitAsync(std::unique_ptr<Event> event) {
-        std::lock_guard lock(queueMutex_);
-        eventQueue_.push(std::move(event));
-    }
-};
-```
+`Reserve()` no longer allocates (messages carry their own queue link); it declares the expected depth for
+the capacity warning and the growth diagnostic.
 
 ---
 

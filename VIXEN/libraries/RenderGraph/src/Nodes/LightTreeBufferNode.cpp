@@ -33,10 +33,10 @@ LightTreeBufferNode::LightTreeBufferNode(const std::string& n, NodeType* t)
 }
 
 void LightTreeBufferNode::SetLightTreeCut(std::vector<Vixen::SVO::LightTreeNode> cut) {
-    std::lock_guard<std::mutex> lock(cutMutex_);
-    cut_ = std::move(cut);
+    const size_t nodeCount = cut.size();
+    cut_.Publish(std::move(cut));
     NODE_LOG_INFO("[LightTreeBufferNode] SetLightTreeCut: " +
-                  std::to_string(cut_.size()) + " nodes staged for next Execute");
+                  std::to_string(nodeCount) + " nodes staged for next Execute");
 }
 
 void LightTreeBufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
@@ -75,8 +75,8 @@ void LightTreeBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     Vixen::Gpu::LightTreeBuffer gpuBuf{};
     {
-        std::lock_guard<std::mutex> lock(cutMutex_);
-        uint32_t n = static_cast<uint32_t>(cut_.size());
+        const auto cut = cut_.Read();  // pins the cut published when this Execute started
+        uint32_t n = static_cast<uint32_t>(cut->size());
         constexpr uint32_t kCapacity =
             sizeof(Vixen::Gpu::LightTreeBuffer::nodes) / sizeof(Vixen::Gpu::LightTreeGpuNode);
         if (n > kCapacity) {
@@ -87,7 +87,7 @@ void LightTreeBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         }
         gpuBuf.nodeCount = n;
         for (uint32_t i = 0; i < n; ++i) {
-            const Vixen::SVO::LightTreeNode& src = cut_[i];
+            const Vixen::SVO::LightTreeNode& src = (*cut)[i];
             Vixen::Gpu::LightTreeGpuNode& dst = gpuBuf.nodes[i];
             dst.worldPosX   = src.worldPos.x;
             dst.worldPosY   = src.worldPos.y;
