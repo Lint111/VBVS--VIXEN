@@ -26,7 +26,6 @@ using Vixen::SVO::VoxelGrid;
 using Vixen::SVO::SceneGeneratorFactory;
 using Vixen::SVO::SceneGeneratorParams;
 using Vixen::SVO::ISceneGenerator;
-using Vixen::SVO::VoxelDataCache;
 
 namespace Vixen::RenderGraph {
 
