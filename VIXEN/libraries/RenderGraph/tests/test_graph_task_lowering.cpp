@@ -511,6 +511,67 @@ TEST(SubmitRecord, DrainCounterKeepsTwoBatchesOutstandingAcrossRecords) {
     EXPECT_EQ(outstanding, 1u);
 }
 
+std::vector<uint64_t> timelineWaitedValues;
+std::vector<std::vector<VkSemaphoreSubmitInfo>> timelineSubmitSignals;
+uint64_t timelineCompleted = 0;
+uint64_t timelineSignalled = 0;
+uint64_t timelineMaximumOutstanding = 0;
+VKAPI_ATTR VkResult VKAPI_CALL CaptureTimelineWait(
+    VkDevice, const VkSemaphoreWaitInfo* info, uint64_t) {
+    EXPECT_EQ(info->semaphoreCount, 1u);
+    timelineWaitedValues.push_back(info->pValues[0]);
+    // The GPU completes in queue order, so the waited batch and everything before it are done.
+    timelineCompleted = std::max(timelineCompleted, info->pValues[0]);
+    return VK_SUCCESS;
+}
+VKAPI_ATTR VkResult VKAPI_CALL CaptureTimelineSubmit(
+    VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence) {
+    EXPECT_EQ(count, 1u);
+    const auto& si = infos[0];
+    timelineSubmitSignals.emplace_back(si.pSignalSemaphoreInfos,
+                                       si.pSignalSemaphoreInfos + si.signalSemaphoreInfoCount);
+    timelineSignalled = si.pSignalSemaphoreInfos[0].value;
+    timelineMaximumOutstanding = std::max(timelineMaximumOutstanding, timelineSignalled - timelineCompleted);
+    return VK_SUCCESS;
+}
+
+TEST(SubmitRecord, TimelineRetiresOnlyTheOldestBatch) {
+    // R503 without draining the queue: at the cap the drain waits for the oldest outstanding
+    // batch's timeline value, so the newer batch keeps the queue busy during the wait.
+    SubmitRecord first, second;
+    VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+    first.commandBuffers.push_back(command);
+    second.commandBuffers = {command, command, command};
+    second.commandCostUpperBoundsNs = {2'000'000, 2'000'000, 2'000'000};  // three batches
+    second.signals.resize(2);
+    const auto semaphore = reinterpret_cast<VkSemaphore>(uintptr_t(11));
+    uint64_t submitted = 0, retired = 0;
+    const SubmitRecord::TimelineRetirement timeline{
+        VK_NULL_HANDLE, semaphore, &submitted, &retired, CaptureTimelineWait};
+    timelineWaitedValues.clear();
+    timelineSubmitSignals.clear();
+    timelineCompleted = timelineSignalled = timelineMaximumOutstanding = 0;
+
+    ASSERT_EQ(first.Submit(CaptureTimelineSubmit, VK_NULL_HANDLE, timeline), VK_SUCCESS);
+    ASSERT_EQ(second.Submit(CaptureTimelineSubmit, VK_NULL_HANDLE, timeline), VK_SUCCESS);
+
+    ASSERT_EQ(timelineSubmitSignals.size(), 4u);
+    EXPECT_EQ(submitted, 4u);
+    // Batches 3 and 4 each waited for the batch two behind them, never for the queue.
+    EXPECT_EQ(timelineWaitedValues, (std::vector<uint64_t>{1, 2}));
+    EXPECT_EQ(retired, 2u);
+    EXPECT_EQ(timelineMaximumOutstanding, SubmitRecord::kOutstandingBatchCap);
+    for (size_t i = 0; i < timelineSubmitSignals.size(); ++i) {
+        const auto& signalled = timelineSubmitSignals[i];
+        ASSERT_FALSE(signalled.empty());
+        EXPECT_EQ(signalled[0].semaphore, semaphore);
+        EXPECT_EQ(signalled[0].value, i + 1);
+        EXPECT_EQ(signalled[0].stageMask, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+        // The record's own signals stay on its final batch only.
+        EXPECT_EQ(signalled.size(), i == 3 ? 3u : 1u);
+    }
+}
+
 TEST(SubmitRecord, CalibratedChunksBatchWithinBudgetAndKeepFinalOwnership) {
     SubmitRecord record;
     record.waits.resize(2);

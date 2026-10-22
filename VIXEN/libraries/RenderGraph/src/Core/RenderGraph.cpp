@@ -1334,8 +1334,12 @@ void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wav
             }
         } else {
             if (device && device->fpQueueSubmit2) {
-                const VkResult r = rec.Submit(device->fpQueueSubmit2, device->queue,
-                                              vkQueueWaitIdle, &outstandingBatches_[device->queue]);
+                auto& timeline = device->submitTimeline;
+                const VkResult r = timeline.semaphore != VK_NULL_HANDLE
+                    ? rec.Submit(device->fpQueueSubmit2, device->queue,
+                                 {device->device, timeline.semaphore, &timeline.submitted, &timeline.retired})
+                    : rec.Submit(device->fpQueueSubmit2, device->queue,
+                                 vkQueueWaitIdle, &outstandingBatches_[device->queue]);
                 if (r != VK_SUCCESS) {
                     submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
                     ReportGpuFault("RenderGraph::DrainSubmitWave vkQueueSubmit2", r);

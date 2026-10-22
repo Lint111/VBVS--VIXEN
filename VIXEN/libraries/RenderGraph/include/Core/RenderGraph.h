@@ -994,7 +994,8 @@ private:
     SubmitChannel submitChannel_;
     bool submitChannelDraining_ = false;
     // R503: batches submitted since the drain last retired each queue; SubmitRecord::Submit
-    // keeps it at or under SubmitRecord::kOutstandingBatchCap across records.
+    // keeps it at or under SubmitRecord::kOutstandingBatchCap across records. Used only for a
+    // device without a submit timeline (VulkanDevice::submitTimeline), which retires per batch.
     std::unordered_map<VkQueue, uint32_t> outstandingBatches_;
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node

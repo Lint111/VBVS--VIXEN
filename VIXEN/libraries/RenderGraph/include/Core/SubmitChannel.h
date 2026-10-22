@@ -93,6 +93,21 @@ struct SubmitRecord {
                     PFN_vkQueueWaitIdle retireFn = vkQueueWaitIdle,
                     uint32_t* outstandingBatches = nullptr) const;
 
+    // The drain's retirement when the queue has a timeline semaphore: every batch also signals
+    // `semaphore` with `*submitted + 1`, and at the cap the host waits for the OLDEST outstanding
+    // batch's value (`*submitted - cap + 1`) rather than the whole queue, so the batch behind it
+    // keeps executing during the wait. Signals cover all earlier submissions in queue order
+    // (ALL_COMMANDS), so the bound is the same at most kOutstandingBatchCap as the idle drain.
+    struct TimelineRetirement {
+        VkDevice device = VK_NULL_HANDLE;
+        VkSemaphore semaphore = VK_NULL_HANDLE;
+        uint64_t* submitted = nullptr;   ///< value signalled by the newest batch
+        uint64_t* retired = nullptr;     ///< highest value the host has waited for
+        PFN_vkWaitSemaphores waitFn = vkWaitSemaphores;
+    };
+    VkResult Submit(PFN_vkQueueSubmit2 submitFn, VkQueue queue,
+                    const TimelineRetirement& timeline) const;
+
     static SubmitRecord FromSubmitInfo2(const VkSubmitInfo2& si, VkFence fence) {
         SubmitRecord r;
         r.fence = fence;
@@ -104,6 +119,10 @@ struct SubmitRecord {
                          si.pSignalSemaphoreInfos + si.signalSemaphoreInfoCount);
         return r;
     }
+
+private:
+    VkResult SubmitBatches(PFN_vkQueueSubmit2 submitFn, VkQueue queue, PFN_vkQueueWaitIdle retireFn,
+                           uint32_t* outstandingBatches, const TimelineRetirement* timeline) const;
 };
 
 /// Per-frame, per-producer submit slots. One slot per graph node (indexed by the node's position in
