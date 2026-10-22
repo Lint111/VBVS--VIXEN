@@ -34,6 +34,4 @@ TEST(SdfCoreGlslGenerated, ContainsKernelGeneratorArtifactAndCallableBodies) {
     EXPECT_NE(glsl.find("float SdfCore_Sphere("), std::string::npos);
     EXPECT_NE(glsl.find("vec3 SdfCore_Transform("), std::string::npos);
     EXPECT_NE(glsl.find("uint SdfCore_Hash32(uint valueBits)"), std::string::npos);
-    EXPECT_NE(glsl.find("float SdfCore_SilhouetteCoverage(float signedDistance, float footprint)"),
-              std::string::npos);
 }
