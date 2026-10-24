@@ -1,5 +1,7 @@
 #include "VulkanGraphApplication.h"
+#include "Core/NodeInstance.h"
 #include "Data/Nodes/LightingConfigNodeConfig.h"
+#include "Nodes/LightingConfigNode.h"
 #include <stb_image.h>
 
 #include <gtest/gtest.h>
@@ -64,19 +66,29 @@ public:
         if (!VulkanGraphApplication::Render()) return false;
         ++completedFrames_;
 
+        auto* graph = GetRenderGraph();
+        auto* lighting = graph ? graph->GetInstanceByName("lighting_config") : nullptr;
+        if (!lighting) {
+            captureError_ = "production graph has no lighting_config node";
+            return false;
+        }
+
         if (completedFrames_ == 1u) {
             if (action_ == CaptureAction::ModeSwitch) {
-                SetLightingShadingMode(LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX);
+                lighting->SetParameter(LightingConfigNodeConfig::PARAM_SHADING_MODE,
+                    LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX);
             } else {
-                SetLightingShadingMode(LightingConfigNodeConfig::SHADING_MODE_CEL);
-                SetLightingCelBandCount(action_ == CaptureAction::BandCount ? CaptureBandCount() : 5u);
+                lighting->SetParameter(LightingConfigNodeConfig::PARAM_SHADING_MODE,
+                    LightingConfigNodeConfig::SHADING_MODE_CEL);
+                lighting->SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_COUNT,
+                    action_ == CaptureAction::BandCount ? CaptureBandCount() : 5u);
                 float rampSoftness = 0.0f;
                 if (action_ == CaptureAction::BandCount && CaptureRampSoftness(rampSoftness)) {
                     Vixen::RenderGraph::PartialLook look;
                     look.celRampSoftness = rampSoftness;
-                    SetFixtureLook(look);
+                    SetFixtureLook(*lighting, look);
                 }
-                if (action_ == CaptureAction::Bounds) SetBoundaryParameters();
+                if (action_ == CaptureAction::Bounds) SetBoundaryParameters(*lighting);
             }
             return true;
         }
@@ -84,7 +96,8 @@ public:
         if (action_ == CaptureAction::ModeSwitch) {
             if (completedFrames_ == 2u) {
                 if (!Capture("lambert-ggx")) return false;
-                SetLightingShadingMode(LightingConfigNodeConfig::SHADING_MODE_CEL);
+                lighting->SetParameter(LightingConfigNodeConfig::PARAM_SHADING_MODE,
+                    LightingConfigNodeConfig::SHADING_MODE_CEL);
             } else if (completedFrames_ == 3u) {
                 if (!Capture("cel")) return false;
                 capturedModeSwitch_ = true;
@@ -101,21 +114,25 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
-    void SetFixtureLook(const Vixen::RenderGraph::PartialLook& look) {
+    static void SetFixtureLook(Vixen::RenderGraph::NodeInstance& lighting, const Vixen::RenderGraph::PartialLook& look) {
         Vixen::RenderGraph::LookContribution contribution;
         contribution.look = look;
-        RenderLook().SetSlot(
+        dynamic_cast<Vixen::RenderGraph::LightingConfigNode&>(lighting).Look().SetSlot(
             Vixen::RenderGraph::LookLayer::DevOverride, 1, std::move(contribution));
     }
 
-    void SetBoundaryParameters() {
-        SetCelShadingTuning(180.0f, -180.0f, 0.0f, 1000000.0f, 0.25f);
+    static void SetBoundaryParameters(Vixen::RenderGraph::NodeInstance& lighting) {
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIT_HUE_SHIFT_DEGREES, 180.0f);
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_SHADOW_HUE_SHIFT_DEGREES, -180.0f);
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_START, 0.0f);
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_END, 1000000.0f);
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE, 0.25f);
         Vixen::RenderGraph::PartialLook look;
         look.celShadowThreshold = 0.0f;
         look.celLitThreshold = 1.0f;
         look.celRampSoftness = 0.5f;
         look.exposureCompensationEV = 100.0f;
-        SetFixtureLook(look);
+        SetFixtureLook(lighting, look);
     }
 
     bool Capture(const std::string& suffix) {

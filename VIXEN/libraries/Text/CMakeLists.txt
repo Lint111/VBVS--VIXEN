@@ -1,16 +1,11 @@
 cmake_minimum_required(VERSION 3.20...4.2)
 project(Text VERSION 1.0.0 LANGUAGES CXX)
 
-if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
-    get_filename_component(_undertow_root "$ENV{UNDERTOW_ROOT}" REALPATH)
-    set(TEXT_SHADER_INTERFACE_ROOT "${_undertow_root}/transpiled/textshader")
-elseif(VIXEN_RENDERER_PROVIDER_MODE)
-    set(TEXT_SHADER_INTERFACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/interface")
-else()
-    message(FATAL_ERROR
-        "Text requires UNDERTOW_ROOT so it can consume the generated text shader interface; "
-        "standalone renderer builds may use -DVIXEN_RENDERER_PROVIDER_MODE=ON")
+if(NOT DEFINED ENV{UNDERTOW_ROOT} OR "$ENV{UNDERTOW_ROOT}" STREQUAL "")
+    message(FATAL_ERROR "Text requires UNDERTOW_ROOT so it can consume the generated text shader interface")
 endif()
+get_filename_component(_undertow_root "$ENV{UNDERTOW_ROOT}" REALPATH)
+set(TEXT_SHADER_INTERFACE_ROOT "${_undertow_root}/transpiled/textshader")
 set(TEXT_SHADER_INTERFACE_DIR "${TEXT_SHADER_INTERFACE_ROOT}/Text")
 set(TEXT_SHADER_CPP_INTERFACE "${TEXT_SHADER_INTERFACE_DIR}/Text.g.h")
 set(TEXT_SHADER_GLSL_INTERFACE "${TEXT_SHADER_INTERFACE_DIR}/text.g.glsl")

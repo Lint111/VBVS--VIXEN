@@ -52,7 +52,10 @@ struct PhotonCellParams {
 // Keep the standalone shaders on one stable descriptor contract.  Unused
 // interface blocks are dead-stripped by SPIR-V reflection, so clear/fold only
 // expose the table/params bindings while deposit exposes the complete set.
+#include "Generated/LightingConfig.glsl"
+#include "LightEvaluation.glsl"
 #include "HitRecord.glsl"
+#include "Generated/ShadowConfig.glsl"
 layout(std430, binding = 0) buffer PhotonCellTable {
     PhotonCellEntry photonCells[];
 };
@@ -62,21 +65,12 @@ layout(std430, binding = 1) readonly buffer PhotonCellParamsBuffer {
 layout(std430, binding = 2) readonly buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
-layout(std430, binding = 3) buffer LightingConfigSSBO {
-    uint words[];
-} lightingSettingsBuffer;
-#define VIXEN_SOA_LightingSettings_BUFFER lightingSettingsBuffer
-#include "Generated/LightingConfig.glsl"
-#define LightingConfig LightingSettings
-#define lightingConfig LightingSettings_Load(0u)
-#include "LightEvaluation.glsl"
-layout(std430, binding = 4) buffer ShadowConfigSSBO {
-    uint words[];
-} shadowSettingsBuffer;
-#define VIXEN_SOA_ShadowSettings_BUFFER shadowSettingsBuffer
-#include "Generated/ShadowConfig.glsl"
-#define ShadowConfig ShadowSettings
-#define shadowConfig ShadowSettings_Load(0u)
+layout(std430, binding = 3) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+layout(std430, binding = 4) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
 
 uint PhotonCellGeneration() {
     uint generation = photonCellParams.generation & kPhotonCellGenerationMask;

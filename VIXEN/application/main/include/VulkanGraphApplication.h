@@ -17,14 +17,6 @@
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
-#include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
-#include "Look/LookResolver.h"
-#include "Generated/LightingConfig.g.h"
-#include "Generated/SceneLookSettings.g.h"
-#include "Generated/ShadowConfig.g.h"
-#include "Generated/AccumulationConfig.g.h"
-#include "Generated/ReservoirConfig.g.h"
-#include "Generated/ProbeGridConfig.g.h"
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -88,17 +80,6 @@ using namespace Vixen::RenderGraph;
  */
 class VulkanGraphApplication : public VulkanApplicationBase {
 public:
-    Vixen::RenderGraph::LookResolver& RenderLook() { return renderLook_; }
-    const Vixen::RenderGraph::TransferFillLedger& LastSettingsTransferLedger() const {
-        return lastSettingsTransferLedger_;
-    }
-    const Vixen::Gpu::LightingSettings& CurrentLightingSettings() const { return lightingSettings_; }
-    const Vixen::Gpu::SceneLookSettings& CurrentSceneLookSettings() const { return sceneLookSettings_; }
-    void SetLightingShadingMode(uint32_t mode);
-    void SetLightingCelBandCount(uint32_t count);
-    void SetCelShadingTuning(float litHueShiftDegrees, float shadowHueShiftDegrees,
-                             float falloffStart, float falloffEnd, float lightSpillScale);
-    void SetShadowReachAndBias(float reach, float bias);
     enum class PresentationTarget { Window, Offscreen };
     enum class UpscalerKind { None, Linear, Fsr1, Fsr3 };
     struct RenderPathConfig {
@@ -574,30 +555,6 @@ private:
         Vixen::RenderGraph::NodeHandle node;
     };
     std::vector<UpscalerPassMetric> upscalerPerfPasses_;
-    // The vixen: composition's generated GPU systems (BuildRenderGraph); each stage is a perf column.
-    Vixen::RenderGraph::GeneratedSystemStages generatedSystems_;
-    Vixen::RenderGraph::LookResolver renderLook_;
-    Vixen::Gpu::LightingSettings lightingSettings_{};
-    Vixen::Gpu::SceneLookSettings sceneLookSettings_{};
-    Vixen::Gpu::ShadowSettings shadowSettings_{};
-    Vixen::Gpu::AccumulationSettings accumulationSettings_{};
-    Vixen::Gpu::ReservoirSettings reservoirSettings_{};
-    Vixen::Gpu::ProbeGridSettings probeGridSettings_{};
-    uint32_t lightingShadingMode_ = 1u;
-    uint32_t lightingCelBandCount_ = 3u;
-    float celLitHueShiftDegrees_ = 18.0f;
-    float celShadowHueShiftDegrees_ = -18.0f;
-    float celBandFalloffStart_ = 0.0f;
-    float celBandFalloffEnd_ = 0.0f;
-    float celLightSpillScale_ = 0.012f;
-    float sceneLookDeltaSeconds_ = 0.0f;
-    std::array<uint64_t, 6> settingsGenerations_{1u, 1u, 1u, 1u, 1u, 1u};
-    Vixen::RenderGraph::TransferSourceRegistry settingsTransferSources_;
-    std::optional<Vixen::RenderGraph::TransferPlan> settingsTransferPlan_;
-    Vixen::RenderGraph::TransferFillLedger lastSettingsTransferLedger_{};
-    Vixen::RenderGraph::SchemaResourceRegistry settingsResources_;
-    void RefreshResolvedLookSettings();
-    void FillSettingsTransferBuffers();
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's

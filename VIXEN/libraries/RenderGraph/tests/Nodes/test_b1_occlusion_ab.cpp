@@ -61,7 +61,6 @@
 
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -98,13 +97,15 @@ namespace {
 
 using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
-// VIXEN_B2_PROXY_PREPASS adds proxyAabbCount inside the generated push block; this TU builds
-// PushBlock without the macro, so the count word is written at the generated OFFSET.
-static_assert(ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::SIZE == sizeof(uint32_t),
-              "proxyAabbCount must be one 32-bit word");
-static_assert(ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::OFFSET +
-                      ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::SIZE <= sizeof(PushConstants),
-              "proxyAabbCount must lie inside the generated push block");
+// VIXEN_B2_PROXY_PREPASS appends proxyAabbCount at byte 96; the generated
+// PushBlock is 16-byte aligned, so the wrapper rounds to 112 without padding.
+struct PushConstantsB2 {
+    PushConstants base;
+    uint32_t proxyAabbCount;
+};
+static_assert(ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::OFFSET == sizeof(PushConstants),
+              "proxyAabbCount must follow the 96-byte base block");
+static_assert(sizeof(PushConstantsB2) == 112, "B2 PushConstants must be 112 bytes");
 
 // Byte-identical to HiZDownsample.comp's push_constant block.
 struct HiZPush {
@@ -520,7 +521,7 @@ protected:
 
         VkPushConstantRange pcr{};
         pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0;
-        pcr.size = sizeof(PushConstants);
+        pcr.size = b2Enabled ? sizeof(PushConstantsB2) : sizeof(PushConstants);
         VkPipelineLayoutCreateInfo plci{};
         plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         plci.setLayoutCount = 1; plci.pSetLayouts = &dsl;
@@ -651,10 +652,9 @@ protected:
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
         if (b2Enabled) {
-            PushConstants b2Push = pc;
-            std::memcpy(reinterpret_cast<std::byte*>(&b2Push) +
-                            ShaderInterface::BodyInstanceRayMarch::Push::proxyAabbCount::OFFSET,
-                        &proxyAabbCount, sizeof(proxyAabbCount));
+            PushConstantsB2 b2Push{};
+            b2Push.base = pc;
+            b2Push.proxyAabbCount = proxyAabbCount;
             vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(b2Push), &b2Push);
         } else {

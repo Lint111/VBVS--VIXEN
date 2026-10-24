@@ -1323,12 +1323,25 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 // ============================================================================
 // SHARED INCLUDES (order matters — macros above must be defined first)
 // ============================================================================
+// Generated/LightingConfig.glsl (Sampled Lighting Inc3 M1 fix): Lighting.glsl's
+// data-driven computeLighting(...,LightingConfig) overload needs the
+// LightingConfig/Light STRUCT TYPES declared before it's parsed. This is a
+// type-only include (no `layout(binding=...)` — see the file itself), safe to
+// pull in here even though the actual LightingConfigSSBO binding stays
+// per-shader (each consumer #includes Generated/LightingConfig.glsl again for
+// its own binding declaration; the struct has an include guard, so no
+// redefinition error). Pre-extraction this worked by accident of file order
+// (BodyInstanceRayMarch.comp declared the binding, and therefore this type,
+// earlier in the same TU); the split broke that implicit ordering, so it is
+// made explicit here instead.
+#include "Generated/LightingConfig.glsl"
 #include "CoordinateTransforms.glsl"
 #include "RayGeneration.glsl"
 #include "ESVOCoefficients.glsl"
 #include "BodyFootprintRegime.glsl"
 #include "TraceRecording.glsl"
 #include "ESVOTraversal.glsl"
+#include "Lighting.glsl"
 #include "SdfRecipes.glsl"
 #include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
 #include "MipFallback.glsl"  // Inc1 M3: sparse-mip ESVO LOD shader-side fallback read

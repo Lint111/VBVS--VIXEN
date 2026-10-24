@@ -56,14 +56,12 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 // ============================================================================
 // LIGHTING CONFIG (binding 16)
 // ============================================================================
-layout(std430, binding = 16) buffer LightingConfigSSBO {
-    uint words[];
-} lightingSettingsBuffer;
-#define VIXEN_SOA_LightingSettings_BUFFER lightingSettingsBuffer
 #include "Generated/LightingConfig.glsl"
-#define LightingConfig LightingSettings
-#define lightingConfig LightingSettings_Load(0u)
 #include "LightEvaluation.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
 
 // W1b: the shading math (evalBRDF/normalShading/computeLighting) used to
 // arrive through SceneBindings' shared-include chain; the default variant no
@@ -95,25 +93,21 @@ layout(std430, binding = 17) readonly buffer HitRecordBuffer {
 // ============================================================================
 // SHADOW CONFIG (binding 18)
 // ============================================================================
-layout(std430, binding = 18) buffer ShadowConfigSSBO {
-    uint words[];
-} shadowSettingsBuffer;
-#define VIXEN_SOA_ShadowSettings_BUFFER shadowSettingsBuffer
 #include "Generated/ShadowConfig.glsl"
-#define ShadowConfig ShadowSettings
-#define shadowConfig ShadowSettings_Load(0u)
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
 
 // ============================================================================
 // TEMPORAL ACCUMULATION (bindings 19/20) — Sampled Lighting Inc3 M5: this pass now
 // owns historyImage's read/write (moved from DirectLighting.comp).
 // ============================================================================
-layout(std430, binding = 19) buffer AccumulationConfigSSBO {
-    uint words[];
-} accumulationSettingsBuffer;
-#define VIXEN_SOA_AccumulationSettings_BUFFER accumulationSettingsBuffer
 #include "Generated/AccumulationConfig.glsl"
-#define AccumulationConfig AccumulationSettings
-#define accumulationConfig AccumulationSettings_Load(0u)
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
 
 layout(rgba16f, binding = 20) uniform readonly image2D sceneRadianceHistory;
 layout(rgba16f, binding = 48) uniform writeonly image2D sceneRadianceHistoryOutput;
@@ -140,13 +134,11 @@ layout(rgba32f, binding = 49) uniform writeonly image2D worldPosHistoryOutput;
 // ============================================================================
 // RESERVOIR CONFIG (binding 23)
 // ============================================================================
-layout(std430, binding = 23) buffer ReservoirConfigSSBO {
-    uint words[];
-} reservoirSettingsBuffer;
-#define VIXEN_SOA_ReservoirSettings_BUFFER reservoirSettingsBuffer
 #include "Generated/ReservoirConfig.glsl"
-#define ReservoirConfig ReservoirSettings
-#define reservoirConfig ReservoirSettings_Load(0u)
+
+layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
 
 // ============================================================================
 // LIGHT TREE BUFFER (binding 24)
@@ -189,13 +181,11 @@ layout(rg16f,   binding = 33) uniform readonly image2D probeVisibilityAtlasRead;
 // T-1138: persistent octahedral procedural sky, synchronized through the third image-array slot.
 layout(rgba16f, binding = 35) uniform readonly image2D skySphereImage;
 
-layout(std430, binding = 34) buffer ProbeGridConfigReadSSBO {
-    uint words[];
-} probeGridSettingsBuffer;
-#define VIXEN_SOA_ProbeGridSettings_BUFFER probeGridSettingsBuffer
 #include "Generated/ProbeGridConfig.glsl"
-#define ProbeGridConfig ProbeGridSettings
-#define probeGridConfig ProbeGridSettings_Load(0u)
+
+layout(std430, binding = 34) readonly buffer ProbeGridConfigReadSSBO {
+    ProbeGridConfig probeGridConfig;
+};
 
 // M5 live-gate instrumentation (VIXEN_DDGI_LEAK_GATE_DEMO=1): the SAME binding-31
 // DDGILeakGateDebug SSBO ProbeUpdate.comp writes gatheredLuma/DIAG into -- this pass

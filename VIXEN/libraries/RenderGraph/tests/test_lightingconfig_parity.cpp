@@ -1,7 +1,7 @@
 /**
  * @file test_lightingconfig_parity.cpp
- * @brief Drift-guard: the generated lighting and scene-look records match
- *        their documented std430 byte layouts.
+ * @brief Drift-guard: the generated `Vixen::Gpu::Light` / `Vixen::Gpu::LightingConfig`
+ *        C++ structs match their documented std430 byte layout.
  *
  * Sampled Lighting Inc0 M1: lights become generated, drift-guarded data types (C++
  * and GLSL from one C# [GpuStruct] source — see codegen/config-schemas/LightingConfig.cs).
@@ -22,15 +22,13 @@
 #include <gtest/gtest.h>
 
 #include "Generated/LightingConfig.g.h"
-#include "Generated/SceneLookSettings.g.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 using Vixen::Gpu::Light;
-using Vixen::Gpu::LightingSettings;
-using Vixen::Gpu::SceneLookSettings;
+using Vixen::Gpu::LightingConfig;
 
 // ---------------------------------------------------------------------------
 // Light (std430, 32 bytes): direction_or_position@0 (vec3, stored as 3 floats
@@ -51,53 +49,49 @@ TEST(LightingConfigParity, LightStd430Layout) {
 }
 
 // ---------------------------------------------------------------------------
-// LightingSettings (std430, 240 bytes): lightCount@0, ambientIntensity@4,
-// lights[4]@16, per-light spill-purpose scales@144, cel/sky settings@160.
+// LightingConfig (std430, 272 bytes): lightCount@0, ambientIntensity@4,
+// lights[4]@16, per-light spill-purpose scales@144, cel settings@160,
+// dynamic exposure settings@228.
 // ---------------------------------------------------------------------------
 
-TEST(LightingConfigParity, LightingSettingsStd430Layout) {
-    EXPECT_EQ(sizeof(LightingSettings), 240u);
-    EXPECT_EQ(offsetof(LightingSettings, lightCount), 0u);
-    EXPECT_EQ(offsetof(LightingSettings, ambientIntensity), 4u);
-    EXPECT_EQ(offsetof(LightingSettings, lights), 16u)
+TEST(LightingConfigParity, LightingConfigStd430Layout) {
+    EXPECT_EQ(sizeof(LightingConfig), 272u) << "LightingConfig std430 size drifted from the documented 272 B";
+    EXPECT_EQ(offsetof(LightingConfig, lightCount), 0u);
+    EXPECT_EQ(offsetof(LightingConfig, ambientIntensity), 4u);
+    EXPECT_EQ(offsetof(LightingConfig, lights), 16u)
         << "lights[] must sit at offset 16 (std430 16-byte alignment of the nested Light struct)";
-    EXPECT_EQ(offsetof(LightingSettings, celSpillPurposeScales), 144u);
-    EXPECT_EQ(offsetof(LightingSettings, shadingMode), 160u);
-    EXPECT_EQ(offsetof(LightingSettings, celBandCount), 164u);
-    EXPECT_EQ(offsetof(LightingSettings, celShadowThreshold), 168u);
-    EXPECT_EQ(offsetof(LightingSettings, celLitThreshold), 172u);
-    EXPECT_EQ(offsetof(LightingSettings, celRampSoftness), 176u);
-    EXPECT_EQ(offsetof(LightingSettings, celLitHueShiftDegrees), 180u);
-    EXPECT_EQ(offsetof(LightingSettings, celShadowHueShiftDegrees), 184u);
-    EXPECT_EQ(offsetof(LightingSettings, celBandFalloffStart), 188u);
-    EXPECT_EQ(offsetof(LightingSettings, celBandFalloffEnd), 192u);
-    EXPECT_EQ(offsetof(LightingSettings, celLightSpillScale), 196u);
-    EXPECT_EQ(offsetof(LightingSettings, dimBandFloor), 200u);
-    EXPECT_EQ(offsetof(LightingSettings, skyColorX), 208u);
-    EXPECT_EQ(offsetof(LightingSettings, skyMode), 220u);
-    EXPECT_EQ(offsetof(LightingSettings, skyGradientSlope), 224u);
-}
-
-TEST(LightingConfigParity, SceneLookSettingsStd430Layout) {
-    EXPECT_EQ(sizeof(SceneLookSettings), 44u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureCompensationEV), 0u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureKeyValue), 4u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureMinEV100), 8u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureMaxEV100), 12u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureLowPercent), 16u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureHighPercent), 20u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureSpeedUp), 24u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureSpeedDown), 28u);
-    EXPECT_EQ(offsetof(SceneLookSettings, exposureDeltaSeconds), 32u);
-    EXPECT_EQ(offsetof(SceneLookSettings, lookSaturation), 36u);
-    EXPECT_EQ(offsetof(SceneLookSettings, presentationMode), 40u);
+    EXPECT_EQ(offsetof(LightingConfig, celSpillPurposeScales), 144u);
+    EXPECT_EQ(offsetof(LightingConfig, shadingMode), 160u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandCount), 164u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowThreshold), 168u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitThreshold), 172u);
+    EXPECT_EQ(offsetof(LightingConfig, celRampSoftness), 176u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitHueShiftDegrees), 180u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowHueShiftDegrees), 184u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffStart), 188u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), 192u);
+    EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), 196u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureCompensationEV), 200u);
+    EXPECT_EQ(offsetof(LightingConfig, dimBandFloor), 204u);
+    EXPECT_EQ(offsetof(LightingConfig, skyColorX), 208u);
+    EXPECT_EQ(offsetof(LightingConfig, skyMode), 220u);
+    EXPECT_EQ(offsetof(LightingConfig, skyGradientSlope), 224u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureKeyValue), 228u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureMinEV100), 232u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureMaxEV100), 236u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureLowPercent), 240u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureHighPercent), 244u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureSpeedUp), 248u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureSpeedDown), 252u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureDeltaSeconds), 256u);
+    EXPECT_EQ(offsetof(LightingConfig, lookSaturation), 260u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {
     // Each element of lights[kMaxLightsInc0] must stride at exactly sizeof(Light)
     // with no inter-element padding (mirrors the OctreeConfig channels[] contract
     // and TierRef's array-stride proof).
-    LightingSettings cfg{};
+    LightingConfig cfg{};
     const auto* p0 = reinterpret_cast<const uint8_t*>(&cfg.lights[0]);
     const auto* p1 = reinterpret_cast<const uint8_t*>(&cfg.lights[1]);
     EXPECT_EQ(static_cast<std::size_t>(p1 - p0), sizeof(Light));
@@ -108,8 +102,6 @@ TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {
 TEST(LightingConfigParity, IsTriviallyCopyableStandardLayout) {
     EXPECT_TRUE(std::is_standard_layout_v<Light>);
     EXPECT_TRUE(std::is_trivially_copyable_v<Light>);
-    EXPECT_TRUE(std::is_standard_layout_v<LightingSettings>);
-    EXPECT_TRUE(std::is_trivially_copyable_v<LightingSettings>);
-    EXPECT_TRUE(std::is_standard_layout_v<SceneLookSettings>);
-    EXPECT_TRUE(std::is_trivially_copyable_v<SceneLookSettings>);
+    EXPECT_TRUE(std::is_standard_layout_v<LightingConfig>);
+    EXPECT_TRUE(std::is_trivially_copyable_v<LightingConfig>);
 }

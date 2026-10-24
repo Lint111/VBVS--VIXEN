@@ -147,6 +147,13 @@
       ]
     },
     {
+      "name": "ExposureTonemapSystem",
+      "source": "Generated/ExposureTonemapSystem.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
       "name": "FsrInputAA",
       "source": "FsrInputAA.comp",
       "variants": [

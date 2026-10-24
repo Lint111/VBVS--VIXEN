@@ -50,20 +50,20 @@ struct ExposureMeterResult {
 };
 
 /**
- * @brief SceneLookSettingsSSBO
+ * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x630af927767b030b (for runtime discovery)
+ * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
  */
-struct SceneLookSettingsSSBO {
+struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x630af927767b030bULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
+        static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t SIZE = 272;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -115,18 +115,18 @@ namespace Set0 {
     };
 
     /**
-     * @brief sceneLookSettingsBuffer
+     * @brief LightingConfigSSBO
      * Type: STORAGE_BUFFER
      */
     struct Binding16 {
-        static constexpr const char* NAME = "sceneLookSettingsBuffer";
+        static constexpr const char* NAME = "LightingConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 16;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = SceneLookSettingsSSBO;
+        using DataType = LightingConfigSSBO;
     };
 
 } // namespace Set0
@@ -136,7 +136,7 @@ namespace Bind {
 using sceneRadianceHistoryOutput = Set0::Binding0;
 using outputImage = Set0::Binding1;
 using meter = Set0::Binding2;
-using sceneLookSettingsBuffer = Set0::Binding16;
+using LightingConfigSSBO = Set0::Binding16;
 } // namespace Bind
 
 // ============================================================================
@@ -159,7 +159,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceHistoryOutput", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"outputImage", false, 0, 1, 0, Access::WriteOnly, 0, nullptr},
     {"meter", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
-    {"sceneLookSettingsBuffer", false, 0, 16, 0, Access::ReadWrite, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
 };
 
 /**

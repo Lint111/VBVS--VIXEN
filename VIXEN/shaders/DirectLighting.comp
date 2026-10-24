@@ -59,13 +59,11 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 // scene bound, and shadowConfig below gates this pass's OWN visibility ray
 // (cast against the reservoir's chosen sample, see the RIS section).
 // ============================================================================
-layout(std430, binding = 16) buffer LightingConfigSSBO {
-    uint words[];
-} lightingSettingsBuffer;
-#define VIXEN_SOA_LightingSettings_BUFFER lightingSettingsBuffer
 #include "Generated/LightingConfig.glsl"
-#define LightingConfig LightingSettings
-#define lightingConfig LightingSettings_Load(0u)
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
 
 // ============================================================================
 // HIT RECORD BUFFER (binding 17) — this pass READS ONLY
@@ -79,13 +77,11 @@ layout(std430, binding = 17) readonly buffer HitRecordBuffer {
 // ============================================================================
 // SHADOW CONFIG (binding 18)
 // ============================================================================
-layout(std430, binding = 18) buffer ShadowConfigSSBO {
-    uint words[];
-} shadowSettingsBuffer;
-#define VIXEN_SOA_ShadowSettings_BUFFER shadowSettingsBuffer
 #include "Generated/ShadowConfig.glsl"
-#define ShadowConfig ShadowSettings
-#define shadowConfig ShadowSettings_Load(0u)
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
 
 // ============================================================================
 // TEMPORAL ACCUMULATION CONFIG (binding 19) — reprojectionEnabled gates this
@@ -94,13 +90,11 @@ layout(std430, binding = 18) buffer ShadowConfigSSBO {
 // this pass no longer reads/writes them for the accumulate seam; it still
 // reads worldPosHistoryImage@22 for reservoir-reprojection validity, below).
 // ============================================================================
-layout(std430, binding = 19) buffer AccumulationConfigSSBO {
-    uint words[];
-} accumulationSettingsBuffer;
-#define VIXEN_SOA_AccumulationSettings_BUFFER accumulationSettingsBuffer
 #include "Generated/AccumulationConfig.glsl"
-#define AccumulationConfig AccumulationSettings
-#define accumulationConfig AccumulationSettings_Load(0u)
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
 
 // ============================================================================
 // PREV-FRAME CAMERA MATRIX (binding 21)
@@ -123,13 +117,11 @@ layout(rgba32f, binding = 22) uniform readonly image2D worldPosHistoryImage;
 // ============================================================================
 // RESERVOIR CONFIG (binding 23)
 // ============================================================================
-layout(std430, binding = 23) buffer ReservoirConfigSSBO {
-    uint words[];
-} reservoirSettingsBuffer;
-#define VIXEN_SOA_ReservoirSettings_BUFFER reservoirSettingsBuffer
 #include "Generated/ReservoirConfig.glsl"
-#define ReservoirConfig ReservoirSettings
-#define reservoirConfig ReservoirSettings_Load(0u)
+
+layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
 
 // ============================================================================
 // LIGHT TREE BUFFER (binding 24)
@@ -249,11 +241,11 @@ void main() {
     // PREVIOUS (last frame's reservoir, read for temporal reuse) — see ReservoirConfig.cs's
     // own doc comment. Both buffers are always bound; only the ROLE each plays this frame
     // changes.
-    bool parityEven = (pc._Frame & 1u) == 0u;
+    bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
 
     // RNG seed: per-pixel XOR'd with frameParity — see this file's earlier RIS-section
     // comment for why (fresh candidate set every frame, not a repeated one).
-    uint rngState = pcgHash(reservoirIdx ^ (pc._Frame * 2654435761u));
+    uint rngState = pcgHash(reservoirIdx ^ (reservoirConfig.frameParity * 2654435761u));
 
     ReservoirRecord current = reservoirBuildFromLightTree(bestWorldPos, rngState);
 

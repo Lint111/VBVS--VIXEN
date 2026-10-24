@@ -1,6 +1,6 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Codegen.Gpu;
+namespace Vixen.Gpu;
 
 // Canonical ReservoirRecord — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc3 M4: the per-pixel RIS/ReSTIR reservoir record, ping-ponged

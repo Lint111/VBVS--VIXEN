@@ -693,17 +693,17 @@ struct LightTreeBufferSSBO {
  * @brief ProbeGridConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6986ad1766e7c329 (for runtime discovery)
+ * Layout VixenHash: 0xf9df306938bceb6 (for runtime discovery)
  */
 struct ProbeGridConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6986ad1766e7c329ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xf9df306938bceb6ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
+        static constexpr const char* TYPE = "ProbeGridConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t SIZE = 56;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1014,16 +1014,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief probeGridSettingsBuffer
+     * @brief ProbeGridConfigSSBO
      * Type: STORAGE_BUFFER
      */
     struct Binding28 {
-        static constexpr const char* NAME = "probeGridSettingsBuffer";
+        static constexpr const char* NAME = "ProbeGridConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 28;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ProbeGridConfigSSBO;
     };
@@ -1134,7 +1134,7 @@ using MipPoolBuffer = Set0::Binding13;
 using InstanceIterDebugBuffer = Set0::Binding14;
 using TierRefTableBuffer = Set0::Binding15;
 using LightTreeBufferSSBO = Set0::Binding24;
-using probeGridSettingsBuffer = Set0::Binding28;
+using ProbeGridConfigSSBO = Set0::Binding28;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 using ShadowRayRequestBuffer = Set0::Binding37;
 using ProbeRayPayloadBuffer = Set0::Binding39;
@@ -1145,7 +1145,7 @@ using GlyphOutlineBuffer = Set0::Binding51;
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 112;
+    static constexpr uint32_t SIZE = 96;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
@@ -1251,18 +1251,10 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct _Frame {
-        static constexpr const char* NAME = "_Frame";
-        static constexpr uint32_t INDEX = 13;
-        static constexpr uint32_t OFFSET = 92;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
     struct cosmicK {
         static constexpr const char* NAME = "cosmicK";
-        static constexpr uint32_t INDEX = 14;
-        static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t INDEX = 13;
+        static constexpr uint32_t OFFSET = 92;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
@@ -1284,9 +1276,7 @@ struct PushBlock {
     uint8_t _pad76[4];
     glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
-    uint32_t _Frame;
     float cosmicK;
-    uint8_t _tail[12];
 };
 
 static_assert(offsetof(PushBlock, cameraPos) == Push::cameraPos::OFFSET, "PushBlock.cameraPos is not at its SDI OFFSET");
@@ -1302,7 +1292,6 @@ static_assert(offsetof(PushBlock, raySizeBias) == Push::raySizeBias::OFFSET, "Pu
 static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET, "PushBlock.instanceCount is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, debugTargetPixel) == Push::debugTargetPixel::OFFSET, "PushBlock.debugTargetPixel is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, accumFrameCount) == Push::accumFrameCount::OFFSET, "PushBlock.accumFrameCount is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, cosmicK) == Push::cosmicK::OFFSET, "PushBlock.cosmicK is not at its SDI OFFSET");
 static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
 
@@ -1336,7 +1325,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"InstanceIterDebugBuffer", false, 0, 14, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding14},
     {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
-    {"probeGridSettingsBuffer", false, 0, 28, 0, Access::ReadWrite, 0, nullptr},
+    {"ProbeGridConfigSSBO", false, 0, 28, 0, Access::ReadOnly, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowRayRequestBuffer", false, 0, 37, 0, Access::WriteOnly, 0, nullptr},
     {"ProbeRayPayloadBuffer", false, 0, 39, 0, Access::WriteOnly, 0, nullptr},
@@ -1356,8 +1345,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
-    {"_Frame", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
-    {"cosmicK", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
+    {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
 };
 
 /**

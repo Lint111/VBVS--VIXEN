@@ -1073,7 +1073,7 @@ using GlyphOutlineBuffer = Set0::Binding51;
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 112;
+    static constexpr uint32_t SIZE = 96;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
@@ -1179,18 +1179,10 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct _Frame {
-        static constexpr const char* NAME = "_Frame";
-        static constexpr uint32_t INDEX = 13;
-        static constexpr uint32_t OFFSET = 92;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
     struct cosmicK {
         static constexpr const char* NAME = "cosmicK";
-        static constexpr uint32_t INDEX = 14;
-        static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t INDEX = 13;
+        static constexpr uint32_t OFFSET = 92;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
@@ -1212,9 +1204,7 @@ struct PushBlock {
     uint8_t _pad76[4];
     glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
-    uint32_t _Frame;
     float cosmicK;
-    uint8_t _tail[12];
 };
 
 static_assert(offsetof(PushBlock, cameraPos) == Push::cameraPos::OFFSET, "PushBlock.cameraPos is not at its SDI OFFSET");
@@ -1230,7 +1220,6 @@ static_assert(offsetof(PushBlock, raySizeBias) == Push::raySizeBias::OFFSET, "Pu
 static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET, "PushBlock.instanceCount is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, debugTargetPixel) == Push::debugTargetPixel::OFFSET, "PushBlock.debugTargetPixel is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, accumFrameCount) == Push::accumFrameCount::OFFSET, "PushBlock.accumFrameCount is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, cosmicK) == Push::cosmicK::OFFSET, "PushBlock.cosmicK is not at its SDI OFFSET");
 static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
 
@@ -1282,8 +1271,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
-    {"_Frame", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
-    {"cosmicK", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
+    {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
 };
 
 /**

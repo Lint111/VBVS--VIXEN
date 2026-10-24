@@ -167,7 +167,7 @@ void main() {
     if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
 
     uint probeCount = ProbeUpdateProbeCount();
-    uint probeIndex = ProbeUpdateProbeIndex(pc._Frame);
+    uint probeIndex = ProbeUpdateProbeIndex();
     if (probeIndex >= probeCount) return;  // ceil-division over-dispatch discard
 
     uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);

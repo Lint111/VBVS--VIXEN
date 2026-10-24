@@ -11,4 +11,14 @@ const float kExposureHistogramBinsPerEV = 4.0;
 // ExposureMeterResult.state once log2Exposure holds an adapted value.
 const uint kExposureStateAdapted = 0x45585031u;
 
+// log2Exposure is the log2 exposure multiplier the tonemap applies;
+// meteredEV100 is the percentile-window scene EV100 before clamping, and
+// targetLog2Exposure the clamped target the adaptation is moving toward.
+struct ExposureMeterState {
+    float log2Exposure;
+    uint state;
+    float meteredEV100;
+    float targetLog2Exposure;
+};
+
 #endif // EXPOSURE_HISTOGRAM_GLSL

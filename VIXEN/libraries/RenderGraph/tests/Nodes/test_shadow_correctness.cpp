@@ -49,11 +49,6 @@
 #include "TestVulkanDeviceShell.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 #include "Generated/LightingConfig.g.h"
-#include "Generated/ShadowConfig.g.h"
-#include "Generated/AccumulationConfig.g.h"
-#include "Generated/ReservoirConfig.g.h"
-#include "Generated/ProbeGridConfig.g.h"
-#include "Nodes/GeneratedSystemStage.h"  // TransferPlan: settings records are uploaded in their generated layout
 #include "Recipe/UberShaderSplice.h"
 #include <sstream>
 #include "ShaderBundleBuilder.h"  // shading and visibility-wave shaders compiled at test runtime
@@ -110,32 +105,16 @@ using PushConstants = ::ShaderInterface::SpatialReuseShade::PushBlock;
 
 // Use the same generated upload type as the runtime; reflection parity is
 // checked separately against the shipped GLSL layout.
-using LightingConfigCpu = Vixen::Gpu::LightingSettings;
+using LightingConfigCpu = Vixen::Gpu::LightingConfig;
 
-using ShadowConfigCpu = Vixen::Gpu::ShadowSettings;
-
-// The settings records reach the shaders in their generated component-region layout, so the
-// test encodes them through the same TransferPlan::Fill the application's host settings write
-// uses (one cold row built from the record's generated regions), never as a raw struct copy.
-template <typename Record, typename Regions>
-std::vector<std::byte> EncodeSettings(const Record& record, const Regions& regions) {
-    using namespace Vixen::RenderGraph;
-    GpuTransferPlanRow row;
-    row.identity = {"state:test-settings", "*"};
-    row.transferClass = GpuTransferClass::Cold;
-    for (const auto& region : regions) {
-        row.regions.push_back({region.member, region.offset, region.sourceOffset,
-                               region.stride, region.size, region.alignment});
-    }
-    TransferSourceRegistry sources;
-    sources.ProvideSingleton<Record>(row.identity, &record, [] { return uint64_t{1}; });
-    TransferPlan plan(std::vector<GpuTransferPlanRow>{row});
-    std::vector<std::byte> bytes;
-    plan.Fill(0, sources, [&](const GpuTransferPlanRow&, uint32_t, std::span<const std::byte> filled) {
-        bytes.assign(filled.begin(), filled.end());
-    });
-    return bytes;
-}
+// Host-side mirror of Generated/ShadowConfig.g.h (Sampled Lighting Inc1 M4).
+struct ShadowConfigCpu {
+    uint32_t enabled;
+    uint32_t raysPerLight;
+    float maxShadowDistance;
+    float biasEpsilon;
+};
+static_assert(sizeof(ShadowConfigCpu) == 16, "ShadowConfigCpu std430 mirror size");
 
 // Host-side mirrors of the additional Generated/*.g.h structs SpatialReuseShade.comp binds
 // (bindings 19/20/22/23/24/25/26/27/31/34, see BuildRenderGraph.cpp's spatialReuseGatherer
@@ -146,12 +125,29 @@ std::vector<std::byte> EncodeSettings(const Record& record, const Regions& regio
 // PushConstants/LightingConfigCpu/ShadowConfigCpu above, because ShadowCorrectnessTest::
 // RenderSceneShaded is a MEMBER FUNCTION using these types, and a class body compiles before
 // anything declared textually after it -- these must precede `class ShadowCorrectnessTest`.
-using AccumulationConfigCpu = Vixen::Gpu::AccumulationSettings;
+struct AccumulationConfigCpu {
+    uint32_t enabled;
+    float alpha;
+    uint32_t maxFrames;
+    uint32_t resetOnMotion;
+    uint32_t reprojectionEnabled;
+};
+static_assert(sizeof(AccumulationConfigCpu) == 20, "AccumulationConfigCpu std430 mirror size");
 
 using PrevCameraConfigCpu = Vixen::Gpu::PrevCameraConfig;
 static_assert(sizeof(PrevCameraConfigCpu) == 80);
 
-using ReservoirConfigCpu = Vixen::Gpu::ReservoirSettings;
+struct ReservoirConfigCpu {
+    uint32_t reservoirEnabled;
+    uint32_t candidateCount;
+    float spatialRadius;
+    uint32_t spatialCount;
+    uint32_t temporalCap;
+    uint32_t biasedModeEnabled;
+    float lightTreeCutThreshold;
+    uint32_t frameParity;
+};
+static_assert(sizeof(ReservoirConfigCpu) == 32, "ReservoirConfigCpu std430 mirror size");
 
 struct LightTreeGpuNodeCpu {
     float worldPosX, worldPosY, worldPosZ;
@@ -177,7 +173,17 @@ struct ReservoirRecordCpu {
 };
 static_assert(sizeof(ReservoirRecordCpu) == 16, "ReservoirRecordCpu std430 mirror size");
 
-using ProbeGridConfigCpu = Vixen::Gpu::ProbeGridSettings;
+struct ProbeGridConfigCpu {
+    uint32_t probeGridEnabled;
+    float originX, originY, originZ;
+    float spacingX, spacingY, spacingZ;
+    uint32_t countX, countY, countZ;
+    uint32_t raysPerProbe;
+    float hysteresisRate;
+    uint32_t amortizationFactor;
+    uint32_t frameCounter;
+};
+static_assert(sizeof(ProbeGridConfigCpu) == 56, "ProbeGridConfigCpu std430 mirror size");
 
 // Mirrors SpatialReuseShade.comp's DDGILeakGateDebugShade struct (binding 31) -- unread by this
 // test (ddgiLeakGateEnabled stays 0, gating every write inside the shader to it), but must still
@@ -683,14 +689,12 @@ protected:
         UploadHostBuffer(transformMem, transformBytes.data(), transformBytes.size());
 
         VkBuffer lightBuf = VK_NULL_HANDLE; VkDeviceMemory lightMem = VK_NULL_HANDLE;
-        const std::vector<std::byte> lightingBytes = EncodeSettings(lighting, Vixen::Gpu::LightingSettingsComponentRegions);
-        CreateHostBuffer(lightingBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, lightBuf, lightMem, false);
-        UploadHostBuffer(lightMem, lightingBytes.data(), lightingBytes.size());
+        CreateHostBuffer(sizeof(LightingConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, lightBuf, lightMem, false);
+        UploadHostBuffer(lightMem, &lighting, sizeof(LightingConfigCpu));
 
         VkBuffer shadowBuf = VK_NULL_HANDLE; VkDeviceMemory shadowMem = VK_NULL_HANDLE;
-        const std::vector<std::byte> shadowBytes = EncodeSettings(shadow, Vixen::Gpu::ShadowSettingsComponentRegions);
-        CreateHostBuffer(shadowBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, shadowBuf, shadowMem, false);
-        UploadHostBuffer(shadowMem, shadowBytes.data(), shadowBytes.size());
+        CreateHostBuffer(sizeof(ShadowConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, shadowBuf, shadowMem, false);
+        UploadHostBuffer(shadowMem, &shadow, sizeof(ShadowConfigCpu));
 
         VkBuffer dummySkipMask = VK_NULL_HANDLE; VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
@@ -706,9 +710,8 @@ protected:
         // the march's own too but unread by both here, still bound to satisfy reflection). ---
         const AccumulationConfigCpu accum{};  // all-zero: enabled=0 skips the accumulate seam
         VkBuffer accumBuf = VK_NULL_HANDLE; VkDeviceMemory accumMem = VK_NULL_HANDLE;
-        const std::vector<std::byte> accumBytes = EncodeSettings(accum, Vixen::Gpu::AccumulationSettingsComponentRegions);
-        CreateHostBuffer(accumBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, accumBuf, accumMem, false);
-        UploadHostBuffer(accumMem, accumBytes.data(), accumBytes.size());
+        CreateHostBuffer(sizeof(AccumulationConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, accumBuf, accumMem, false);
+        UploadHostBuffer(accumMem, &accum, sizeof(AccumulationConfigCpu));
 
         const VkFormat kHistoryFmt = VK_FORMAT_R16G16B16A16_SFLOAT;
         VkImage historyImg = VK_NULL_HANDLE; VkDeviceMemory historyMem = VK_NULL_HANDLE;
@@ -737,9 +740,8 @@ protected:
 
         const ReservoirConfigCpu reservoirCfg{};  // all-zero: reservoirEnabled=0 (byte-identity escape hatch)
         VkBuffer reservoirCfgBuf = VK_NULL_HANDLE; VkDeviceMemory reservoirCfgMem = VK_NULL_HANDLE;
-        const std::vector<std::byte> reservoirCfgBytes = EncodeSettings(reservoirCfg, Vixen::Gpu::ReservoirSettingsComponentRegions);
-        CreateHostBuffer(reservoirCfgBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, reservoirCfgBuf, reservoirCfgMem, false);
-        UploadHostBuffer(reservoirCfgMem, reservoirCfgBytes.data(), reservoirCfgBytes.size());
+        CreateHostBuffer(sizeof(ReservoirConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, reservoirCfgBuf, reservoirCfgMem, false);
+        UploadHostBuffer(reservoirCfgMem, &reservoirCfg, sizeof(ReservoirConfigCpu));
 
         const LightTreeBufferCpu lightTree{};  // all-zero: nodeCount=0, RIS/spatial reuse are no-ops
         VkBuffer lightTreeBuf = VK_NULL_HANDLE; VkDeviceMemory lightTreeMem = VK_NULL_HANDLE;
@@ -783,9 +785,8 @@ protected:
 
         const ProbeGridConfigCpu probeGrid{};  // all-zero: probeGridEnabled=0 (byte-identity escape hatch)
         VkBuffer probeGridBuf = VK_NULL_HANDLE; VkDeviceMemory probeGridMem = VK_NULL_HANDLE;
-        const std::vector<std::byte> probeGridBytes = EncodeSettings(probeGrid, Vixen::Gpu::ProbeGridSettingsComponentRegions);
-        CreateHostBuffer(probeGridBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, probeGridBuf, probeGridMem, false);
-        UploadHostBuffer(probeGridMem, probeGridBytes.data(), probeGridBytes.size());
+        CreateHostBuffer(sizeof(ProbeGridConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, probeGridBuf, probeGridMem, false);
+        UploadHostBuffer(probeGridMem, &probeGrid, sizeof(ProbeGridConfigCpu));
 
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
         const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;

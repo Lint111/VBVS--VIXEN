@@ -143,7 +143,6 @@ void FrameSyncNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // frameBase_ is NOT reset here — it must survive recompile to keep the counter monotonic.
     ctx.Out(FrameSyncNodeConfig::TIMELINE_SEMAPHORE, timelineSemaphore_);
     ctx.Out(FrameSyncNodeConfig::TIMELINE_FRAME_BASE, frameBase_);
-    ctx.Out(FrameSyncNodeConfig::FRAME_COUNTER, frameCounter_);
 
     NODE_LOG_INFO("Per-flight synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
@@ -159,7 +158,6 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
-    const uint32_t frame = frameCounter_++;
 
     // Advance the monotonic timeline base. The graph groups use offsets below this frame's
     // completion marker; FrameEndEvent signals the reserved value after all queue submissions.
@@ -232,7 +230,6 @@ void FrameSyncNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Publish timeline outputs for scheduled resource hazards and frame completion tracking.
     ctx.Out(FrameSyncNodeConfig::TIMELINE_SEMAPHORE, timelineSemaphore_);
     ctx.Out(FrameSyncNodeConfig::TIMELINE_FRAME_BASE, frameBase_);
-    ctx.Out(FrameSyncNodeConfig::FRAME_COUNTER, frame);
 }
 
 void FrameSyncNode::HandleFrameEnd() {

@@ -11,7 +11,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts (declared early for reuse)
 namespace FrameSyncNodeCounts {
     static constexpr size_t INPUTS = 1;  // Back to 1: only VulkanDevice
-    static constexpr size_t OUTPUTS = 6;  // + monotonic FRAME_COUNTER for generated `_Frame`
+    static constexpr size_t OUTPUTS = 5;  // FR-3: per-IMAGE renderComplete + presentFences moved to SwapChainNode; P5a M1: +TIMELINE_SEMAPHORE, +TIMELINE_FRAME_BASE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -31,8 +31,7 @@ namespace FrameSyncNodeCounts {
  * - Prevents "semaphore still in use by swapchain" errors
  *
  * Inputs: 1 (VULKAN_DEVICE)
- * Outputs: 6 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
- * TIMELINE_SEMAPHORE, TIMELINE_FRAME_BASE, FRAME_COUNTER)
+ * Outputs: 5 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY, PRESENT_FENCES_ARRAY)
  */
 CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
                       FrameSyncNodeCounts::INPUTS,
@@ -45,7 +44,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (6) =====
+    // ===== OUTPUTS (5) =====
     OUTPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
@@ -70,12 +69,6 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     // P5a M1: monotonic per-frame base offset (advances by timelineValuesPerFrame each frame).
     // All downstream nodes read the same base in one frame. Not yet consumed — consumption is P5b.
     OUTPUT_SLOT(TIMELINE_FRAME_BASE, uint64_t, 4,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    // Monotonic graph-frame index. Unlike CURRENT_FRAME_INDEX this never wraps at the
-    // frames-in-flight count and is the production source of generated `_Frame`.
-    OUTPUT_SLOT(FRAME_COUNTER, uint32_t, 5,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -104,9 +97,6 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
 
         HandleDescriptor frameBaseDesc{"uint64_t"};
         INIT_OUTPUT_DESC(TIMELINE_FRAME_BASE, "timeline_frame_base", ResourceLifetime::Transient, frameBaseDesc);
-
-        HandleDescriptor frameCounterDesc{"uint32_t"};
-        INIT_OUTPUT_DESC(FRAME_COUNTER, "frame_counter", ResourceLifetime::Transient, frameCounterDesc);
     }
 
     // Automated config validation
@@ -120,7 +110,6 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 2, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 2");
     static_assert(TIMELINE_SEMAPHORE_Slot::index == 3, "TIMELINE_SEMAPHORE must be at index 3");
     static_assert(TIMELINE_FRAME_BASE_Slot::index == 4, "TIMELINE_FRAME_BASE must be at index 4");
-    static_assert(FRAME_COUNTER_Slot::index == 5, "FRAME_COUNTER must be at index 5");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
@@ -129,7 +118,6 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<TIMELINE_SEMAPHORE_Slot::Type, VkSemaphore>);
     static_assert(std::is_same_v<TIMELINE_FRAME_BASE_Slot::Type, uint64_t>);
-    static_assert(std::is_same_v<FRAME_COUNTER_Slot::Type, uint32_t>);
 };
 
 } // namespace Vixen::RenderGraph

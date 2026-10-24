@@ -448,8 +448,8 @@ protected:
     // in the real graph (MakeDefaultLightingConfig — direction normalize(1,1,-1), white
     // radiance, ambientIntensity 0.3) — this harness bypasses LightingConfigNode entirely, so
     // it must write this itself or the shaded output is pure black (lightCount=0).
-    static Vixen::Gpu::LightingSettings MakeTestDefaultLightingConfig() {
-        Vixen::Gpu::LightingSettings cfg{};
+    static Vixen::Gpu::LightingConfig MakeTestDefaultLightingConfig() {
+        Vixen::Gpu::LightingConfig cfg{};
         cfg.lightCount       = 1u;
         cfg.ambientIntensity = 0.3f;
         const float dx = 1.0f, dy = 1.0f, dz = -1.0f;
@@ -593,7 +593,7 @@ protected:
                        dummyShadowMem = VK_NULL_HANDLE, dummyAccumMem = VK_NULL_HANDLE, dummyPrevCamMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLighting, dummyLightingMem, true);
         {
-            const Vixen::Gpu::LightingSettings defaultLighting = MakeTestDefaultLightingConfig();
+            const Vixen::Gpu::LightingConfig defaultLighting = MakeTestDefaultLightingConfig();
             ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummyLightingMem, &defaultLighting, sizeof(defaultLighting)));
         }
         // HitRecord.glsl's HitRecord struct is 64 bytes; the shader indexes it by the FULL

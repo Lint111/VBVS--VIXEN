@@ -38,16 +38,13 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(push_constant) uniform GatherPush {
     uint imgWidth;
     uint imgHeight;
-    uint _Frame;
 } pc;
 
-layout(std430, binding = 0) buffer ReservoirConfigSSBO {
-    uint words[];
-} reservoirSettingsBuffer;
-#define VIXEN_SOA_ReservoirSettings_BUFFER reservoirSettingsBuffer
 #include "Generated/ReservoirConfig.glsl"
-#define ReservoirConfig ReservoirSettings
-#define reservoirConfig ReservoirSettings_Load(0u)
+
+layout(std430, binding = 0) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
 
 #include "Generated/LightTreeBuffer.glsl"
 
@@ -118,7 +115,7 @@ void main() {
 
     // Same CURRENT/PREVIOUS selector as DirectLighting.comp: THIS frame's writes
     // landed in whichever buffer frameParity says is current.
-    bool parityEven = (pc._Frame & 1u) == 0u;
+    bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
 
     ReservoirRecord current = parityEven
         ? reservoirRecordsA[reservoirIdx]
@@ -128,7 +125,7 @@ void main() {
     // so the neighbor-offset draws are independent of that pass's RIS/temporal
     // draws despite sharing the same pixel/frameParity inputs. VERBATIM from the
     // pre-split shade — same salt, same order, bit-exact draws.
-    uint rngState = pcgHash((reservoirIdx ^ 0x9E3779B9u) ^ (pc._Frame * 2246822519u));
+    uint rngState = pcgHash((reservoirIdx ^ 0x9E3779B9u) ^ (reservoirConfig.frameParity * 2246822519u));
 
     if (current.y != 0xFFFFFFFFu && current.sampleCount > 0u) {
         uint spatialCount = reservoirConfig.spatialCount;

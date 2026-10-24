@@ -123,7 +123,6 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = MAX_FRAMES_IN_FLIGHT (per-flight acquisition)
     // FR-3: renderComplete semaphores + present fences (per-IMAGE) now owned by SwapChainNode.
     uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
-    uint32_t frameCounter_ = 0;                  // Monotonic `_Frame`; persists across recompile
     VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;  // Per-loop timeline semaphore (P5a M1); persistent across recompile
     uint64_t frameBase_ = 0;                     // Monotonic base offset per frame; never reset on recompile
     VkResult frameCompletionSubmitFailure_ = VK_SUCCESS;
