@@ -125,38 +125,44 @@ TEST_F(GlyphCacheTest, DisabledCacheWritesNothingAndMatches) {
 TEST_F(GlyphCacheTest, CorruptedStoreIsRejectedAndRegenerated) {
     const Run cold = Render({16}, kText);
     const auto files = StoreFiles(root_);
-    ASSERT_EQ(files.size(), 1u);
-    const auto size = static_cast<std::size_t>(fs::file_size(files[0]));
-    ASSERT_GT(size, 200u);
+    ASSERT_EQ(files.size(), 2u) << "one cell file and one page file";
 
-    auto mutate = [&](auto&& edit) {
-        std::vector<char> bytes(size);
-        {
-            std::ifstream in(files[0], std::ios::binary);
-            in.read(bytes.data(), static_cast<std::streamsize>(size));
-        }
-        edit(bytes);
-        std::ofstream out(files[0], std::ios::binary | std::ios::trunc);
+    auto readAll = [](const fs::path& path) {
+        std::vector<char> bytes(static_cast<std::size_t>(fs::file_size(path)));
+        std::ifstream in(path, std::ios::binary);
+        in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        return bytes;
+    };
+    auto writeAll = [](const fs::path& path, const std::vector<char>& bytes) {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     };
-    const std::vector<char> original = [&] {
-        std::vector<char> bytes(size);
-        std::ifstream in(files[0], std::ios::binary);
-        in.read(bytes.data(), static_cast<std::streamsize>(size));
-        return bytes;
-    }();
-    auto restore = [&] { mutate([&](std::vector<char>& b) { b = original; }); };
+    std::vector<std::vector<char>> originals;
+    for (const auto& file : files) {
+        originals.push_back(readAll(file));
+        ASSERT_GT(originals.back().size(), 200u);
+    }
+    auto restore = [&] {
+        for (std::size_t i = 0; i < files.size(); ++i)
+            writeAll(files[i], originals[i]);
+    };
 
-    const std::vector<std::pair<const char*, std::function<void(std::vector<char>&)>>> corruptions = {
-        {"flipped payload byte", [&](std::vector<char>& b) { b[size - 10] ^= 0x5A; }},
+    using Edit = std::function<void(std::vector<char>&)>;
+    const std::vector<std::pair<const char*, Edit>> corruptions = {
+        {"flipped payload byte", [&](std::vector<char>& b) { b[b.size() - 10] ^= 0x5A; }},
         {"flipped header byte", [&](std::vector<char>& b) { b[3] ^= 0x01; }},
-        {"truncated", [&](std::vector<char>& b) { b.resize(size / 2); }},
+        {"truncated", [&](std::vector<char>& b) { b.resize(b.size() / 2); }},
         {"empty", [&](std::vector<char>& b) { b.clear(); }},
         {"garbage", [&](std::vector<char>& b) { for (auto& c : b) c = static_cast<char>(0xA5); }},
     };
+    // Both files corrupted: nothing may be trusted and the glyphs are regenerated.
     for (const auto& [name, edit] : corruptions) {
         restore();
-        mutate(edit);
+        for (std::size_t i = 0; i < files.size(); ++i) {
+            std::vector<char> bytes = originals[i];
+            edit(bytes);
+            writeAll(files[i], bytes);
+        }
         const Run again = Render({16}, kText);
         EXPECT_GT(again.generated, 0u) << name << ": corrupt store must not be trusted";
         EXPECT_EQ(cold.pixels, again.pixels) << name;
@@ -165,6 +171,20 @@ TEST_F(GlyphCacheTest, CorruptedStoreIsRejectedAndRegenerated) {
         const Run healed = Render({16}, kText);
         EXPECT_EQ(healed.generated, 0u) << name << ": store should be healed";
         EXPECT_EQ(cold.pixels, healed.pixels) << name;
+    }
+    // Only the page corrupted: it is rejected and the cell file still serves every glyph.
+    // Only the cell file corrupted: the valid page still holds every glyph.
+    for (std::size_t victim = 0; victim < files.size(); ++victim) {
+        for (const auto& [name, edit] : corruptions) {
+            restore();
+            std::vector<char> bytes = originals[victim];
+            edit(bytes);
+            writeAll(files[victim], bytes);
+            const Run again = Render({16}, kText);
+            EXPECT_EQ(again.generated, 0u) << name << ": the intact file serves every glyph";
+            EXPECT_EQ(cold.pixels, again.pixels) << name;
+            EXPECT_TRUE(SameInstances(cold, again)) << name;
+        }
     }
 }
 
@@ -181,9 +201,10 @@ TEST_F(GlyphCacheTest, DifferentGenerationParametersNeverShareCells) {
 
     // A file renamed onto another key's path carries the wrong identity and is rejected.
     const auto files = StoreFiles(root_);
-    ASSERT_EQ(files.size(), 1u);
-    const fs::path foreign = files[0].parent_path() / "foreign.bin";
-    fs::copy_file(files[0], foreign);
+    ASSERT_EQ(files.size(), 2u);
+    const fs::path cellFile = files[0].string().ends_with(".page.bin") ? files[1] : files[0];
+    const fs::path foreign = cellFile.parent_path() / "foreign.bin";
+    fs::copy_file(cellFile, foreign);
     GlyphCacheKey wrong{0x1234, 0, 16, 1024, 4.0f};
     std::string reason;
     const auto snapshot = GlyphCellStore::Load(foreign, wrong, &reason);

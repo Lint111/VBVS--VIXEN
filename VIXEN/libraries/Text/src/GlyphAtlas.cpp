@@ -245,6 +245,62 @@ struct GlyphAtlas::Impl {
         return true;
     }
 
+    // Adopt a saved page in one step: pixels, glyph table and packer cursor exactly as the saving run
+    // left them. Only valid on an empty atlas.
+    bool RestorePage(const CachedPage& page) {
+        if (!glyphs.empty() || page.pixels.size() > pixels->size())
+            return false;
+        std::copy(page.pixels.begin(), page.pixels.end(), pixels->begin());
+        std::copy(std::begin(kAtlasFormatMarker), std::end(kAtlasFormatMarker), pixels->begin());
+        for (const CachedPage::Entry& e : page.glyphs) {
+            AtlasGlyph glyph;
+            glyph.glyphIndex = e.glyphIndex;
+            glyph.advance = e.advance;
+            glyph.bearingX = e.bearingX;
+            glyph.bearingY = e.bearingY;
+            glyph.padding = e.padding;
+            glyph.width = static_cast<float>(e.width);
+            glyph.height = static_cast<float>(e.height);
+            if (e.width > 0)
+                SetCellCoordinates(glyph, e.atlasX, e.atlasY, e.width, e.height);
+            glyphs.emplace(glyph.glyphIndex, glyph);
+        }
+        placement.x = static_cast<int>(page.placementX);
+        placement.y = static_cast<int>(page.placementY);
+        placement.shelfHeight = static_cast<int>(page.shelfHeight);
+        restoredPageGlyphs = glyphs.size();
+        ++version;
+        return true;
+    }
+
+    CachedPage SnapshotPage() const {
+        CachedPage page;
+        page.placementX = static_cast<std::uint32_t>(placement.x);
+        page.placementY = static_cast<std::uint32_t>(placement.y);
+        page.shelfHeight = static_cast<std::uint32_t>(placement.shelfHeight);
+        page.usedRows = std::min<std::uint32_t>(pageDimension, page.placementY + page.shelfHeight + 1);
+        page.pixels.assign(pixels->begin(),
+                           pixels->begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(page.usedRows) * pageDimension * 4));
+        for (const auto& [index, glyph] : glyphs) {
+            CachedPage::Entry e;
+            e.glyphIndex = index;
+            e.advance = glyph.advance;
+            e.bearingX = glyph.bearingX;
+            e.bearingY = glyph.bearingY;
+            e.padding = glyph.padding;
+            e.width = static_cast<std::int32_t>(glyph.width);
+            e.height = static_cast<std::int32_t>(glyph.height);
+            if (e.width > 0) {
+                e.atlasX = static_cast<std::int32_t>(std::lround(glyph.u0 * static_cast<float>(pageDimension)));
+                e.atlasY = static_cast<std::int32_t>(std::lround(glyph.v0 * static_cast<float>(pageDimension)));
+            }
+            page.glyphs.push_back(e);
+        }
+        std::sort(page.glyphs.begin(), page.glyphs.end(),
+                  [](const CachedPage::Entry& a, const CachedPage::Entry& b) { return a.glyphIndex < b.glyphIndex; });
+        return page;
+    }
+
     // Queue a freshly generated glyph for the shutdown write. The atlas is single-threaded.
     void RecordGenerated(std::uint32_t glyphIndex) {
         if (!store)
@@ -369,6 +425,8 @@ struct GlyphAtlas::Impl {
     bool store = false;
     std::shared_ptr<const GlyphCellSnapshot> snapshot; // immutable after AttachPersistentStore
     std::vector<CachedGlyph> generated;                // misses, written once by Flush
+    std::size_t restoredPageGlyphs = 0;                // glyphs the persisted page already holds
+    bool pageUnsafe = false;                         // outline glyphs or UI cache off: never save/restore a page
     std::unique_ptr<Rml::CallbackTextureSource> currentSource;
     std::vector<std::unique_ptr<Rml::CallbackTextureSource>> retainedSources;
 
@@ -402,14 +460,26 @@ void GlyphAtlas::AttachPersistentStore(const GlyphCacheKey& key) {
     impl_->storePath = GlyphCellStore::PathFor(impl_->storeKey);
     impl_->snapshot = GlyphCellStore::Load(impl_->storePath, impl_->storeKey);
     impl_->store = true;
+    if (!GlyphCellStore::PageEnabled())
+        impl_->pageUnsafe = true;
+    else if (const auto page = GlyphCellStore::LoadPage(GlyphCellStore::PageFor(impl_->storeKey), impl_->storeKey))
+        impl_->RestorePage(*page);
 }
 
 bool GlyphAtlas::Flush() {
-    if (!impl_->store || impl_->generated.empty())
+    if (!impl_->store)
         return true;
     // Off the frame path: called at shutdown. A failed write only costs regeneration next run.
-    const bool written = GlyphCellStore::Merge(impl_->storePath, impl_->storeKey, impl_->generated);
-    impl_->generated.clear();
+    bool written = true;
+    if (!impl_->generated.empty()) {
+        written = GlyphCellStore::Merge(impl_->storePath, impl_->storeKey, impl_->generated);
+        impl_->generated.clear();
+    }
+    if (!impl_->pageUnsafe && impl_->glyphs.size() > impl_->restoredPageGlyphs) {
+        written = GlyphCellStore::SavePage(GlyphCellStore::PageFor(impl_->storeKey), impl_->storeKey,
+                                           impl_->SnapshotPage()) && written;
+        impl_->restoredPageGlyphs = impl_->glyphs.size();
+    }
     return written;
 }
 
@@ -526,6 +596,7 @@ bool GlyphAtlas::AddGlyphFromOutline(std::uint32_t glyphIndex, const GlyphOutlin
         return false;
     if (impl_->glyphs.contains(glyphIndex))
         return true;
+    impl_->pageUnsafe = true;
 
     AtlasGlyph glyph;
     glyph.glyphIndex = glyphIndex;

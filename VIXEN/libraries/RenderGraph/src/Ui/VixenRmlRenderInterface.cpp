@@ -4,13 +4,17 @@
 #include "Text/AtlasFormat.h"
 #include "Text/GlyphAtlas.h"
 #include "Text/TextShaderSpirv.g.h"
+#include "SharedPipelineCacheStore.h"
 
 #include <RmlUi/Core/Vertex.h>
 
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
+#include <string_view>
 
 namespace Vixen::Ui {
 namespace {
@@ -27,6 +31,15 @@ VkShaderModule MakeShaderModule(VkDevice device, const uint32_t* code, size_t si
     Check(vkCreateShaderModule(device, &ci, nullptr, &m), "shader module");
     return m;
 }
+
+// The UI's driver pipeline blob is keyed by device and driver in the shared user cache. Setting
+// VIXEN_UI_CACHE=off bypasses it (and every other UI startup cache) to measure uncached startup.
+bool UiCacheEnabled() {
+    const char* value = std::getenv("VIXEN_UI_CACHE");
+    return !(value && std::string_view(value) == "off");
+}
+
+constexpr std::string_view kUiPipelineCacheKind = "ui-pipelines";
 
 } // namespace
 
@@ -70,8 +83,25 @@ void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDev
     commandPool_ = commandPool;
     renderPass_ = renderPass;
 
+    // Seed the pipeline cache from the shared store when this device and driver have a valid blob;
+    // otherwise start empty and publish what the driver compiles below.
+    VkPhysicalDeviceProperties deviceProps{};
+    vkGetPhysicalDeviceProperties(physicalDevice_, &deviceProps);
+    const bool cacheEnabled = UiCacheEnabled();
+    if (cacheEnabled)
+        pipelineCache_ = CashSystem::CreatePipelineCacheFromSharedStore(device_, deviceProps, kUiPipelineCacheKind);
+    const bool seeded = pipelineCache_ != VK_NULL_HANDLE;
+    if (cacheEnabled && !seeded) {
+        VkPipelineCacheCreateInfo pcci{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        if (vkCreatePipelineCache(device_, &pcci, nullptr, &pipelineCache_) != VK_SUCCESS)
+            pipelineCache_ = VK_NULL_HANDLE;
+    }
+
     CreatePipeline();
     CreateTextPipeline();
+
+    if (pipelineCache_ != VK_NULL_HANDLE && !seeded)
+        CashSystem::PersistPipelineCacheToSharedStore(device_, pipelineCache_, deviceProps, kUiPipelineCacheKind);
 
     // 1x1 opaque-white default texture so untextured geometry reuses the textured pipeline.
     const uint8_t white[4] = {255, 255, 255, 255};
@@ -556,6 +586,7 @@ void VixenRmlRenderInterface::DrawTextInstances(const Vixen::Text::GlyphAtlas& a
 
 Rml::CompiledGeometryHandle VixenRmlRenderInterface::CompileGeometry(Rml::Span<const Rml::Vertex> vertices,
                                                                      Rml::Span<const int> indices) {
+    const auto statsStart = std::chrono::steady_clock::now();
     auto* g = new Geometry();
     g->indexCount = static_cast<uint32_t>(indices.size());
 
@@ -576,6 +607,9 @@ Rml::CompiledGeometryHandle VixenRmlRenderInterface::CompileGeometry(Rml::Span<c
     vkUnmapMemory(device_, g->imem);
 
     geometries_.push_back(g);
+    stats_.compileGeometryMs +=
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - statsStart).count();
+    ++stats_.geometries;
     return reinterpret_cast<Rml::CompiledGeometryHandle>(g);
 }
 
@@ -629,11 +663,15 @@ Rml::TextureHandle VixenRmlRenderInterface::LoadTexture(Rml::Vector2i& /*dims*/,
 }
 
 Rml::TextureHandle VixenRmlRenderInterface::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i dims) {
+    const auto statsStart = std::chrono::steady_clock::now();
     const auto* bytes = reinterpret_cast<const uint8_t*>(source.data());
     const bool isMsdf = dims.x > 0 && dims.y > 0 && source.size() >= sizeof(Vixen::Text::kAtlasFormatMarker) &&
                         std::memcmp(bytes, Vixen::Text::kAtlasFormatMarker, sizeof(Vixen::Text::kAtlasFormatMarker)) == 0;
     Texture* tex = CreateTextureRGBA(reinterpret_cast<const uint8_t*>(source.data()),
                                      static_cast<uint32_t>(dims.x), static_cast<uint32_t>(dims.y), isMsdf);
+    stats_.generateTextureMs +=
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - statsStart).count();
+    ++stats_.textures;
     return reinterpret_cast<Rml::TextureHandle>(tex);
 }
 
@@ -680,6 +718,8 @@ void VixenRmlRenderInterface::Shutdown() {
     pendingTextDrawDeletes_.clear();
     atlasTextures_.clear();
 
+    if (pipelineCache_) vkDestroyPipelineCache(device_, pipelineCache_, nullptr);
+    pipelineCache_ = VK_NULL_HANDLE;
     if (pipeline_) vkDestroyPipeline(device_, pipeline_, nullptr);
     if (textPipeline_) vkDestroyPipeline(device_, textPipeline_, nullptr);
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);

@@ -9,6 +9,7 @@ project(Core VERSION 1.0.0 LANGUAGES CXX)
 add_library(Core STATIC
     src/MortonEncoding.cpp
     src/RuntimeCachePaths.cpp
+    src/CacheEnvelope.cpp
 )
 
 # The absolute runtime-cache root differs per build tree. Scope it to the one source that reads

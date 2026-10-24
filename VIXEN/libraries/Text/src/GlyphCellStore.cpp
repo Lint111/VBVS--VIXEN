@@ -4,6 +4,7 @@
 #endif
 #include "Text/GlyphCellStore.h"
 
+#include "CacheEnvelope.h"
 #include "RuntimeCachePaths.h"
 
 #include <ft2build.h>
@@ -27,21 +28,10 @@ namespace Vixen::Text {
 
 namespace {
 
-constexpr char kMagic[8] = {'V', 'X', 'G', 'L', 'Y', 'P', 'H', '1'};
-constexpr std::uint32_t kEnvelopeVersion = 1;
-constexpr std::uint64_t kMaxFileBytes = 256ULL * 1024ULL * 1024ULL;
+constexpr std::string_view kCacherType = "glyph-cells";
+constexpr std::string_view kPageCacherType = "glyph-page";
 constexpr std::uint32_t kMaxGlyphs = 1U << 20;
 constexpr std::uint32_t kMaxIdentityBytes = 1024;
-
-struct Header {
-    char magic[8];
-    std::uint32_t version;
-    std::uint32_t reserved;
-    std::uint64_t identityHash;
-    std::uint64_t payloadSize;
-    std::uint64_t payloadChecksum;
-};
-static_assert(sizeof(Header) == 40);
 
 void SetReason(std::string* reason, const char* text) {
     if (reason)
@@ -138,46 +128,16 @@ bool ParsePayload(const std::vector<char>& payload, const std::string& identity,
 // Returns true and fills `glyphs` only for a fully valid file for this key.
 bool ReadFile(const std::filesystem::path& path, const GlyphCacheKey& key,
               std::unordered_map<std::uint32_t, CachedGlyph>& glyphs, std::string* reason) {
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec))
-        return false;
-    std::ifstream in(path, std::ios::binary | std::ios::ate);
-    if (!in) {
-        SetReason(reason, "cannot open store file");
-        return false;
-    }
-    const auto end = in.tellg();
-    if (end < static_cast<std::streamoff>(sizeof(Header)) ||
-        static_cast<std::uint64_t>(end) > sizeof(Header) + kMaxFileBytes) {
-        SetReason(reason, "file size outside bounds");
-        return false;
-    }
-    in.seekg(0, std::ios::beg);
-    Header header{};
-    in.read(reinterpret_cast<char*>(&header), sizeof(header));
     const std::string identity = key.Identity();
-    if (!in || std::memcmp(header.magic, kMagic, sizeof(kMagic)) != 0 || header.version != kEnvelopeVersion) {
-        SetReason(reason, "magic or envelope version mismatch");
+    std::vector<char> payload;
+    std::string why;
+    const Vixen::CacheFileStatus status = Vixen::ReadCacheEnvelopeBytes(
+        path, Vixen::Checksum64(identity.data(), identity.size()), kCacherType, payload, &why);
+    if (status == Vixen::CacheFileStatus::Missing)
         return false;
-    }
-    if (header.identityHash != Vixen::Checksum64(identity.data(), identity.size())) {
-        SetReason(reason, "store belongs to different generation parameters");
-        return false;
-    }
-    if (header.payloadSize != static_cast<std::uint64_t>(end) - sizeof(Header)) {
-        SetReason(reason, "payload size mismatch");
-        return false;
-    }
-    std::vector<char> payload(static_cast<std::size_t>(header.payloadSize));
-    if (!payload.empty()) {
-        in.read(payload.data(), static_cast<std::streamsize>(payload.size()));
-        if (!in) {
-            SetReason(reason, "truncated payload");
-            return false;
-        }
-    }
-    if (Vixen::Checksum64(payload.data(), payload.size()) != header.payloadChecksum) {
-        SetReason(reason, "payload checksum mismatch");
+    if (status != Vixen::CacheFileStatus::Loaded) {
+        if (reason)
+            *reason = why;
         return false;
     }
     std::unordered_map<std::uint32_t, CachedGlyph> parsed;
@@ -185,6 +145,17 @@ bool ReadFile(const std::filesystem::path& path, const GlyphCacheKey& key,
         return false;
     glyphs = std::move(parsed);
     return true;
+}
+
+
+std::string PageIdentity(const GlyphCacheKey& key) {
+    return key.Identity() + ";page=1";
+}
+
+template <typename T>
+void AppendValue(std::vector<char>& out, const T& value) {
+    const auto* bytes = reinterpret_cast<const char*>(&value);
+    out.insert(out.end(), bytes, bytes + sizeof(T));
 }
 
 } // namespace
@@ -242,21 +213,104 @@ bool GlyphCellStore::Merge(const std::filesystem::path& path, const GlyphCacheKe
         payload.insert(payload.end(), reinterpret_cast<const char*>(glyph.rgb.data()),
                        reinterpret_cast<const char*>(glyph.rgb.data()) + glyph.rgb.size());
     }
-    if (payload.size() > kMaxFileBytes) {
-        SetReason(reason, "store would exceed size limit");
-        return false;
-    }
+    return Vixen::WriteCacheEnvelopeBytesAtomically(
+        path, Vixen::Checksum64(identity.data(), identity.size()), kCacherType, payload, reason);
+}
 
-    Header header{};
-    std::memcpy(header.magic, kMagic, sizeof(kMagic));
-    header.version = kEnvelopeVersion;
-    header.identityHash = Vixen::Checksum64(identity.data(), identity.size());
-    header.payloadSize = payload.size();
-    header.payloadChecksum = Vixen::Checksum64(payload.data(), payload.size());
-    std::vector<char> file(sizeof(header) + payload.size());
-    std::memcpy(file.data(), &header, sizeof(header));
-    std::memcpy(file.data() + sizeof(header), payload.data(), payload.size());
-    return Vixen::AtomicWriteBytes(path, file.data(), file.size(), reason);
+std::filesystem::path GlyphCellStore::PageFor(const GlyphCacheKey& key) {
+    std::filesystem::path path = PathFor(key);
+    path.replace_extension(".page.bin");
+    return path;
+}
+
+std::shared_ptr<const CachedPage> GlyphCellStore::LoadPage(const std::filesystem::path& path,
+                                                           const GlyphCacheKey& key, std::string* reason) {
+    const std::string identity = PageIdentity(key);
+    std::vector<char> payload;
+    std::string why;
+    const Vixen::CacheFileStatus status = Vixen::ReadCacheEnvelopeBytes(
+        path, Vixen::Checksum64(identity.data(), identity.size()), kPageCacherType, payload, &why);
+    if (status != Vixen::CacheFileStatus::Loaded) {
+        if (status != Vixen::CacheFileStatus::Missing)
+            SetReason(reason, why.c_str());
+        return nullptr;
+    }
+    Reader reader(payload.data(), payload.size());
+    std::uint32_t identityLength = 0;
+    if (!reader.Read(identityLength) || identityLength > kMaxIdentityBytes) {
+        SetReason(reason, "page identity length out of bounds");
+        return nullptr;
+    }
+    std::string stored(identityLength, '\0');
+    if (!reader.ReadBytes(stored.data(), identityLength) || stored != identity) {
+        SetReason(reason, "page parameters or versions differ");
+        return nullptr;
+    }
+    const std::uint32_t dim = key.pageDimension;
+    auto page = std::make_shared<CachedPage>();
+    std::uint32_t count = 0;
+    if (!reader.Read(page->placementX) || !reader.Read(page->placementY) || !reader.Read(page->shelfHeight) ||
+        !reader.Read(page->usedRows) || !reader.Read(count) || count > kMaxGlyphs || page->usedRows > dim ||
+        page->placementX > dim || page->placementY > dim || page->shelfHeight > dim) {
+        SetReason(reason, "page header out of bounds");
+        return nullptr;
+    }
+    page->glyphs.resize(count);
+    for (CachedPage::Entry& e : page->glyphs) {
+        if (!reader.Read(e.glyphIndex) || !reader.Read(e.advance) || !reader.Read(e.bearingX) ||
+            !reader.Read(e.bearingY) || !reader.Read(e.padding) || !reader.Read(e.width) ||
+            !reader.Read(e.height) || !reader.Read(e.atlasX) || !reader.Read(e.atlasY)) {
+            SetReason(reason, "truncated page glyph record");
+            return nullptr;
+        }
+        const bool sized = e.width > 0 && e.height > 0;
+        if (e.width < 0 || e.height < 0 || (e.width == 0) != (e.height == 0) ||
+            (sized && (e.atlasX < 0 || e.atlasY < 0 || static_cast<std::int64_t>(e.atlasX) + e.width > dim ||
+                       static_cast<std::int64_t>(e.atlasY) + e.height > page->usedRows))) {
+            SetReason(reason, "page glyph placement out of bounds");
+            return nullptr;
+        }
+    }
+    const std::size_t pixelBytes = static_cast<std::size_t>(page->usedRows) * dim * 4;
+    page->pixels.resize(pixelBytes);
+    if ((pixelBytes != 0 && !reader.ReadBytes(page->pixels.data(), pixelBytes)) || !reader.AtEnd()) {
+        SetReason(reason, "page pixel size mismatch");
+        return nullptr;
+    }
+    return page;
+}
+
+bool GlyphCellStore::SavePage(const std::filesystem::path& path, const GlyphCacheKey& key, const CachedPage& page,
+                              std::string* reason) {
+    const std::string identity = PageIdentity(key);
+    std::vector<char> payload;
+    AppendValue(payload, static_cast<std::uint32_t>(identity.size()));
+    payload.insert(payload.end(), identity.begin(), identity.end());
+    AppendValue(payload, page.placementX);
+    AppendValue(payload, page.placementY);
+    AppendValue(payload, page.shelfHeight);
+    AppendValue(payload, page.usedRows);
+    AppendValue(payload, static_cast<std::uint32_t>(page.glyphs.size()));
+    for (const CachedPage::Entry& e : page.glyphs) {
+        AppendValue(payload, e.glyphIndex);
+        AppendValue(payload, e.advance);
+        AppendValue(payload, e.bearingX);
+        AppendValue(payload, e.bearingY);
+        AppendValue(payload, e.padding);
+        AppendValue(payload, e.width);
+        AppendValue(payload, e.height);
+        AppendValue(payload, e.atlasX);
+        AppendValue(payload, e.atlasY);
+    }
+    payload.insert(payload.end(), reinterpret_cast<const char*>(page.pixels.data()),
+                   reinterpret_cast<const char*>(page.pixels.data()) + page.pixels.size());
+    return Vixen::WriteCacheEnvelopeBytesAtomically(
+        path, Vixen::Checksum64(identity.data(), identity.size()), kPageCacherType, payload, reason);
+}
+
+bool GlyphCellStore::PageEnabled() {
+    const char* value = std::getenv("VIXEN_UI_CACHE");
+    return Enabled() && !(value && std::string_view(value) == "off");
 }
 
 bool GlyphCellStore::Enabled() {
