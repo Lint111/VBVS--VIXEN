@@ -36,7 +36,7 @@ public:
     // pipelineCache (not owned) is the device's shared persistent graphics cache.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
               const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
-              OneShotSubmit submitOneShot, VkPipelineCache pipelineCache);
+              OneShotSubmit submitOneShot, VkPipelineCache pipelineCache = VK_NULL_HANDLE);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
@@ -123,7 +123,8 @@ private:
     std::vector<std::pair<uint64_t, TextDrawResources*>> pendingTextDrawDeletes_;
 
     VkDevice device_ = VK_NULL_HANDLE;
-    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // shared, owned by PipelineCacher
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // borrowed shared cache or owned standalone fallback
+    bool ownsPipelineCache_ = false;  // standalone startup witness owns its local fallback
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     OneShotSubmit submitOneShot_;  // R715: the owning node's graph submission point
@@ -136,7 +137,6 @@ private:
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     CompileStats stats_{};
-    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // seeded from the shared user cache; null when off
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout textDescriptorLayout_ = VK_NULL_HANDLE;

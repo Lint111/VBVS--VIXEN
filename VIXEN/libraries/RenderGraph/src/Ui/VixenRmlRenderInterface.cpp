@@ -74,7 +74,6 @@ void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDev
                                    OneShotSubmit submitOneShot,
                                    VkPipelineCache pipelineCache) {
     device_ = device;
-    pipelineCache_ = pipelineCache;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
     submitOneShot_ = std::move(submitOneShot);
@@ -88,19 +87,25 @@ void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDev
     VkPhysicalDeviceProperties deviceProps{};
     vkGetPhysicalDeviceProperties(physicalDevice_, &deviceProps);
     const bool cacheEnabled = UiCacheEnabled();
-    if (cacheEnabled)
+    pipelineCache_ = cacheEnabled ? pipelineCache : VK_NULL_HANDLE;
+    bool seeded = pipelineCache_ != VK_NULL_HANDLE;
+    if (cacheEnabled && pipelineCache_ == VK_NULL_HANDLE) {
         pipelineCache_ = CashSystem::CreatePipelineCacheFromSharedStore(device_, deviceProps, kUiPipelineCacheKind);
-    const bool seeded = pipelineCache_ != VK_NULL_HANDLE;
-    if (cacheEnabled && !seeded) {
-        VkPipelineCacheCreateInfo pcci{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-        if (vkCreatePipelineCache(device_, &pcci, nullptr, &pipelineCache_) != VK_SUCCESS)
-            pipelineCache_ = VK_NULL_HANDLE;
+        seeded = pipelineCache_ != VK_NULL_HANDLE;
+        ownsPipelineCache_ = seeded;
+        if (!seeded) {
+            VkPipelineCacheCreateInfo pcci{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+            if (vkCreatePipelineCache(device_, &pcci, nullptr, &pipelineCache_) == VK_SUCCESS)
+                ownsPipelineCache_ = true;
+            else
+                pipelineCache_ = VK_NULL_HANDLE;
+        }
     }
 
     CreatePipeline();
     CreateTextPipeline();
 
-    if (pipelineCache_ != VK_NULL_HANDLE && !seeded)
+    if (ownsPipelineCache_ && pipelineCache_ != VK_NULL_HANDLE && !seeded)
         CashSystem::PersistPipelineCacheToSharedStore(device_, pipelineCache_, deviceProps, kUiPipelineCacheKind);
 
     // 1x1 opaque-white default texture so untextured geometry reuses the textured pipeline.
@@ -718,8 +723,9 @@ void VixenRmlRenderInterface::Shutdown() {
     pendingTextDrawDeletes_.clear();
     atlasTextures_.clear();
 
-    if (pipelineCache_) vkDestroyPipelineCache(device_, pipelineCache_, nullptr);
+    if (ownsPipelineCache_ && pipelineCache_) vkDestroyPipelineCache(device_, pipelineCache_, nullptr);
     pipelineCache_ = VK_NULL_HANDLE;
+    ownsPipelineCache_ = false;
     if (pipeline_) vkDestroyPipeline(device_, pipeline_, nullptr);
     if (textPipeline_) vkDestroyPipeline(device_, textPipeline_, nullptr);
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
