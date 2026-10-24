@@ -1,5 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
+namespace Vixen.Gpu;
+
 // Canonical EmitterSample — one source for C++ (Vixen::Gpu) + GLSL.
 // Count-agnostic lighting (R502, lightdesign §2.1): the one explicit emitter sample that
 // sampleEmitter() returns and the S1 reservoir stores. 32 B std430 (vec3 + uint share a

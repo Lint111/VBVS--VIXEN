@@ -43,13 +43,13 @@ namespace Vixen::SVO::Recipe {
 inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr,
                          const RecipeRegistry* registry = nullptr,
-                         std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
-                         std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {}) {
+                         std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
+                         std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
     float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[11])
-    using namespace Yeroket::Sdf::Generated;
+    using namespace Yeroket::Sdf::Kernels;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         switch (static_cast<SdfOpCode>(in.opCode)) {

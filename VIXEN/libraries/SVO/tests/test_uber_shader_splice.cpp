@@ -178,13 +178,13 @@ TEST(UberShaderSplice, SharedGlyphRowsUseOneDeduplicatedRuntimeBuffer) {
     }
 
     std::vector<float> occupancy;
-    std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphRows;
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphRows;
     const std::string spliced = SpliceProceduralRecipesIntoSource(
         raw, registry, &occupancy, &glyphRows);
 
     ASSERT_EQ(glyphRows.size(), 2u);
-    EXPECT_EQ(registry.GlyphOutlineBytes(), 2u * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance));
-    constexpr std::size_t legacyBytes = 3u * sizeof(Yeroket::Sdf::Generated::GlyphOutlineInstance);
+    EXPECT_EQ(registry.GlyphOutlineBytes(), 2u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance));
+    constexpr std::size_t legacyBytes = 3u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance);
     EXPECT_LT(registry.GlyphOutlineBytes(), legacyBytes);
     EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 0u)"), 2u);
     EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 1u)"), 1u);

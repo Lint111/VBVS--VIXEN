@@ -42,7 +42,7 @@ void AppendSegment(OutlineBuilder& builder, SegmentKind kind,
     }
 
     ++builder.requiredSegments;
-    if (builder.instance->SegmentCount >= Yeroket::Sdf::Generated::SegmentCapacity) {
+    if (builder.instance->SegmentCount >= Yeroket::Sdf::Kernels::SegmentCapacity) {
         builder.overflow = true;
         return;
     }
@@ -134,7 +134,7 @@ bool LoadGlyphOutline(FT_Face fontFace, std::uint32_t glyphId,
                       GlyphOutlineInstance& instance,
                       GlyphOutlineBakeDiagnostic* diagnostic) {
     instance = {};
-    const auto capacity = static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity);
+    const auto capacity = static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity);
     SetDiagnostic(diagnostic, glyphId, GlyphOutlineBakeDiagnosticCode::None, 0, capacity);
     if (!fontFace || glyphId >= static_cast<std::uint32_t>(fontFace->num_glyphs)) {
         SetDiagnostic(diagnostic, glyphId, GlyphOutlineBakeDiagnosticCode::InvalidFace, 0, capacity);

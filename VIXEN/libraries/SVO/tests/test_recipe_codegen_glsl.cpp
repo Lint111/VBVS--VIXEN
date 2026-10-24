@@ -72,10 +72,10 @@ TEST(EmitProceduralFieldFunctionGlsl, InstructionFloatLiteralsRoundTripExactly) 
 
 TEST(EmitProceduralFieldFunctionGlsl, GlyphOutlineUsesRuntimeBufferAndRebasedIndex) {
     SdfInstruction prog[] = {MakeGlyph(/*localIndex=*/2)};
-    Yeroket::Sdf::Generated::GlyphOutlineInstance glyph{};
+    Yeroket::Sdf::Kernels::GlyphOutlineInstance glyph{};
     const std::string glsl = EmitProceduralFieldFunctionGlsl(
         prog, 1, /*recipeId=*/12, /*emitDeclaredPositionOutParam=*/false, nullptr,
-        std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&glyph, 1),
+        std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>(&glyph, 1),
         /*glyphInstanceBase=*/5);
 
     EXPECT_NE(glsl.find("SdfCore_GlyphOutline(p, 7u)"), std::string::npos) << glsl;

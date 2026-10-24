@@ -4,8 +4,10 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <bit>
+#include "GlyphOutlineInstance.g.hpp"
+#include "PathInstance.g.hpp"
 
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 
 inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
     float minimumDistance = 1.0e20f;
@@ -923,4 +925,4 @@ inline float SdfCore_U32ToFloat(uint32_t value) {
     return (float)value;
 }
 
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

@@ -14,9 +14,10 @@
 // tool output must match a fixed callable signature even when a specific body ignores an arg)
 // are emitted [[maybe_unused]] by --callable-cpp itself, so no diagnostic exemption is needed.
 #include "generated/AppFlowCallables.generated.g.hpp"
+#include "generated/UndertowViewCallables.generated.g.hpp"
 #include <RmlUi/Core/Types.h>   // Rml::String
 
-namespace Vixen::AppFlow::Generated {
+namespace Vixen::ViewSchemas {
 
 // UndertowHudInspect.typed.g.h's cause() accessor: a pure name-binding identity projection
 // (view field `cause` <- C# source member `el.CauseString`, no value transform) -- see
@@ -25,4 +26,4 @@ inline Rml::String IdentityString(const Rml::String& v) {
     return v;
 }
 
-} // namespace Vixen::AppFlow::Generated
+} // namespace Vixen::ViewSchemas

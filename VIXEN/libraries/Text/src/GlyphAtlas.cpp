@@ -426,7 +426,7 @@ std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
             diagnostic->glyphId = glyphIndex;
             diagnostic->code = GlyphOutlineBakeDiagnosticCode::None;
             diagnostic->requiredSegments = found->second->SegmentCount;
-            diagnostic->segmentCapacity = static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity);
+            diagnostic->segmentCapacity = static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity);
         }
         return found->second;
     }
@@ -521,7 +521,7 @@ bool GlyphAtlas::GenerateGlyph(FT_Face face, std::uint32_t glyphIndex, int fontS
 bool GlyphAtlas::AddGlyphFromOutline(std::uint32_t glyphIndex, const GlyphOutlineInstance& outline,
                                      float pointsToPixels) {
     if (glyphIndex == 0 || impl_->pageDimension == 0 || impl_->distanceRange <= 0.0f ||
-        outline.SegmentCount > static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity) ||
+        outline.SegmentCount > static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity) ||
         !std::isfinite(pointsToPixels) || pointsToPixels <= 0.0f)
         return false;
     if (impl_->glyphs.contains(glyphIndex))
