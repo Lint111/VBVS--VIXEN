@@ -631,7 +631,9 @@ void DescriptorSetNode::HandleSampledImage(
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageView = imageView;
         imageInfo.sampler = VK_NULL_HANDLE;  // Sampled images don't include sampler
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        // The graph's images stay in GENERAL (storage writers, one-time transitions); a sampled
+        // view of one is read in GENERAL too, as the generated-system manifest declares.
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         imageInfos.push_back(imageInfo);
         write.pImageInfo = &imageInfos.back();
         writes.push_back(write);

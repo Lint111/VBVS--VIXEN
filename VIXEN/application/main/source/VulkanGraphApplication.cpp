@@ -165,6 +165,20 @@ VulkanGraphApplication::VulkanGraphApplication()
         }
     }
 
+    // The anti-aliasing request rides the same seam; the graph still decides eligibility (a
+    // canonical capture never admits a provider).
+    if (const char* env = std::getenv("VIXEN_ANTI_ALIASING")) {
+        const std::string_view requested(env);
+        if (requested == "none" || requested == "off") {
+            renderPathConfig_.antiAliasing = "none";
+        } else if (requested == "taa") {
+            renderPathConfig_.antiAliasing = "taa";
+        } else if (mainLogger) {
+            mainLogger->Warning("Unknown VIXEN_ANTI_ALIASING='" + std::string(requested) +
+                                "'; keeping the requested provider");
+        }
+    }
+
     // Enable main logger for application-level logging
     if (mainLogger) {
         mainLogger->SetEnabled(true);

@@ -27,8 +27,9 @@ public:
  * as the current output. Their roles flip once per graph execution, so a dispatch never reads and
  * writes the same image. This is a two-image history pair, not a frame-in-flight ring.
  *
- * Usage = STORAGE only (no TRANSFER_SRC/DST needed -- no clear-on-resize copy; see below for why
- * uninitialized content on (re)creation is safe).
+ * Usage = STORAGE | TRANSFER_SRC | TRANSFER_DST plus the usage its connected consumers derive (a
+ * sampled-view descriptor adds SAMPLED). Both images are cleared to zero on (re)creation, so a
+ * reader that counts valid history (the TAA's alpha) sees an empty history, not stale memory.
  *
  * Layout: the compute shader will use the image as a STORAGE image, requiring
  * VK_IMAGE_LAYOUT_GENERAL. The image is created UNDEFINED and transitioned UNDEFINED->GENERAL
@@ -65,7 +66,7 @@ protected:
 private:
     void CreateImage(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool commandPool,
                     uint32_t imageIndex);
-    void TransitionToGeneral(VkCommandPool commandPool, VkImage image);
+    void TransitionToGeneral(VkCommandPool commandPool, VkImage image);  // and clear to zero
     void DestroyImages();
 
     Vixen::Vulkan::Resources::RenderTargetData targets_[2];
@@ -81,6 +82,8 @@ private:
     // PickIdTargetNode's ringWidth_/ringHeight_ vs width_/height_ comparison).
     uint32_t createdWidth_  = 0;
     uint32_t createdHeight_ = 0;
+    VkFormat format_ = kFormat;
+    VkImageUsageFlags usage_ = 0;
 
     static constexpr VkFormat kFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 };
