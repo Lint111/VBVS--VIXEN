@@ -68,9 +68,8 @@ public:
         wave->SetPostDispatchRecorderForTest([this, records](VkCommandBuffer cmd) {
             RecordSnapshotCopy(cmd, *records);
         });
-        graph->GetLifecycleHooks().RegisterNodeHook(Vixen::RenderGraph::NodeLifecyclePhase::PreCleanup,
-            [this](Vixen::RenderGraph::NodeInstance*) { ReleaseSnapshot(); },
-            "traversal capture snapshot cleanup", wave);
+        graph->RegisterExternalCleanup("main_device", [this]() { ReleaseSnapshot(); },
+                                       "traversal capture snapshot");
     }
 
     bool Render() override {
