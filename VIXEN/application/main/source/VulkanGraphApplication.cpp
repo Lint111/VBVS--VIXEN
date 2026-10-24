@@ -316,7 +316,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             if (selectedCandidate == upscalerCandidatesForCompile_.end()) {
                 throw std::logic_error("Compiled upscaler provider is absent from its candidate set");
             }
-            UpscalerProviderInitializationResult initialization{
+            RenderModuleProviderInitializationResult initialization{
                 selectedUpscalerProviderId_, true, {}};
             if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
                 initialization = *reportedUpscalerInitialization_;
@@ -328,7 +328,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             if (initialization.initialized) {
                 selectedCandidate->eligibility.initialized = true;
                 const auto initializedSelection =
-                    SelectUpscalerProvider(upscalerCandidatesForCompile_);
+                    SelectRenderModuleProvider(upscalerCandidatesForCompile_);
                 if (!initializedSelection.selected ||
                     initializedSelection.selected->id != selectedUpscalerProviderId_) {
                     throw std::logic_error(
@@ -341,7 +341,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             }
 
             if (upscalerInitializationFailures_.size() >= 3 ||
-                !RecordUpscalerProviderInitializationFailure(
+                !RecordRenderModuleProviderInitializationFailure(
                     upscalerInitializationFailures_, initialization.providerId)) {
                 // No provider is left to try: report through the host-facing error state.
                 lastError_ = "Prepare failed: " + initialization.message;
@@ -421,8 +421,8 @@ bool VulkanGraphApplication::Render() {
         // A provider fault latched by the previous frame demotes through Prepare()'s fallback path:
         // the failed provider joins the failure list and the graph is rebuilt with the next one.
         if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
-            const UpscalerProviderInitializationResult fault = *reportedUpscalerInitialization_;
-            if (!RecordUpscalerProviderInitializationFailure(upscalerInitializationFailures_,
+            const RenderModuleProviderInitializationResult fault = *reportedUpscalerInitialization_;
+            if (!RecordRenderModuleProviderInitializationFailure(upscalerInitializationFailures_,
                                                               fault.providerId)) {
                 lastError_ = "Render failed: upscaler provider '" + fault.providerId +
                              "' faulted and no provider is left: " + fault.message;
@@ -1850,6 +1850,11 @@ void VulkanGraphApplication::PostTick() {
     }
     if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
         passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
+    for (const auto& generated : generatedSystems_.Stages()) {
+        if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(generated.stage))) {
+            passes.push_back({generated.entry->className, stage->GetGPUPerformanceLogger()});
+        }
     }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});

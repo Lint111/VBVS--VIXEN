@@ -1,0 +1,276 @@
+{
+  "schema": "yeroket-gpu-system-manifest/v1",
+  "stackHash": "28accb45516c468d",
+  "systems": [
+    {
+      "id": "core:TemporalAntiAliasingSystem",
+      "class": "TemporalAntiAliasingSystem",
+      "glsl": "TemporalAntiAliasingSystem.comp",
+      "relaxed": false,
+      "axes": 2,
+      "localSize": [
+        8,
+        8,
+        1
+      ],
+      "extent": {
+        "source": "presentation",
+        "kind": "frame_targets",
+        "member": "SceneRadianceHistoryOutput"
+      },
+      "push": {
+        "size": 8,
+        "fields": [
+          {
+            "name": "_ExtentX",
+            "offset": 0,
+            "size": 4,
+            "source": "extent"
+          },
+          {
+            "name": "_ExtentY",
+            "offset": 4,
+            "size": 4,
+            "source": "extent"
+          }
+        ]
+      },
+      "arguments": [
+        {
+          "name": "reconstruction",
+          "kind": "Vixen.Gpu.PrevCameraConfig",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 6,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "sceneRadianceHistoryOutput_current",
+          "kind": "frame_targets",
+          "member": "SceneRadianceHistoryOutput",
+          "form": "texture",
+          "access": "in",
+          "binding": 0,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "single",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "sceneRadianceHistoryOutput_current_sampled",
+          "kind": "frame_targets",
+          "member": "SceneRadianceHistoryOutput",
+          "form": "sampled",
+          "access": "in",
+          "binding": 1,
+          "samplerBinding": 2,
+          "descriptor": "VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "single",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeSampledReadGeneral"
+        },
+        {
+          "name": "motionVectors_current",
+          "kind": "frame_targets",
+          "member": "MotionVectors",
+          "form": "texture",
+          "access": "in",
+          "binding": 3,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R32G32_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "single",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "resolvedRadiance_current",
+          "kind": "frame_targets",
+          "member": "ResolvedRadiance",
+          "form": "texture",
+          "access": "ref",
+          "binding": 4,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": false,
+          "write": true,
+          "slot": "current",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageWrite"
+        },
+        {
+          "name": "resolvedRadiance_previous",
+          "kind": "frame_targets",
+          "member": "ResolvedRadiance",
+          "form": "texture",
+          "access": "ref",
+          "binding": 5,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "previous",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageRead"
+        }
+      ]
+    },
+    {
+      "id": "core:ExposureTonemapSystem",
+      "class": "ExposureTonemapSystem",
+      "glsl": "ExposureTonemapSystem.comp",
+      "relaxed": false,
+      "axes": 2,
+      "localSize": [
+        8,
+        8,
+        1
+      ],
+      "extent": {
+        "source": "presentation",
+        "kind": "frame_targets",
+        "member": "ResolvedRadiance"
+      },
+      "push": {
+        "size": 8,
+        "fields": [
+          {
+            "name": "_ExtentX",
+            "offset": 0,
+            "size": 4,
+            "source": "extent"
+          },
+          {
+            "name": "_ExtentY",
+            "offset": 4,
+            "size": 4,
+            "source": "extent"
+          }
+        ]
+      },
+      "arguments": [
+        {
+          "name": "meter",
+          "kind": "Vixen.Codegen.Gpu.ExposureMeterState",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 2,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "LightingConfigSSBO",
+          "kind": "Vixen.Gpu.LightingConfig",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 3,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "resolvedRadiance_current",
+          "kind": "frame_targets",
+          "member": "ResolvedRadiance",
+          "form": "texture",
+          "access": "in",
+          "binding": 0,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "current",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "outputImage_current",
+          "kind": "frame_targets",
+          "member": "OutputImage",
+          "form": "texture",
+          "access": "ref",
+          "binding": 1,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R8G8B8A8_UNORM",
+          "read": false,
+          "write": true,
+          "slot": "current",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageWrite"
+        }
+      ]
+    }
+  ],
+  "barriers": [
+    {
+      "before": "core:TemporalAntiAliasingSystem",
+      "after": "core:ExposureTonemapSystem",
+      "resource": "Vixen.Codegen.Gpu.FrameTargetsRef.ResolvedRadiance",
+      "image": true,
+      "oldLayout": "VK_IMAGE_LAYOUT_GENERAL",
+      "newLayout": "VK_IMAGE_LAYOUT_GENERAL",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT"
+    }
+  ],
+  "transfers": [],
+  "allocations": [
+    {
+      "kind": "frame_targets",
+      "member": "MotionVectors",
+      "dimensions": 2,
+      "format": "VK_FORMAT_R32G32_SFLOAT",
+      "texelStride": 0,
+      "slots": 1,
+      "usage": "VK_IMAGE_USAGE_STORAGE_BIT",
+      "extentSource": "presentation",
+      "follows": ""
+    },
+    {
+      "kind": "frame_targets",
+      "member": "OutputImage",
+      "dimensions": 2,
+      "format": "VK_FORMAT_R8G8B8A8_UNORM",
+      "texelStride": 0,
+      "slots": 2,
+      "usage": "VK_IMAGE_USAGE_STORAGE_BIT",
+      "extentSource": "presentation",
+      "follows": ""
+    },
+    {
+      "kind": "frame_targets",
+      "member": "ResolvedRadiance",
+      "dimensions": 2,
+      "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+      "texelStride": 0,
+      "slots": 2,
+      "usage": "VK_IMAGE_USAGE_STORAGE_BIT",
+      "extentSource": "presentation",
+      "follows": ""
+    },
+    {
+      "kind": "frame_targets",
+      "member": "SceneRadianceHistoryOutput",
+      "dimensions": 2,
+      "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+      "texelStride": 0,
+      "slots": 1,
+      "usage": "VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT",
+      "extentSource": "presentation",
+      "follows": ""
+    }
+  ]
+}

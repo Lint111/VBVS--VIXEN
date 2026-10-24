@@ -135,7 +135,7 @@ struct AccumulationConfigCpu {
 static_assert(sizeof(AccumulationConfigCpu) == 20, "AccumulationConfigCpu std430 mirror size");
 
 using PrevCameraConfigCpu = Vixen::Gpu::PrevCameraConfig;
-static_assert(sizeof(PrevCameraConfigCpu) == 80);
+static_assert(sizeof(PrevCameraConfigCpu) == 96);
 
 struct ReservoirConfigCpu {
     uint32_t reservoirEnabled;

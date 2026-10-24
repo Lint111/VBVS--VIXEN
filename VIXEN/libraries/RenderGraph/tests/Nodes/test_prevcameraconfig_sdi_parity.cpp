@@ -92,8 +92,9 @@ TEST(PrevCameraConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
     EXPECT_EQ(static_cast<std::size_t>(prevCameraConfig->type.sizeInBytes), sizeof(PrevCameraConfig))
         << "PrevCameraConfig size (" << prevCameraConfig->type.sizeInBytes
         << ") != sizeof(PrevCameraConfig) (" << sizeof(PrevCameraConfig) << ") — std430 drift";
-    EXPECT_EQ(prevCameraConfig->type.sizeInBytes, 80u)
-        << "PrevCameraConfig contains the previous matrix and the frame sampling record";
+    EXPECT_EQ(prevCameraConfig->type.sizeInBytes, 96u)
+        << "PrevCameraConfig contains the previous matrix, the frame sampling record and the "
+           "anti-aliasing resolve inputs";
 
     // (b) Per-field offsets.
     ASSERT_FALSE(prevCameraConfig->members.empty())
@@ -103,7 +104,9 @@ TEST(PrevCameraConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
     const Field fields[] = {
         {"prevViewProj", offsetof(PrevCameraConfig, prevViewProj)},
         {"reconstructionSampling", offsetof(PrevCameraConfig, reconstructionSamplingX)},
-        {"_samplingPadding", offsetof(PrevCameraConfig, _samplingPadding)},
+        {"inputWidth", offsetof(PrevCameraConfig, inputWidth)},
+        {"inputHeight", offsetof(PrevCameraConfig, inputHeight)},
+        {"historyWeight", offsetof(PrevCameraConfig, historyWeight)},
     };
     for (const auto& f : fields) {
         const SpirvStructMember* sm = FindSubMember(*prevCameraConfig, f.name);

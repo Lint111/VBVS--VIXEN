@@ -26,5 +26,13 @@ public struct PrevCameraConfig
     public Mat4 prevViewProj;
     // Current input-pixel jitter (XY), native picking ray-cone coefficient (Z).
     public Float3 reconstructionSampling;
-    public uint _samplingPadding;
+    // The input extent the jitter and the motion vectors are measured against, and the
+    // anti-aliasing module's history-weight ceiling (R676; read by TemporalAntiAliasingSystem).
+    // They ride this per-frame record: no transfer of their own (R674.2).
+    public uint inputWidth;
+    public uint inputHeight;
+    public float historyWeight;
+    // Round the struct size to std430's 16-byte structure alignment.
+    public uint _tailPadding1;
+    public uint _tailPadding2;
 }

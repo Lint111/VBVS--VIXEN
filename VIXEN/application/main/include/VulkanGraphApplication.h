@@ -17,6 +17,7 @@
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
+#include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -85,6 +86,11 @@ public:
     struct RenderPathConfig {
         float renderScale = 1.0f;
         UpscalerKind upscaler = UpscalerKind::None;
+        // Requested anti-aliasing provider id (AntiAliasingModule.h); selection falls back to
+        // the `none` pass-through wherever the pass or the frame does not admit it.
+        std::string_view antiAliasing = "taa";
+        // The TAA history-weight ceiling: the blend ramps 1/N and stops at this weight.
+        float antiAliasingHistoryWeight = 0.9f;
         bool temporalJitter = false;
         Vixen::RenderGraph::ReconstructionSamplingPath samplingPath =
             Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
@@ -285,12 +291,13 @@ private:
     // Providers that failed their real context initialization during this Prepare() are skipped
     // when the graph is rebuilt for the next candidate.
     std::vector<std::string> upscalerInitializationFailures_;
-    std::vector<UpscalerProviderCandidate> upscalerCandidatesForCompile_;
+    std::vector<RenderModuleProviderCandidate> upscalerCandidatesForCompile_;
     std::string selectedUpscalerProviderId_;
     bool selectedUpscalerHasRealContext_ = false;
+    std::string selectedAntiAliasingProviderId_ = "none";
     // Set by the selected provider's context initialization during CompileRenderGraph; Prepare()
     // reads it to decide whether to fall back. Cleared before every graph build.
-    std::optional<UpscalerProviderInitializationResult> reportedUpscalerInitialization_;
+    std::optional<RenderModuleProviderInitializationResult> reportedUpscalerInitialization_;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index
@@ -555,6 +562,8 @@ private:
         Vixen::RenderGraph::NodeHandle node;
     };
     std::vector<UpscalerPassMetric> upscalerPerfPasses_;
+    // The vixen: composition's generated GPU systems (BuildRenderGraph); each stage is a perf column.
+    Vixen::RenderGraph::GeneratedSystemStages generatedSystems_;
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's

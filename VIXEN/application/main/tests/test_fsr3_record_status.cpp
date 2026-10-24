@@ -27,10 +27,10 @@ TEST(Fsr3RecordStatus, ReportsRecordFailureToTheHostSoItCanDemoteTheProvider) {
     const auto instance = type.CreateInstance("fsr3_record_report");
     auto* node = static_cast<ComputeStageNode*>(instance.get());
     ComputeStageNode::Context context(node, 0);
-    std::vector<UpscalerProviderInitializationResult> reports;
+    std::vector<RenderModuleProviderInitializationResult> reports;
     const Fsr3UpscalerHooks hooks = CreateFsr3UpscalerHooks(
         {1280, 720}, {1920, 1080}, ReconstructionDepthConvention::ReversedZeroToOne, 0.1f, 1000.0f,
-        [&reports](UpscalerProviderInitializationResult result) { reports.push_back(std::move(result)); });
+        [&reports](RenderModuleProviderInitializationResult result) { reports.push_back(std::move(result)); });
 
     const std::string failure = hooks.record(context, VK_NULL_HANDLE, 0, 0);
     ASSERT_FALSE(failure.empty());
@@ -41,6 +41,6 @@ TEST(Fsr3RecordStatus, ReportsRecordFailureToTheHostSoItCanDemoteTheProvider) {
 
     // The reported provider joins the failure list Prepare's fallback loop consults, once.
     std::vector<std::string> failedProviders;
-    EXPECT_TRUE(RecordUpscalerProviderInitializationFailure(failedProviders, reports[0].providerId));
-    EXPECT_FALSE(RecordUpscalerProviderInitializationFailure(failedProviders, reports[0].providerId));
+    EXPECT_TRUE(RecordRenderModuleProviderInitializationFailure(failedProviders, reports[0].providerId));
+    EXPECT_FALSE(RecordRenderModuleProviderInitializationFailure(failedProviders, reports[0].providerId));
 }
