@@ -1,7 +1,6 @@
 #include "Connection/Rules/VariadicConnectionRule.h"
 #include "Core/NodeInstance.h"
 #include "Core/RenderGraph.h"
-#include "Core/GraphLifecycleHooks.h"
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
 
@@ -45,7 +44,7 @@ SlotRole DetermineSlotRole(NodeInstance* sourceNode, uint32_t sourceSlotIndex, S
 VariadicSlotInfo CreateVariadicSlotInfo(const ConnectionContext& ctx, SlotRole resolvedRole) {
     VariadicSlotInfo info;
 
-    info.resource = nullptr;  // Will be populated in PostCompile hook
+    info.resource = nullptr;  // The variadic node reads it from sourceNode/sourceOutput at Compile/Execute
     info.resourceType = ctx.GetEffectiveSourceType();
     info.slotName = std::string(ctx.targetSlot.name);
     info.binding = ctx.targetSlot.binding;
@@ -157,95 +156,9 @@ ConnectionResult VariadicConnectionRule::Resolve(ConnectionContext& ctx) const {
         edge.targetInputIndex = bindingIndex;
         edge.isVariadic = true;
         ctx.graph->GetTopology().AddEdge(edge);
-
-        // Register PostCompile hook for resource population
-        if (HasDependency(resolvedRole)) {
-            RegisterPostCompileHook(ctx, variadicNode, bindingIndex, bundleIndex);
-        }
-
-        // Register PreExecute hook for transient resources
-        if (HasExecute(resolvedRole)) {
-            RegisterPreExecuteHook(ctx, variadicNode, bindingIndex, bundleIndex);
-        }
     }
 
     return ConnectionResult::Success();
-}
-
-void VariadicConnectionRule::RegisterPostCompileHook(
-    const ConnectionContext& ctx,
-    IVariadicNode* variadicNode,
-    uint32_t bindingIndex,
-    size_t bundleIndex) const {
-
-    if (!ctx.graph) return;
-
-    NodeInstance* sourceNodeInst = ctx.sourceNode;
-    uint32_t sourceSlotIndex = ctx.sourceSlot.index;
-
-    ctx.graph->GetLifecycleHooks().RegisterNodeHook(
-        NodeLifecyclePhase::PostCompile,
-        [=](NodeInstance* /*compiledNode*/) {
-            Resource* sourceRes = sourceNodeInst->GetOutput(
-                static_cast<uint8_t>(sourceSlotIndex), 0);
-
-            if (!sourceRes || !sourceRes->IsValid()) {
-                return;  // Resource not yet available
-            }
-
-            const VariadicSlotInfo* existingSlot =
-                variadicNode->GetVariadicSlotInfo(bindingIndex, bundleIndex);
-
-            if (existingSlot) {
-                VariadicSlotInfo updatedSlot = *existingSlot;
-                updatedSlot.resource = sourceRes;
-                updatedSlot.resourceType = sourceRes->GetType();
-                variadicNode->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
-            }
-        },
-        "VariadicConnectionRule PostCompile resource population",
-        sourceNodeInst
-    );
-}
-
-void VariadicConnectionRule::RegisterPreExecuteHook(
-    const ConnectionContext& ctx,
-    IVariadicNode* variadicNode,
-    uint32_t bindingIndex,
-    size_t bundleIndex) const {
-
-    if (!ctx.graph) return;
-
-    NodeInstance* sourceNodeInst = ctx.sourceNode;
-    uint32_t sourceSlotIndex = ctx.sourceSlot.index;
-    auto* variadicAsNodeInstance = dynamic_cast<NodeInstance*>(variadicNode);
-    if (!variadicAsNodeInstance) {
-        return;  // Variadic node isn't a NodeInstance; nothing to target the hook at
-    }
-
-    ctx.graph->GetLifecycleHooks().RegisterNodeHook(
-        NodeLifecyclePhase::PreExecute,
-        [=](NodeInstance* /*executingNode*/) {
-            Resource* sourceRes = sourceNodeInst->GetOutput(
-                static_cast<uint8_t>(sourceSlotIndex), 0);
-
-            if (!sourceRes || !sourceRes->IsValid()) {
-                return;
-            }
-
-            const VariadicSlotInfo* currentSlot =
-                variadicNode->GetVariadicSlotInfo(bindingIndex, bundleIndex);
-
-            if (currentSlot) {
-                VariadicSlotInfo updatedSlot = *currentSlot;
-                updatedSlot.resource = sourceRes;
-                updatedSlot.resourceType = sourceRes->GetType();
-                variadicNode->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
-            }
-        },
-        "VariadicConnectionRule PreExecute resource refresh",
-        variadicAsNodeInstance
-    );
 }
 
 } // namespace Vixen::RenderGraph

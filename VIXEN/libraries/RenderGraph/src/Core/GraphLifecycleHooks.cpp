@@ -1,6 +1,5 @@
 #include "Core/GraphLifecycleHooks.h"
 #include "Core/RenderGraph.h"
-#include "Core/NodeInstance.h"
 
 namespace Vixen::RenderGraph {
 
@@ -18,26 +17,6 @@ void GraphLifecycleHooks::RegisterGraphHook(
 
     if (!debugName.empty()) {
         LOG_DEBUG("Registered graph hook '" + debugName +
-                 "' for phase: " + std::string(GetPhaseName(phase)));
-    }
-}
-
-void GraphLifecycleHooks::RegisterNodeHook(
-    NodeLifecyclePhase phase,
-    NodeLifecycleCallback callback,
-    const std::string& debugName,
-    NodeInstance* targetNode
-) {
-    size_t index = static_cast<size_t>(phase);
-
-    if (targetNode) {
-        targetedNodeHooks_[targetNode][index].push_back({callback, debugName});
-    } else {
-        nodeHooks_[index].push_back({callback, debugName});
-    }
-
-    if (!debugName.empty()) {
-        LOG_DEBUG("Registered node hook '" + debugName +
                  "' for phase: " + std::string(GetPhaseName(phase)));
     }
 }
@@ -68,66 +47,15 @@ void GraphLifecycleHooks::ExecuteGraphHooks(GraphLifecyclePhase phase, RenderGra
     }
 }
 
-void GraphLifecycleHooks::ExecuteNodeHooks(NodeLifecyclePhase phase, NodeInstance* node) {
-    size_t index = static_cast<size_t>(phase);
-    const auto& globalHooks = nodeHooks_[index];
-
-    auto targetedIt = targetedNodeHooks_.find(node);
-    const bool hasTargeted = targetedIt != targetedNodeHooks_.end() &&
-                              !targetedIt->second[index].empty();
-
-    if (globalHooks.empty() && !hasTargeted) {
-        return;
-    }
-
-    auto runHooks = [&](const std::vector<NodeHookEntry>& hooks) {
-        for (const auto& entry : hooks) {
-            if (!entry.debugName.empty()) {
-                LOG_DEBUG("  Executing: " + entry.debugName);
-            }
-
-            try {
-                entry.callback(node);
-            } catch (const std::exception& e) {
-                LOG_ERROR("ERROR in node hook '" + entry.debugName +
-                         "' for node '" + node->GetInstanceName() + "': " + std::string(e.what()));
-                throw;
-            }
-        }
-    };
-
-    size_t totalHooks = globalHooks.size() + (hasTargeted ? targetedIt->second[index].size() : 0);
-    LOG_DEBUG("Executing " + std::to_string(totalHooks) +
-             " node hooks for phase: " + std::string(GetPhaseName(phase)) +
-             " on node: " + node->GetInstanceName());
-
-    runHooks(globalHooks);
-    if (hasTargeted) {
-        runHooks(targetedIt->second[index]);
-    }
-}
-
 void GraphLifecycleHooks::ClearAll() {
     for (auto& hooks : graphHooks_) {
         hooks.clear();
     }
-    for (auto& hooks : nodeHooks_) {
-        hooks.clear();
-    }
-    targetedNodeHooks_.clear();
 }
 
 void GraphLifecycleHooks::ClearGraphHooks(GraphLifecyclePhase phase) {
     size_t index = static_cast<size_t>(phase);
     graphHooks_[index].clear();
-}
-
-void GraphLifecycleHooks::ClearNodeHooks(NodeLifecyclePhase phase) {
-    size_t index = static_cast<size_t>(phase);
-    nodeHooks_[index].clear();
-    for (auto& [node, hooksByPhase] : targetedNodeHooks_) {
-        hooksByPhase[index].clear();
-    }
 }
 
 const char* GraphLifecycleHooks::GetPhaseName(GraphLifecyclePhase phase) {
@@ -138,20 +66,6 @@ const char* GraphLifecycleHooks::GetPhaseName(GraphLifecyclePhase phase) {
         case GraphLifecyclePhase::PostExecutionOrder: return "PostExecutionOrder";
         case GraphLifecyclePhase::PreCompilation:     return "PreCompilation";
         case GraphLifecyclePhase::PostCompilation:    return "PostCompilation";
-        default: return "Unknown";
-    }
-}
-
-const char* GraphLifecycleHooks::GetPhaseName(NodeLifecyclePhase phase) {
-    switch (phase) {
-        case NodeLifecyclePhase::PreSetup:    return "PreSetup";
-        case NodeLifecyclePhase::PostSetup:   return "PostSetup";
-        case NodeLifecyclePhase::PreCompile:  return "PreCompile";
-        case NodeLifecyclePhase::PostCompile: return "PostCompile";
-        case NodeLifecyclePhase::PreExecute:  return "PreExecute";
-        case NodeLifecyclePhase::PostExecute: return "PostExecute";
-        case NodeLifecyclePhase::PreCleanup:  return "PreCleanup";
-        case NodeLifecyclePhase::PostCleanup: return "PostCleanup";
         default: return "Unknown";
     }
 }

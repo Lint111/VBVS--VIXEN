@@ -113,7 +113,11 @@ Related: the engine renders its UI path on WSLg software Vulkan (llvmpipe) as of
 - **Suggested fix:** provide distinct lifecycle hooks (e.g. `OnSwapchainResize` vs `OnShutdown`),
   or document prominently: *recompile cleanup must be lightweight, no device wait; use
   `NeedsRecompile()` to keep persistent state across recompiles.*
-- **Status:** OPEN (UIRenderNode now follows the correct pattern — usable as a reference).
+- **Status:** FIXED 2026-10-22 (lane vixennodehooks2, owner R719): recompile and shutdown are distinct
+  node events — `TypedCleanupImpl` (every teardown), `TypedDeviceReleaseImpl` (device loss + shutdown),
+  `TypedShutdownImpl` (shutdown only), plus `RecompileImpl(RecompileCause)` with `SurfaceResized` /
+  `InputsChanged` / `UpstreamRecompiled`. A resize never reaches a shutdown teardown
+  (`test_node_lifecycle_events`). See [[RenderGraph]] §3.1.
 
 ### FR-8 — "Who owns swapchain-derived resources" isn't discoverable
 - **Context:** deciding where framebuffers live for a render node.

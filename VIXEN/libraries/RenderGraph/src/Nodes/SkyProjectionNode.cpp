@@ -586,13 +586,10 @@ void SkyProjectionNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE, static_cast<VkSemaphore>(VK_NULL_HANDLE));
 }
 
-void SkyProjectionNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[SkyProjectionNode] Cleanup (recompile) - keeping persistent resources");
-        return;
-    }
-
-    NODE_LOG_INFO("[SkyProjectionNode] Cleanup (final teardown) - destroying resources");
+void SkyProjectionNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[SkyProjectionNode] DeviceRelease - destroying resources");
     if (device_ != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             vkFreeCommandBuffers(device_, commandPool_, static_cast<uint32_t>(commandBuffers_.size()),

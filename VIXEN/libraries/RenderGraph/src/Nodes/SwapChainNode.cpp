@@ -49,7 +49,7 @@ void SwapChainNode::TypedSetupImpl(TypedSetupContext& ctx) {
             [this](const EventBus::BaseEventMessage& msg) -> bool {
                 // Mark this node for recompilation
                 NODE_LOG_INFO("[SwapChainNode] Received WindowResizedMessage - marking self for recompilation");
-                MarkNeedsRecompile();
+                MarkNeedsRecompile(RecompileCause::SurfaceResized);
                 return true; // Message handled
             }
         );
@@ -273,14 +273,20 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     auto* dev = GetDevice();
     VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
+    // Every teardown (recompile included): the image views. Surface + swapchain survive a recompile
+    // (oldSwapchain reuse); TypedDeviceReleaseImpl releases them.
+    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] destroying image views (surface + swapchain kept for oldSwapchain reuse)");
+    swapChainWrapper->DestroyImageViewsOnly(device);
+}
+
+void SwapChainNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
     // The VkSurfaceKHR is PERSISTENT across recompiles, mirroring WindowNode's window+surface
-    // (see WindowNode.cpp CleanupImpl). Destroying/recreating the surface every recompile (the old
-    // unconditional Destroy() below) was pure waste -- the surface doesn't depend on extent. Tear
-    // it down on final teardown and on DeviceLost (the VkInstance is recreated there, and a surface is
+    // (see WindowNode::TypedDeviceReleaseImpl). Destroying/recreating the surface every recompile (the old
+    // unconditional Destroy() in cleanup) was pure waste -- the surface doesn't depend on extent. Tear
+    // it down on shutdown and on device loss (the VkInstance is recreated there, and a surface is
     // INSTANCE-scoped, so it cannot outlive the instance it was created from).
     //
-    // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be treated like Recompile on
-    // DeviceLost. On an ordinary Recompile the handle survives because the SAME device recreates it
+    // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be kept on device loss. On an ordinary Recompile the handle survives because the SAME device recreates it
     // (CreateSwapchainAndViews() passes the still-live handle as oldSwapchain to vkCreateSwapchainKHR
     // and destroys it only after the new one is created, letting the driver recycle/hand over
     // presentation state). On DeviceLost, RenderGraph::RecoverFromDeviceLoss() has DeviceNode create
@@ -288,31 +294,35 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // about-to-be-destroyed device. Passing it as oldSwapchain into the NEW device's
     // fpCreateSwapchainKHR/fpDestroySwapchainKHR (resolved via the new device's dispatch table) is
     // exactly the KI-004 class of bug (a resource carrying stale device state across recovery) and
-    // segfaults deep in the driver (KI-013) -- so DeviceLost must destroy the swapchain handle now,
-    // against the OLD (still valid, merely lost) device, same as FinalTeardown would, while still
-    // keeping the surface alive like a Recompile.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Recompile - destroying image views only, keeping surface + swapchain (for oldSwapchain reuse)");
-        swapChainWrapper->DestroyImageViewsOnly(device);
+    // segfaults deep in the driver (KI-013) -- so device loss must destroy the swapchain handle now,
+    // against the OLD (still valid, merely lost) device, same as shutdown does.
+    if (!swapChainWrapper) {
         return;
     }
+    auto* dev = GetDevice();
+    VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
-    if (ctx.reason == CleanupReason::DeviceLost) {
-        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] DeviceLost - destroying swapchain + image views (device-scoped; cannot survive a device recreation) and the instance-scoped surface");
-        swapChainWrapper->DestroySwapChain(device);
-        // The VkInstance is recreated on device loss, so this instance-scoped surface cannot survive
-        // either (see InstanceNode::TypedCleanupImpl). Destroy it against the still-live old instance.
-        VkInstance lostInstance = VK_NULL_HANDLE;
-        if (Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0)) {
-            lostInstance = res->GetHandle<VkInstance>();
-        }
-        if (lostInstance != VK_NULL_HANDLE) {
-            swapChainWrapper->DestroySurface(lostInstance);
-        }
+    NODE_LOG_INFO("[SwapChainNode] DeviceRelease - destroying swapchain (device-scoped; cannot survive a device recreation) and the instance-scoped surface");
+    swapChainWrapper->DestroySwapChain(device);
+    // The VkInstance is recreated on device loss, so this instance-scoped surface cannot survive
+    // either (see InstanceNode::TypedDeviceReleaseImpl). Destroy it against the still-live old instance.
+    VkInstance lostInstance = VK_NULL_HANDLE;
+    if (Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0)) {
+        lostInstance = res->GetHandle<VkInstance>();
+    }
+    if (lostInstance != VK_NULL_HANDLE) {
+        swapChainWrapper->DestroySurface(lostInstance);
+    }
+}
+
+void SwapChainNode::TypedShutdownImpl(TypedCleanupContext& ctx) {
+    if (!swapChainWrapper) {
         return;
     }
+    auto* dev = GetDevice();
+    VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
-    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Final teardown - destroying swapchain + surface");
+    NODE_LOG_INFO("[SwapChainNode] Shutdown - releasing the swapchain wrapper");
 
     // Get VkInstance for surface destruction
     VkInstance instance = VK_NULL_HANDLE;
@@ -429,7 +439,7 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         }
 
         // Mark node as needing recompilation - will be handled in next Update()
-        MarkNeedsRecompile();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         // Return invalid index to skip this frame
         // Recompilation will happen in the next Update() cycle
@@ -463,7 +473,7 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
                           + std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height)
                           + " -> " + std::to_string(surfaceExtent.width) + "x" + std::to_string(surfaceExtent.height)
                           + " -- recreating");
-            MarkNeedsRecompile();
+            MarkNeedsRecompile(RecompileCause::SurfaceResized);
         }
         return currentImageIndex;
     }

@@ -834,18 +834,12 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void BodyOctreeSceneNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // CRITICAL: recompile must NOT free in-flight GPU objects (WSL/Dozen VM-panic trap).
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
-    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Cleanup (recompile) - keeping persistent buffers");
-        return;
-    }
-
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Cleanup (final teardown) - destroying buffers");
+void BodyOctreeSceneNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    // CRITICAL: these buffers must never be freed by a recompile (in-flight GPU objects; the
+    // WSL/Dozen VM-panic trap), which is why they live here and not in TypedCleanupImpl.
+    NODE_LOG_INFO("[BodyOctreeSceneNode] DeviceRelease - destroying buffers");
     DestroyBuffers();
 }
 

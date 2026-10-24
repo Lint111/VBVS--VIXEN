@@ -77,27 +77,26 @@ flowchart LR
 
 ---
 
-## 3. Node Lifecycle Hooks
+## 3. Node Lifecycle
 
-Every node has 14 lifecycle hooks across 6 graph phases and 8 node phases.
+A node reacts to its own lifecycle through its own typed events; there is no per-node hook registry.
+Graph-wide phases (`GraphLifecycleHooks`: Pre/Post TopologyBuild, ExecutionOrder, Compilation) run
+once per graph compilation.
 
 ### 3.1 Graph Lifecycle Phases
 
 ```mermaid
 sequenceDiagram
     participant G as Graph
-    participant H as Hooks
+    participant H as Graph hooks
     participant N as Nodes
 
-    G->>H: PreSetup
-    H->>N: Setup all nodes
-    G->>H: PostSetup
-    G->>H: PreCompile
-    H->>N: Compile all nodes
-    G->>H: PostCompile
-    G->>H: PreExecute
-    H->>N: Execute all nodes
-    G->>H: PostExecute
+    G->>H: PreTopologyBuild / PostTopologyBuild
+    G->>H: PreExecutionOrder / PostExecutionOrder
+    G->>H: PreCompilation
+    G->>N: Setup + Compile each node (topological order)
+    G->>H: PostCompilation
+    G->>N: Execute each node (per frame)
 ```
 
 ### 3.2 Node Lifecycle Methods
@@ -107,9 +106,15 @@ class NodeInstance {
     virtual void Setup();    // Subscribe to events
     virtual void Compile();  // Create Vulkan resources
     virtual void Execute();  // Record commands
-    virtual void Cleanup();  // Destroy resources
+    virtual void Cleanup(CleanupReason reason);  // graph-driven teardown, dispatched to:
+    //   CleanupImpl        every teardown (recompile, device loss, shutdown)
+    //   DeviceReleaseImpl  device loss + shutdown
+    //   ShutdownImpl       shutdown only
+    virtual void RecompileImpl(RecompileCause cause);  // SurfaceResized / InputsChanged / UpstreamRecompiled
 };
 ```
+
+See [[RenderGraph]] §3.1 for which resources go in which event.
 
 ---
 
@@ -172,7 +177,7 @@ class NodeInstance {
 |-----------|---------|--------|
 | `TaskQueue<T>` | Priority-based task scheduler with GPU time/memory budget enforcement | 6.2 |
 | `TaskBudget` | Budget configuration structure (time, memory, overflow modes, presets) | 6.2 |
-| `GraphLifecycleHooks` | Hook system for graph lifecycle events | Core |
+| `GraphLifecycleHooks` | Graph-wide lifecycle phase hooks (node lifecycle is per-node events) | Core |
 | `NodeTypeRegistry` | Global registry of node types | Core |
 | `ConnectionRuleRegistry` | Connection validation rules | Core |
 

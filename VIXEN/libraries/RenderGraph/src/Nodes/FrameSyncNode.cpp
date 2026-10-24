@@ -315,13 +315,14 @@ void FrameSyncNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
 
         NODE_LOG_INFO("Frame synchronization primitives destroyed");
     }
+}
 
+void FrameSyncNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
     // P5a M1: the per-loop timeline semaphore is PERSISTENT across recompile (resize/recompile must
     // NOT destroy it — that would reset the monotonic counter and collide with frames still in
-    // flight). Torn down on FinalTeardown AND DeviceLost (a device-scoped object cannot outlive its
+    // flight). Torn down on shutdown AND device loss (a device-scoped object cannot outlive its
     // device; frameBase_ is CPU-side, so timeline monotonicity survives the recreate). KI-004 class.
-    if (ctx.reason != CleanupReason::Recompile &&
-        timelineSemaphore_ != VK_NULL_HANDLE &&
+    if (timelineSemaphore_ != VK_NULL_HANDLE &&
         device != nullptr && device->device != VK_NULL_HANDLE) {
         vkDestroySemaphore(device->device, timelineSemaphore_, nullptr);
         timelineSemaphore_ = VK_NULL_HANDLE;

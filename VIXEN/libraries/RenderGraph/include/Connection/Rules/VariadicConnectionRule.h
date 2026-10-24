@@ -24,7 +24,9 @@ class IVariadicNode;
  * - Creating VariadicSlotInfo
  * - Calling UpdateVariadicSlot on the variadic node
  * - Registering dependencies
- * - Setting up lifecycle hooks for resource population
+ *
+ * It only declares the connection: the slot records its upstream (sourceNode/sourceOutput), and the
+ * variadic node re-reads that output itself at Compile and before Execute (VariadicTypedNode).
  *
  * Matches when:
  * - Target is a binding slot (SlotKind::Binding)
@@ -39,7 +41,6 @@ class IVariadicNode;
  * - Casts target to IVariadicNode
  * - Creates VariadicSlotInfo from context
  * - Calls UpdateVariadicSlot()
- * - Registers PostCompile/PreExecute hooks for resource population
  */
 class VariadicConnectionRule : public ConnectionRule {
 public:
@@ -54,30 +55,6 @@ public:
     [[nodiscard]] uint32_t Priority() const override { return 25; }
 
     [[nodiscard]] std::string_view Name() const override { return "VariadicConnectionRule"; }
-
-private:
-    /**
-     * @brief Register PostCompile hook for resource population
-     *
-     * Called when source node compiles to populate the variadic slot
-     * with the actual resource.
-     */
-    void RegisterPostCompileHook(
-        const ConnectionContext& ctx,
-        IVariadicNode* variadicNode,
-        uint32_t bindingIndex,
-        size_t bundleIndex) const;
-
-    /**
-     * @brief Register PreExecute hook for transient resources
-     *
-     * Called before variadic node executes to refresh transient resources.
-     */
-    void RegisterPreExecuteHook(
-        const ConnectionContext& ctx,
-        IVariadicNode* variadicNode,
-        uint32_t bindingIndex,
-        size_t bundleIndex) const;
 };
 
 } // namespace Vixen::RenderGraph

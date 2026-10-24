@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 #pragma once
 
+#include <functional>
 #include "Core/TypedNodeInstance.h"
 #include "Core/VariadicTypedNode.h"   // variadic compile-ordering inputs
 #include "Core/NodeType.h"
@@ -37,7 +38,8 @@ public:
  * arbitrary number of compile-ordering dependency edges (one per handle-source
  * node) — see PassGroupNodeConfig. These variadic inputs are NEVER read; they
  * exist only to make TopologicalSort place this node after all its sources, so
- * the post-compile callback has populated the pass list before CompileImpl runs.
+ * the pass assembler (SetPassAssembler) can read their compiled outputs when this
+ * node compiles.
  *
  * auto-sync P4 M3 (M4: variadic compile-ordering inputs)
  */
@@ -55,6 +57,13 @@ public:
     void AddComputePass(ComputePassStep step);
     void AddRenderPass(RenderPassStep step);
 
+    /**
+     * Fill the pass list from this node's own compile, before the schedule is baked, while it is
+     * still empty. The compile-ordering inputs guarantee every handle source has compiled, so the
+     * assembler reads their outputs directly; it runs once, like the host's own AddComputePass calls.
+     */
+    void SetPassAssembler(std::function<void(PassGroupNode&)> assembler) { passAssembler_ = std::move(assembler); }
+
     /// Accessor for smoke test (no GPU needed)
     [[nodiscard]] size_t PassCount() const { return passes_.size(); }
 
@@ -65,6 +74,7 @@ protected:
 
 private:
     std::vector<PassStep>  passes_;
+    std::function<void(PassGroupNode&)> passAssembler_;
     FrameSyncSchedule      intraSchedule_;   // baked in CompileImpl
 
     // Device and command pool references (follow ComputeDispatchNode pattern)

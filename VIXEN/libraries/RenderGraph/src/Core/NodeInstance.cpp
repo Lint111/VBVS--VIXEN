@@ -1,7 +1,6 @@
 #include "Core/NodeInstance.h"
 #include "Core/RenderGraph.h"
 #include "Core/ResourceDependencyTracker.h"
-#include "Core/GraphLifecycleHooks.h"
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
 #include <algorithm>
@@ -176,15 +175,6 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
     }
 }
 
-void NodeInstance::ExecuteNodeHook(NodeLifecyclePhase phase) {
-    if (!owningGraph) {
-        NODE_LOG_WARNING("[NodeInstance::ExecuteNodeHook] WARNING: No owning graph for node: " + GetInstanceName());
-        return; // No graph - can't execute hooks
-    }
-
-    owningGraph->GetLifecycleHooks().ExecuteNodeHooks(phase, this);
-}
-
 void NodeInstance::RegisterCleanup() {
     if (!owningGraph) {
         return; // Can't register without graph reference
@@ -276,8 +266,16 @@ void NodeInstance::UnsubscribeFromMessage(EventBus::EventSubscriptionID subscrip
     messageBus->Unsubscribe(subscriptionId);
 }
 
-void NodeInstance::MarkNeedsRecompile() {
+NodeInstance* NodeInstance::ResolveGraphNode(NodeHandle handle) const {
+    if (!owningGraph || !handle.IsValid()) {
+        return nullptr;
+    }
+    return owningGraph->GetInstance(handle);
+}
+
+void NodeInstance::MarkNeedsRecompile(RecompileCause cause) {
     needsRecompile = true;
+    pendingRecompileCause_ = cause;
 
     // Log who is requesting recompilation
     NODE_LOG_INFO("[NodeInstance::MarkNeedsRecompile] Node '" + instanceName + "' requesting recompilation");

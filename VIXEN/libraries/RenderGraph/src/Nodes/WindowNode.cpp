@@ -195,7 +195,7 @@ void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // VoxelSelectionProviderNode reads the new extent live every frame, so the next click's
         // readback copy samples outside the ring image's bounds (undefined behavior, observed as a
         // crash on lavapipe).
-        MarkNeedsRecompile();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
@@ -243,7 +243,7 @@ void WindowNode::ProcessPendingEvents() {
         height = pendingResizeHeight_;
         wasResized = true;
         hasPendingResize_ = false;
-        MarkNeedsRecompile();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
@@ -335,38 +335,25 @@ size_t WindowNode::PendingEventCountForTest() const {
 }
 #endif
 
-void WindowNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
-    // only the swapchain follows recompiles. Tear them down solely on final application teardown.
-    if (ctx.reason == CleanupReason::DeviceLost) {
-        // The VkInstance is recreated on device loss (InstanceNode); the surface is instance-scoped
-        // and must be destroyed against the old instance first. The window survives.
-        NODE_LOG_INFO("[WindowNode] Cleanup (device-loss) - destroying surface, keeping window");
-        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
-            fpDestroySurfaceKHR(vkInstance, surface, nullptr);
-        }
-        surface = VK_NULL_HANDLE;
-        if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
-            surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
-        }
-        return;
-    }
-    if (ctx.reason != CleanupReason::FinalTeardown) {
-        NODE_LOG_INFO("[WindowNode] Cleanup (recompile) - keeping persistent window + surface");
-        return;
-    }
-
-    NODE_LOG_INFO("[WindowNode] Cleanup (final teardown) - destroying surface + window");
-
+// Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) runs neither event below,
+// so only the swapchain follows recompiles.
+void WindowNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // The surface is instance-scoped and the VkInstance is recreated on device loss (InstanceNode),
+    // so it is destroyed against the old instance on device loss and on shutdown. The window survives
+    // a device loss.
+    NODE_LOG_INFO("[WindowNode] DeviceRelease - destroying surface");
     if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
         fpDestroySurfaceKHR(vkInstance, surface, nullptr);
-        surface = VK_NULL_HANDLE;
     }
+    surface = VK_NULL_HANDLE;
     // Keep the published SURFACE output handle consistent with the now-destroyed surface.
     if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
         surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
     }
+}
 
+void WindowNode::TypedShutdownImpl(TypedCleanupContext& ctx) {
+    NODE_LOG_INFO("[WindowNode] Shutdown - destroying window");
     if (window) {
         glfwDestroyWindow(window);
         window = nullptr;

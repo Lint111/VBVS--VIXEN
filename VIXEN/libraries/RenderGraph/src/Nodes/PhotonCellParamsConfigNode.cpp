@@ -147,8 +147,9 @@ bool PhotonCellParamsConfigNode::DiagnosticDue(uint64_t frameNumber) const {
            frameNumber >= configuration_.diagnosticFrame && diagnosticGeneration_ != 0;
 }
 
-void PhotonCellParamsConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) return;
+void PhotonCellParamsConfigNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
     perFrame_.Cleanup();
 }
 
