@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include "PathSegment.g.hpp"
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 inline constexpr std::int32_t PathSegmentCapacity = 256;
 
 struct PathInstance {
@@ -22,4 +22,4 @@ static_assert(offsetof(PathInstance, FillRule) == 12, "FillRule@12");
 static_assert(offsetof(PathInstance, Segments) == 16, "Segments@16");
 
 inline constexpr char PathInstanceLayoutHash[] = "9575e6c85e391b95c97b05b72ab094d3e2964d7ea2ce8d7edc93b1733e72246a";
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include "PathPoint.g.hpp"
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 inline constexpr std::uint32_t Line = 0u;
 inline constexpr std::uint32_t QuadraticBezier = 1u;
 inline constexpr std::uint32_t CubicBezier = 2u;
@@ -26,4 +26,4 @@ static_assert(offsetof(PathSegment, Kind) == 48, "Kind@48");
 static_assert(offsetof(PathSegment, ContourStart) == 52, "ContourStart@52");
 
 inline constexpr char PathSegmentLayoutHash[] = "dbf89fbe7b27972810faeee6dba4fc7f3a5eaa3dbb7dc6d24f4aa9d524169121";
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "10ec46339c9e04d401fcd6155019651b72234646")
+set(_vixen_tracked_yeroket_kernel_sha "6fbd88b59e1c9d65a4a7a85dcc4acf959b4d2dd1")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -669,6 +669,13 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     set(_recipe_simd_args
         "${_yk_dll_run}"
         --recipe-simd-cpp
+        --namespace Vixen::SVO::Recipe
+        --include <glm/glm.hpp>
+        --include Recipe/RecipeRegistry.h
+        --include Recipe/RecipeStack.h
+        --include Recipe/generated/RecipeContainer.g.h
+        --include Recipe/generated/SdfCoreKernels.g.hpp
+        --include Recipe/generated/VoxelDocument.g.h
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"

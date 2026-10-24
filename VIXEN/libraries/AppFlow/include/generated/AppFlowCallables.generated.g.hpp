@@ -4,11 +4,11 @@
 
 namespace Vixen::AppFlow::Reference {
 
-inline uint32_t applyToggle(uint32_t mask, uint32_t index) {
+inline uint32_t applyToggle(uint32_t mask, uint32_t index) noexcept {
     return mask ^ (1u << (int32_t)index);
 }
 
-inline bool bitAt(uint32_t mask, uint32_t index) {
+inline bool bitAt(uint32_t mask, uint32_t index) noexcept {
     return ((mask >> (int32_t)index) & 1u) != 0u;
 }
 

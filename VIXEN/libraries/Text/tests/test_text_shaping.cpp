@@ -144,7 +144,7 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
                             }), 3);
     const float eightMidX = (eight.BoundsMin.X + eight.BoundsMax.X) * 0.5f;
     const float eightLowerHoleY = eight.BoundsMin.Y + (eight.BoundsMax.Y - eight.BoundsMin.Y) * 0.25f;
-    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(
+    EXPECT_GT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(
                   glm::vec3(eightMidX, eightLowerHoleY, 0.0f), eight), 0.0f);
 }
 

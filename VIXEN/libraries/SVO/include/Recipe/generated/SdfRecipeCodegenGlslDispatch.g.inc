@@ -2,7 +2,7 @@
 case SdfOpCode::Sphere: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Sphere(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Sphere(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -10,7 +10,7 @@ case SdfOpCode::Sphere: {
 case SdfOpCode::Box: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Box(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ");\n";
+    body += "  precise float " + t + " = SdfCore_Box(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -18,7 +18,7 @@ case SdfOpCode::Box: {
 case SdfOpCode::BoxRounded: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -26,7 +26,7 @@ case SdfOpCode::BoxRounded: {
 case SdfOpCode::Capsule: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Capsule(" + curPos + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Capsule(" + curPos + ", " + d(0) + ", " + d(1) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -34,7 +34,7 @@ case SdfOpCode::Capsule: {
 case SdfOpCode::Cylinder: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Cylinder(" + curPos + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Cylinder(" + curPos + ", " + d(0) + ", " + d(1) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -42,7 +42,7 @@ case SdfOpCode::Cylinder: {
 case SdfOpCode::Plane: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Plane(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Plane(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -50,7 +50,7 @@ case SdfOpCode::Plane: {
 case SdfOpCode::Torus: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Torus(" + curPos + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Torus(" + curPos + ", " + d(0) + ", " + d(1) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -58,7 +58,7 @@ case SdfOpCode::Torus: {
 case SdfOpCode::Ellipsoid: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Ellipsoid(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ");\n";
+    body += "  precise float " + t + " = SdfCore_Ellipsoid(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -66,7 +66,7 @@ case SdfOpCode::Ellipsoid: {
 case SdfOpCode::HollowCylinder: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_HollowCylinder(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_HollowCylinder(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -74,7 +74,7 @@ case SdfOpCode::HollowCylinder: {
 case SdfOpCode::TaperedCylinder: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_TaperedCylinder(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_TaperedCylinder(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -82,7 +82,7 @@ case SdfOpCode::TaperedCylinder: {
 case SdfOpCode::Panel: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -90,7 +90,7 @@ case SdfOpCode::Panel: {
 case SdfOpCode::Plank: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -98,7 +98,7 @@ case SdfOpCode::Plank: {
 case SdfOpCode::RoundedBox: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_BoxRounded(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -106,7 +106,7 @@ case SdfOpCode::RoundedBox: {
 case SdfOpCode::CappedTorus: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_CappedTorus(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec2(" + f(in.data[0]) + ", " + f(in.data[1]) + ")" + ", " + f(in.data[2]) + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_CappedTorus(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec2(" + d(0) + ", " + d(1) + ")" + ", " + d(2) + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -114,7 +114,7 @@ case SdfOpCode::CappedTorus: {
 case SdfOpCode::Cone: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Cone(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec2(" + f(in.data[0]) + ", " + f(in.data[1]) + ")" + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Cone(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec2(" + d(0) + ", " + d(1) + ")" + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -122,7 +122,7 @@ case SdfOpCode::Cone: {
 case SdfOpCode::RoundCone: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_RoundCone(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_RoundCone(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -130,7 +130,7 @@ case SdfOpCode::RoundCone: {
 case SdfOpCode::FakeRoundCone: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_FakeRoundCone(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_FakeRoundCone(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -138,7 +138,7 @@ case SdfOpCode::FakeRoundCone: {
 case SdfOpCode::Segment: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Segment(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + "vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Segment(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + "vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -146,7 +146,7 @@ case SdfOpCode::Segment: {
 case SdfOpCode::TriangularPrism: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_TriangularPrism(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec2(" + f(in.data[0]) + ", " + f(in.data[1]) + ")" + ");\n";
+    body += "  precise float " + t + " = SdfCore_TriangularPrism(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec2(" + d(0) + ", " + d(1) + ")" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -154,7 +154,7 @@ case SdfOpCode::TriangularPrism: {
 case SdfOpCode::Pyramid: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Pyramid(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Pyramid(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -162,7 +162,7 @@ case SdfOpCode::Pyramid: {
 case SdfOpCode::HexPrism: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_HexPrism(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + "vec2(" + f(in.data[0]) + ", " + f(in.data[1]) + ")" + ");\n";
+    body += "  precise float " + t + " = SdfCore_HexPrism(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + "vec2(" + d(0) + ", " + d(1) + ")" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -170,7 +170,7 @@ case SdfOpCode::HexPrism: {
 case SdfOpCode::Link: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Link(" + curPos + " - vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Link(" + curPos + " - vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -188,7 +188,7 @@ case SdfOpCode::SmoothUnion: {
     assert(stk.size() >= 2 && "SmoothUnion: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothUnion(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothUnion(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -206,7 +206,7 @@ case SdfOpCode::SmoothSubtract: {
     assert(stk.size() >= 2 && "SmoothSubtract: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothSubtract(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothSubtract(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -224,7 +224,7 @@ case SdfOpCode::SmoothIntersect: {
     assert(stk.size() >= 2 && "SmoothIntersect: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothIntersect(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothIntersect(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -242,7 +242,7 @@ case SdfOpCode::SmoothMax: {
     assert(stk.size() >= 2 && "SmoothMax: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothMax(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothMax(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -251,7 +251,7 @@ case SdfOpCode::SmoothUnionCubic: {
     assert(stk.size() >= 2 && "SmoothUnionCubic: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothUnionCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothUnionCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -260,7 +260,7 @@ case SdfOpCode::SmoothSubtractCubic: {
     assert(stk.size() >= 2 && "SmoothSubtractCubic: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothSubtractCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothSubtractCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -269,7 +269,7 @@ case SdfOpCode::SmoothIntersectCubic: {
     assert(stk.size() >= 2 && "SmoothIntersectCubic: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_SmoothIntersectCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_SmoothIntersectCubic(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -278,7 +278,7 @@ case SdfOpCode::Round: {
     assert(stk.size() >= 1 && "Round: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Round(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Round(" + stk[recipeStackBase + 0] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -287,40 +287,40 @@ case SdfOpCode::Onion: {
     assert(stk.size() >= 1 && "Onion: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Onion(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Onion(" + stk[recipeStackBase + 0] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
 }
 case SdfOpCode::Transform: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_Transform(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ", " + "vec4(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ", " + f(in.data[7]) + ")" + ", " + "vec3(" + f(in.data[8]) + ", " + f(in.data[9]) + ", " + f(in.data[10]) + ")" + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_Transform(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ", " + "vec4(" + d(4) + ", " + d(5) + ", " + d(6) + ", " + d(7) + ")" + ", " + "vec3(" + d(8) + ", " + d(9) + ", " + d(10) + ")" + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(in.data[11]);
+    distScaleSaveStk.emplace_back(in.data[11], d(11));
     curPos = pN;
     break;
 }
 case SdfOpCode::Elongate: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_Elongate(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_Elongate(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
 case SdfOpCode::Twist: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_Twist(" + curPos + ", " + f(in.data[0]) + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_Twist(" + curPos + ", " + d(0) + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
 case SdfOpCode::Bend: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_Bend(" + curPos + ", " + f(in.data[0]) + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_Bend(" + curPos + ", " + d(0) + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
@@ -328,7 +328,7 @@ case SdfOpCode::MirrorX: {
     std::string pN = "pp" + std::to_string(n++);
     body += "  precise vec3 " + pN + " = SdfCore_MirrorX(" + curPos + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
@@ -336,7 +336,7 @@ case SdfOpCode::MirrorY: {
     std::string pN = "pp" + std::to_string(n++);
     body += "  precise vec3 " + pN + " = SdfCore_MirrorY(" + curPos + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
@@ -344,31 +344,31 @@ case SdfOpCode::MirrorZ: {
     std::string pN = "pp" + std::to_string(n++);
     body += "  precise vec3 " + pN + " = SdfCore_MirrorZ(" + curPos + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
 case SdfOpCode::RepeatInfinite: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_RepeatInfinite(" + curPos + ", " + "vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ")" + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_RepeatInfinite(" + curPos + ", " + "vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ")" + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
 case SdfOpCode::RepeatLimited: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_RepeatLimited(" + curPos + ", " + f(in.data[0]) + ", " + "vec3(" + f(in.data[1]) + ", " + f(in.data[2]) + ", " + f(in.data[3]) + ")" + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_RepeatLimited(" + curPos + ", " + d(0) + ", " + "vec3(" + d(1) + ", " + d(2) + ", " + d(3) + ")" + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
 case SdfOpCode::Revolution: {
     std::string pN = "pp" + std::to_string(n++);
-    body += "  precise vec3 " + pN + " = SdfCore_Revolution(" + curPos + ", " + "vec3(" + f(in.data[4]) + ", " + f(in.data[5]) + ", " + f(in.data[6]) + ")" + ", " + f(in.data[0]) + ");\n";
+    body += "  precise vec3 " + pN + " = SdfCore_Revolution(" + curPos + ", " + "vec3(" + d(4) + ", " + d(5) + ", " + d(6) + ")" + ", " + d(0) + ");\n";
     posSaveStk.push_back(curPos);
-    distScaleSaveStk.push_back(1.0f);
+    distScaleSaveStk.emplace_back(1.0f, "1.0");
     curPos = pN;
     break;
 }
@@ -376,7 +376,7 @@ case SdfOpCode::MathSin: {
     assert(stk.size() >= 1 && "MathSin: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathSin(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathSin(" + stk[recipeStackBase + 0] + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -385,7 +385,7 @@ case SdfOpCode::MathCos: {
     assert(stk.size() >= 1 && "MathCos: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathCos(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathCos(" + stk[recipeStackBase + 0] + ", " + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -394,7 +394,7 @@ case SdfOpCode::MathSmoothstep: {
     assert(stk.size() >= 1 && "MathSmoothstep: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathSmoothstep(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathSmoothstep(" + stk[recipeStackBase + 0] + ", " + d(0) + ", " + d(1) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -403,7 +403,7 @@ case SdfOpCode::MathRemap: {
     assert(stk.size() >= 1 && "MathRemap: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathRemap(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ", " + f(in.data[3]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathRemap(" + stk[recipeStackBase + 0] + ", " + d(0) + ", " + d(1) + ", " + d(2) + ", " + d(3) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -466,7 +466,7 @@ case SdfOpCode::MathClamp: {
     assert(stk.size() >= 1 && "MathClamp: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathClamp(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ", " + f(in.data[1]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathClamp(" + stk[recipeStackBase + 0] + ", " + d(0) + ", " + d(1) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -493,7 +493,7 @@ case SdfOpCode::MathPow: {
     assert(stk.size() >= 1 && "MathPow: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathPow(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathPow(" + stk[recipeStackBase + 0] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -540,7 +540,7 @@ case SdfOpCode::Displacement: {
     assert(stk.size() >= 2 && "Displacement: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Displacement(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Displacement(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -549,7 +549,7 @@ case SdfOpCode::MathStep: {
     assert(stk.size() >= 1 && "MathStep: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_MathStep(" + stk[recipeStackBase + 0] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_MathStep(" + stk[recipeStackBase + 0] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
@@ -603,14 +603,14 @@ case SdfOpCode::Select: {
     assert(stk.size() >= 3 && "Select: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 3;
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_Select(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + stk[recipeStackBase + 2] + ", " + f(in.data[0]) + ");\n";
+    body += "  precise float " + t + " = SdfCore_Select(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ", " + stk[recipeStackBase + 2] + ", " + d(0) + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;
 }
 case SdfOpCode::DistanceTo: {
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = length(" + curPos + " - vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + "));\n";
+    body += "  precise float " + t + " = length(" + curPos + " - vec3(" + d(0) + ", " + d(1) + ", " + d(2) + "));\n";
     stk.push_back(t);
     break;
 }
@@ -619,7 +619,7 @@ case SdfOpCode::Output: {
 }
 case SdfOpCode::PushParam: {
     std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = " + f(in.data[0]) + ";\n";
+    body += "  precise float " + t + " = " + d(0) + ";\n";
     stk.push_back(t);
     break;
 }
@@ -633,11 +633,11 @@ case SdfOpCode::ReadParam: {
 case SdfOpCode::RestorePos: {
     assert(!posSaveStk.empty() && "RestorePos: emit-time position stack underflow");
     assert(!distScaleSaveStk.empty() && "RestorePos: emit-time distScale stack underflow");
-    const float scale = distScaleSaveStk.back(); distScaleSaveStk.pop_back();
-    if (std::abs(scale - 1.0f) > 1e-4f) {
+    const auto scale = distScaleSaveStk.back(); distScaleSaveStk.pop_back();
+    if (std::abs(scale.first - 1.0f) > 1e-4f) {
         assert(!stk.empty() && "RestorePos: value stack empty when applying distScale");
         std::string scaled = "t" + std::to_string(n++);
-        body += "  precise float " + scaled + " = " + stk.back() + " * " + f(scale) + ";\n";
+        body += "  precise float " + scaled + " = " + stk.back() + " * " + scale.second + ";\n";
         stk.back() = scaled;
     }
     curPos = posSaveStk.back(); posSaveStk.pop_back();
@@ -645,7 +645,7 @@ case SdfOpCode::RestorePos: {
 }
 case SdfOpCode::PushFloat3: {
     std::string t = "t" + std::to_string(n++);
-    body += "  precise vec3 " + t + " = vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
+    body += "  precise vec3 " + t + " = vec3(" + d(0) + ", " + d(1) + ", " + d(2) + ");\n";
     stk.push_back(t + ".x");
     stk.push_back(t + ".y");
     stk.push_back(t + ".z");
@@ -1060,14 +1060,6 @@ case SdfOpCode::GlyphOutline: {
     const std::size_t recipeStackBase = stk.size() - 0;
     std::string t = "t" + std::to_string(n++);
     body += "  precise float " + t + " = SdfCore_GlyphOutline(" + curPos + ", " + std::to_string(std::bit_cast<std::uint32_t>(in.data[0])) + "u" + ");\n";
-    stk.resize(recipeStackBase);
-    stk.push_back(t);
-    break;
-}
-case SdfOpCode::PathDistance: {
-    const std::size_t recipeStackBase = stk.size() - 0;
-    std::string t = "t" + std::to_string(n++);
-    body += "  precise float " + t + " = SdfCore_PathDistance(" + curPos + ", " + "pathInstances[" + std::to_string(std::bit_cast<std::uint32_t>(in.data[0])) + "]" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
     break;

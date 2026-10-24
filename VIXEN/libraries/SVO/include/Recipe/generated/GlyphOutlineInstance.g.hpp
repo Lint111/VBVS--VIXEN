@@ -5,7 +5,7 @@
 #include <cstddef>
 #include "PathSegment.g.hpp"
 #include "PathPoint.g.hpp"
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 inline constexpr std::int32_t SegmentCapacity = 64;
 
 struct GlyphOutlineInstance {
@@ -23,4 +23,4 @@ static_assert(offsetof(GlyphOutlineInstance, BoundsMax) == 3600, "BoundsMax@3600
 static_assert(offsetof(GlyphOutlineInstance, FillRule) == 3612, "FillRule@3612");
 
 inline constexpr char GlyphOutlineInstanceLayoutHash[] = "240e48fe5b3a9a80323271c7083ee932a32439c4a3f64513f210138def963d07";
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

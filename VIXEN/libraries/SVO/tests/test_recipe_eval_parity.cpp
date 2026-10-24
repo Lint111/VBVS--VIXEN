@@ -2089,8 +2089,8 @@ static SdfInstruction float3NormalizeOp() {
 // ── N1 Re-tamper: kernel probes confirm SdfCore_Select / SdfCore_Displacement ─
 // These call the generated kernels directly. If the kernel body is changed (e.g.
 // always returns a, or swaps branches) these fail — even if the inline was right.
-// Kernels live in Yeroket::Sdf::Generated; bring them in for the probe tests.
-using namespace Yeroket::Sdf::Generated;
+// Kernels live in Yeroket::Sdf::Kernels; bring them in for the probe tests.
+using namespace Yeroket::Sdf::Kernels;
 
 TEST(RecipeEvalParity, M4d_N1_Select_KernelProbe_AboveThresh) {
     // cond > thr → return a

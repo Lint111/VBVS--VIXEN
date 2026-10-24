@@ -4,7 +4,7 @@
 #include <RmlUi/Core/Types.h>   // Rml::String
 #include <cstddef>
 #include <cstdint>
-#include "generated/AppFlowCallables.g.hpp"
+#include "generated/AppFlowCallables.g.h"
 
 namespace Vixen::Views {
 
@@ -26,12 +26,12 @@ public:
     static constexpr size_t kElem_mass = 1;
     float mass(uint32_t i) const {
         auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_mass).f;
-        return Vixen::AppFlow::Generated::IdentityFloat(raw, i);
+        return Vixen::ViewSchemas::IdentityFloat(raw, i);
     }
     static constexpr size_t kElem_orbitParent = 2;
     int orbitParent(uint32_t i) const {
         auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_orbitParent).i;
-        return Vixen::AppFlow::Generated::IdentityInt(raw, i);
+        return Vixen::ViewSchemas::IdentityInt(raw, i);
     }
     static constexpr size_t kElem_ownerInLens = 3;
     int ownerInLens(uint32_t i) const {

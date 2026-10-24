@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Vixen::SVO::Recipe {
@@ -64,7 +65,8 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
     std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
     uint32_t glyphInstanceBase = 0,
-    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {})
+    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
+    bool readInstructionOperands = false)
 {
     std::vector<std::string> stk;
     std::string body;
@@ -75,7 +77,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     std::vector<std::string> posSaveStk;
     // emit-time distScale stack: 1.0f for non-scaling transforms; M4b Transform pushes data[11]
     // At RestorePos: if |scale-1|>1e-4 emit a multiply to scale the TOS distance before popping.
-    std::vector<float> distScaleSaveStk;
+    std::vector<std::pair<float, std::string>> distScaleSaveStk;
 
     // Operands obey the binary32 transport contract (integer-word literals).
     const auto f = RecipeGlslFloatLiteral;
@@ -96,37 +98,6 @@ inline std::string EmitProceduralFieldFunctionGlsl(
         (void)wprog;
         return glyphInstanceBase;
     };
-
-    // A PathDistance instruction indexes this fixed local array the same way.
-    if (!pathInstances.empty()) {
-        body += "  PathInstance pathInstances["
-            + std::to_string(pathInstances.size()) + "];\n";
-        for (std::size_t pathIndex = 0; pathIndex < pathInstances.size(); ++pathIndex) {
-            const auto& path = pathInstances[pathIndex];
-            const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
-            const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::PathSegmentCapacity));
-            body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
-            body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
-            body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
-            body += "  " + row + ".FillRule = " + std::to_string(path.FillRule) + "u;\n";
-            for (std::uint32_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
-                const auto& segment = path.Segments[segmentIndex];
-                const std::string prefix = row + ".Segments[" + std::to_string(segmentIndex) + "]";
-                const auto emitPoint = [&](const char* name, const auto& point) {
-                    body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
-                    body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
-                    body += "  " + prefix + "." + name + ".Z = " + f(point.Z) + ";\n";
-                };
-                emitPoint("P0", segment.P0);
-                emitPoint("P1", segment.P1);
-                emitPoint("P2", segment.P2);
-                emitPoint("P3", segment.P3);
-                body += "  " + prefix + ".Kind = " + std::to_string(segment.Kind) + "u;\n";
-                body += "  " + prefix + ".ContourStart = " + std::to_string(segment.ContourStart) + "u;\n";
-            }
-        }
-    }
 
     // A PathDistance instruction indexes this fixed local array, laid out like the glyph rows.
     if (!pathInstances.empty()) {
@@ -165,11 +136,22 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     auto walk = [&](auto&& self, const SdfInstruction* wprog, uint32_t wcount) -> void {
     std::vector<SdfInstruction> adjustedProgram(wprog, wprog + wcount);
     const uint32_t base = glyphBaseForProgram(wprog);
-    for (auto& in : adjustedProgram) {
+    for (std::uint32_t instructionIndex = 0; instructionIndex < adjustedProgram.size(); ++instructionIndex) {
+        auto& in = adjustedProgram[instructionIndex];
         if (static_cast<SdfOpCode>(in.opCode) == SdfOpCode::GlyphOutline) {
             const uint32_t localIndex = std::bit_cast<uint32_t>(in.data[0]);
             in.data[0] = std::bit_cast<float>(localIndex + base);
         }
+        // R475.3: a closed unroll can retain its uploaded tape as the operand source.
+        // InvokeRecipe must be closed before binding, exactly as for EvalRecipeTape.
+        assert((!readInstructionOperands || in.opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe)) &&
+            "buffer operands require UnrollRecipeInstructions first");
+        const auto d = [&](std::uint32_t slot) {
+            return readInstructionOperands
+                ? "recipeTape[recipeOperandBase + " + std::to_string(instructionIndex)
+                    + "u].data[" + std::to_string(slot) + "]"
+                : f(in.data[slot]);
+        };
         assert(IsValidSdfOpCode(in.opCode) && "EmitProceduralFieldFunctionGlsl: unknown opcode");
         // paramMask!=0 is now legal exactly for ReadParam/ReadParamFloat3 (Recipe-
         // Parameterization M1 Task 2's registry allow-list) — every other opcode still
@@ -192,6 +174,11 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     std::string signature = emitDeclaredPositionOutParam
         ? "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6], out vec3 declaredPos) {\n"
         : "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6]) {\n";
+    if (readInstructionOperands) {
+        const auto insertion = signature.find(", out vec3");
+        signature.insert(insertion == std::string::npos ? signature.find(") {") : insertion,
+            ", uint recipeOperandBase");
+    }
     return signature
         + body
         + "  return " + stk.back() + ";\n"

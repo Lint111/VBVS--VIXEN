@@ -3,7 +3,7 @@
 // std430-v1 rules: scalar alignment is its width; vec2 aligns to 8; vec3/vec4 align to 16 (vec3 payload is 12); matrices use column-vector alignment and stride; arrays use element-aligned stride; structs align and round size to their maximum member alignment.
 #include <cstdint>
 #include <cstddef>
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 struct PathPoint {
     float X;
     float Y;
@@ -15,4 +15,4 @@ static_assert(offsetof(PathPoint, Y) == 4, "Y@4");
 static_assert(offsetof(PathPoint, Z) == 8, "Z@8");
 
 inline constexpr char PathPointLayoutHash[] = "a7952ece8e5a970a8dc6d2bf29eaf89a2357e5e59ce8e3c8e76ea4c7bc21d784";
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

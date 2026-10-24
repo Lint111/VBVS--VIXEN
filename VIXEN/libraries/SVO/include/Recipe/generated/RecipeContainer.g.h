@@ -16,6 +16,9 @@ struct RecipeContainerHeader {     // mirrors C# RecipeContainerHeader (32 B)
 };
 static_assert(sizeof(RecipeContainerHeader) == 32, "RecipeContainerHeader must be 32 B");
 
+inline constexpr uint32_t kRecipeContainerMagic = 0x31435256u;
+inline constexpr uint32_t kRecipeContainerVersion = 2u;
+
 struct RecipeContainerView {
     RecipeContainerHeader header;
     const SdfInstruction* instructions;
@@ -25,12 +28,17 @@ inline bool ReadRecipeContainer(const uint8_t* blob, size_t len, RecipeContainer
     RecipeContainerHeader h{};
     for (size_t i = 0; i < sizeof(RecipeContainerHeader); ++i)
         reinterpret_cast<uint8_t*>(&h)[i] = blob[i];
-    if (h.magic != 0x31435256u) return false;          // 'VRC1'
-    if (h.formatVersion != 1u) return false;
+    if (h.magic != kRecipeContainerMagic) return false;          // 'VRC1'
+    if (h.formatVersion != 1u && h.formatVersion != 2u) return false;
     const size_t need = sizeof(RecipeContainerHeader) + (size_t)h.instructionCount * sizeof(SdfInstruction);
     if (len != need) return false;
+    const SdfInstruction* instructions = reinterpret_cast<const SdfInstruction*>(blob + sizeof(RecipeContainerHeader));
+    // Version 1 output slots are the retired hand-numbered bits: only the distance marker (0) reads.
+    if (h.formatVersion == 1u)
+        for (uint32_t i = 0; i < h.instructionCount; ++i)
+            if (instructions[i].opCode == 94u && instructions[i].data[0] != 0.0f) return false;
     out.header = h;
-    out.instructions = reinterpret_cast<const SdfInstruction*>(blob + sizeof(RecipeContainerHeader));
+    out.instructions = instructions;
     return true;
 }
 
