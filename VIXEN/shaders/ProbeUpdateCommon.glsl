@@ -25,11 +25,13 @@
 // inherit the same queue geometry from this one definition.
 #define PROBE_UPDATE_MAX_RAYS_PER_PROBE 256u
 
+layout(std430, binding = 28) buffer ProbeGridConfigSSBO {
+    uint words[];
+} probeGridSettingsBuffer;
+#define VIXEN_SOA_ProbeGridSettings_BUFFER probeGridSettingsBuffer
 #include "Generated/ProbeGridConfig.glsl"
-
-layout(std430, binding = 28) readonly buffer ProbeGridConfigSSBO {
-    ProbeGridConfig probeGridConfig;
-};
+#define ProbeGridConfig ProbeGridSettings
+#define probeGridConfig ProbeGridSettings_Load(0u)
 
 uint ProbeUpdateProbeCount() {
     return probeGridConfig.countX * probeGridConfig.countY * probeGridConfig.countZ;
@@ -47,10 +49,10 @@ uint ProbeUpdateProbeCount() {
 // `max(amortizationFactor, 1u)` guards divide/mod-by-zero defensively —
 // upstream never produces 0, but the shader assumes nothing about CPU code
 // it cannot see at compile time.
-uint ProbeUpdateProbeIndex() {
+uint ProbeUpdateProbeIndex(uint frame) {
     uint amortizationFactor = max(probeGridConfig.amortizationFactor, 1u);
     return gl_WorkGroupID.x * amortizationFactor +
-           (probeGridConfig.frameCounter % amortizationFactor);
+           (frame % amortizationFactor);
 }
 
 // Probe grid indexing: X fastest, then Y, then Z (matches

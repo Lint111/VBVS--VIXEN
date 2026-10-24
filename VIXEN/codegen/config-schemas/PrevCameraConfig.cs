@@ -1,6 +1,6 @@
 using Yeroket.Util.KernelFramework;
 
-namespace Vixen.Gpu;
+namespace Vixen.Codegen.Gpu;
 
 // Canonical PrevCameraConfig — one source for C++ (Vixen::Gpu) + GLSL.
 // Sampled Lighting Inc2 M3: prev-frame camera matrix plumbing. Mirrors

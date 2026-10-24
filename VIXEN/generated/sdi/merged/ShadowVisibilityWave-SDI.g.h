@@ -673,17 +673,17 @@ struct TierRefTableBuffer {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf51829683e894125 (for runtime discovery)
+ * Layout VixenHash: 0x7732814c2892910d (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf51829683e894125ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x7732814c2892910dULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "LightingConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 272;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -713,17 +713,17 @@ struct HitRecordBuffer {
  * @brief ShadowConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3b53615a99b577f6 (for runtime discovery)
+ * Layout VixenHash: 0x70e7e39fc2be04d5 (for runtime discovery)
  */
 struct ShadowConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3b53615a99b577f6ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x70e7e39fc2be04d5ULL;
 
     // Member metadata structs
     struct pc_0 {
-        static constexpr const char* TYPE = "ShadowConfig";
+        static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 16;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1059,16 +1059,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief LightingConfigSSBO
+     * @brief lightingSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding16 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "lightingSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 16;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = LightingConfigSSBO;
     };
@@ -1089,16 +1089,16 @@ namespace Set0 {
     };
 
     /**
-     * @brief ShadowConfigSSBO
+     * @brief shadowSettingsBuffer
      * Type: STORAGE_BUFFER
      */
     struct Binding18 {
-        static constexpr const char* NAME = "ShadowConfigSSBO";
+        static constexpr const char* NAME = "shadowSettingsBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 18;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ShadowConfigSSBO;
     };
@@ -1262,9 +1262,9 @@ using BrickLookupBuffer = Set0::Binding12;
 using MipPoolBuffer = Set0::Binding13;
 using InstanceIterDebugBuffer = Set0::Binding14;
 using TierRefTableBuffer = Set0::Binding15;
-using LightingConfigSSBO = Set0::Binding16;
+using lightingSettingsBuffer = Set0::Binding16;
 using HitRecordBuffer = Set0::Binding17;
-using ShadowConfigSSBO = Set0::Binding18;
+using shadowSettingsBuffer = Set0::Binding18;
 using SpatialReservoirDebugBuffer = Set0::Binding19;
 using LightTreeBufferSSBO = Set0::Binding20;
 using InstanceSkipMaskBuffer = Set0::Binding35;
@@ -1278,7 +1278,7 @@ using GlyphOutlineBuffer = Set0::Binding51;
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 96;
+    static constexpr uint32_t SIZE = 112;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
@@ -1384,10 +1384,18 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct cosmicK {
-        static constexpr const char* NAME = "cosmicK";
+    struct _Frame {
+        static constexpr const char* NAME = "_Frame";
         static constexpr uint32_t INDEX = 13;
         static constexpr uint32_t OFFSET = 92;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct cosmicK {
+        static constexpr const char* NAME = "cosmicK";
+        static constexpr uint32_t INDEX = 14;
+        static constexpr uint32_t OFFSET = 96;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
@@ -1409,7 +1417,9 @@ struct PushBlock {
     uint8_t _pad76[4];
     glm::ivec2 debugTargetPixel;
     uint32_t accumFrameCount;
+    uint32_t _Frame;
     float cosmicK;
+    uint8_t _tail[12];
 };
 
 static_assert(offsetof(PushBlock, cameraPos) == Push::cameraPos::OFFSET, "PushBlock.cameraPos is not at its SDI OFFSET");
@@ -1425,6 +1435,7 @@ static_assert(offsetof(PushBlock, raySizeBias) == Push::raySizeBias::OFFSET, "Pu
 static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET, "PushBlock.instanceCount is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, debugTargetPixel) == Push::debugTargetPixel::OFFSET, "PushBlock.debugTargetPixel is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, accumFrameCount) == Push::accumFrameCount::OFFSET, "PushBlock.accumFrameCount is not at its SDI OFFSET");
+static_assert(offsetof(PushBlock, _Frame) == Push::_Frame::OFFSET, "PushBlock._Frame is not at its SDI OFFSET");
 static_assert(offsetof(PushBlock, cosmicK) == Push::cosmicK::OFFSET, "PushBlock.cosmicK is not at its SDI OFFSET");
 static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
 
@@ -1462,9 +1473,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"MipPoolBuffer", false, 0, 13, 0, Access::ReadOnly, 0, nullptr},
     {"InstanceIterDebugBuffer", false, 0, 14, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding14},
     {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
+    {"lightingSettingsBuffer", false, 0, 16, 0, Access::ReadWrite, 0, nullptr},
     {"HitRecordBuffer", false, 0, 17, 0, Access::ReadWrite, 0, nullptr},
-    {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
+    {"shadowSettingsBuffer", false, 0, 18, 0, Access::ReadWrite, 0, nullptr},
     {"SpatialReservoirDebugBuffer", false, 0, 19, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding19},
     {"LightTreeBufferSSBO", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
@@ -1487,7 +1498,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
-    {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"_Frame", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"cosmicK", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
 };
 
 /**

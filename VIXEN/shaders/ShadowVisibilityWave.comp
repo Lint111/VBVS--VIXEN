@@ -63,12 +63,14 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 
 #include "SceneBindings.glsl"
 
+layout(std430, binding = 16) buffer LightingConfigSSBO {
+    uint words[];
+} lightingSettingsBuffer;
+#define VIXEN_SOA_LightingSettings_BUFFER lightingSettingsBuffer
 #include "Generated/LightingConfig.glsl"
+#define LightingConfig LightingSettings
+#define lightingConfig LightingSettings_Load(0u)
 #include "LightEvaluation.glsl"
-
-layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
-    LightingConfig lightingConfig;
-};
 
 #include "HitRecord.glsl"
 
@@ -78,11 +80,13 @@ layout(std430, binding = 17) buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 
+layout(std430, binding = 18) buffer ShadowConfigSSBO {
+    uint words[];
+} shadowSettingsBuffer;
+#define VIXEN_SOA_ShadowSettings_BUFFER shadowSettingsBuffer
 #include "Generated/ShadowConfig.glsl"
-
-layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
-    ShadowConfig shadowConfig;
-};
+#define ShadowConfig ShadowSettings
+#define shadowConfig ShadowSettings_Load(0u)
 
 #ifdef VIXEN_WAVE_SLOT_SWIZZLE
 uint waveSlot() {

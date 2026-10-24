@@ -38,6 +38,8 @@
     { "id": "core:coarse_stock_delta", "payloadType": "Undertow.Content.Core.Systems.Economy.CoarseStockDelta", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-history", "producers": ["core:coarse-structures", "core:publish_coarse_stock", "core:refine", "core:extraction", "core:coarse-history"], "consumers": ["core:coarse-history"], "capacity": "Unbounded" },
     { "id": "core:coarse_stock_draw", "payloadType": "Undertow.Content.Core.Systems.Economy.CoarseStockDraw", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-history", "producers": ["core:coarse-structures", "core:refine"], "consumers": ["core:coarse-history"], "capacity": "Unbounded" },
     { "id": "core:eviction_kick_row", "payloadType": "Undertow.Content.Core.Systems.Economy.EvictionKickRow", "delivery": "Queue", "orderFields": ["Offender", "Owner"], "savePolicy": "OutstandingOnly", "owner": "core:actions", "producers": ["core:extraction"], "consumers": ["core:actions"], "capacity": "Unbounded" },
+    { "id": "core:faction_plan_command", "payloadType": "Undertow.Content.Core.Systems.FactionAi.FactionPlanCommand", "delivery": "Queue", "orderFields": ["Faction"], "savePolicy": "OutstandingOnly", "owner": "core:faction-economy", "producers": ["core:faction-ai"], "consumers": ["core:faction-economy"], "capacity": "Unbounded", "visibility": "NotBeforeNextFrame" },
+    { "id": "core:faction_sub_command", "payloadType": "Undertow.Content.Core.Systems.FactionAi.FactionSubCommand", "delivery": "Queue", "orderFields": ["Faction"], "savePolicy": "OutstandingOnly", "owner": "core:faction-sub-execute", "producers": ["core:faction-ai"], "consumers": ["core:faction-sub-execute"], "capacity": "Unbounded", "visibility": "NotBeforeNextFrame" },
     { "id": "core:haul_stock_spend", "payloadType": "Undertow.Content.Core.Systems.Economy.HaulStockSpend", "delivery": "Queue", "orderFields": [], "savePolicy": "OutstandingOnly", "owner": "core:haul-stock-owner", "producers": ["core:move-haul"], "consumers": ["core:haul-stock-owner"], "capacity": "Unbounded" },
     { "id": "core:haul_vehicle_launch", "payloadType": "Undertow.Content.Core.Systems.Economy.HaulVehicleLaunch", "delivery": "Queue", "orderFields": [], "savePolicy": "OutstandingOnly", "owner": "core:haul-vehicle-owner", "producers": ["core:move-haul"], "consumers": ["core:haul-vehicle-owner"], "capacity": "Unbounded" },
     { "id": "core:leverage_outcome_request", "payloadType": "Undertow.Content.Core.Systems.Diplomacy.LeverageOutcomeRequest", "delivery": "Queue", "orderFields": [], "savePolicy": "Never", "owner": "core:coarse-leverage", "producers": ["core:record_leverage", "core:coarse-leverage"], "consumers": ["core:coarse-leverage"], "capacity": "Unbounded" },
@@ -69,10 +71,39 @@
     { "name": "agent-knowledge.attribute-value", "clrType": "Undertow.Substrate.AttributeValue", "write": "Undertow.Substrate.AttributeValueBinary.Write", "read": "Undertow.Substrate.AttributeValueBinary.Read" }
   ],
   "runtimeStates": [
-    { "owner": "vixen:frame-targets", "clrType": "Vixen.Codegen.Gpu.FrameTargets", "root": false, "order": 129, "kind": "frame_targets", "singleton": true, "fields": [
+    { "owner": "vixen:frame-targets", "clrType": "Vixen.Codegen.Gpu.FrameTargets", "root": false, "order": 146, "kind": "frame_targets", "singleton": true, "fields": [
       { "name": "SceneRadianceHistoryOutput", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba16f", "representation": "image", "format": "VK_FORMAT_R16G16B16A16_SFLOAT", "imageFormat": "rgba16f", "extent": { "source": "presentation" } } },
       { "name": "OutputImage", "storage": "texture2D", "texture": { "dimensions": 2, "texel": "Undertow.Modding.Schema.Rgba8", "representation": "image", "format": "VK_FORMAT_R8G8B8A8_UNORM", "imageFormat": "rgba8", "extent": { "source": "presentation" } } },
       { "name": "PresentationMode", "storage": "uint", "default": 0 }
+    ] },
+    { "owner": "vixen:hit-record", "clrType": "Vixen.Codegen.Gpu.HitRecord", "root": true, "order": 147, "kind": "state:hit-record", "fields": [
+    ] },
+    { "owner": "vixen:reservoir-record", "clrType": "Vixen.Codegen.Gpu.ReservoirRecord", "root": true, "order": 150, "kind": "state:reservoir-record", "fields": [
+      { "name": "y", "storage": "uint" },
+      { "name": "weightSum", "storage": "float" },
+      { "name": "sampleCount", "storage": "uint" },
+      { "name": "targetPdf", "storage": "float" }
+    ] },
+    { "owner": "vixen:exposure-meter", "clrType": "Vixen.Codegen.Gpu.ExposureMeterState", "root": true, "order": 145, "kind": "state:exposure-meter", "fields": [
+      { "name": "log2Exposure", "storage": "float" },
+      { "name": "state", "storage": "uint" },
+      { "name": "meteredEV100", "storage": "float" },
+      { "name": "targetLog2Exposure", "storage": "float" },
+      { "name": "histogram", "storage": "uint", "bucket": 128 }
+    ] },
+    { "owner": "vixen:camera", "clrType": "Vixen.Codegen.Gpu.PrevCameraConfig", "root": false, "order": 144, "kind": "prev_camera_config", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:lighting-settings", "clrType": "Vixen.Codegen.Gpu.LightingSettings", "root": false, "order": 148, "kind": "lighting_settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:scene-look-settings", "clrType": "Vixen.Codegen.Gpu.SceneLookSettings", "root": false, "order": 152, "kind": "scene_look_settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:shadow-settings", "clrType": "Vixen.Codegen.Gpu.ShadowSettings", "root": false, "order": 153, "kind": "shadow_settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:accumulation-settings", "clrType": "Vixen.Codegen.Gpu.AccumulationSettings", "root": false, "order": 143, "kind": "accumulation_settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:reservoir-settings", "clrType": "Vixen.Codegen.Gpu.ReservoirSettings", "root": false, "order": 151, "kind": "reservoir_settings", "singleton": true, "fields": [
+    ] },
+    { "owner": "vixen:probe-grid-settings", "clrType": "Vixen.Codegen.Gpu.ProbeGridSettings", "root": false, "order": 149, "kind": "probe_grid_settings", "singleton": true, "fields": [
     ] },
     { "owner": "core:bodies", "clrType": "Undertow.Content.Core.Systems.Bodies.BodySave", "root": true, "order": 11, "kind": "state:bodies", "fields": [
     ] },
@@ -173,7 +204,7 @@
       { "name": "Fact", "storage": "string" },
       { "name": "Now", "storage": "long" }
     ] },
-    { "owner": "core:live_wars", "clrType": "Undertow.Content.Core.Systems.Diplomacy.WarOutcomeRequest", "root": false, "order": 90, "message": true, "kind": "war_outcome_request", "indexes": [{ "name": "Source", "fields": ["First", "Second"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:live_wars", "clrType": "Undertow.Content.Core.Systems.Diplomacy.WarOutcomeRequest", "root": false, "order": 104, "message": true, "kind": "war_outcome_request", "indexes": [{ "name": "Source", "fields": ["First", "Second"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Kind", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Diplomacy.WarOutcomeKind" },
       { "name": "First", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
       { "name": "Second", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
@@ -430,13 +461,13 @@
       { "name": "Ordinal", "storage": "int" },
       { "name": "Handle", "storage": "int" }
     ] },
-    { "owner": "core:haul-stock-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulStockSpend", "root": false, "order": 71, "message": true, "kind": "haul_stock_spend", "indexes": [{ "name": "Source", "fields": ["Subject", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:haul-stock-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulStockSpend", "root": false, "order": 85, "message": true, "kind": "haul_stock_spend", "indexes": [{ "name": "Source", "fields": ["Subject", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Subject", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
       { "name": "Resource", "storage": "entityId", "refKind": "resource", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef>" },
       { "name": "FromBody", "storage": "int" },
       { "name": "CargoKg", "storage": "double", "unit": { "name": "Kilogram", "symbol": "kg", "dimensions": [1, 0, 0, 0, 0, 0], "scaleToSi": 1 } }
     ] },
-    { "owner": "core:haul-vehicle-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulVehicleLaunch", "root": false, "order": 72, "message": true, "kind": "haul_vehicle_launch", "indexes": [{ "name": "Source", "fields": ["Vehicle", "DeliverTo"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:haul-vehicle-owner", "clrType": "Undertow.Content.Core.Systems.Economy.HaulVehicleLaunch", "root": false, "order": 86, "message": true, "kind": "haul_vehicle_launch", "indexes": [{ "name": "Source", "fields": ["Vehicle", "DeliverTo"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Vehicle", "storage": "entityId", "refKind": "vehicle", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.VehicleRef>" },
       { "name": "DeliverTo", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
       { "name": "PropellantBurn", "storage": "double", "unit": { "name": "Kilogram", "symbol": "kg", "dimensions": [1, 0, 0, 0, 0, 0], "scaleToSi": 1 } },
@@ -450,11 +481,92 @@
       { "name": "EnergyJoules", "storage": "double", "unit": { "name": "Joule", "symbol": "J", "dimensions": [1, 2, -2, 0, 0, 0], "scaleToSi": 1 } },
       { "name": "MassKg", "storage": "double", "unit": { "name": "Kilogram", "symbol": "kg", "dimensions": [1, 0, 0, 0, 0, 0], "scaleToSi": 1 } }
     ] },
-    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.WorldEventsSave", "root": true, "order": 127, "kind": "state:world-events", "fields": [
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionAiSave", "root": true, "order": 79, "kind": "state:faction-ai", "fields": [
+      { "name": "Cohesion", "storage": "entityId", "refKind": "faction_scalar_row", "list": true },
+      { "name": "Impatience", "storage": "entityId", "refKind": "faction_scalar_row", "list": true },
+      { "name": "Personality", "storage": "entityId", "refKind": "personality_row", "list": true },
+      { "name": "Brains", "storage": "entityId", "refKind": "brain_row", "list": true },
+      { "name": "PlanPipeId", "storage": "string" },
+      { "name": "PlanPipeNextEpoch", "storage": "long" },
+      { "name": "PlanCommands", "storage": "entityId", "refKind": "faction_plan_envelope_row", "list": true },
+      { "name": "SubPipeId", "storage": "string" },
+      { "name": "SubPipeNextEpoch", "storage": "long" },
+      { "name": "SubCommands", "storage": "entityId", "refKind": "faction_sub_envelope_row", "list": true },
+      { "name": "Goals", "storage": "entityId", "refKind": "goal", "list": true }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionScalarRow", "root": false, "order": 72, "kind": "faction_scalar_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" },
+      { "name": "Value", "storage": "double" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.PersonalityRow", "root": false, "order": 77, "kind": "personality_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" },
+      { "name": "Personality", "storage": "namespacedId" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.BrainRow", "root": false, "order": 69, "kind": "brain_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" },
+      { "name": "CurrentIntent", "storage": "namespacedId" },
+      { "name": "HasIntent", "storage": "bool" },
+      { "name": "Plan", "storage": "entityId", "refKind": "plan_step_row", "list": true },
+      { "name": "SubStep", "storage": "int" },
+      { "name": "LastTopTick", "storage": "long" },
+      { "name": "LastSubTick", "storage": "long" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.PlanStepRow", "root": false, "order": 78, "kind": "plan_step_row", "fields": [
+      { "name": "Step", "storage": "namespacedId" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionPlanCommand", "root": false, "order": 70, "message": true, "kind": "faction_plan_command", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionPlanEnvelopeRow", "root": false, "order": 71, "kind": "faction_plan_envelope_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Epoch", "storage": "long" },
+      { "name": "PublisherOrdinal", "storage": "int" },
+      { "name": "StableWorkKey", "storage": "ulong" },
+      { "name": "LocalSequence", "storage": "ulong" },
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionSubCommand", "root": false, "order": 73, "message": true, "kind": "faction_sub_command", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction", "type": "Undertow.Modding.KindRef<global::Undertow.Content.Gaia.FactionRef>" },
+      { "name": "Step", "storage": "namespacedId" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.FactionSubEnvelopeRow", "root": false, "order": 74, "kind": "faction_sub_envelope_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "Epoch", "storage": "long" },
+      { "name": "PublisherOrdinal", "storage": "int" },
+      { "name": "StableWorkKey", "storage": "ulong" },
+      { "name": "LocalSequence", "storage": "ulong" },
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" },
+      { "name": "Step", "storage": "namespacedId" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.Goal", "root": false, "order": 75, "kind": "goal", "indexes": [{ "name": "Source", "fields": ["Owner"], "unique": false, "visibility": "owner" }], "fields": [
+      { "name": "GoalId", "storage": "ulong" },
+      { "name": "Owner", "storage": "entityId", "refKind": "faction" },
+      { "name": "Position", "storage": "entityId", "refKind": "goal_position_row", "list": true },
+      { "name": "Priority", "storage": "float" },
+      { "name": "Parent", "storage": "ulong" },
+      { "name": "Status", "storage": "enumByte", "type": "Undertow.Goals.GoalStatus" }
+    ] },
+    { "owner": "core:faction-ai", "clrType": "Undertow.Content.Core.Systems.FactionAi.GoalPositionRow", "root": false, "order": 76, "kind": "goal_position_row", "fields": [
+      { "name": "Tag", "storage": "string" },
+      { "name": "Weight", "storage": "float" }
+    ] },
+    { "owner": "core:growth_trend", "clrType": "Undertow.Content.Core.Systems.FactionAi.TrendCell", "root": false, "order": 84, "kind": "trend_cell", "fields": [
+      { "name": "PrevLevel", "storage": "double" },
+      { "name": "Rate", "storage": "double" },
+      { "name": "Accel", "storage": "double" }
+    ] },
+    { "owner": "core:growth_trend", "clrType": "Undertow.Content.Core.Systems.FactionAi.GrowthTrendSave", "root": true, "order": 83, "kind": "state:growth_trend", "fields": [
+      { "name": "Cells", "storage": "entityId", "refKind": "growth_trend", "list": true }
+    ] },
+    { "owner": "core:growth_trend", "clrType": "Undertow.Content.Core.Systems.FactionAi.GrowthTrend", "root": false, "order": 82, "kind": "growth_trend", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "attach": "faction", "fields": [
+      { "name": "Faction", "storage": "entityId", "refKind": "faction" },
+      { "name": "PrevLevel", "storage": "double" },
+      { "name": "Rate", "storage": "double" },
+      { "name": "Accel", "storage": "double" }
+    ] },
+    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.WorldEventsSave", "root": true, "order": 141, "kind": "state:world-events", "fields": [
       { "name": "Events", "storage": "entityId", "refKind": "world_event_row", "list": true },
       { "name": "GeneratedTimelines", "storage": "entityId", "refKind": "generated_timeline_row", "list": true }
     ] },
-    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.WorldEventRow", "root": false, "order": 128, "kind": "world_event_row", "fields": [
+    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.WorldEventRow", "root": false, "order": 142, "kind": "world_event_row", "fields": [
       { "name": "Kind", "storage": "string" },
       { "name": "Perpetrator", "storage": "entityId" },
       { "name": "Victim", "storage": "entityId" },
@@ -462,7 +574,7 @@
       { "name": "QuestId", "storage": "string" },
       { "name": "When", "storage": "long" }
     ] },
-    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.GeneratedTimelineRow", "root": false, "order": 126, "kind": "generated_timeline_row", "fields": [
+    { "owner": "core:world-events", "clrType": "Undertow.Content.Core.Systems.History.GeneratedTimelineRow", "root": false, "order": 140, "kind": "generated_timeline_row", "fields": [
       { "name": "Id", "storage": "namespacedId" },
       { "name": "Name", "storage": "string" }
     ] },
@@ -543,20 +655,20 @@
       { "name": "Holder", "storage": "entityId" },
       { "name": "talked_to", "storage": "entityId", "refKind": "faction", "list": true }
     ] },
-    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentDefinition", "root": false, "order": 86, "kind": "knowledge_fragment_definition", "relationship": { "form": "tag", "name": "KnowledgeFragmentDefinition" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentDefinition", "root": false, "order": 100, "kind": "knowledge_fragment_definition", "relationship": { "form": "tag", "name": "KnowledgeFragmentDefinition" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "target", "storage": "namespacedId", "refKind": "local_knowledge_map_fragment", "kindRefCatalog": "local-knowledge-map-fragment-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.LocalKnowledgeMapFragmentRef" }
     ] },
-    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentPlace", "root": false, "order": 88, "kind": "knowledge_fragment_place", "relationship": { "form": "tag", "name": "KnowledgeFragmentPlace" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentPlace", "root": false, "order": 102, "kind": "knowledge_fragment_place", "relationship": { "form": "tag", "name": "KnowledgeFragmentPlace" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "target", "storage": "entityId", "refKind": "place_node" }
     ] },
-    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentCarrier", "root": false, "order": 85, "kind": "knowledge_fragment_carrier", "relationship": { "form": "tag", "name": "KnowledgeFragmentCarrier" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentCarrier", "root": false, "order": 99, "kind": "knowledge_fragment_carrier", "relationship": { "form": "tag", "name": "KnowledgeFragmentCarrier" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "target", "storage": "entityId", "refKind": "character" }
     ] },
-    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentSave", "root": true, "order": 89, "kind": "state:knowledge-fragments", "fields": [
+    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentSave", "root": true, "order": 103, "kind": "state:knowledge-fragments", "fields": [
       { "name": "NextInstanceId", "storage": "ulong" },
       { "name": "Instances", "storage": "entityId", "refKind": "knowledge_fragment_instance_row", "list": true }
     ] },
-    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentInstanceRow", "root": false, "order": 87, "kind": "knowledge_fragment_instance_row", "indexes": [{ "name": "Source", "fields": ["DefinitionId", "Place", "Carrier"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge-fragments", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentInstanceRow", "root": false, "order": 101, "kind": "knowledge_fragment_instance_row", "indexes": [{ "name": "Source", "fields": ["DefinitionId", "Place", "Carrier"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "InstanceId", "storage": "ulong" },
       { "name": "DefinitionId", "storage": "namespacedId", "refKind": "knowledge_fragment_definition", "kindRefCatalog": "local-knowledge-map-fragment-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.LocalKnowledgeMapFragmentRef", "relationshipTarget": "local_knowledge_map_fragment" },
       { "name": "Place", "storage": "entityId", "refKind": "knowledge_fragment_place", "relationshipTarget": "place_node" },
@@ -566,7 +678,7 @@
       { "name": "CopiedFrom", "storage": "ulong" },
       { "name": "Lifecycle", "storage": "enumByte", "type": "Undertow.Sim.Systems.Knowledge.KnowledgeFragmentLifecycle" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeSlice", "root": true, "order": 84, "kind": "state:knowledge", "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeSlice", "root": true, "order": 98, "kind": "state:knowledge", "fields": [
       { "name": "Budget", "storage": "entityId", "refKind": "knowledge_budget", "list": true },
       { "name": "Central", "storage": "entityId", "refKind": "knowledge_central", "list": true },
       { "name": "Local", "storage": "entityId", "refKind": "knowledge_local", "list": true },
@@ -577,19 +689,19 @@
       { "name": "FragmentOwnership", "storage": "entityId", "refKind": "knowledge_fragment_ownership", "list": true },
       { "name": "FoundingIdeologyCells", "storage": "entityId", "refKind": "founding_ideology", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeBudget", "root": false, "order": 75, "kind": "knowledge_budget", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeBudget", "root": false, "order": 89, "kind": "knowledge_budget", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Entries", "storage": "entityId", "refKind": "budget_entry_row", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.BudgetEntryRow", "root": false, "order": 73, "kind": "budget_entry_row", "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.BudgetEntryRow", "root": false, "order": 87, "kind": "budget_entry_row", "fields": [
       { "name": "Tag", "storage": "string" },
       { "name": "Amount", "storage": "float" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnownNodeCellRow", "root": false, "order": 82, "kind": "known_node_cell_row", "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnownNodeCellRow", "root": false, "order": 96, "kind": "known_node_cell_row", "fields": [
       { "name": "Cell", "storage": "entityId" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeLocal", "root": false, "order": 80, "kind": "knowledge_local", "indexes": [{ "name": "Source", "fields": ["Faction", "Place"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeLocal", "root": false, "order": 94, "kind": "knowledge_local", "indexes": [{ "name": "Source", "fields": ["Faction", "Place"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Place", "storage": "entityId", "refKind": "place_node" },
@@ -597,86 +709,86 @@
       { "name": "DensityEntity", "storage": "entityId" },
       { "name": "KnownNodeCells", "storage": "entityId", "refKind": "known_node_cell_row", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeUnlockFired", "root": false, "order": 81, "kind": "knowledge_unlock_fired", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeUnlockFired", "root": false, "order": 95, "kind": "knowledge_unlock_fired", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Concept", "storage": "string" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeCharacter", "root": false, "order": 78, "kind": "knowledge_character", "indexes": [{ "name": "Source", "fields": ["Character"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeCharacter", "root": false, "order": 92, "kind": "knowledge_character", "indexes": [{ "name": "Source", "fields": ["Character"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Character", "storage": "entityId", "refKind": "entity" },
       { "name": "Map", "storage": "uint" },
       { "name": "DensityEntity", "storage": "entityId" },
       { "name": "KnownNodeCells", "storage": "entityId", "refKind": "known_node_cell_row", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeBuilding", "root": false, "order": 76, "kind": "knowledge_building", "indexes": [{ "name": "Source", "fields": ["Building"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeBuilding", "root": false, "order": 90, "kind": "knowledge_building", "indexes": [{ "name": "Source", "fields": ["Building"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Building", "storage": "entityId", "refKind": "building_instance" },
       { "name": "Map", "storage": "uint" },
       { "name": "DensityEntity", "storage": "entityId" },
       { "name": "KnownNodeCells", "storage": "entityId", "refKind": "known_node_cell_row", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentOwnership", "root": false, "order": 79, "kind": "knowledge_fragment_ownership", "indexes": [{ "name": "Source", "fields": ["Faction", "Anchor"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeFragmentOwnership", "root": false, "order": 93, "kind": "knowledge_fragment_ownership", "indexes": [{ "name": "Source", "fields": ["Faction", "Anchor"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Anchor", "storage": "entityId", "refKind": "entity" },
       { "name": "Map", "storage": "uint" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeCentral", "root": false, "order": 77, "kind": "knowledge_central", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.KnowledgeCentral", "root": false, "order": 91, "kind": "knowledge_central", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Map", "storage": "uint" },
       { "name": "DensityEntity", "storage": "entityId" },
       { "name": "KnownNodeCells", "storage": "entityId", "refKind": "known_node_cell_row", "list": true }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.FoundingIdeology", "root": false, "order": 74, "kind": "founding_ideology", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.FoundingIdeology", "root": false, "order": 88, "kind": "founding_ideology", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Tag", "storage": "string" },
       { "name": "Density", "storage": "float" }
     ] },
-    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeLedger", "root": false, "order": 83, "kind": "practice_ledger", "indexes": [{ "name": "Source", "fields": ["Faction", "Practice"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:knowledge", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeLedger", "root": false, "order": 97, "kind": "practice_ledger", "indexes": [{ "name": "Source", "fields": ["Faction", "Practice"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Practice", "storage": "namespacedId", "refKind": "practice_profile", "kindRefCatalog": "practice-profile-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.PracticeProfileRef" },
       { "name": "Count", "storage": "int" }
     ] },
-    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeSave", "root": true, "order": 101, "kind": "state:practice-density", "fields": [
+    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeSave", "root": true, "order": 115, "kind": "state:practice-density", "fields": [
       { "name": "Last", "storage": "entityId", "refKind": "practice_last", "list": true },
       { "name": "Saturation", "storage": "entityId", "refKind": "practice_saturation", "list": true }
     ] },
-    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeLast", "root": false, "order": 99, "kind": "practice_last", "indexes": [{ "name": "Source", "fields": ["Faction", "Practice"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeLast", "root": false, "order": 113, "kind": "practice_last", "indexes": [{ "name": "Source", "fields": ["Faction", "Practice"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Practice", "storage": "namespacedId", "refKind": "practice_profile", "kindRefCatalog": "practice-profile-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.PracticeProfileRef" },
       { "name": "Count", "storage": "int" }
     ] },
-    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeSaturation", "root": false, "order": 100, "kind": "practice_saturation", "indexes": [{ "name": "Source", "fields": ["Faction", "Source"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:practice-density", "clrType": "Undertow.Content.Core.Systems.Knowledge.PracticeSaturation", "root": false, "order": 114, "kind": "practice_saturation", "indexes": [{ "name": "Source", "fields": ["Faction", "Source"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Tag", "storage": "string" },
       { "name": "Source", "storage": "namespacedId", "refKind": "practice_profile", "kindRefCatalog": "practice-profile-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.PracticeProfileRef" },
       { "name": "Level", "storage": "double" }
     ] },
-    { "owner": "core:global-tuning", "clrType": "Undertow.Content.Core.Systems.Market.GlobalTuning", "root": false, "order": 70, "kind": "global_tuning", "singleton": true, "fields": [
+    { "owner": "core:global-tuning", "clrType": "Undertow.Content.Core.Systems.Market.GlobalTuning", "root": false, "order": 81, "kind": "global_tuning", "singleton": true, "fields": [
     ], "members": [{ "kind": "confiscation_threshold" }, { "kind": "interest_rate" }, { "kind": "rent_rate" }] },
-    { "owner": "core:faction-economy", "clrType": "Undertow.Content.Core.Systems.Market.MarketBoardMutationRequest", "root": false, "order": 69, "message": true, "kind": "market_board_mutation_request", "fields": [
+    { "owner": "core:faction-economy", "clrType": "Undertow.Content.Core.Systems.Market.MarketBoardMutationRequest", "root": false, "order": 80, "message": true, "kind": "market_board_mutation_request", "fields": [
       { "name": "Kind", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Market.MarketBoardMutationKind" },
       { "name": "Id", "storage": "ulong" },
       { "name": "Strikes", "storage": "int" }
     ] },
-    { "owner": "core:pricing-policy", "clrType": "Undertow.Content.Core.Systems.Market.PricingSave", "root": true, "order": 103, "kind": "state:pricing-policy", "fields": [
+    { "owner": "core:pricing-policy", "clrType": "Undertow.Content.Core.Systems.Market.PricingSave", "root": true, "order": 117, "kind": "state:pricing-policy", "fields": [
       { "name": "Quotes", "storage": "entityId", "refKind": "price_quote", "list": true },
       { "name": "Revision", "storage": "ulong" },
       { "name": "NextPriceId", "storage": "ulong" },
       { "name": "InputCount", "storage": "int" }
     ] },
-    { "owner": "core:pricing-policy", "clrType": "Undertow.Content.Core.Systems.Market.PriceQuote", "root": false, "order": 102, "kind": "price_quote", "fields": [
+    { "owner": "core:pricing-policy", "clrType": "Undertow.Content.Core.Systems.Market.PriceQuote", "root": false, "order": 116, "kind": "price_quote", "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Resource", "storage": "string" },
       { "name": "AmountPerUnit", "storage": "double" },
       { "name": "PriceId", "storage": "ulong" },
       { "name": "Revision", "storage": "ulong" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketSave", "root": true, "order": 116, "kind": "state:rent", "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketSave", "root": true, "order": 130, "kind": "state:rent", "fields": [
       { "name": "Credits", "storage": "map", "keyType": "entityId", "elementType": "double" },
       { "name": "Arrears", "storage": "entityId", "refKind": "market_arrears", "list": true },
       { "name": "Debts", "storage": "entityId", "refKind": "market_debt", "list": true },
@@ -688,39 +800,39 @@
       { "name": "NextOfferId", "storage": "ulong" },
       { "name": "Offers", "storage": "entityId", "refKind": "market_offer", "list": true }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.FactionAmountRow", "root": false, "order": 108, "kind": "faction_amount_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.FactionAmountRow", "root": false, "order": 122, "kind": "faction_amount_row", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Amount", "storage": "double" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketArrears", "root": false, "order": 110, "kind": "market_arrears", "indexes": [{ "name": "Source", "fields": ["Holder", "Place"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketArrears", "root": false, "order": 124, "kind": "market_arrears", "indexes": [{ "name": "Source", "fields": ["Holder", "Place"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Holder", "storage": "entityId", "refKind": "entity" },
       { "name": "Place", "storage": "entityId", "refKind": "place_node" },
       { "name": "Amount", "storage": "double" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketDebt", "root": false, "order": 113, "kind": "market_debt", "indexes": [{ "name": "Source", "fields": ["Borrower", "Lender"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketDebt", "root": false, "order": 127, "kind": "market_debt", "indexes": [{ "name": "Source", "fields": ["Borrower", "Lender"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Borrower", "storage": "entityId", "refKind": "faction" },
       { "name": "Lender", "storage": "entityId", "refKind": "faction" },
       { "name": "Principal", "storage": "double" },
       { "name": "Owed", "storage": "double" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.GateRow", "root": false, "order": 109, "kind": "gate_row", "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.GateRow", "root": false, "order": 123, "kind": "gate_row", "fields": [
       { "name": "A", "storage": "entityId" },
       { "name": "B", "storage": "entityId" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketPool", "root": false, "order": 115, "kind": "market_pool", "indexes": [{ "name": "Source", "fields": ["Place"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketPool", "root": false, "order": 129, "kind": "market_pool", "indexes": [{ "name": "Source", "fields": ["Place"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Place", "storage": "entityId", "refKind": "place_node" },
       { "name": "Resource", "storage": "string" },
       { "name": "Total", "storage": "double" },
       { "name": "Contributions", "storage": "entityId", "refKind": "market_contrib_row", "list": true }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketContribRow", "root": false, "order": 112, "kind": "market_contrib_row", "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketContribRow", "root": false, "order": 126, "kind": "market_contrib_row", "fields": [
       { "name": "Faction", "storage": "entityId" },
       { "name": "Kg", "storage": "double" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketContract", "root": false, "order": 111, "kind": "market_contract", "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketContract", "root": false, "order": 125, "kind": "market_contract", "fields": [
       { "name": "Id", "storage": "ulong" },
       { "name": "Seller", "storage": "entityId" },
       { "name": "Buyer", "storage": "entityId" },
@@ -731,7 +843,7 @@
       { "name": "ExpiresAtTick", "storage": "long" },
       { "name": "DestPlace", "storage": "entityId" }
     ] },
-    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketOffer", "root": false, "order": 114, "kind": "market_offer", "fields": [
+    { "owner": "core:rent", "clrType": "Undertow.Content.Core.Systems.Market.MarketOffer", "root": false, "order": 128, "kind": "market_offer", "fields": [
       { "name": "Id", "storage": "ulong" },
       { "name": "Kind", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Market.OfferKind" },
       { "name": "Poster", "storage": "entityId" },
@@ -743,26 +855,26 @@
       { "name": "ExpiresAtTick", "storage": "long" },
       { "name": "DestPlace", "storage": "entityId" }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatusQuest", "root": false, "order": 106, "kind": "quest_status_quest", "relationship": { "form": "tag", "name": "QuestStatusQuest" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatusQuest", "root": false, "order": 120, "kind": "quest_status_quest", "relationship": { "form": "tag", "name": "QuestStatusQuest" }, "indexes": [{ "name": "Source", "fields": ["target"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "target", "storage": "namespacedId", "refKind": "storyline", "kindRefCatalog": "storyline-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.StorylineRef" }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestSave", "root": true, "order": 107, "kind": "state:quests", "fields": [
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestSave", "root": true, "order": 121, "kind": "state:quests", "fields": [
       { "name": "Status", "storage": "entityId", "refKind": "quest_status", "list": true },
       { "name": "Completed", "storage": "entityId", "refKind": "quest_completion_row", "list": true }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatus", "root": false, "order": 105, "kind": "quest_status", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestStatus", "root": false, "order": 119, "kind": "quest_status", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Quest", "storage": "namespacedId", "refKind": "quest_status_quest", "kindRefCatalog": "storyline-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.StorylineRef", "relationshipTarget": "storyline" },
       { "name": "Status", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Narrative.QuestLifecycle" }
     ] },
-    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestCompletionRow", "root": false, "order": 104, "kind": "quest_completion_row", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:quests", "clrType": "Undertow.Content.Core.Systems.Narrative.QuestCompletionRow", "root": false, "order": 118, "kind": "quest_completion_row", "indexes": [{ "name": "Source", "fields": ["Quest"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Quest", "storage": "namespacedId", "refKind": "storyline", "kindRefCatalog": "storyline-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.StorylineRef" }
     ] },
-    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverAdmissionSave", "root": true, "order": 94, "kind": "state:observer-admission", "fields": [
+    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverAdmissionSave", "root": true, "order": 108, "kind": "state:observer-admission", "fields": [
       { "name": "Observers", "storage": "entityId", "refKind": "observer_state", "list": true },
       { "name": "Admissions", "storage": "entityId", "refKind": "observer_admission", "list": true },
       { "name": "ParkedStock", "storage": "entityId", "refKind": "observer_parked_stock_base", "list": true }
     ] },
-    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverState", "root": false, "order": 93, "kind": "observer_state", "indexes": [{ "name": "Source", "fields": ["Observer", "Place"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverState", "root": false, "order": 107, "kind": "observer_state", "indexes": [{ "name": "Source", "fields": ["Observer", "Place"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Observer", "storage": "entityId", "refKind": "entity" },
       { "name": "Place", "storage": "entityId", "refKind": "place_node" },
       { "name": "PositionXAu", "storage": "double" },
@@ -771,7 +883,7 @@
       { "name": "LocationMode", "storage": "byte" },
       { "name": "VisualReachAu", "storage": "double" }
     ] },
-    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverAdmission", "root": false, "order": 91, "kind": "observer_admission", "fields": [
+    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverAdmission", "root": false, "order": 105, "kind": "observer_admission", "fields": [
       { "name": "Level", "storage": "int" },
       { "name": "Domain", "storage": "namespacedId" },
       { "name": "RegionKind", "storage": "byte" },
@@ -781,7 +893,7 @@
       { "name": "DwellUntilTick", "storage": "long" },
       { "name": "EsvoAddr", "storage": "esvoAddress" }
     ] },
-    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverParkedStockBase", "root": false, "order": 92, "kind": "observer_parked_stock_base", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:observer-admission", "clrType": "Undertow.Content.Core.Systems.ObserverParkedStockBase", "root": false, "order": 106, "kind": "observer_parked_stock_base", "indexes": [{ "name": "Source", "fields": ["Faction"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Level", "storage": "int" },
       { "name": "Domain", "storage": "namespacedId" },
       { "name": "RegionKind", "storage": "byte" },
@@ -792,26 +904,26 @@
       { "name": "ParkedAtTick", "storage": "long" },
       { "name": "BaseVersion", "storage": "ulong" }
     ] },
-    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlacesSave", "root": true, "order": 98, "kind": "state:places", "fields": [
+    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlacesSave", "root": true, "order": 112, "kind": "state:places", "fields": [
       { "name": "Authored", "storage": "entityId", "refKind": "places_authored", "list": true },
       { "name": "Nodes", "storage": "entityId", "refKind": "place_node", "list": true }
     ] },
-    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlacesAuthored", "root": false, "order": 97, "kind": "places_authored", "indexes": [{ "name": "Source", "fields": ["Entity"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlacesAuthored", "root": false, "order": 111, "kind": "places_authored", "indexes": [{ "name": "Source", "fields": ["Entity"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "namespacedId" },
       { "name": "Entity", "storage": "entityId", "refKind": "place_node" }
     ] },
-    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlaceNode", "root": false, "order": 95, "kind": "place_node", "indexes": [{ "name": "Source", "fields": ["Owner"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlaceNode", "root": false, "order": 109, "kind": "place_node", "indexes": [{ "name": "Source", "fields": ["Owner"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Id", "storage": "entityId" },
       { "name": "Body", "storage": "int" },
       { "name": "Kind", "storage": "enumByte", "type": "Undertow.Content.Core.Systems.Places.PlaceKind" },
       { "name": "Owner", "storage": "entityId", "refKind": "faction" },
       { "name": "Roles", "storage": "entityId", "refKind": "place_role_assignment", "list": true }
     ] },
-    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlaceRoleAssignment", "root": false, "order": 96, "kind": "place_role_assignment", "indexes": [{ "name": "Source", "fields": ["Faction", "Role"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:places", "clrType": "Undertow.Content.Core.Systems.Places.PlaceRoleAssignment", "root": false, "order": 110, "kind": "place_role_assignment", "indexes": [{ "name": "Source", "fields": ["Faction", "Role"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Role", "storage": "namespacedId", "refKind": "economic_role", "kindRefCatalog": "economic-role-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.EconomicRoleRef" }
     ] },
-    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.RosterSave", "root": true, "order": 120, "kind": "state:roster", "fields": [
+    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.RosterSave", "root": true, "order": 134, "kind": "state:roster", "fields": [
       { "name": "FactionBindings", "storage": "entityId", "refKind": "faction_binding_row", "list": true },
       { "name": "CharacterBindings", "storage": "entityId", "refKind": "character_binding_row", "list": true },
       { "name": "Population", "storage": "entityId", "refKind": "population_row", "list": true },
@@ -820,28 +932,28 @@
       { "name": "LeveragePoint", "storage": "entityId" },
       { "name": "PlayerAlive", "storage": "bool" }
     ] },
-    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.FactionBindingRow", "root": false, "order": 118, "kind": "faction_binding_row", "fields": [
+    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.FactionBindingRow", "root": false, "order": 132, "kind": "faction_binding_row", "fields": [
       { "name": "Id", "storage": "namespacedId" },
       { "name": "Entity", "storage": "entityId" }
     ] },
-    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.CharacterBindingRow", "root": false, "order": 117, "kind": "character_binding_row", "fields": [
+    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.CharacterBindingRow", "root": false, "order": 131, "kind": "character_binding_row", "fields": [
       { "name": "Id", "storage": "namespacedId" },
       { "name": "Entity", "storage": "entityId" }
     ] },
-    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.PopulationRow", "root": false, "order": 119, "kind": "population_row", "fields": [
+    { "owner": "core:roster", "clrType": "Undertow.Content.Core.Systems.Roster.PopulationRow", "root": false, "order": 133, "kind": "population_row", "fields": [
       { "name": "Entity", "storage": "entityId" }
     ] },
-    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.RuleCooldownSave", "root": true, "order": 123, "kind": "state:rule-cooldowns", "fields": [
+    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.RuleCooldownSave", "root": true, "order": 137, "kind": "state:rule-cooldowns", "fields": [
       { "name": "RuleFire", "storage": "entityId", "refKind": "rule_fire", "list": true },
       { "name": "SpatialFire", "storage": "entityId", "refKind": "spatial_fire", "list": true }
     ] },
-    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.RuleFire", "root": false, "order": 121, "kind": "rule_fire", "indexes": [{ "name": "Source", "fields": ["Rule", "Faction", "Object"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.RuleFire", "root": false, "order": 135, "kind": "rule_fire", "indexes": [{ "name": "Source", "fields": ["Rule", "Faction", "Object"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Rule", "storage": "namespacedId", "refKind": "rule", "kindRefCatalog": "rule-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.RuleRef" },
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Object", "storage": "entityId", "refKind": "entity" },
       { "name": "LastTick", "storage": "long" }
     ] },
-    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.SpatialFire", "root": false, "order": 122, "kind": "spatial_fire", "indexes": [{ "name": "Source", "fields": ["Rule"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:rule-cooldowns", "clrType": "Undertow.Content.Core.Systems.Rules.SpatialFire", "root": false, "order": 136, "kind": "spatial_fire", "indexes": [{ "name": "Source", "fields": ["Rule"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Rule", "storage": "namespacedId", "refKind": "rule", "kindRefCatalog": "rule-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.RuleRef" },
       { "name": "Scope", "storage": "byte" },
       { "name": "Index", "storage": "int" },
@@ -904,10 +1016,10 @@
       { "name": "Id", "storage": "entityId" },
       { "name": "Pascals", "storage": "double", "unit": { "name": "Pascal", "symbol": "Pa", "dimensions": [1, -1, -2, 0, 0, 0], "scaleToSi": 1 } }
     ] },
-    { "owner": "core:stock", "clrType": "Undertow.Content.Core.Systems.Stock.StockSave", "root": true, "order": 124, "kind": "state:stock", "fields": [
+    { "owner": "core:stock", "clrType": "Undertow.Content.Core.Systems.Stock.StockSave", "root": true, "order": 138, "kind": "state:stock", "fields": [
       { "name": "Holdings", "storage": "entityId", "refKind": "stock", "list": true }
     ] },
-    { "owner": "core:stock", "clrType": "Undertow.Content.Core.Systems.Stock.Stock", "root": false, "order": 125, "kind": "stock", "indexes": [{ "name": "Source", "fields": ["Faction", "Place", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
+    { "owner": "core:stock", "clrType": "Undertow.Content.Core.Systems.Stock.Stock", "root": false, "order": 139, "kind": "stock", "indexes": [{ "name": "Source", "fields": ["Faction", "Place", "Resource"], "unique": false, "visibility": "owner" }], "fields": [
       { "name": "Faction", "storage": "entityId", "refKind": "faction" },
       { "name": "Place", "storage": "entityId", "refKind": "place_node" },
       { "name": "Resource", "storage": "namespacedId", "refKind": "resource", "kindRefCatalog": "resource-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.ResourceRef" },
@@ -1035,6 +1147,10 @@
     { "id": "core:assign_economic_role", "description": "Assign an economic role at the candidate place to the place owner.", "arguments": [
       { "name": "role", "scalar": "kindref", "required": true, "vocab": "", "default": "", "enum": [], "kind": "economic_role", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
     ] },
+    { "id": "core:assign_personality", "description": "Give the target faction an authored personality.", "arguments": [
+      { "name": "personality", "scalar": "kindref", "required": true, "vocab": "", "default": "", "enum": [], "kind": "personality", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
+      { "name": "faction", "scalar": "kindref", "required": false, "vocab": "", "default": "", "enum": [], "kind": "faction", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    ] },
     { "id": "core:charge", "description": "Add intensity to the target link's buffer (capped at Capacity). No-op if the target has no link.", "arguments": [
       { "name": "amount", "scalar": "float", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": true, "preservePresence": false, "shape": { "min": -1.7976931348623157E+308, "max": 1.7976931348623157E+308, "overflow": "cap", "default": 0 } }
     ] },
@@ -1071,10 +1187,18 @@
       { "name": "held_fact", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "related_fact", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
     ] },
+    { "id": "core:disable", "description": "Switch a capability flag OFF for the target faction.", "arguments": [
+      { "name": "capability", "scalar": "kindref", "required": true, "vocab": "", "default": "", "enum": [], "kind": "param", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    ] },
     { "id": "core:emit", "arguments": [
       { "name": "target", "scalar": "text", "required": false, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "mode", "scalar": "text", "required": false, "vocab": "", "default": "", "enum": ["single", "top_n", "all"], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "range", "scalar": "text", "required": false, "vocab": "", "default": "", "enum": ["connected", "same_place", "same_body", "gated"], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    ] },
+    { "id": "core:enable", "description": "Switch a capability flag ON for the target faction.", "arguments": [
+      { "name": "capability", "scalar": "kindref", "required": true, "vocab": "", "default": "", "enum": [], "kind": "param", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    ] },
+    { "id": "core:evolve_member_loyalty", "description": "Run one loyalty-evolution step for the target faction.", "arguments": [
     ] },
     { "id": "core:fail_quest", "description": "Mark a storyline as FAILED.", "arguments": [
     ] },
@@ -1187,6 +1311,8 @@
     { "id": "core:research_node", "description": "Make the target faction research a knowledge node (node id) — density accumulates and concepts may crystallize.", "arguments": [
       { "name": "node", "scalar": "text", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
     ] },
+    { "id": "core:resolve_member_defections", "description": "Resolve overt defections for the target faction.", "arguments": [
+    ] },
     { "id": "core:reveal_faction_fact", "description": "Reveal a held fact from source_faction to recipient_faction. The recipient learns it as Informant testimony attributed to the source.", "arguments": [
       { "name": "source_faction", "scalar": "entity", "required": true, "vocab": "", "default": "", "enum": [], "kind": "faction", "slot": "source_faction", "binding": "participant", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "recipient_faction", "scalar": "entity", "required": true, "vocab": "", "default": "", "enum": [], "kind": "faction", "slot": "recipient_faction", "binding": "participant", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
@@ -1202,6 +1328,9 @@
     { "id": "core:seize_concept", "description": "The winner participant takes a knowledge concept from the loser participant.", "arguments": [
       { "name": "winner", "scalar": "entity", "required": true, "vocab": "", "default": "", "enum": [], "kind": "faction", "slot": "winner", "binding": "participant", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} },
       { "name": "loser", "scalar": "entity", "required": true, "vocab": "", "default": "", "enum": [], "kind": "faction", "slot": "loser", "binding": "participant", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": {} }
+    ] },
+    { "id": "core:set_cohesion", "description": "Set the target faction's governance cohesion (0..1).", "arguments": [
+      { "name": "value", "scalar": "float", "required": true, "vocab": "", "default": "", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": { "min": -1.7976931348623157E+308, "max": 1.7976931348623157E+308, "overflow": "cap", "default": 0 } }
     ] },
     { "id": "core:share", "description": "Transfer the emitter faction's knowledge to the target place's controlling faction.", "arguments": [
       { "name": "rate", "scalar": "float", "required": false, "vocab": "", "default": "0.25", "enum": [], "kind": "", "binding": "value", "cardinality": "one", "bindBody": false, "preservePresence": false, "shape": { "min": -3.4028234663852886E+38, "max": 3.4028234663852886E+38, "overflow": "cap", "default": 0.25 } },
@@ -1590,7 +1719,7 @@
     { "name": "contest_constant", "required": false, "detail": "strength scale in the confiscation contest against this faction", "value": { "kind": "scalar", "scalar": "number", "default": 800 } },
     { "name": "consumption_per_member", "required": false, "detail": "resource demand per member of this faction per tick", "value": { "kind": "scalar", "scalar": "number", "default": 0 } },
     { "name": "refine_efficiency", "required": false, "detail": "multiplier on the output this faction's refining recipes yield; unlocks adjust it during play", "storage": "dynamic", "value": { "kind": "scalar", "scalar": "number", "default": 1 } }
-  ], "entityKind": "Faction", "members": [{ "kind": "faction_knowledge_entry" }, { "kind": "faction_member_count", "properties": ["MemberCount"] }] },
+  ], "entityKind": "Faction", "members": [{ "kind": "faction_knowledge_entry" }, { "kind": "faction_member_count", "properties": ["MemberCount"] }, { "kind": "growth_trend" }] },
   "faction_adjacency_count": { "codegen": { "introducedInVersion": 96 }, "fields": [
     { "name": "members", "required": true, "detail": "the materialized graph-adjacency count (EdgeCountTo the faction over member-of)", "value": { "kind": "scalar", "scalar": "float" } }
   ] },
@@ -2308,6 +2437,11 @@
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "role", "required": true, "value": { "kind": "scalar", "scalar": "id", "refKind": "economic_role", "kindRefCatalog": "economic-role-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.EconomicRoleRef" } }
   ] },
+  "effect_assign_personality": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:assign_personality", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "personality", "required": true, "value": { "kind": "scalar", "scalar": "id", "refKind": "personality", "kindRefCatalog": "personality-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.PersonalityRef" } },
+    { "name": "faction", "required": false, "value": { "kind": "scalar", "scalar": "id", "refKind": "faction", "kindRefCatalog": "faction-ids", "kindRefCarrier": "global::Undertow.Content.Gaia.FactionRef" } }
+  ] },
   "effect_charge": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:charge", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "amount", "required": true, "value": { "kind": "scalar", "scalar": "number" } }
@@ -2349,6 +2483,17 @@
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "held_fact", "required": true, "value": { "kind": "scalar", "scalar": "text" } },
     { "name": "related_fact", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
+  ] },
+  "effect_disable": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:disable", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "capability", "required": true, "value": { "kind": "scalar", "scalar": "id", "refKind": "param", "kindRefCatalog": "param-ids", "kindRefCarrier": "global::Undertow.Modding.ContentDeclared" } }
+  ] },
+  "effect_enable": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:enable", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "capability", "required": true, "value": { "kind": "scalar", "scalar": "id", "refKind": "param", "kindRefCatalog": "param-ids", "kindRefCarrier": "global::Undertow.Modding.ContentDeclared" } }
+  ] },
+  "effect_evolve_member_loyalty": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:evolve_member_loyalty", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
   ] },
   "effect_fail_quest": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:fail_quest", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
@@ -2468,6 +2613,9 @@
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "node", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
   ] },
+  "effect_resolve_member_defections": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:resolve_member_defections", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
+  ] },
   "effect_reveal_faction_fact": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:reveal_faction_fact", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
     { "name": "fact", "required": true, "value": { "kind": "scalar", "scalar": "text" } }
@@ -2483,6 +2631,10 @@
   ] },
   "effect_seize_concept": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:seize_concept", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } }
+  ] },
+  "effect_set_cohesion": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:set_cohesion", "generatedLoader": true }, "fields": [
+    { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },
+    { "name": "value", "required": true, "value": { "kind": "scalar", "scalar": "number" } }
   ] },
   "effect_share": { "codegen": { "introducedInVersion": 137, "inlineFamily": "effect", "inlineKey": "core:share", "generatedLoader": true }, "fields": [
     { "name": "id", "required": true, "value": { "kind": "scalar", "scalar": "id" } },

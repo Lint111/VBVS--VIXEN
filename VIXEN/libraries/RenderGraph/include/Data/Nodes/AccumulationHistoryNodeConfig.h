@@ -1,5 +1,6 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
+#include "Data/CameraData.h"
 #include "VulkanDeviceFwd.h"
 #include <vulkan/vulkan.h>
 #include "IRenderTarget.h"
@@ -11,8 +12,8 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts (declared early for reuse)
 namespace AccumulationHistoryNodeCounts {
-    static constexpr size_t INPUTS  = 4;  // VULKAN_DEVICE_IN, COMMAND_POOL, WIDTH, HEIGHT
-    static constexpr size_t OUTPUTS = 6;  // previous/current history views and images
+    static constexpr size_t INPUTS  = 5;  // allocation inputs + live camera pose
+    static constexpr size_t OUTPUTS = 7;  // history resources + accumulation frame counter
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -78,6 +79,12 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    INPUT_SLOT(CAMERA_DATA, const CameraData&, 4,
+        SlotNullability::Required,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ----- Output slots -----
     OUTPUT_SLOT(HISTORY_IMAGE_VIEW, VkImageView, 0,
         SlotNullability::Required,
@@ -100,6 +107,9 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
     OUTPUT_SLOT(CURRENT_HISTORY_TARGET, Vixen::Vulkan::Resources::IRenderTarget*, 5,
         SlotNullability::Required, SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(FRAME_COUNTER, uint32_t, 6,
+        SlotNullability::Required, SlotMutability::WriteOnly);
+
     // ----- Constructor: runtime descriptor initialization -----
     AccumulationHistoryNodeConfig() {
         HandleDescriptor deviceDesc{"VulkanDevice*"};
@@ -111,6 +121,9 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         HandleDescriptor uint32Desc{"uint32_t"};
         INIT_INPUT_DESC(WIDTH,  "width",  ResourceLifetime::Transient, uint32Desc);
         INIT_INPUT_DESC(HEIGHT, "height", ResourceLifetime::Transient, uint32Desc);
+
+        HandleDescriptor cameraDataDesc{"CameraData"};
+        INIT_INPUT_DESC(CAMERA_DATA, "camera_data", ResourceLifetime::Persistent, cameraDataDesc);
 
         HandleDescriptor targetDesc{"IRenderTarget*"};
         INIT_OUTPUT_DESC(HISTORY_TARGET, "history_target", ResourceLifetime::Persistent, targetDesc);
@@ -124,6 +137,8 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         HandleDescriptor imageDesc{"VkImage"};
         INIT_OUTPUT_DESC(HISTORY_IMAGE, "history_image", ResourceLifetime::Persistent, imageDesc);
         INIT_OUTPUT_DESC(CURRENT_HISTORY_IMAGE, "current_history_image", ResourceLifetime::Persistent, imageDesc);
+        INIT_OUTPUT_DESC(FRAME_COUNTER, "accum_frame_counter", ResourceLifetime::Transient,
+                         BufferDescription{});
     }
 
     // ----- Compile-time validation -----
@@ -135,6 +150,7 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
     static_assert(WIDTH_Slot::index  == 2, "WIDTH must be at index 2");
     static_assert(HEIGHT_Slot::index == 3, "HEIGHT must be at index 3");
+    static_assert(CAMERA_DATA_Slot::index == 4, "CAMERA_DATA must be at index 4");
 
     static_assert(HISTORY_IMAGE_VIEW_Slot::index == 0, "HISTORY_IMAGE_VIEW must be at index 0");
     static_assert(!HISTORY_IMAGE_VIEW_Slot::nullable, "HISTORY_IMAGE_VIEW must not be nullable");
@@ -145,6 +161,7 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
                   "CURRENT_HISTORY_IMAGE_VIEW must be at index 2");
     static_assert(CURRENT_HISTORY_IMAGE_Slot::index == 3,
                   "CURRENT_HISTORY_IMAGE must be at index 3");
+    static_assert(FRAME_COUNTER_Slot::index == 6, "FRAME_COUNTER must be at index 6");
 
     VALIDATE_NODE_CONFIG(AccumulationHistoryNodeConfig, AccumulationHistoryNodeCounts);
 };
