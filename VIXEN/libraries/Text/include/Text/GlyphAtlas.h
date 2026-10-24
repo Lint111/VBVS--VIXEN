@@ -58,6 +58,14 @@ public:
     [[nodiscard]] std::shared_ptr<const GlyphOutlineInstance> GetOrAddOutline(
         FT_Face face, std::uint32_t glyphIndex,
         GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
+    // Returns the stable index into the atlas-owned immutable outline blob. The index is
+    // suitable for GlyphOutline recipe operands and is shared by every shaped layout that
+    // references the same (font, glyph) row.
+    [[nodiscard]] std::uint32_t GetOrAddOutlineIndex(
+        FT_Face face, std::uint32_t glyphIndex,
+        GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
+    [[nodiscard]] std::span<const GlyphOutlineInstance> OutlineBlob() const noexcept;
+    [[nodiscard]] std::uint64_t OutlineBlobBytes() const noexcept;
     [[nodiscard]] const AtlasGlyph* FindGlyph(std::uint32_t glyphIndex) const;
     // Preserve RmlUi's small outlined replacement glyph when no bundled face
     // provides a requested codepoint. The adapter owns one atlas per font size.

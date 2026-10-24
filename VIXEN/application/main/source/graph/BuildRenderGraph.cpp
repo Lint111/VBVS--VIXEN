@@ -2089,9 +2089,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
             std::string splicedSource;
             std::vector<float> occupancyGridBlob;
+            std::vector<Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphOutlineBlob;
             try {
                 splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                    rawSource, proceduralRecipes_, &occupancyGridBlob);
+                    rawSource, proceduralRecipes_, &occupancyGridBlob, &glyphOutlineBlob);
             } catch (const std::exception& e) {
                 if (mainLogger && mainLogger->IsEnabled()) {
                     mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
@@ -2101,6 +2102,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                     renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+                bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
             }
 
@@ -9015,6 +9017,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            SlotRole::Execute);
     sceneProviders.Provide("OccupancyGridBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, kSceneRoles);
+    sceneProviders.Provide("GlyphOutlineBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, kSceneRoles);
     sceneProviders.Provide("RayTraceBuffer", voxelGridNode,
                            VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);

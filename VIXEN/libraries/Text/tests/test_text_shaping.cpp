@@ -190,6 +190,8 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     ASSERT_EQ(repeated.glyphs.size(), 2U);
     EXPECT_EQ(repeated.glyphs[0].instance.get(), repeated.glyphs[1].instance.get());
     EXPECT_EQ(repeated.glyphs[0].instance.get(), latin.glyphs.front().instance.get());
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, repeated.glyphs[1].outlineIndex);
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, latin.glyphs.front().outlineIndex);
 
     const auto rightToLeft = MakePreset(Vixen::Text::TextDirection::RightToLeft,
                                         Vixen::Text::ShapingClass::Default,
@@ -202,6 +204,9 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     EXPECT_TRUE(rtl.mirrorX);
     ASSERT_EQ(rtl.glyphs.size(), 4U);
     EXPECT_TRUE(rtl.requiredScriptTableMatchesPreset);
+    ASSERT_EQ(glyphAtlas.OutlineBlob().size(), 4U);
+    EXPECT_EQ(glyphAtlas.OutlineBlobBytes(),
+              glyphAtlas.OutlineBlob().size() * sizeof(Vixen::Text::GlyphOutlineInstance));
 }
 
 TEST_F(TextShapingFixture, MsdfAtlasIsTheFinalSmallScreenTextBand) {

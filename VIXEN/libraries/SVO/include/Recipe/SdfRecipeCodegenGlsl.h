@@ -63,6 +63,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
     std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
+    uint32_t glyphInstanceBase = 0,
     std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {})
 {
     std::vector<std::string> stk;
@@ -79,28 +80,43 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     // Operands obey the binary32 transport contract (integer-word literals).
     const auto f = RecipeGlslFloatLiteral;
 
-    // A GlyphOutline instruction indexes this fixed local array. Each row is the complete
-    // typed GPU struct, including its own fixed-width [GpuArray] contour bucket.
-    if (!glyphInstances.empty()) {
-        body += "  GlyphOutlineInstance glyphOutlineInstances["
-            + std::to_string(glyphInstances.size()) + "];\n";
-        for (std::size_t glyphIndex = 0; glyphIndex < glyphInstances.size(); ++glyphIndex) {
-            const auto& glyph = glyphInstances[glyphIndex];
-            const std::string row = "glyphOutlineInstances[" + std::to_string(glyphIndex) + "]";
+    // GlyphOutline data lives in the shared runtime SSBO declared by the shader source. Keep
+    // the span in the API for callers that already provide the entry payload, but never emit
+    // its rows as GLSL literals: those literals are what makes the driver unroll the SDF and
+    // grow its compiler cache. The generated opcode dispatch still emits the indexed access;
+    // the walk below rebases that local index into the flattened SSBO.
+    (void)glyphInstances;
+
+    const auto glyphBaseForProgram = [&](const SdfInstruction* wprog) {
+        // RecipeRegistry rewrites every GlyphOutline operand to the one shared blob's
+        // global index at registration. Nested recipe walks therefore must not apply the
+        // old per-entry prefix sum. Keep the legacy base parameter for standalone emitters
+        // and tests that intentionally pass local rows without a registry.
+        if (registry) return 0U;
+        (void)wprog;
+        return glyphInstanceBase;
+    };
+
+    // A PathDistance instruction indexes this fixed local array the same way.
+    if (!pathInstances.empty()) {
+        body += "  PathInstance pathInstances["
+            + std::to_string(pathInstances.size()) + "];\n";
+        for (std::size_t pathIndex = 0; pathIndex < pathInstances.size(); ++pathIndex) {
+            const auto& path = pathInstances[pathIndex];
+            const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
             const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                glyph.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
             body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
-            body += "  " + row + ".BoundsMin.X = " + f(glyph.BoundsMin.X) + ";\n";
-            body += "  " + row + ".BoundsMin.Y = " + f(glyph.BoundsMin.Y) + ";\n";
-            body += "  " + row + ".BoundsMax.X = " + f(glyph.BoundsMax.X) + ";\n";
-            body += "  " + row + ".BoundsMax.Y = " + f(glyph.BoundsMax.Y) + ";\n";
-            body += "  " + row + ".FillRule = " + std::to_string(glyph.FillRule) + "u;\n";
+            body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
+            body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
+            body += "  " + row + ".FillRule = " + std::to_string(path.FillRule) + "u;\n";
             for (std::uint32_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
-                const auto& segment = glyph.Segments[segmentIndex];
+                const auto& segment = path.Segments[segmentIndex];
                 const std::string prefix = row + ".Segments[" + std::to_string(segmentIndex) + "]";
                 const auto emitPoint = [&](const char* name, const auto& point) {
                     body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
                     body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
+                    body += "  " + prefix + "." + name + ".Z = " + f(point.Z) + ";\n";
                 };
                 emitPoint("P0", segment.P0);
                 emitPoint("P1", segment.P1);
@@ -147,8 +163,13 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     // outer walk, without duplicating this whole function. Captures everything by reference;
     // `self` is how a C++ lambda recurses into itself.
     auto walk = [&](auto&& self, const SdfInstruction* wprog, uint32_t wcount) -> void {
-    for (uint32_t i = 0; i < wcount; ++i) {
-        const SdfInstruction& in = wprog[i];
+    std::vector<SdfInstruction> adjustedProgram(wprog, wprog + wcount);
+    const uint32_t base = glyphBaseForProgram(wprog);
+    for (auto& in : adjustedProgram) {
+        if (static_cast<SdfOpCode>(in.opCode) == SdfOpCode::GlyphOutline) {
+            const uint32_t localIndex = std::bit_cast<uint32_t>(in.data[0]);
+            in.data[0] = std::bit_cast<float>(localIndex + base);
+        }
         assert(IsValidSdfOpCode(in.opCode) && "EmitProceduralFieldFunctionGlsl: unknown opcode");
         // paramMask!=0 is now legal exactly for ReadParam/ReadParamFloat3 (Recipe-
         // Parameterization M1 Task 2's registry allow-list) — every other opcode still

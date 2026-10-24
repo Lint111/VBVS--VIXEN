@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "b1576418a1ca4cf29dd22853ff3cd1aba6372c83")
+set(_vixen_tracked_yeroket_kernel_sha "243c6289e3c32165d31b46e3b2c2ca3528361c76")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -299,12 +299,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp" _out_path_instance_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl" _out_path_instance_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256" _out_path_instance_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_cpp_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe" _out_glyph_outline_glsl_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_layout_dir_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
@@ -408,12 +405,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
-        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
-        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
-        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
-        set(_out_path_instance_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp")
-        set(_out_path_instance_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl")
-        set(_out_path_instance_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256")
+        set(_out_glyph_outline_cpp_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
+        set(_out_glyph_outline_glsl_dir_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe")
+        set(_out_glyph_outline_layout_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
@@ -657,40 +651,23 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
-    # The text recipe carries one fixed-width contour bucket in each typed glyph
-    # instance. Keep its C++/GLSL std430 faces and width-sensitive layout hash
-    # generated from the same [GpuStruct] declaration as SdfCore_GlyphOutline.
+    # The text and path recipes carry fixed-width contour buckets in typed
+    # instances that share PathPoint and PathSegment. One run emits one header per
+    # type, so the shared types are defined once and included.
     set(_glyph_outline_args
         "${_yk_dll_run}"
-        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
-        --out-cpp "${_out_glyph_outline_cpp_run}"
-        --out-glsl "${_out_glyph_outline_glsl_run}"
-        --out-layout-hash "${_out_glyph_outline_layout_run}")
+        --schema "${_glyph_outline_schema_run}"
+        --recipe-parameter-block GlyphOutlineInstance --recipe-parameter-block PathInstance
+        --out-cpp-dir "${_out_glyph_outline_cpp_dir_run}"
+        --out-glsl-dir "${_out_glyph_outline_glsl_dir_run}"
+        --out-layout-hash-dir "${_out_glyph_outline_layout_dir_run}")
     vixen_add_codegen_check(glyph_outline_instance_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
-        COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"
+        COMMENT "[codegen] golden check: GlyphOutlineInstance and PathInstance bucket layouts and std430 fingerprints"
         VERBATIM)
     add_custom_target(glyph_outline_instance_regen
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args}
-        COMMENT "[codegen] regenerate GlyphOutlineInstance C++/GLSL faces and layout fingerprint"
-        JOB_POOL msbuild
-        VERBATIM)
-
-    # The general path instance shares PathPoint/PathSegment with the glyph bucket; the kernel
-    # guards each shared struct per block, so both headers can be included together.
-    set(_path_instance_args
-        "${_yk_dll_run}"
-        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block PathInstance
-        --out-cpp "${_out_path_instance_cpp_run}"
-        --out-glsl "${_out_path_instance_glsl_run}"
-        --out-layout-hash "${_out_path_instance_layout_run}")
-    vixen_add_codegen_check(path_instance_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args} --check
-        COMMENT "[codegen] golden check: PathInstance bucket layout and std430 fingerprint"
-        VERBATIM)
-    add_custom_target(path_instance_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args}
-        COMMENT "[codegen] regenerate PathInstance C++/GLSL faces and layout fingerprint"
+        COMMENT "[codegen] regenerate GlyphOutlineInstance and PathInstance C++/GLSL faces and layout fingerprints"
         JOB_POOL msbuild
         VERBATIM)
 
