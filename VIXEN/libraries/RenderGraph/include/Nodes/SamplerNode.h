@@ -24,7 +24,7 @@ public:
     SamplerNode(const std::string& name, NodeType* type) : TypedNode(name, type) {}
 protected:
     void TypedCompileImpl(TypedCompileContext& ctx) override;
-    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedDeviceReleaseImpl(TypedCleanupContext& ctx) override;
 private:
     VkSampler sampler_ = VK_NULL_HANDLE;
 };

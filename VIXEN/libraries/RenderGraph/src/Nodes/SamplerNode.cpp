@@ -26,8 +26,7 @@ void SamplerNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(SamplerNodeConfig::SAMPLER, sampler_);
 }
 
-void SamplerNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) return;
+void SamplerNode::TypedDeviceReleaseImpl(TypedCleanupContext&) {
     if (sampler_ != VK_NULL_HANDLE && GetDevice()) vkDestroySampler(GetDevice()->device, sampler_, nullptr);
     sampler_ = VK_NULL_HANDLE;
 }
