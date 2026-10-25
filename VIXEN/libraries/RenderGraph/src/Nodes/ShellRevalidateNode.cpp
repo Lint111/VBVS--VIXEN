@@ -16,7 +16,6 @@
 #include <array>
 #include <cstring>
 #include <fstream>
-#include <mutex>
 #include <stdexcept>
 #include <vector>
 #include <algorithm>
@@ -320,8 +319,6 @@ void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCoun
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS)
         throw std::runtime_error("[ShellRevalidateNode] vkBeginCommandBuffer failed");
-    chunkQuery_->ResetQueries(cmd, 0);
-    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     if (mode == 1 && firstGroup == 0) {
         VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
         barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -333,10 +330,7 @@ void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCoun
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSets_[output], 0, nullptr);
     const PushConstants pc{brickCount, bpa, mode, 0};
     vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
-    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1);
     vkCmdDispatchBase(cmd, firstGroup, 0, 0, groups, 1, 1);
-    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 2);
-    chunkQuery_->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 3);
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
         throw std::runtime_error("[ShellRevalidateNode] vkEndCommandBuffer failed");
 }
@@ -357,12 +351,10 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] A required buffer input is null");
     }
 
-    // This standalone synchronous node retains its existing queue owner/mutex.
-    // Each layer reads an immutable completed frontier; each submission owns a
-    // disjoint brick range, then retires before the command buffer is reused.
-    std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-    if (vkQueueWaitIdle(vulkanDevice_->queue) != VK_SUCCESS)
-        throw std::runtime_error("[ShellRevalidateNode] prior queue retirement failed");
+    // R723: this node is an off-graph producer. The queue owner drains its requests at the fixed
+    // frame phase; a new frontier is not recorded while the previous one is still in flight.
+    if (lastSubmission_ && !lastSubmission_->IsRetired()) return;
+    lastSubmission_.reset();
     EnsureShellFlagsBuffer(brickCount);
     BuildDescriptorSet(sourcePool, brickLookup, config);
     const uint32_t groupCount = (brickCount + 63u) / 64u;
@@ -371,28 +363,27 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     double totalMs = 0, maximumMs = 0;
     for (uint32_t phase = 0; phase <= layers; ++phase) {
         for (uint32_t first = 0; first < groupCount; first += 4) {
-            RecordDispatch(commandBuffer_, brickCount, bpa, phase == 0 ? 0u : 1u,
+            VkCommandBuffer chunkCommand = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            allocInfo.commandPool = commandPool_;
+            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocInfo.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(vulkanDevice_->device, &allocInfo, &chunkCommand) != VK_SUCCESS)
+                throw std::runtime_error("[ShellRevalidateNode] failed to allocate chunk command buffer");
+            RecordDispatch(chunkCommand, brickCount, bpa, phase == 0 ? 0u : 1u,
                 first, std::min(4u, groupCount - first), phase % 2);
             VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
             submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &commandBuffer_;
-            if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS ||
-                vkQueueWaitIdle(vulkanDevice_->queue) != VK_SUCCESS)
-                throw std::runtime_error("[ShellRevalidateNode] bounded chunk submit/retirement failed");
-            if (chunkQuery_->IsTimestampSupported()) {
-                if (!chunkQuery_->ReadResults(0))
-                    throw std::runtime_error("[ShellRevalidateNode] retired chunk timestamps unavailable");
-                const double ms = chunkQuery_->GetElapsedMs(0, 0, 3);
-                totalMs += ms;
-                maximumMs = std::max(maximumMs, ms);
-                if (std::getenv("VIXEN_GPUYIELD_TRACE"))
-                    NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() + " phase=" + std::to_string(phase) +
-                        " chunk=" + std::to_string(chunks) + " start_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 0)) +
-                        " end_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 3)) +
-                        " dispatch_start_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 1)) +
-                        " dispatch_end_ticks=" + std::to_string(chunkQuery_->GetRawTimestampTicks(0, 2)) +
-                        " dispatch_gpu_ms=" + std::to_string(chunkQuery_->GetElapsedMs(0, 1, 2)) +
-                        " elapsed_gpu_ms=" + std::to_string(ms));
+            submitInfo.pCommandBuffers = &chunkCommand;
+            auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+                vulkanDevice_, vulkanDevice_->queue, submitInfo);
+            request.onRetired = [device = vulkanDevice_->device, pool = commandPool_, chunkCommand] {
+                vkFreeCommandBuffers(device, pool, 1, &chunkCommand);
+            };
+            lastSubmission_ = vulkanDevice_->PublishSubmitRequest(std::move(request));
+            if (!lastSubmission_ || (lastSubmission_->Result() != VK_NOT_READY &&
+                                     lastSubmission_->Result() != VK_SUCCESS)) {
+                throw std::runtime_error("[ShellRevalidateNode] queue owner rejected chunk submit");
             }
             ++chunks;
         }

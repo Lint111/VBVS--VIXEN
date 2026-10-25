@@ -3,8 +3,10 @@
 #include "Headers.h"
 #include "ILoggable.h"
 #include "error/VulkanError.h"
+#include "QueueSubmitRequest.h"
 
 #include <cstdint>
+#include <memory>
 
 // Forward declaration
 namespace Vixen::Vulkan::Resources {
@@ -24,6 +26,7 @@ struct TextureData {
     VkDeviceMemory mem = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
     VkCommandBuffer cmdTexture = VK_NULL_HANDLE;  // Command buffer used for texture upload
+    std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> uploadCompletion;
     uint32_t minMapLevels = 1;
     uint32_t layerCount = 1;
     uint32_t textureWidth = 0;

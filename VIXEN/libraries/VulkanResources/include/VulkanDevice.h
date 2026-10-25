@@ -5,11 +5,9 @@
 #include "error/VulkanError.h"
 #include "CapabilityGraph.h"
 #include "Memory/BatchedUploader.h"
-#include "LockCensus.h"
+#include "QueueSubmitRequest.h"
 #include <memory>
 #include <functional>
-#include <mutex>
-#include <unordered_map>
 
 // Forward declarations for upload/update/allocation infrastructure (Sprint 5)
 namespace ResourceManagement {
@@ -22,6 +20,8 @@ namespace ResourceManagement {
     using UploadHandle = uint64_t;
     using UpdateRequestPtr = std::unique_ptr<UpdateRequestBase>;
 }
+
+namespace Vixen::EventBus { class MessageBus; }
 
 namespace Vixen::Vulkan::Resources {
 
@@ -123,23 +123,11 @@ public:
     bool HasPresentSupport() const;
     PFN_vkQueuePresentKHR GetPresentFunction() const;
 
-    /**
-     * @brief Get the mutex that must be held around any vkQueueSubmit/vkQueueSubmit2/
-     * vkQueuePresentKHR/vkQueueWaitIdle call on the given VkQueue (audit V-M11).
-     *
-     * The Vulkan spec requires external synchronization on VkQueue for these calls. The
-     * RenderGraph TBB parallel executor can schedule two independent submit-recording nodes in
-     * the same wave (the access tracker only models data-flow resources, not the queue itself),
-     * so concurrent vkQueueSubmit on one VkQueue is reachable and is UB per spec. One mutex per
-     * queue handle, created on first use and stable for the device's lifetime (never erased, so
-     * the returned reference stays valid).
-     *
-     * Do NOT hold this mutex across a fence wait (vkWaitForFences) — only across the
-     * submit/present call itself, or independent submit chains serialize on the fence wait too.
-     *
-     * @param queue The VkQueue that will be submitted to or presented on.
-     */
-    Vixen::LockCensus::QueueSubmitMutex& SubmitMutex(VkQueue queue);
+    // R723: producers publish immutable queue work through the lock-free EventBus.  RenderGraph
+    // installs the bus during DeviceNode compilation and is the only component that drains/issues
+    // these requests.
+    void SetMessageBus(Vixen::EventBus::MessageBus* bus) noexcept { messageBus_ = bus; }
+    [[nodiscard]] std::shared_ptr<QueueSubmitCompletion> PublishSubmitRequest(QueueSubmitRequest request);
 
     // KI-012: some queue families (e.g. Mesa Dozen's transfer-capable graphics queue) report
     // minImageTransferGranularity = (0,0,0), which per spec means vkCmdCopyImageToBuffer/
@@ -480,12 +468,7 @@ private:
     // with render-graph nodes, whose destruction order relative to the device is not guaranteed).
     std::function<void()> queryManagerRelease_;
 
-    // Per-queue submit mutexes (audit V-M11). unique_ptr so a rehash never invalidates a mutex
-    // reference already handed out by SubmitMutex(); guarded by submitMutexMapLock_ (only
-    // during first-use creation of an entry, not around the submit itself).
-    // Lock-census families VK1 (the directory lock) and VK2 (the per-queue mutex); see LockCensus.h.
-    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::VK1> submitMutexMapLock_;
-    std::unordered_map<VkQueue, std::unique_ptr<Vixen::LockCensus::QueueSubmitMutex>> submitMutexes_;
+    Vixen::EventBus::MessageBus* messageBus_ = nullptr; // non-owning; graph/bus outlive the device
 
 };
 

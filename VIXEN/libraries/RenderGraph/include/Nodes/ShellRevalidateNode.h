@@ -4,6 +4,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/ShellRevalidateNodeConfig.h"
+#include "QueueSubmitRequest.h"
 
 #include <vulkan/vulkan.h>
 #include <cstdint>
@@ -101,6 +102,7 @@ private:
     VkBuffer previousFlagsBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory previousFlagsMemory_ = VK_NULL_HANDLE;
     std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery> chunkQuery_;
+    std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> lastSubmission_;
 };
 
 } // namespace Vixen::RenderGraph

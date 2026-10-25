@@ -10,7 +10,6 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cstring>
-#include <mutex>
 #include <string>
 
 namespace Vixen::RenderGraph {
@@ -201,6 +200,23 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
     previousFrame_ = frame;
 
+    // Non-voted clicks complete asynchronously. Consume the result before looking for a new
+    // click, so the candidate is deliberately observed one frame after ReadPixelAt publishes it.
+    PickTargetPixel completedPixel{kMissSentinel, kMissSentinel};
+    uint32_t completedX = 0, completedY = 0;
+    if (PollPixelReadback(completedPixel, completedX, completedY)) {
+        if (completedPixel.address != kMissSentinel) {
+            candidate.hit = true;
+            candidate.id = SelectionId{ProviderKind::Voxel, static_cast<uint64_t>(completedPixel.address)};
+            if (completedPixel.instanceIndex != kMissSentinel) candidate.instanceIndex = completedPixel.instanceIndex;
+            NODE_LOG_INFO("[VoxelSelectionProvider] deferred click — HIT pickID=" +
+                          std::to_string(completedPixel.address) + " pixel=(" +
+                          std::to_string(completedX) + "," + std::to_string(completedY) + ")");
+        }
+        ctx.Out(VoxelSelectionProviderNodeConfig::CANDIDATE, candidate);
+        return;
+    }
+
     // Find the left-button press entry (input-rework slice 1 M3: the shared click list replaces
     // the old private lastLeftDown_ edge detector). Several presses in one frame: the LAST one
     // wins — matches the old single-poll semantics (only whether/where a press happened this
@@ -245,8 +261,9 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
               (vote.unanimous ? " unanimous" : " split");
         read = true;
     } else {
-        // One-shot fenced copy of the last settled frame's pick image: no vote history exists for a
-        // texel that was not being tracked (or there is no jitter), so this is the single current hit.
+        // One-shot deferred copy of the last settled frame's pick image: no vote history exists
+        // for a texel that was not being tracked (or there is no jitter), so the result is emitted
+        // on the next frame.
         read = ReadPixelAt(settledPick, width, height, targetX, targetY, pixel);
     }
     if (!read || pixel.address == kMissSentinel) {
@@ -303,10 +320,6 @@ bool VoxelSelectionProviderNode::EnsureReadbackSlots() {
             return false;
         }
         slot.capacity = bytes;
-        if (slot.fence != VK_NULL_HANDLE) continue;
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (vkCreateFence(device->device, &fenceInfo, nullptr, &slot.fence) != VK_SUCCESS) return false;
     }
     return true;
 }
@@ -315,12 +328,8 @@ void VoxelSelectionProviderNode::DestroyReadbackSlots() {
     VulkanDevice* device = GetDevice();
     for (ReadbackSlot& slot : slots_) {
         if (device) {
-            if (slot.inFlight) {
-                // A submission that never finishes stays with device teardown; freeing its resources now would race it.
-                if (!BoundedWaitFence(device->device, slot.fence).Ok()) { slot = {}; continue; }
-                vkFreeCommandBuffers(device->device, commandPool_, 1, &slot.cmd);
-            }
-            if (slot.fence != VK_NULL_HANDLE) vkDestroyFence(device->device, slot.fence, nullptr);
+            if (slot.inFlight && (!slot.completion || !slot.completion->IsRetired())) continue;
+            if (slot.cmd != VK_NULL_HANDLE) vkFreeCommandBuffers(device->device, commandPool_, 1, &slot.cmd);
             if (slot.mapped) vkUnmapMemory(device->device, slot.memory);
             if (slot.buffer != VK_NULL_HANDLE) vkDestroyBuffer(device->device, slot.buffer, nullptr);
             if (slot.memory != VK_NULL_HANDLE) vkFreeMemory(device->device, slot.memory, nullptr);
@@ -343,7 +352,7 @@ void VoxelSelectionProviderNode::RetireReadbacks(bool observe, const glm::vec2& 
     for (uint32_t n = 0; n < kReadbackSlots; ++n) {
         ReadbackSlot& slot = slots_[retireSlot_];
         if (!slot.inFlight) return;
-        if (vkGetFenceStatus(device->device, slot.fence) != VK_SUCCESS) return;  // not finished (or lost): later Executes retry
+        if (!slot.completion || !slot.completion->IsRetired()) return;  // later Executes retry
 
         if (observe) {
             for (uint32_t t = 0; t < kTrackedTexels; ++t) {
@@ -368,9 +377,9 @@ void VoxelSelectionProviderNode::RetireReadbacks(bool observe, const glm::vec2& 
                 history_[t].Observe({ids[0], ids[1], slot.jitter}, motion, true);
             }
         }
-        vkResetFences(device->device, 1, &slot.fence);
         vkFreeCommandBuffers(device->device, commandPool_, 1, &slot.cmd);
         slot.cmd = VK_NULL_HANDLE;
+        slot.completion.reset();
         slot.inFlight = false;
         retireSlot_ = (retireSlot_ + 1u) % kReadbackSlots;
     }
@@ -467,13 +476,14 @@ void VoxelSelectionProviderNode::SubmitTrackingReadback(const FrameSnapshot& fra
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
-    // R715: the tracking readback rides the graph's submission stream; its fence is polled by later
-    // Executes (vkGetFenceStatus), never waited.
-    if (GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo(submit, slot.fence)) != VK_SUCCESS) {
+    auto request = QueueSubmitRequest::FromSubmitInfo(device, device->queue, submit);
+    SubmitRecord record = SubmitRecord::FromQueueSubmitRequest(request);
+    if (GetOwningGraph()->SubmitNodeWork(this, std::move(record)) != VK_SUCCESS) {
         vkFreeCommandBuffers(device->device, commandPool_, 1, &cmd);
         return;
     }
     slot.cmd = cmd;
+    slot.completion = request.completion;
     slot.inFlight = true;
     slot.motionRead = motionReadable;
     slot.extent = trackedExtent_;
@@ -508,6 +518,7 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer(VkDeviceSize bytesNeeded) {
 bool VoxelSelectionProviderNode::ReadPixelAt(VkImage image, uint32_t width, uint32_t height,
                                              uint32_t targetX, uint32_t targetY,
                                              PickTargetPixel& pixelOut) {
+    if (pendingPixelReadback_) return false;
     // KI-012: a queue family with minImageTransferGranularity=(0,0,0) only accepts whole-image
     // copies at offset (0,0,0) -- the single-texel sub-region copy below is a spec violation
     // there. Fall back to copying the whole id image and indexing the center texel on the CPU.
@@ -590,65 +601,68 @@ bool VoxelSelectionProviderNode::ReadPixelAt(VkImage image, uint32_t width, uint
         return false;
     }
 
-    // --- Submit on device->queue with a fresh fence, then wait it (NOT vkQueueWaitIdle, which would
-    // stall the whole queue including the render loop's submits). A click is infrequent, so a short
-    // CPU stall here is fine. ---
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    VkFence fence = VK_NULL_HANDLE;
-    if (vkCreateFence(vkDevice, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
-        return false;
-    }
-
     VkSubmitInfo submit{};
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        device, device->queue, submit);
+    pendingPixelReadback_ = PendingPixelReadback{
+        .command = cmd,
+        .completion = device->PublishSubmitRequest(std::move(request)),
+        .bytes = bytesNeeded,
+        .width = width,
+        .height = height,
+        .targetX = targetX,
+        .targetY = targetY,
+    };
+    if (!pendingPixelReadback_->completion ||
+        pendingPixelReadback_->completion->Result() != VK_NOT_READY &&
+        pendingPixelReadback_->completion->Result() != VK_SUCCESS) {
+        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
+        pendingPixelReadback_.reset();
+    }
+    // The result is intentionally not available in this frame. This is the R723 readback rule:
+    // a same-frame ReadPixelAt becomes a next-frame candidate.
+    (void)pixelOut;
+    return false;
+}
 
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11); NOT held across the
-        // vkWaitForFences below, per the comment above about not stalling the whole queue.
-        std::lock_guard submitLock(device->SubmitMutex(device->queue));
-        if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
-            vkDestroyFence(vkDevice, fence, nullptr);
-            vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
-            return false;
+bool VoxelSelectionProviderNode::PollPixelReadback(PickTargetPixel& pixelOut,
+                                                   uint32_t& targetX, uint32_t& targetY) {
+    if (!pendingPixelReadback_) return false;
+    PendingPixelReadback pending = *pendingPixelReadback_;
+    if (!pending.completion || !pending.completion->IsRetired()) return false;
+
+    targetX = pending.targetX;
+    targetY = pending.targetY;
+    pixelOut = {kMissSentinel, kMissSentinel};
+    if (pending.completion->Result() == VK_SUCCESS) {
+        void* mapped = nullptr;
+        if (vkMapMemory(GetDevice()->device, stagingMemory_, 0, pending.bytes, 0, &mapped) == VK_SUCCESS) {
+            if (requiresFullImageTransfers_) {
+                const auto* pixels = static_cast<const PickTargetPixel*>(mapped);
+                pixelOut = pixels[static_cast<size_t>(pending.targetY) * pending.width + pending.targetX];
+            } else {
+                std::memcpy(&pixelOut, mapped, sizeof(PickTargetPixel));
+            }
+            vkUnmapMemory(GetDevice()->device, stagingMemory_);
         }
     }
-
-    if (const GpuWaitResult waited = BoundedWaitFence(vkDevice, fence); !waited.Ok()) {
-        // The submission may still be in flight: leave the fence and command buffer to device teardown.
-        if (auto* graph = GetOwningGraph()) graph->ReportGpuFault("VoxelSelectionProviderNode::pickFence", waited.result, true);
-        return false;
+    if (pending.command != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(GetDevice()->device, commandPool_, 1, &pending.command);
     }
-
-    // --- Map the staging memory and read the pickID. On the full-image path (KI-012), the
-    // staging buffer holds the WHOLE image and the target texel must be indexed on the CPU. ---
-    void* mapped = nullptr;
-    if (vkMapMemory(vkDevice, stagingMemory_, 0, bytesNeeded, 0, &mapped) != VK_SUCCESS) {
-        vkDestroyFence(vkDevice, fence, nullptr);
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
-        return false;
-    }
-    if (requiresFullImageTransfers_) {
-        const PickTargetPixel* pixels = static_cast<const PickTargetPixel*>(mapped);
-        const size_t targetIdx = static_cast<size_t>(targetY) * width + targetX;
-        pixelOut = pixels[targetIdx];
-    } else {
-        std::memcpy(&pixelOut, mapped, sizeof(PickTargetPixel));
-    }
-    vkUnmapMemory(vkDevice, stagingMemory_);
-
-    // Free the one-shot cmd buffer + fence (staging buffer is kept for reuse).
-    vkDestroyFence(vkDevice, fence, nullptr);
-    vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);
+    pendingPixelReadback_.reset();
     return true;
 }
 
 void VoxelSelectionProviderNode::DestroyStagingBuffer() {
     VulkanDevice* device = GetDevice();
     if (!device) {
+        return;
+    }
+    if (pendingPixelReadback_ && (!pendingPixelReadback_->completion ||
+                                 !pendingPixelReadback_->completion->IsRetired())) {
         return;
     }
     VkDevice vkDevice = device->device;
@@ -668,6 +682,12 @@ void VoxelSelectionProviderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Release the host-visible staging buffer we own (RAII). The device lives in the base
     // NodeInstance and is re-set every CompileImpl via SetDevice(), so it is intentionally not
     // reset here; drop the cached Dependency handles (re-acquired next CompileImpl).
+    if (pendingPixelReadback_ && pendingPixelReadback_->completion &&
+        pendingPixelReadback_->completion->IsRetired()) {
+        PickTargetPixel ignored{kMissSentinel, kMissSentinel};
+        uint32_t ignoredX = 0, ignoredY = 0;
+        (void)PollPixelReadback(ignored, ignoredX, ignoredY);
+    }
     DestroyReadbackSlots();
     DestroyStagingBuffer();
     ResetTracking();

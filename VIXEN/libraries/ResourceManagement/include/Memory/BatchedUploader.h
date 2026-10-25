@@ -2,6 +2,7 @@
 
 #include "Memory/StagingBufferPool.h"
 #include "LockCensus.h"
+#include "QueueSubmitRequest.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -113,6 +114,8 @@ struct BatchedUploaderStats {
  */
 class BatchedUploader {
 public:
+    using SubmitRequestFn = std::function<std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion>(
+        Vixen::Vulkan::Resources::QueueSubmitRequest)>;
     /**
      * @brief One ordered CPU-to-GPU upload request.
      *
@@ -146,10 +149,8 @@ public:
      * @param queueFamilyIndex Queue family index for command pool
      * @param budgetManager Budget manager (provides StagingBufferPool)
      * @param config Uploader configuration
-     * @param submitMutex Must guard every vkQueueSubmit/vkQueuePresentKHR/vkQueueWaitIdle on
-     *   `queue` elsewhere in the engine (VulkanDevice::SubmitMutex(queue)) — this uploader's
-     *   SubmitBatch()/vkQueueWaitIdle are externally synchronized against those too (audit
-     *   V-M11). nullptr is only safe for a queue known to be single-owner (e.g. tests).
+     * @param submitRequest Publishes the batch to the owning RenderGraph queue phase. The
+     *   callback is the only route by which this uploader submits work.
      */
     BatchedUploader(
         VkDevice device,
@@ -157,7 +158,7 @@ public:
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
         const Config& config,
-        Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr);
+        SubmitRequestFn submitRequest = {});
 
     /**
      * @brief Create a batched uploader with default configuration
@@ -167,8 +168,8 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
-        Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr)
-        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}, submitMutex) {}
+        SubmitRequestFn submitRequest = {})
+        : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}, std::move(submitRequest)) {}
 
     /**
      * @brief Destructor - waits for pending uploads and cleans up
@@ -359,10 +360,9 @@ private:
      * @brief Submitted batch record
      */
     struct SubmittedBatch {
-        uint64_t timelineValue = 0;           // Timeline semaphore value
-        VkFence fence = VK_NULL_HANDLE;       // Fallback fence if no timeline
         VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
         std::vector<PendingUpload> uploads;   // Uploads in this batch
+        std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion;
         std::chrono::steady_clock::time_point submitTime;
     };
 
@@ -370,7 +370,7 @@ private:
     Config config_;
     VkDevice device_;
     VkQueue queue_;
-    Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
+    SubmitRequestFn submitRequest_;
     DeviceBudgetManager* budgetManager_;
 
     // Staging buffer pool
@@ -380,28 +380,23 @@ private:
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers_;
     std::queue<VkCommandBuffer> availableCommandBuffers_;
-    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM9> cmdBufferMutex_;
-
-    // Timeline semaphore (if supported)
-    VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
-    std::atomic<uint64_t> nextTimelineValue_{1};
-    bool useTimelineSemaphores_ = false;
+    Vixen::LockCensus::AtomicGate cmdBufferMutex_;
 
     // Pending uploads (not yet submitted)
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM10> pendingMutex_;
+    mutable Vixen::LockCensus::AtomicGate pendingMutex_;
     std::vector<PendingUpload> pendingUploads_;
     std::atomic<uint64_t> pendingBytes_{0};
     std::chrono::steady_clock::time_point oldestPendingTime_;
 
     // Submitted batches (awaiting GPU completion)
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM11> submittedMutex_;
+    mutable Vixen::LockCensus::AtomicGate submittedMutex_;
     std::queue<SubmittedBatch> submittedBatches_;
 
     // Handle generation
     std::atomic<UploadHandle> nextHandle_{1};
 
     // Handle status tracking
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM12> statusMutex_;
+    mutable Vixen::LockCensus::AtomicGate statusMutex_;
     std::unordered_map<UploadHandle, UploadStatus> uploadStatus_;
 
     // Statistics
@@ -411,7 +406,6 @@ private:
 
     // Internal helpers
     void CreateCommandPool(uint32_t queueFamilyIndex);
-    void CreateTimelineSemaphore();
     VkCommandBuffer AcquireCommandBuffer();
     void ReleaseCommandBuffer(VkCommandBuffer cmdBuffer);
     void SubmitBatch(std::vector<PendingUpload>&& uploads);

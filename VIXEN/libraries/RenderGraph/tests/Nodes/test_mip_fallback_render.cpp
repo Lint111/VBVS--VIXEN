@@ -162,6 +162,7 @@ protected:
     bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
+    std::unique_ptr<TestQueueOwner> submitOwner_;
     // Real device.Upload() (VulkanDevice::Upload -> uploader_) is a no-op returning
     // InvalidUploadHandle unless a BatchedUploader is attached via SetUploader() --
     // in production this wiring happens ONLY in DeviceNode::CreateDeviceBudgetManager
@@ -205,6 +206,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
         ASSERT_NO_FATAL_FAILURE(CreateCmdPool());
         deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
+        submitOwner_ = std::make_unique<TestQueueOwner>(logicalDevice_, queue_);
 
         // Mirror DeviceNode::CreateDeviceBudgetManager (DeviceNode.cpp:436-519) so
         // deviceShell_->Upload() actually works for tests that grant residency
@@ -231,7 +233,9 @@ protected:
         auto uploader = std::make_unique<ResourceManagement::BatchedUploader>(
             deviceShell_->device, deviceShell_->queue, deviceShell_->graphicsQueueIndex,
             budgetManager_.get(), uploaderConfig,
-            &deviceShell_->SubmitMutex(deviceShell_->queue));
+            [this](Vixen::Vulkan::Resources::QueueSubmitRequest request) {
+                return submitOwner_->SubmitSynchronously(std::move(request));
+            });
         deviceShell_->SetUploader(std::move(uploader));
     }
 
