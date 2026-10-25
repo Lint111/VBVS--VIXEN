@@ -1,4 +1,6 @@
 #pragma once
+#include <functional>
+#include <thread>
 
 #include "Headers.h"
 
@@ -893,6 +895,14 @@ public:
     /// never submits. On the lowered executor nothing of this frame is issued yet, so it returns.
     [[nodiscard]] GpuWaitResult WaitIssuedWork(Vixen::Vulkan::Resources::VulkanDevice* device);
 
+    /// Keep the host's OS message pump running while a graph recompile drains the GPU.
+    /// The callback runs on the registering thread approximately every 16 ms during the wait.
+    /// Pass an empty function to clear it.
+    void SetIdleWaitPump(std::function<void()> pump) {
+        idleWaitPump_ = std::move(pump);
+        idleWaitPumpThread_ = std::this_thread::get_id();
+    }
+
 private:
     std::unordered_map<VkRenderPass, VkImageLayout> renderPassFinalLayouts_;
     /// Queue owner: issue the submits published by the nodes in `wave`, in canonical ordinal order,
@@ -1118,6 +1128,9 @@ private:
     bool DrainGraphDevicesBounded();
     // Wait for the provided set of VkDevice handles to be idle
     void WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices);
+
+    std::function<void()> idleWaitPump_;
+    std::thread::id idleWaitPumpThread_;
 };
 
 // ============================================================================

@@ -7,7 +7,7 @@
 #include "Core/NodeLogging.h"
 #include "Message.h"
 #include "EventTypes/RenderGraphEvents.h"
-#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW, fail-scenario runner)
+#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW)
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -72,11 +72,11 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
-        // Fail-scenario runner: create the window hidden so the sweep runs unattended.
+        // VIXEN_HIDDEN_WINDOW=1: create the window hidden. Test and capture harnesses set it so
+        // unattended GPU runs never put windows on a desktop; the swapchain, resize events and
+        // presentation still work on a hidden window.
         if (const char* hid = std::getenv("VIXEN_HIDDEN_WINDOW"); hid && hid[0] == '1')
             glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-#endif
 
         window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
                                   "Vixen Render Graph", nullptr, nullptr);
@@ -86,6 +86,18 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
             std::string msg = std::string("WindowNode: glfwCreateWindow failed: ") + (err ? err : "unknown");
             NODE_LOG_ERROR(msg);
             throw std::runtime_error(msg);
+        }
+
+        // The OS may have changed the client size between the request and now (work-area clamp, cascade,
+        // DPI): events fired before the callbacks below were installed are lost, so seed the
+        // published extent from the real framebuffer, not from the parameters.
+        {
+            int fbw = 0, fbh = 0;
+            glfwGetFramebufferSize(window, &fbw, &fbh);
+            if (fbw > 0 && fbh > 0) {
+                width = static_cast<uint32_t>(fbw);
+                height = static_cast<uint32_t>(fbh);
+            }
         }
 
         // Route GLFW callbacks back to this instance (replaces the Win32 WndProc + GWLP_USERDATA).
@@ -128,15 +140,21 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
                   ", height=" + std::to_string(height) + ")");
 }
 
-void WindowNode::RecordPendingResize(uint32_t w, uint32_t h) {
-    hasPendingResize_ = true;
-    pendingResizeWidth_ = w;
-    pendingResizeHeight_ = h;
-    lastResizeEventTime_ = glfwGetTime();
+void WindowNode::ObserveFramebufferSize(uint32_t w, uint32_t h) {
+    resize_.Observe(w, h, width, height, glfwGetTime());
+}
+
+void WindowNode::PollFramebufferSize() {
+    // The callback is an optimisation, the framebuffer size is the truth: an OS-driven move, DPI
+    // change or maximise whose callback never reached us (or was filtered) is still noticed here.
+    if (!window) return;
+    int fbw = 0, fbh = 0;
+    glfwGetFramebufferSize(window, &fbw, &fbh);
+    if (fbw > 0 && fbh > 0) ObserveFramebufferSize(static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh));
 }
 
 bool WindowNode::PendingResizeIsSettled() const {
-    return hasPendingResize_ && (glfwGetTime() - lastResizeEventTime_) >= kResizeDebounceSeconds;
+    return resize_.Settled(glfwGetTime());
 }
 
 void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -168,21 +186,20 @@ void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             // SwapChainNode recreation + transitive recompile of ~10 nodes per event (16 waves
             // observed for a single "slow" drag), starving the render loop enough that the compositor
             // showed stale/ghosted frames and input lagged. Applied below, once settled.
-            if (event.width != width || event.height != height) {
-                RecordPendingResize(event.width, event.height);
-            }
+            ObserveFramebufferSize(event.width, event.height);
             continue;
         }
         PublishNonResizeEvent(event);
     }
+    PollFramebufferSize();
 
     // Apply a settled pending resize (may fire on a tick with no new event this frame -- that's the
     // whole point of a trailing-edge debounce: react once activity has actually stopped).
     if (PendingResizeIsSettled()) {
-        width = pendingResizeWidth_;
-        height = pendingResizeHeight_;
+        width = resize_.Width();
+        height = resize_.Height();
         wasResized = true;
-        hasPendingResize_ = false;
+        resize_.Clear();
 
         ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
         ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
@@ -223,13 +240,12 @@ void WindowNode::ProcessPendingEvents() {
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
             // Same trailing-edge debounce as ExecuteImpl -- record only, apply once settled below.
-            if (event.width != width || event.height != height) {
-                RecordPendingResize(event.width, event.height);
-            }
+            ObserveFramebufferSize(event.width, event.height);
             continue;
         }
         PublishNonResizeEvent(event);
     }
+    PollFramebufferSize();
 
     // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize so
     // SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
@@ -239,10 +255,10 @@ void WindowNode::ProcessPendingEvents() {
     // refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile defers and
     // runs on the restore Update -- exactly the desired timing.
     if (PendingResizeIsSettled()) {
-        width = pendingResizeWidth_;
-        height = pendingResizeHeight_;
+        width = resize_.Width();
+        height = resize_.Height();
         wasResized = true;
-        hasPendingResize_ = false;
+        resize_.Clear();
         MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         if (GetMessageBus()) {
@@ -298,7 +314,6 @@ void WindowNode::OnFramebufferSize(GLFWwindow* w, int width, int height) {
     WindowNode* self = FromGlfw(w);
     if (!self || width <= 0 || height <= 0) return;  // 0-size = minimised; ignore
     auto uw = static_cast<uint32_t>(width), uh = static_cast<uint32_t>(height);
-    if (uw == self->width && uh == self->height) return;  // only on a real change
     std::lock_guard lock(self->eventMutex);
     self->pendingEvents.push_back({WindowEvent::Type::Resize, uw, uh});
 }

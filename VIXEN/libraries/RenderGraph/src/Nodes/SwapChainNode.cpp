@@ -8,6 +8,9 @@
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "Message.h"
+#define GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -95,6 +98,7 @@ void SwapChainNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Get input resources from connected nodes
     NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading inputs...");
     GLFWwindow* window = ctx.In(SwapChainNodeConfig::WINDOW);
+    traceWindow_ = window;
     width = ctx.In(SwapChainNodeConfig::WIDTH);
     height = ctx.In(SwapChainNodeConfig::HEIGHT);
     VkInstance instance = ctx.In(SwapChainNodeConfig::INSTANCE);
@@ -392,12 +396,59 @@ void SwapChainNode::SetSwapChainWrapper(VulkanSwapChain* swapchain) {
     swapChainWrapper = swapchain;
 }
 
+void SwapChainNode::TraceExtents(const char* where) {
+    static const bool enabled = [] {
+        const char* value = std::getenv("VIXEN_RESIZE_TRACE");
+        return value && value[0] == '1';
+    }();
+    if (!enabled || !swapChainWrapper) return;
+    int fbw = 0, fbh = 0;
+    if (traceWindow_) glfwGetFramebufferSize(traceWindow_, &fbw, &fbh);
+    const VkExtent2D sc = swapChainWrapper->scPublicVars.Extent;
+    if (lastTraceFramebuffer_[0] == static_cast<uint32_t>(fbw) && lastTraceFramebuffer_[1] == static_cast<uint32_t>(fbh) &&
+        lastTraceSwapchain_[0] == sc.width && lastTraceSwapchain_[1] == sc.height) return;
+    lastTraceFramebuffer_[0] = static_cast<uint32_t>(fbw);
+    lastTraceFramebuffer_[1] = static_cast<uint32_t>(fbh);
+    lastTraceSwapchain_[0] = sc.width;
+    lastTraceSwapchain_[1] = sc.height;
+    const auto now = std::chrono::system_clock::now();
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::fprintf(stderr, "[RESIZE_TRACE] t_ms=%lld where=%s framebuffer=%dx%d swapchain=%ux%u\n",
+                 static_cast<long long>(ms), where, fbw, fbh, sc.width, sc.height);
+}
+
+void SwapChainNode::CheckSurfaceExtentDrift() {
+    const VkExtent2D surfaceExtent = swapChainWrapper->QueryCurrentSurfaceExtent(*GetDevice()->gpu);
+    const VkExtent2D& liveExtent = swapChainWrapper->scPublicVars.Extent;
+    const bool usable = surfaceExtent.width > 0 && surfaceExtent.height > 0;  // 0x0: minimised
+    if (!usable || (surfaceExtent.width == liveExtent.width && surfaceExtent.height == liveExtent.height)) {
+        extentDrifting_ = false;
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!extentDrifting_) {
+        extentDrifting_ = true;
+        extentDriftSince_ = now;
+        return;
+    }
+    if (std::chrono::duration<double>(now - extentDriftSince_).count() < kExtentDriftSeconds) return;
+
+    NODE_LOG_INFO("[SwapChainNode] surface extent " + std::to_string(surfaceExtent.width) + "x" +
+                  std::to_string(surfaceExtent.height) + " differs from swapchain " +
+                  std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height) +
+                  " with no resize signal -- recreating");
+    extentDrifting_ = false;
+    MarkNeedsRecompile();
+}
+
 uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     if (!swapChainWrapper) {
         std::string errorMsg = "SwapChainNode: swapchain wrapper not set";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+    CheckSurfaceExtentDrift();
+    TraceExtents("acquire");
 
     auto* devicePtr = GetDevice();
     const auto acquireStarted = std::chrono::steady_clock::now();
@@ -642,6 +693,7 @@ void SwapChainNode::CreateSwapchainAndViews() {
     // Extent from the image extent leaves the unrendered image remainder as garbage strips.
 
     NODE_LOG_INFO("[SwapChainNode] Swapchain created with " + std::to_string(imageCount) + " images");
+    TraceExtents("compile");
 }
 
 void SwapChainNode::PublishCompileOutputs(TypedCompileContext& ctx) {

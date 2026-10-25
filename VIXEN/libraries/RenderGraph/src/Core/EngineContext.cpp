@@ -5,6 +5,7 @@
 #include "Core/CalibrationStore.h"
 #include "MessageBus.h"
 #include "MainCacher.h"
+#include "RuntimeCachePaths.h"
 
 namespace Vixen::RenderGraph {
 
@@ -38,7 +39,9 @@ EngineContext::EngineContext(const EngineConfig& config)
         // ApplicationShuttingDownEvent. Arg 2 must come from the graph (its TaskProfileRegistry),
         // hence construction after the graph.
         calibration_ = std::make_unique<CalibrationStore>(
-            config.calibrationDir, graph_->GetTaskProfileRegistry(), bus_.get());
+            config.calibrationDir.empty() ? Vixen::RuntimeCacheDirectory() / "calibration"
+                                          : config.calibrationDir,
+            graph_->GetTaskProfileRegistry(), bus_.get());
     }
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "Nodes/ResizeDebouncer.h"
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/WindowNodeConfig.h"
@@ -116,15 +117,13 @@ private:
     // whole drag into a small, bounded number of recompiles while still always settling on the FINAL
     // size (never dropped, just deferred). Checked from both ExecuteImpl and ProcessPendingEvents so
     // the debounce applies whether or not rendering is paused.
-    static constexpr double kResizeDebounceSeconds = 0.1;
-    bool hasPendingResize_ = false;
-    uint32_t pendingResizeWidth_ = 0;
-    uint32_t pendingResizeHeight_ = 0;
-    double lastResizeEventTime_ = 0.0;
+    ResizeDebouncer resize_{0.1};
 
-    // Records a drained Resize event as the new pending target (does not apply it yet).
-    void RecordPendingResize(uint32_t w, uint32_t h);
-    // True once kResizeDebounceSeconds has elapsed since the last recorded resize event.
+    // Fold one observed framebuffer size into the debouncer (see ResizeDebouncer::Observe).
+    void ObserveFramebufferSize(uint32_t w, uint32_t h);
+    // Query the window's real framebuffer size and observe it (covers a missed/filtered callback).
+    void PollFramebufferSize();
+    // True once the debounce interval has elapsed since the pending size last changed.
     bool PendingResizeIsSettled() const;
 
     GLFWwindow* window = nullptr;
