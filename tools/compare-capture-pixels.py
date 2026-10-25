@@ -3,12 +3,15 @@
 
 Pure standard library (no Pillow or NumPy). Optional outputs: --crops writes the changed region
 of each differing pair as before|after|diff, and --contact-sheet writes one before|after|diff row
-per compared pair.
+per compared pair. --reference-provenance prints the capture source and rejects a reference that
+predates a declared visual change in the compared source tree.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import subprocess
 import struct
 import sys
 import zlib
@@ -170,6 +173,99 @@ def encode_png(width: int, height: int, rgba: bytes) -> bytes:
 
 
 Image = tuple[int, int, bytes]
+
+
+def _git_commit(repository: Path, revision: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "--verify", f"{revision}^{{commit}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repository), "merge-base", "--is-ancestor", ancestor, descendant],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode not in (0, 1):
+        detail = result.stderr.strip() or "git merge-base failed"
+        raise RuntimeError(detail)
+    return result.returncode == 0
+
+
+def _provenance_value(value: object) -> str:
+    if isinstance(value, dict):
+        return ", ".join(f"{key}={value[key]}" for key in sorted(value))
+    if isinstance(value, list):
+        return "x".join(str(item) for item in value)
+    return str(value)
+
+
+def check_reference_provenance(
+    provenance_path: Path,
+    repository: Path,
+    source_commit: str | None = None,
+) -> bool:
+    """Print reference provenance and return whether a known visual change makes it stale."""
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid reference provenance {provenance_path}: {error}") from error
+    if not isinstance(provenance, dict):
+        raise ValueError(f"reference provenance must be a JSON object: {provenance_path}")
+
+    reference_commit = provenance.get("source_commit")
+    if not isinstance(reference_commit, str) or not reference_commit:
+        raise ValueError(f"reference provenance has no source_commit: {provenance_path}")
+
+    resolved_reference = _git_commit(repository, reference_commit)
+    resolved_source = _git_commit(repository, source_commit or "HEAD")
+    driver = _provenance_value(provenance.get("driver", "unknown"))
+    resolution = _provenance_value(provenance.get("resolution", "unknown"))
+    print(
+        "reference provenance: "
+        f"commit={resolved_reference} "
+        f"captured={provenance.get('captured_at', 'unknown')} "
+        f"machine={provenance.get('machine', 'unknown')} "
+        f"driver={driver} "
+        f"resolution={resolution}"
+    )
+
+    changes = provenance.get("known_visual_changes", [])
+    if not isinstance(changes, list):
+        raise ValueError(f"known_visual_changes must be a JSON array: {provenance_path}")
+
+    stale_changes: list[tuple[str, str]] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            raise ValueError(f"known visual change must be an object: {provenance_path}")
+        change_commit = change.get("commit")
+        if not isinstance(change_commit, str) or not change_commit:
+            raise ValueError(f"known visual change has no commit: {provenance_path}")
+        resolved_change = _git_commit(repository, change_commit)
+        if (
+            resolved_reference != resolved_change
+            and _is_ancestor(repository, resolved_reference, resolved_change)
+            and _is_ancestor(repository, resolved_change, resolved_source)
+        ):
+            title = str(change.get("title", "known visual change"))
+            stale_changes.append((resolved_change, title))
+
+    if stale_changes:
+        print(
+            f"references older than {stale_changes[0][0]}: "
+            f"{stale_changes[0][1]} (reference {resolved_reference})",
+            file=sys.stderr,
+        )
+        for commit, title in stale_changes[1:]:
+            print(f"known visual change after reference: {commit}: {title}", file=sys.stderr)
+        return True
+    return False
 
 
 def crop_image(image: Image, left: int, top: int, right: int, bottom: int) -> Image:
@@ -413,6 +509,24 @@ def main() -> int:
         help="write one before|after|diff row per same-size pair into a single PNG",
     )
     parser.add_argument(
+        "--reference-provenance",
+        type=Path,
+        metavar="FILE",
+        help="print reference provenance and reject references older than a declared visual change",
+    )
+    parser.add_argument(
+        "--repository",
+        type=Path,
+        default=Path.cwd(),
+        metavar="DIR",
+        help="git repository used to resolve provenance commits (default: current directory)",
+    )
+    parser.add_argument(
+        "--source-commit",
+        metavar="REV",
+        help="tree being compared; defaults to HEAD in --repository",
+    )
+    parser.add_argument(
         "--sheet-row-height",
         type=int,
         default=160,
@@ -431,6 +545,10 @@ def main() -> int:
             parser.error(f"not a directory: {directory}")
 
     try:
+        if args.reference_provenance and check_reference_provenance(
+            args.reference_provenance, args.repository, args.source_commit
+        ):
+            return 1
         return compare_directory_pair(
             args.before,
             args.after,
@@ -442,7 +560,7 @@ def main() -> int:
             args.contact_sheet,
             args.sheet_row_height,
         )
-    except ValueError as error:
+    except (ValueError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 
