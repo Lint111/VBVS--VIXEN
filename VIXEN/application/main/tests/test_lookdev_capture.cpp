@@ -7,6 +7,7 @@
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/ReconstructionHistoryStateNode.h"
+#include "Data/ReconstructionJitter.h"
 #include "Nodes/SceneRadianceNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
@@ -184,9 +185,22 @@ double Percentile(std::vector<double> samples, double fraction) {
     return samples[std::min(index, samples.size() - 1)];
 }
 
+// R676.2: canonical captures stay one raw unjittered sample. A look capture declares the
+// presentation sampling path instead (VIXEN_LOOKDEV_CAPTURE_SAMPLING=presentation): the frame
+// a player sees, with the anti-aliasing module's provider (`taa` by default) resolving jittered
+// samples. Its Halton sequence and frame seed are fixed, so it stays byte-deterministic.
+bool PresentationSamplingRequested() {
+    const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_SAMPLING");
+    return requested && std::string_view(requested) == "presentation";
+}
+
 uint32_t DefaultFramesPerScenario() {
-    return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerScenario
-                                                          : kDefaultFramesPerScenario;
+    const uint32_t frames = Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerScenario
+                                                                          : kDefaultFramesPerScenario;
+    // A presentation capture shows the converged resolve: two full jitter cycles, so every
+    // pixel's history holds each Halton sample twice before the frame is written.
+    return PresentationSamplingRequested()
+        ? std::max(frames, 2u * Vixen::RenderGraph::kReconstructionJitterCycle) : frames;
 }
 
 uint32_t CaptureFramesPerScenario(std::string& error) {
@@ -1027,7 +1041,8 @@ public:
         auto config = gRenderPathConfig;
         // The application constructor applied VIXEN_ANTI_ALIASING; keep that request.
         config.antiAliasing = GetRenderPathConfig().antiAliasing;
-        config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None
+        config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None &&
+                !PresentationSamplingRequested()
             ? Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture
             : Vixen::RenderGraph::ReconstructionSamplingPath::InteractiveVisual;
         if (std::getenv("VIXEN_LOOKDEV_JITTER_PROBE")) {
@@ -1561,15 +1576,34 @@ private:
             std::memcpy(&world, record + 32u, sizeof(world));
             std::memcpy(&flags, record + 44u, sizeof(flags));
             glm::vec2 expected(0.0f);
+            float expectedCorrespondence = 0.0f;
             if (flags & 1u) {
                 const auto previous = previousVP * glm::vec4(world, 1.0f);
                 const auto current = currentVP * glm::vec4(world, 1.0f);
                 if (previous.w > 0.0f && current.w > 0.0f)
                     expected = (glm::vec2(previous) / previous.w - glm::vec2(current) / current.w) * 0.5f;
+            } else {
+                // A miss is the background at infinity: the unjittered pixel-centre direction
+                // through the previous view-projection with w = 0 (rotation only).
+                const glm::dvec2 uv((double(i % extent.width) + 0.5) / double(extent.width),
+                                    (double(i / extent.width) + 0.5) / double(extent.height));
+                const glm::dvec2 ndc = uv * 2.0 - 1.0;
+                const glm::dmat4 inverseVP = glm::inverse(glm::dmat4(currentVP));
+                const glm::dvec4 nearPoint = inverseVP * glm::dvec4(ndc, 0.25, 1.0);
+                const glm::dvec4 farPoint = inverseVP * glm::dvec4(ndc, 0.75, 1.0);
+                const glm::dvec3 direction = glm::dvec3(farPoint) / farPoint.w - glm::dvec3(nearPoint) / nearPoint.w;
+                const glm::dvec4 previous = glm::dmat4(previousVP) * glm::dvec4(direction, 0.0);
+                if (previous.w > 0.0) {
+                    const glm::dvec2 previousUV = glm::dvec2(previous) / previous.w * 0.5 + 0.5;
+                    expected = glm::vec2(previousUV - uv);
+                    expectedCorrespondence = previousUV.x >= 0.0 && previousUV.y >= 0.0 &&
+                        previousUV.x < 1.0 && previousUV.y < 1.0 ? 1.0f : 0.0f;
+                }
             }
             const float error = glm::length(glm::vec2(vector[0], vector[1]) - expected);
             maxMotionError = std::max(maxMotionError, error);
-            motionFailures += !std::isfinite(vector[0]) || !std::isfinite(vector[1]) || error > 3e-6f || correspondence != 0.0f;
+            motionFailures += !std::isfinite(vector[0]) || !std::isfinite(vector[1]) || error > 3e-6f ||
+                correspondence != expectedCorrespondence;
             nonzeroMotion += glm::length(expected) > 1e-5f;
             if (flags & 1u) {
                 motionPreview[i * 3] = uint8_t(glm::clamp(128.0f + vector[0] * float(extent.width) * 32.0f, 0.0f, 255.0f));
