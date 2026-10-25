@@ -1093,7 +1093,7 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
     ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
     std::ostringstream kss;
     kss << kernelFile.rdbuf();
-    const std::string sdfCoreGlsl = kss.str();
+    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(kss.str(), 31);
 
     const std::string fieldFn = EmitProceduralFieldFunctionGlsl(
         prog, kCount, /*recipeId=*/0, /*emitDeclaredPositionOutParam=*/true);
@@ -1330,7 +1330,7 @@ void main() {
             ++certified; EXPECT_GE(pixels[0],range.lower); EXPECT_LE(pixels[0],range.upper);
         } else ++unknown;
     }
-    const auto core=ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    const auto core=WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH),31);
     ASSERT_FALSE(core.empty());
     const std::string primitiveSource="#version 450\n"+core+R"GLSL(
 layout(local_size_x=1,local_size_y=1) in;
@@ -1392,7 +1392,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
     const std::array<TileTapeFixtureInput, 2> fixtures{
         MakeRun2DeadTermsFixture(),
         MakeVisibleEditHeavyFixture()};
-    const std::string sdfCoreGlsl = ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31);
     const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
     ASSERT_FALSE(sdfCoreGlsl.empty()) << "Cannot read generated SDF kernels: " << SDF_CORE_KERNELS_GLSL_PATH;
     ASSERT_FALSE(tapeGlsl.empty()) << "Cannot read generated tape evaluator: " << SDF_RECIPE_TAPE_GLSL_PATH;
@@ -1910,7 +1910,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     for (const auto& entry : corpus)
         for (const auto& operation : entry.program) covered.insert(operation.opCode);
 
-    const std::string sdfCoreGlsl = ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31);
     const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
     ASSERT_FALSE(sdfCoreGlsl.empty());
     ASSERT_FALSE(tapeGlsl.empty());

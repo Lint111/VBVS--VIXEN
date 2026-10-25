@@ -237,7 +237,7 @@ TEST(RecipeNestedInvocation, GlslEmitCompilesAndInlinesCallee) {
     std::ostringstream kss; kss << kernelFile.rdbuf();
 
     std::ostringstream shaderSrc;
-    shaderSrc << "#version 450\n" << kss.str() << "\n" << fieldFn << "\n";
+    shaderSrc << "#version 450\n" << Vixen::SVO::Recipe::WithGlyphOutlineBuffer(kss.str(), 31) << "\n" << fieldFn << "\n";
     shaderSrc << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
@@ -544,7 +544,7 @@ TEST_F(RecipeNestedInvocationGpuParityTest, GlslMatchesCpuEvalForNestedRecipe) {
     std::ostringstream kss; kss << kernelFile.rdbuf();
 
     std::ostringstream shaderSrc;
-    shaderSrc << "#version 450\n" << kss.str() << "\n" << fieldFn << "\n";
+    shaderSrc << "#version 450\n" << Vixen::SVO::Recipe::WithGlyphOutlineBuffer(kss.str(), 31) << "\n" << fieldFn << "\n";
     shaderSrc << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };

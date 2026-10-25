@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -183,6 +184,24 @@ inline std::string EmitProceduralFieldFunctionGlsl(
         + body
         + "  return " + stk.back() + ";\n"
         "}\n";
+}
+
+// SdfCoreKernels.g.glsl reads the shared glyph outline blob through `glyphOutlineInstances`, so a
+// shader that inlines the kernels must declare that buffer where the kernels can see it: after the
+// GlyphOutlineInstance struct they define and before their first function. Returns the kernel text
+// with the declaration inserted at that point, or the text unchanged when it has no such struct.
+inline std::string WithGlyphOutlineBuffer(const std::string& sdfCoreKernelsGlsl, uint32_t binding,
+                                          uint32_t set = 0) {
+    constexpr std::string_view marker = "#endif // GLYPHOUTLINEINSTANCE_GLSL\n";
+    const auto at = sdfCoreKernelsGlsl.find(marker);
+    if (at == std::string::npos) return sdfCoreKernelsGlsl;
+    std::string out = sdfCoreKernelsGlsl;
+    out.insert(at + marker.size(),
+        "layout(set = " + std::to_string(set) + ", std430, binding = " + std::to_string(binding) +
+        ") readonly buffer GlyphOutlineBuffer {\n"
+        "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+        "};\n");
+    return out;
 }
 
 } // namespace Vixen::SVO::Recipe
