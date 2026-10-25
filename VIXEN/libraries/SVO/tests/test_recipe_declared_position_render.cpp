@@ -217,6 +217,34 @@ std::vector<GpuRecipeTapeInstruction> PackGpuTape(std::span<const SdfInstruction
     return packed;
 }
 
+// The tape evaluator reads register addresses that AllocateRecipeTapeRegisters packs into each
+// instruction and sizes its value and position storage from the peaks it reports. Tapes bound to the
+// evaluator are packed through this; the running maxima become the shader's storage counts.
+struct TapeStorageCounts {
+    std::uint32_t values = 1;
+    std::uint32_t positions = 0;
+};
+
+std::vector<GpuRecipeTapeInstruction> PackAllocatedGpuTape(std::span<const SdfInstruction> instructions,
+                                                           TapeStorageCounts& counts) {
+    std::vector<GpuRecipeTapeInstruction> packed(instructions.size());
+    for (std::size_t index = 0; index < instructions.size(); ++index)
+        packed[index].opCode = instructions[index].opCode;
+    std::uint32_t valueCount = 0;
+    std::uint32_t positionCount = 0;
+    std::string error;
+    EXPECT_TRUE(AllocateRecipeTapeRegisters<GpuRecipeTapeInstruction>(
+        instructions, std::span<GpuRecipeTapeInstruction>(packed), valueCount, positionCount, error)) << error;
+    counts.values = std::max(counts.values, valueCount);
+    counts.positions = std::max(counts.positions, positionCount);
+    return packed;
+}
+
+std::string TapeStorageDefines(const TapeStorageCounts& counts) {
+    return "#define RECIPE_TAPE_VALUE_COUNT " + std::to_string(counts.values) +
+           "\n#define RECIPE_TAPE_POSITION_COUNT " + std::to_string(counts.positions) + "\n";
+}
+
 SdfInstruction MakeTileSphere(float x, float y, float z, float radius) {
     SdfInstruction instruction{};
     instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
@@ -1093,7 +1121,7 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
     ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
     std::ostringstream kss;
     kss << kernelFile.rdbuf();
-    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(kss.str(), 31);
+    const std::string sdfCoreGlsl = WithoutGlyphOutlineKernel(kss.str());
 
     const std::string fieldFn = EmitProceduralFieldFunctionGlsl(
         prog, kCount, /*recipeId=*/0, /*emitDeclaredPositionOutParam=*/true);
@@ -1330,7 +1358,7 @@ void main() {
             ++certified; EXPECT_GE(pixels[0],range.lower); EXPECT_LE(pixels[0],range.upper);
         } else ++unknown;
     }
-    const auto core=WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH),31);
+    const auto core=WithoutGlyphOutlineKernel(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH));
     ASSERT_FALSE(core.empty());
     const std::string primitiveSource="#version 450\n"+core+R"GLSL(
 layout(local_size_x=1,local_size_y=1) in;
@@ -1431,6 +1459,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
             source.size() * sizeof(SdfInstruction)), 0) << "source recipe history was mutated";
 
         const auto specializeStart = std::chrono::steady_clock::now();
+        TapeStorageCounts tapeCounts;
         std::vector<GpuRecipeTapeInstruction> prunedTape;
         std::array<TileTapeRange, kTileCount> prunedRanges{};
         std::uint64_t intervalEvaluations = 0;
@@ -1462,7 +1491,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
                     prunedRanges[tileIndex] = {
                         static_cast<std::uint32_t>(prunedTape.size()),
                         static_cast<std::uint32_t>(specialized.instructions.size())};
-                    const auto packed = PackGpuTape(specialized.instructions);
+                    const auto packed = PackAllocatedGpuTape(specialized.instructions, tapeCounts);
                     prunedTape.insert(prunedTape.end(), packed.begin(), packed.end());
                     intervalEvaluations += specialized.stats.intervalEvaluations;
                     individualSpecializationNs += specialized.stats.specializationNanoseconds;
@@ -1481,7 +1510,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
 
         std::array<TileTapeRange, kTileCount> fullRanges{};
         fullRanges.fill(TileTapeRange{0u, static_cast<std::uint32_t>(source.size())});
-        const auto fullTape = PackGpuTape(source);
+        const auto fullTape = PackAllocatedGpuTape(source, tapeCounts);
         ASSERT_EQ(fullTape.size(), source.size());
 
         Vixen::SVO::RecipeRegistry emptyRegistry;
@@ -1509,7 +1538,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
     }
     )GLSL";
         const std::string tapeShaderSource = ComposeTileTapeRaymarchShader(
-            sdfCoreGlsl, tapeGlsl + "\n" + unrolledField, tapeAdapter);
+            sdfCoreGlsl, TapeStorageDefines(tapeCounts) + tapeGlsl + "\n" + unrolledField, tapeAdapter);
 
         ShaderManagement::ShaderCompiler compiler;
         ShaderManagement::CompilationOptions options;
@@ -1935,6 +1964,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     const std::string wordPattern = "uintBitsToFloat(";
     for (std::size_t first = 0; first < corpus.size(); first += kBatch) {
         const std::size_t count = std::min(kBatch, corpus.size() - first);
+        TapeStorageCounts tapeCounts;
         std::vector<GpuRecipeTapeInstruction> tape;
         std::array<TileTapeRange, 64> ranges{};
         std::ostringstream fields, dispatch;
@@ -1947,7 +1977,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
             std::string error;
             ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(entry.program.data(),
                 static_cast<std::uint32_t>(entry.program.size()), registry, closed, error)) << error;
-            const auto packed = PackGpuTape(closed);
+            const auto packed = PackAllocatedGpuTape(closed, tapeCounts);
             ranges[local] = {static_cast<std::uint32_t>(tape.size()), static_cast<std::uint32_t>(packed.size())};
             tape.insert(tape.end(), packed.begin(), packed.end());
             for (const auto& operation : closed)
@@ -1982,7 +2012,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
                 << "layout(set=0,binding=2,std430) readonly buffer InTileRanges { uvec2 tileRanges[]; };\n"
                 << "layout(set=0,binding=3,std430) writeonly buffer OutClauseCounts { uint clauseCounts[]; };\n"
                 << "layout(local_size_x=8,local_size_y=8) in;\n";
-            shader << (tapeForm ? tapeGlsl : fieldSource);
+            shader << (tapeForm ? TapeStorageDefines(tapeCounts) + tapeGlsl : fieldSource);
             shader << "\nvoid main() {\n"
                 << "vec3 p = vec3(float(gl_LocalInvocationID.x) - 3.5, float(gl_LocalInvocationID.y) - 3.5, 0.25);\n"
                 << "float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);\n"

@@ -967,6 +967,8 @@ protected:
         VkDeviceMemory rayTraceMem = VK_NULL_HANDLE, channelPoolMem = VK_NULL_HANDLE;
         VkDeviceMemory brickLookupMem = VK_NULL_HANDLE, mipPoolMem = VK_NULL_HANDLE;
         VkDeviceMemory occupancyGridMem = VK_NULL_HANDLE;
+        VkBuffer glyphOutlineBuf = VK_NULL_HANDLE;
+        VkDeviceMemory glyphOutlineMem = VK_NULL_HANDLE;
         VkDeviceMemory tierRefMem = VK_NULL_HANDLE, requestMem = VK_NULL_HANDLE, resultMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, rayTraceBuf, rayTraceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, channelPoolBuf, channelPoolMem, true);
@@ -975,6 +977,8 @@ protected:
         // R506 added binding 48 to ShadowRayTrace.comp for procedural-recipe occupancy data.
         // This fixture has no occupancy cells, so bind the documented one-byte empty grid.
         CreateHostBuffer(1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, occupancyGridBuf, occupancyGridMem, true);
+        // The shared glyph outline blob (binding 51) the recipe kernels read; this fixture has no glyphs.
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, glyphOutlineBuf, glyphOutlineMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tierRefBuf, tierRefMem, true);
         CreateHostBuffer(sizeof(request), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                          requestBuf, requestMem, false);
@@ -990,9 +994,9 @@ protected:
             out.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return out;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {{
+        const std::array<VkDescriptorSetLayoutBinding, 16> bindings = {{
             bind(1), bind(2), bind(3), bind(4), bind(5), bind(10), bind(11),
-            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47), bind(48),
+            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47), bind(48), bind(51),
         }};
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1035,7 +1039,7 @@ protected:
         VkDescriptorSet set = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
 
-        const std::array<VkDescriptorBufferInfo, 15> infos = {{
+        const std::array<VkDescriptorBufferInfo, 16> infos = {{
             {nodesBuf, 0, VK_WHOLE_SIZE},
             {bricksBuf, 0, VK_WHOLE_SIZE},
             {materialsBuf, 0, VK_WHOLE_SIZE},
@@ -1051,8 +1055,9 @@ protected:
             {resultBuf, 0, VK_WHOLE_SIZE},
             {instanceTransformBuf, 0, VK_WHOLE_SIZE},
             {occupancyGridBuf, 0, VK_WHOLE_SIZE},
+            {glyphOutlineBuf, 0, VK_WHOLE_SIZE},
         }};
-        std::array<VkWriteDescriptorSet, 15> writes{};
+        std::array<VkWriteDescriptorSet, 16> writes{};
         for (size_t i = 0; i < writes.size(); ++i) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[i].dstSet = set;
@@ -1108,6 +1113,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, requestBuf, nullptr); vkFreeMemory(logicalDevice_, requestMem, nullptr);
         vkDestroyBuffer(logicalDevice_, resultBuf, nullptr); vkFreeMemory(logicalDevice_, resultMem, nullptr);
         vkDestroyBuffer(logicalDevice_, occupancyGridBuf, nullptr); vkFreeMemory(logicalDevice_, occupancyGridMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, glyphOutlineBuf, nullptr); vkFreeMemory(logicalDevice_, glyphOutlineMem, nullptr);
     }
 
     // Device->host readback of an arbitrary SSBO via vkCmdCopyBuffer (same pattern as

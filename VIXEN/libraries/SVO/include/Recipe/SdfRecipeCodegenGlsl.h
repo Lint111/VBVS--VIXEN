@@ -204,4 +204,25 @@ inline std::string WithGlyphOutlineBuffer(const std::string& sdfCoreKernelsGlsl,
     return out;
 }
 
+// The same kernels for a shader whose recipes contain no glyph outline op: drop the glyph kernel so
+// the shader never references the shared buffer, and a pipeline layout without that binding stays
+// valid. Only the field function emitted for a glyph-free recipe is inlined next to the result, so
+// nothing calls the removed function.
+inline std::string WithoutGlyphOutlineKernel(const std::string& sdfCoreKernelsGlsl) {
+    constexpr std::string_view signature = "float SdfCore_GlyphOutline(";
+    const auto begin = sdfCoreKernelsGlsl.find(signature);
+    if (begin == std::string::npos) return sdfCoreKernelsGlsl;
+    const auto open = sdfCoreKernelsGlsl.find('{', begin);
+    if (open == std::string::npos) return sdfCoreKernelsGlsl;
+    int depth = 0;
+    std::size_t end = open;
+    for (; end < sdfCoreKernelsGlsl.size(); ++end) {
+        if (sdfCoreKernelsGlsl[end] == '{') ++depth;
+        else if (sdfCoreKernelsGlsl[end] == '}' && --depth == 0) { ++end; break; }
+    }
+    std::string out = sdfCoreKernelsGlsl;
+    out.erase(begin, end - begin);
+    return out;
+}
+
 } // namespace Vixen::SVO::Recipe
