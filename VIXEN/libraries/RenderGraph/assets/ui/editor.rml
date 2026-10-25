@@ -25,8 +25,8 @@
             <div data-attr-id="row.elementId" class="checkbox" data-class-checked="row.isChecked" hit-mask="none"></div>
             <span class="col-name">{{row.name}}</span>
             <span class="col-op">{{row.op}}</span>
-            <div class="button" data-attr-id="row.moveUpId" hit-mask="none">↑</div>
-            <div class="button" data-attr-id="row.moveDownId" hit-mask="none">↓</div>
+            <div class="button" data-attr-id="row.moveUpId" hit-mask="none">ˆ</div>
+            <div class="button" data-attr-id="row.moveDownId" hit-mask="none">ˇ</div>
             <div class="button" data-attr-id="row.deleteId" hit-mask="none">×</div>
             <div class="program-controls">
                 <span class="value">instruction 0 · data 0: {{row.programFieldValue}}</span>

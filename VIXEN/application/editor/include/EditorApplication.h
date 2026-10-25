@@ -111,6 +111,10 @@ public:
     // grants residency unconditionally instead).
     bool SkipResidencyHeuristic() const override { return true; }
 
+    // The game's building inspector is not the editor's panel: leave it unmounted so it cannot
+    // draw over the rule-layer panel (see VulkanGraphApplication::MountsBuildingInspector).
+    bool MountsBuildingInspector() const override { return false; }
+
     // Reads the current completed compute_render_target image to PNG. Call after Render() so it
     // contains the scene output before the HUD covers part of the viewport. Scripted captures
     // are scheduled in Update() and performed in PostTick().
