@@ -1,60 +1,70 @@
-# cx-simd4recipe — R758 recipe SIMD4 witness
+# cx-simd4recipe2 — widened recipe pixels and stored-SDF timing
 
 ## LANDABLE NOW
 
-NO for the complete brief: the recipe implementation and generated consumer are landable, but the look-dev unchanged gate is not closed. The retained train-7 midday references do not match the current capture set; see STOPs.
+YES for the SIMD4 recipe implementation. The two reported symptoms are explained:
 
-Kernel commits:
+- The 96,660-pixel deltas were between current captures and a stale/mismatched retained reference set. Exact train-7 and current-tip captures are byte-identical.
+- The stored-SDF probe does not execute recipe SIMD4 code, and the six-run alternating sample does not reproduce a 2× regression. No timing workaround or semantic code change is justified.
 
-- `138835a95a6855584f0930112867551e2452bc73` — scalar-lane recipe forms use the SIMD4 emitter path.
-- `703b992abbc6d07d4946fa10c9ca766ea9d7fbca` — deterministic hash callables receive SIMD4 ABI forms.
-- `58ae2c1f88294d106393b1d31f6919c0a8e7d89e` — C++ SIMD4 runtime adapts `glm::vec3` uniforms and composite min/max/select.
-- `d07c89424c18c307e6493bc8c152a2ae81a4f09d` — generated runtime whitespace cleanup.
-- `be8e9eab1cb7b2451a118a10adfc77307b174744` — typed rejected callables keep SIMD4 scalar-ABI forms without attempting unsupported dual emission.
+The witnessed trees are VIXEN `6ed2eb56` and kernel `be8e9eab`; `origin/wave/authoring-convergence` and `origin/main` were already merged and up to date before the final witness.
 
-VIXEN pins `be8e9eab1cb7b2451a118a10adfc77307b174744`.
+## PIXELS
 
-## CENSUS DELTA
+I built the exact train-7 VIXEN source at `6f3c64e1` and the current tip with the same Release/CMake settings, then ran the four look-dev states on the GPU queue with `DISPLAY=:0`:
 
-The checked-in pre-change census (`reports/simd4-census/simd4-summary.csv`) was:
+`midday`, `late-afternoon`, `overcast`, and `night-service`, each at four angles, with first/repeat captures for 32 PNG comparisons total.
 
-| kind | total | SIMD4 | scalar-only | not lowered |
-|---|---:|---:|---:|---:|
-| recipe op | 120 | 46 | 61 | 13 |
+`tools/compare-capture-pixels.py --require-byte-identical` reported `byte_equal=yes`, `pixel_diff=0`, `max_channel_delta=0`, and `bbox=none` for every pair. The contact sheet is [lookdev-train7-vs-current-contact.png](/home/liory/codeman-cases/undertow/reports/cx-simd4recipe2-evidence/lookdev-train7-vs-current-contact.png).
 
-The 61 scalar-lane recipe entries now all have a generated SIMD4 callable form. Admitted per-point float/float3 bodies use `WidenedProgram` plus the C++/GLSL widened renderers; unsupported typed or non-vectorizable bodies use an exact four-lane scalar thunk behind the same ABI. Rejected derivative metadata no longer suppresses a native primal form when the callable is dual-renderable.
+The retained reference comparison still differs by 96,660 pixels per four-angle state, so those references are not the train-7 tip output used by this control. This is a provenance mismatch, not a widening change.
 
-The five widened-program entries (`FloatToQ16`, `Q16Add`, `Q16Mul`, `Q16Sub`, `Q16ToU32`) have generated forms. The thirteen previously missing/control entries (`ComposeFloat3`, `DecomposeFloat3`, `DistanceTo`, `Output`, `Passthrough`, `PositionChannel`, `PushFloat3`, `PushParam`, `ReadParam`, `ReadParamFloat3`, `ReadParamQ16`, `ReadParamU32`, `RestorePos`) are present in the generated CPU/GLSL dispatch/body artifacts and are covered by the parity corpus.
+## TIMING
 
-Final generated-header scan: 125 metadata rows including aliases; `RecipeExecutionClass::ScalarLaneFallback` rows: 0; classes are 89 `Elementwise`, 25 `Masked`, 6 `ResolvedAtLowering`, and 5 `LoweredAway`. The generated header contains 181 SIMD4 callable definitions.
+Alternating `Application.LookdevCapture.StoredSdf.Brickmap` GPU runs, same machine/build configuration:
 
-## PARITY
+| run | tree | wall seconds | frame CPU ms |
+|---|---|---:|---:|
+| 1 | train-7 | 18.61 | 16,175.8 |
+| 1 | current | 20.02 | 17,538.7 |
+| 2 | train-7 | 18.64 | 16,455.0 |
+| 2 | current | 17.06 | 15,420.2 |
+| 3 | train-7 | 16.92 | 14,581.7 |
+| 3 | current | 19.46 | 16,972.1 |
 
-- SourceGenerator focused witness: 39/39 passed (`WidenedCalculusTests` + `RecipeSimdEmitterTests`).
-- Full paired kernel SG: 1,353/1,353 passed.
-- Full paired kernel CG: 2,878 passed, 1 skipped, 0 failed.
-- VIXEN recipe parity selection: 119/119 passed; three optional tests were skipped by capability/fixture guards. The corpus programs were bit-identical across four lanes, including the typed recipe-value corpus. Hash, typed integer/conversion, float3, control, parameter, and per-op analytical parity cases passed.
+Train-7 mean/median wall time was 18.057/18.61 s; current was 18.847/19.46 s. The current median is only 4.6% higher, with one current run faster than both first two train-7 runs; this does not reproduce the prior 2× observation. All six CSVs have the same boot bytes, populated pools, resident signature, and zero steady-state GPU timing columns because this is a one-frame capture.
+
+The stored-SDF path is not a recipe SIMD4 execution path: `test_lookdev_capture.cpp:1130` selects the stored scene, `:1181-1185` skips procedural `BodyInstances` for it, and `BuildRenderGraph.cpp:7576-7661` creates stored instances with `providerKind=0` and `recipeId=0`. Therefore there is no SIMD4 thunk, gather path, early-out, or execution-class change to fix in this probe.
 
 ## WITNESS
 
-Final VIXEN build used the real queue, `UNDERTOW_ROOT`, `YEROKET_ROOT`, `VIXEN_WITH_FSR3=OFF`, and the shared Vulkan SDK. `bash ./build-wsl.sh --config Release` passed all 239 build/codegen steps. `recipe_simd_regen` and `recipe_simd_check` passed; the final `be8e9eab` regeneration reported no generated-content change from the already-built header.
+- VIXEN aggregate build: queued `rendergraph_svo_tests`, exit 0.
+- Fresh SIMD4 parity: `RecipeSimdParity` 2/2 passed. The implementation’s full recipe parity corpus remains 119/119 from the prior witness.
+- RenderGraph/SVO split: CPU 1,437 executed, 0 failed; GPU 826 selected, 12 failed. Every failure name is present in the retained train-7 manifest at `/home/liory/codeman-cases/undertow/reports/sn-vixtrain7-evidence/final-train/real-failed.txt`; no new name appeared. The known names were:
+  - `EditorDocumentRenderTest.GoldenDocumentAllLayersRendersVisibleBody`
+  - `EditorDocumentRenderTest.DisablingCutLayerChangesTopFaceSilhouette`
+  - `EditorDocumentRenderTest.LayeredSlabSubtractSphereGuardsAreExactAndCaptureHasHole`
+  - `AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender`
+  - `ShellRevalidateNodeTest.DisjointShellGenerationPassesGetZeroBarriers`
+  - `CanonicalDilation/ShellRevalidateNodeTest.GpuDispatchMatchesCanonicalFlagsAndCompactedBytes/0` through `/3`
+  - `DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels`
+  - `DeclaredPositionRenderTest.CorpusInlineLiteralsMatchRuntimeOperandsAndTape`
+  - `vixen_text_shader_capture_producer`
+- Full kernel SG: 1,374 passed, 0 failed, 0 skipped.
+- Full kernel CG: 3,089 passed, 2 skipped, 0 failed, total 3,091.
+- Raw logs and timing CSVs are under [cx-simd4recipe2-evidence](/home/liory/codeman-cases/undertow/reports/cx-simd4recipe2-evidence/).
 
-Full labels were run on the generated artifact immediately before the final signature-only kernel commit; regeneration against `be8e9eab` was byte/content unchanged:
-
-- SVO: 800/802 executed tests passed, 2 train-7 failures (`DeclaredPositionRenderTest.IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels`, `DeclaredPositionRenderTest.CorpusInlineLiteralsMatchRuntimeOperandsAndTape`).
-- RenderGraph: 1,463/1,473 passed, 10 failures. The names are the retained train-7 set: three `EditorDocumentRenderTest` captures, `AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender`, five `ShellRevalidateNodeTest` cases (the disjoint case plus canonical-dilation `/0`–`/3`), and `vixen_text_shader_capture_producer`. No recipe-specific `ProceduralRecipeRenderTest` case failed.
-- The current SVO/RenderGraph failure names are a subset of `/home/liory/codeman-cases/undertow/reports/sn-vixtrain7-evidence/final-train/real-failed.txt`; no new failure name was observed.
-- GPU look-dev repeat witness: `Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically` passed 1/1 in 492.53 seconds with `DISPLAY=:0`, producing 32 captures. A stored-SDF timing probe passed in 25.23 seconds; its capture timing was 14,720.2 ms frame time and 24,867.8 ms process time versus 12.47 seconds for the retained train-7 stored-SDF test. This is a timing note, not a performance claim.
+Recovery ladder: A used the documented live queue and isolated Release CMake builds; B built the exact train-7 source control and rechecked generated recipe output; C matched the remaining broad GPU failure names against the train-7 manifest and passed the targeted recipe parity scope. No required check remains unresolved.
 
 ## STOPs
 
-- **Visual unchanged gate is unresolved.** Comparing current `build/wsl/runtime-captures/lookdev/midday` with the retained train-7 `triage/out4` references produced byte differences and 96,660 differing pixels in each of the four 500×500 angles (maximum channel deltas 204–212). The inspected contact sheet shows scene/content differences, not a zero-diff capture. The current run is repeat-identical internally, but cannot be claimed unchanged against the retained references. Owner action: provide the correctly matched train-7 reference set or explicitly accept this provenance mismatch.
-- The SVO/RenderGraph red is a known, scope-independent train-7 baseline finding, not a new recipe regression; recipe parity and all ten procedural recipe render cases passed.
+None for this lane. The retained-reference mismatch and the 12 RenderGraph/SVO failures are documented findings, all explained by control/reference evidence and pre-existing train-7 failure names.
 
-Recovery ladder: A repaired the invocation by using the global queue path, `UNDERTOW_ROOT`, and `build-wsl.sh --config Release`; B regenerated fresh pinned output and passed `recipe_simd_check`; C matched the remaining broad GPU failures against the train-7 failure manifest and validated the narrower recipe parity scope. The first full SG attempt exposed two emitter regressions; those were fixed and the final full SG/CG run is green.
+## SPT DISPOSITION
+
+No SPT task ID was provided or worked on in this lane.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
 - proposed: VIXEN queued builds require a manually paired `UNDERTOW_ROOT`
 - proposed: `build-wsl.sh` requires `--config` for queued Release builds
-
