@@ -248,6 +248,11 @@ protected:
     // orbit-tuned heuristic, silently stomping the grant back to false every tick.
     virtual bool SkipResidencyHeuristic() const { return false; }
 
+    // Per-app HUD ownership: the building-inspector panel belongs to the game, so only the app
+    // that owns it mounts it on the shared composite UI node (BuildRenderGraph). EditorApplication
+    // overrides this to false; without that the inspector draws over the editor's layer panel.
+    virtual bool MountsBuildingInspector() const { return true; }
+
     /**
      * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
      *        the live camera state and re-sort instances front-to-back for the GPU per-ray
