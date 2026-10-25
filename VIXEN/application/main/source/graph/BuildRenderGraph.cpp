@@ -9577,9 +9577,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Hand passes register the resources the generated systems read under their schema
     // identity (R680.4); the runner allocates the rest from the manifest's allocations, then
     // binds, orders and dispatches every manifest system.
-    const SchemaIdentity sceneRadiance{"state:frame-targets", "SceneRadianceHistoryOutput"};
-    const SchemaIdentity resolvedRadiance{"state:frame-targets", "ResolvedRadiance"};
-    const SchemaIdentity outputImage{"state:frame-targets", "OutputImage"};
+    const SchemaIdentity sceneRadiance{"frame_targets", "SceneRadianceHistoryOutput"};
+    const SchemaIdentity resolvedRadiance{"frame_targets", "ResolvedRadiance"};
+    const SchemaIdentity outputImage{"frame_targets", "OutputImage"};
     const SchemaIdentity exposureMeter{"Vixen.Codegen.Gpu.ExposureMeterState", "*"};
     SchemaResourceRegistry frameResources;
     // The exposure meter reads the resolved radiance: the scene radiance itself with `none`, the
@@ -9597,7 +9597,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             frameResources.ProvideImage(resolvedRadiance, sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET);
         }
         if (reconstructionMotionModule) {
-            frameResources.ProvideSubGraph({"state:frame-targets", "MotionVectors"}, *reconstructionMotionModule,
+            frameResources.ProvideSubGraph({"frame_targets", "MotionVectors"}, *reconstructionMotionModule,
                                            ReconstructionMotionPorts::MOTION_VIEW.index,
                                            ReconstructionMotionPorts::MOTION.index, SlotRole::Execute);
         }
