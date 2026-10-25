@@ -109,6 +109,7 @@ protected:
     bool             deviceConfirmed_ = false;
 
     std::unique_ptr<VulkanDevice> deviceShell_;
+    std::unique_ptr<TestQueueOwner> submitOwner_;
     std::shared_ptr<ResourceManagement::DeviceBudgetManager> budgetManager_;
     ResourceManagement::BatchedUploader* uploaderObserver_ = nullptr;
 
@@ -136,6 +137,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
 
         deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
+        submitOwner_ = std::make_unique<TestQueueOwner>(logicalDevice_, queue_);
 
         auto allocator = std::make_shared<ResourceManagement::DirectAllocator>(
             physicalDevice_, logicalDevice_);
@@ -151,7 +153,10 @@ protected:
         ResourceManagement::BatchedUploader::Config uploaderConfig;
         uploaderConfig.maxPendingUploads = 256;
         auto uploader = std::make_unique<ResourceManagement::BatchedUploader>(
-            logicalDevice_, queue_, queueFamily_, budgetManager_.get(), uploaderConfig);
+            logicalDevice_, queue_, queueFamily_, budgetManager_.get(), uploaderConfig,
+            [this](Vixen::Vulkan::Resources::QueueSubmitRequest request) {
+                return submitOwner_->SubmitSynchronously(std::move(request));
+            });
         uploaderObserver_ = uploader.get();
         deviceShell_->SetUploader(std::move(uploader));
 

@@ -298,10 +298,6 @@ std::vector<AppFlowReadbackRing::Result> AppFlowReadbackRing::Poll() {
         if (status != VK_SUCCESS) {
             result.error = "AppFlow staging copy failed in the queue owner: " + std::to_string(status);
             result.completionCpuUs = ElapsedUs(completionStarted);
-            if (slot.command != VK_NULL_HANDLE) {
-                vkFreeCommandBuffers(slot.logicalDevice, slot.commandPool, 1, &slot.command);
-                slot.command = VK_NULL_HANDLE;
-            }
             slot.completion.reset();
             slot.inFlight = false;
             complete.push_back(std::move(result));
@@ -325,10 +321,6 @@ std::vector<AppFlowReadbackRing::Result> AppFlowReadbackRing::Poll() {
             vkUnmapMemory(slot.logicalDevice, slot.memory);
         }
         result.completionCpuUs = ElapsedUs(completionStarted);
-        if (slot.command != VK_NULL_HANDLE) {
-            vkFreeCommandBuffers(slot.logicalDevice, slot.commandPool, 1, &slot.command);
-            slot.command = VK_NULL_HANDLE;
-        }
         slot.completion.reset();
         slot.inFlight = false;
         complete.push_back(std::move(result));

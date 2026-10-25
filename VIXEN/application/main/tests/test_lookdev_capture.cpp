@@ -1298,6 +1298,9 @@ public:
             NotifyReconstructionCameraCut();
         }
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        // The two drain ticks still render so the queue owner can issue and retire the
+        // final readback, but must not count the last scenario again after it was captured.
+        if (capturedCount_ >= scenarios_.size()) return true;
         if (historyProbe && framesInScenario_ >= 1u && framesInScenario_ <= 3u) {
             auto* state = GetRenderGraph()->GetInstanceByName("render_path/reconstruction_history/state");
             const auto valid = state->GetOutput(ReconstructionHistoryStateNodeConfig::VALID.index)->GetHandle<uint32_t>();
@@ -1924,7 +1927,10 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     const auto processStart = CaptureClock::now();
     app.SetProcessStart(processStart);
     const uint32_t frameCount = framesPerScenario * static_cast<uint32_t>(scenarios.size());
-    const int result = app.Run(RunOptions{.exitAfterFrames = frameCount});
+    // The final capture is published from frame N, issued by the graph owner on N+1, and
+    // retired/read by PostTick on N+2. Keep two drain frames so this witness exercises the
+    // asynchronous handoff rather than destroying a still-pending request during teardown.
+    const int result = app.Run(RunOptions{.exitAfterFrames = frameCount + 2u});
     const double processMs = MsBetween(processStart, CaptureClock::now());
     const double budgetMs = ProcessBudgetMs();
     app.PrintTimingSummary();
@@ -1933,7 +1939,9 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     std::fflush(stdout);
     if (result != 0 || app.CapturedCount() != scenarios.size()) {
         error = app.CaptureError().empty()
-            ? "application exited before all look-dev captures were written"
+            ? "application exited before all look-dev captures were written (result=" +
+                std::to_string(result) + ", captured=" + std::to_string(app.CapturedCount()) +
+                ", expected=" + std::to_string(scenarios.size()) + ")"
             : app.CaptureError();
         return false;
     }

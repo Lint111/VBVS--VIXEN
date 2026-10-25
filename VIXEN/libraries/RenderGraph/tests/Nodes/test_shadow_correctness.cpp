@@ -280,6 +280,7 @@ protected:
     bool             softwareConfirmed_ = false;
 
     std::unique_ptr<VulkanDevice> deviceShell_;
+    std::unique_ptr<TestQueueOwner> submitOwner_;
 
     template <typename T>
     static void SetHandleVal(Resource& res, T value) { res.SetHandle<T>(std::move(value)); }
@@ -319,6 +320,9 @@ protected:
             input.clicksThisFrame = {{static_cast<int>(Vixen::EventBus::MouseButton::Left), true,
                                       static_cast<float>(pixelIndex % width),
                                       static_cast<float>(pixelIndex / width)}};
+            provider.Execute();
+            submitOwner_->Drain();
+            input.clicksThisFrame.clear();
             provider.Execute();
             outCandidates.push_back(candidateRes.GetHandle<SelectionCandidate>());
         }
@@ -374,6 +378,8 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
 
         deviceShell_ = MakeTestDeviceShell(physicalDevice_, logicalDevice_, queue_, queueFamily_);
+        submitOwner_ = std::make_unique<TestQueueOwner>(logicalDevice_, queue_);
+        submitOwner_->Attach(*deviceShell_);
     }
 
     void TearDown() override {
