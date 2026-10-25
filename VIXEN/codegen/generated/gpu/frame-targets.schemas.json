@@ -1999,8 +1999,8 @@
     { "name": "provider", "required": true, "detail": "render provider (engine ProviderKind)", "value": { "kind": "enum", "backing": "byte", "options": ["stored", "procedural"] } },
     { "name": "recipe", "required": false, "detail": "engine SDF recipe (engine RecipeId) — the 2 legacy analytic shapes; mutually exclusive with `blob`", "value": { "kind": "enum", "backing": "byte", "options": ["sphere", "displaced_sphere"] } },
     { "name": "params", "required": false, "detail": "{ name: value } radius-relative shape constants (e.g. displace_amp, displace_freq)", "value": { "kind": "map", "sharedElement": "Undertow.Content.RecipeParam", "keyName": "Name", "valueName": "Value", "vocab": [], "entry": { "kind": "scalar", "scalar": "float" } } },
-    { "name": "blob", "required": false, "detail": "committed VRC1 recipe blob (content id) — the arbitrary-recipe path; mutually exclusive with `recipe`", "value": { "kind": "scalar", "scalar": "id" } }
-  ], "assetFiles": { "directory": "recipes", "extension": ".vrc" } },
+    { "name": "blob", "required": false, "detail": "layered recipe document (content id of recipes/<name>.vxd; the pack build flattens it to the runtime VRC1 blob) — the arbitrary-recipe path; mutually exclusive with `recipe`", "value": { "kind": "scalar", "scalar": "id" } }
+  ], "assetFiles": { "directory": "recipes", "extension": ".vxd" } },
   "rent_rate": { "codegen": { "introducedInVersion": 96, "attach": "global_tuning" }, "fields": [
     { "name": "Value", "required": true, "detail": "", "value": { "kind": "scalar", "scalar": "number", "default": 0.001 } }
   ] },
