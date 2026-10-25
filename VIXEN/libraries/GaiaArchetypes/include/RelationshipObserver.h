@@ -5,11 +5,12 @@
 #include <unordered_map>
 #include <vector>
 #include <span>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <mutex>
 #include <optional>
+#include "RcuSnapshot.h"
 
 namespace GaiaArchetype {
 
@@ -30,7 +31,7 @@ struct RelationshipType;
  * - All relationship operations go through this class
  * - Maintains a registry of callbacks per relationship type
  * - Supports both individual and batch operations
- * - Thread-safe callback invocation
+ * - Callback table is an immutable snapshot (register from any thread; invocation never blocks)
  *
  * Usage:
  *   RelationshipObserver observer(world);
@@ -311,6 +312,8 @@ private:
     // Internal Methods
     // ========================================================================
 
+    size_t addCallbackEntry(gaia::ecs::Entity relationTag, CallbackEntry entry);
+
     void invokeAddedCallbacks(
         gaia::ecs::Entity source,
         gaia::ecs::Entity target,
@@ -332,21 +335,21 @@ private:
 
     gaia::ecs::World& m_world;
 
-    // Callbacks indexed by relationship tag ID
-    std::unordered_map<CallbackKey, std::vector<CallbackEntry>> m_callbacks;
+    // Callbacks indexed by relationship tag ID. Immutable publish: registration builds a new table and
+    // swaps it in; invocation pins the table it started with (callbacks run with no lock held).
+    using CallbackMap = std::unordered_map<CallbackKey, std::vector<CallbackEntry>>;
+    ::Vixen::RcuSnapshot<CallbackMap> m_callbacks;
 
     // Handle counter for callback registration
-    size_t m_nextHandle = 1;
+    std::atomic<size_t> m_nextHandle{1};
 
     // Batch processing settings
     size_t m_batchThreshold = 16;
     bool m_deferredMode = false;
 
-    // Deferred operations queue
+    // Deferred operations queue. Owner-phase state: it is written by the same thread that mutates the
+    // (single-owner) Gaia world in the surrounding add/remove call, and drained by flush() on that thread.
     std::vector<DeferredOp> m_deferredOps;
-
-    // Thread safety
-    mutable std::mutex m_mutex;
 };
 
 // ============================================================================

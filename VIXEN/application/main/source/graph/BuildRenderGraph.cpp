@@ -6131,8 +6131,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // caller of this render-graph-build function (only ever invoked once per process
             // launch, but a static is the standard "exactly one, lazily initialized, no
             // separate declaration site to keep in sync" idiom for this) shares the same lock.
-            static std::mutex g_gaiaChunkAllocatorMutex;
-
             auto bakeWorldSpaceBody = [&](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv,
                                           glm::vec3 worldHalfExtent = glm::vec3(0.0f)) {
                 glm::ivec3 bakeRegion(0);
@@ -6145,7 +6143,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         bakeRegion[axis] = std::min(hiRoundedUp, n);
                     }
                 }
-                std::lock_guard<std::mutex> gaiaLock(g_gaiaChunkAllocatorMutex);
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeSdfWorld(
                     makeWorldSpaceEval(prog, bodyWorldCenter, n, subdiv), bodyWorldCenter, n, kBand,
                     3, Vixen::SVO::NoEmission,
@@ -6280,52 +6277,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 worldCut = std::move(cachedBundle->lightTreeCut);
             } else {
 
-            // T-031: the 8 bodies are submitted as one shared KernelDispatch wave -- each owns its own
-            // GaiaVoxelWorld (its own gaia::ecs::World instance, SdfBake.h's BakeSdfWorld
-            // constructs a fresh one per call) and its own AttributeRegistry/LaineKarrasOctree
-            // (SdfBake.h's SdfBodyOctree bundle). A FIRST thread-safety pass (component IDs,
-            // Gaia's opt-in ThreadPool, Logger globals) found no shared mutable state and
-            // looked safe -- but the FIRST unlocked live run of this parallelization crashed
-            // every single time with "Assertion failed: (m_nextFreeBlock < m_blockCnt &&
-            // \"Block allocator recycle list broken!\")" (gaia.h ~18958). Root cause: every
-            // World's entity/chunk creation (BakeSdfWorld's createVoxelsBatch) and octree
-            // rebuild() ultimately allocate/free ECS chunks through
-            // gaia::ecs::ChunkAllocator::get() -- a process-WIDE singleton (gaia.h ~18873,
-            // `using ChunkAllocator = core::dyn_singleton<detail::ChunkAllocatorImpl>`) whose
-            // per-page block-recycle free-list (MemoryPage::m_nextFreeBlock/m_freeBlocks) has
-            // NO internal synchronization. This is exactly the "shared allocator" hazard this
-            // task's own instructions called out to check for -- the static read of
-            // ComponentRegistry/GaiaVoxelWorld.h alone missed it because the singleton lives
-            // in gaia.h's own chunk-management internals, not in this codebase's wrapper
-            // layer; only a live run surfaced it.
-            // FIX: g_gaiaChunkAllocatorMutex (function-local static below) serializes the
-            // ENTIRE per-body bake+build call (bakeWorldSpaceBody's lock_guard, and the
-            // light body's own lambda) rather than attempting to lock only the specific
-            // internal Gaia call sites that touch ChunkAllocator -- World construction,
-            // component registration, createVoxelsBatch, AND rebuild() all reach into Gaia's
-            // chunk internals at various points, and mis-scoping the lock to miss one of them
-            // would silently reintroduce the same corruption. This still yields real overlap:
-            // the CPU-bound per-voxel evalRecipe scan (BakeSdfWorld's occupancy + full-brick
-            // passes -- pure computation, no Gaia calls, audit-doc-confirmed dominant cost of
-            // the bake) for whichever bodies haven't yet reached the lock runs concurrently
-            // with whichever ONE body currently holds it during its own allocation phase.
-            // (mainLogger->Info/Error calls deliberately stay OUTSIDE the executor wave below --
-            // Logger's own logEntries vector is NOT internally synchronized, only the two atomics
-            // are, so logging from executor workers would race; every existing log call already sat
-            // on the main thread after all bakes complete, so this is unchanged.)
+            // The 8 bodies bake in order on this thread (owner phase). Every World's chunk creation
+            // and octree rebuild() allocate through gaia::ecs::ChunkAllocator::get(), a process-wide
+            // singleton with an unsynchronized per-page free list (the T-031 parallel wave crashed
+            // with "Block allocator recycle list broken!"). Exactly one writer at a time needs no
+            // lock; the former mutex spanned each whole bake, so the wave never overlapped anyway.
             std::array<std::optional<Vixen::SVO::SdfBodyOctree>, 8> bakedBodies;
-            std::vector<Vixen::KernelDispatch::VirtualTask> bakeTasks;
-            std::vector<Vixen::KernelDispatch::TaskId> bakeWave;
-            bakeTasks.reserve(bakedBodies.size());
-            bakeWave.reserve(bakedBodies.size());
-            constexpr uint64_t kCornellBakeOwner = 0x54435042414B4531ULL; // "TCPBAKE1"
-            const auto addBakeTask = [&](size_t bodyIndex, std::function<Vixen::SVO::SdfBodyOctree()> bake) {
-                const Vixen::KernelDispatch::TaskId taskId{
-                    kCornellBakeOwner, static_cast<uint32_t>(bodyIndex)};
-                bakeWave.push_back(taskId);
-                bakeTasks.push_back({taskId, [&, bodyIndex, bake = std::move(bake)]() mutable {
-                    bakedBodies[bodyIndex].emplace(bake());
-                }});
+            const auto addBakeTask = [&](size_t bodyIndex, const std::function<Vixen::SVO::SdfBodyOctree()>& bake) {
+                bakedBodies[bodyIndex].emplace(bake());
             };
 
             addBakeTask(0, [&] { return bakeWorldSpaceBody(
@@ -6345,7 +6304,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf)); });
             addBakeTask(5, [&] {
                 // Light body: same self-contained bake-and-build sequence, with emission.
-                std::lock_guard<std::mutex> gaiaLock(g_gaiaChunkAllocatorMutex);
                 Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeSdfWorld(
                     makeWorldSpaceEval(bodies[5].prog, kLightWorldCenter, kSmallN, kSmallSubdiv),
                     kLightWorldCenter, kSmallN, kBand, 3,
@@ -6357,22 +6315,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodies[6].prog, bodies[6].worldCenter, kSmallN, kSmallSubdiv, glm::vec3(0.0f)); });
             addBakeTask(7, [&] { return bakeWorldSpaceBody(
                 bodies[7].prog, bodies[7].worldCenter, kSmallN, kSmallSubdiv, glm::vec3(0.0f)); });
-
-            // The executor wave is the join point. Results are still consumed below in body index
-            // order, matching the former future.get() sequence and preserving concatenation order.
-            auto& sharedExecutor = renderGraph->GetMainCacher().GetTaskExecutor();
-            const int workerCount = static_cast<int>(std::min(
-                8u, std::max(1u, std::thread::hardware_concurrency())));
-            const bool bakeDispatchSucceeded = sharedExecutor.Run(
-                bakeTasks, {bakeWave}, workerCount);
-            if (!bakeDispatchSucceeded) {
-                const auto& errors = sharedExecutor.GetErrors();
-                const std::string message = errors.empty()
-                    ? "shared executor cancelled the Cornell body bake"
-                    : errors.front().message;
-                throw std::runtime_error(
-                    "[BuildRenderGraph] Cornell body bake failed: " + message);
-            }
 
             Vixen::SVO::SdfBodyOctree leftWallBody   = std::move(*bakedBodies[0]);
             Vixen::SVO::SdfBodyOctree rightWallBody  = std::move(*bakedBodies[1]);

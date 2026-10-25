@@ -302,7 +302,7 @@ void InputNode::RegisterCallbacks() {
 // Static (GLFW's C API requires free-function pointers); each resolves the originating InputNode
 // via the registry then forwards to QueueEvent. Kept minimal — all fold logic lives in FoldEvent,
 // run later from ProcessPendingInput, never from inside a GLFW callback (glfwPollEvents() calls
-// these synchronously on the main thread; deferring the fold keeps the mutex-guarded queue as the
+// these synchronously on the main thread; deferring the fold keeps the lock-free event ring as the
 // ONLY thing callbacks touch, matching WindowNode's pendingEvents idiom).
 
 void InputNode::OnMouseButton(GLFWwindow* w, int button, int action, int /*mods*/) {
@@ -330,8 +330,7 @@ void InputNode::OnKey(GLFWwindow* w, int key, int /*scancode*/, int action, int 
 }
 
 void InputNode::QueueEvent(const InputEvent& event) {
-    std::lock_guard lock(eventMutex_);
-    pendingInput_.push_back(event);
+    pendingInput_.Push(event);
 }
 
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -394,14 +393,7 @@ void InputNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void InputNode::ProcessPendingInput() {
-    std::vector<InputEvent> eventsToProcess;
-    {
-        std::lock_guard lock(eventMutex_);
-        eventsToProcess.swap(pendingInput_);
-    }
-    for (const auto& event : eventsToProcess) {
-        FoldEvent(event);
-    }
+    pendingInput_.Drain([this](const InputEvent& event) { FoldEvent(event); });
 }
 
 void InputNode::FoldEvent(const InputEvent& event) {
@@ -613,15 +605,15 @@ void InputNode::ClearInputOnFocusLoss() {
     }
     buttonDown_[0] = buttonDown_[1] = buttonDown_[2] = false;
     {
-        std::lock_guard lock(eventMutex_);
-        auto event = pendingInput_.begin();
-        while (event != pendingInput_.end()) {
-            if (event->type == InputEvent::Type::Key || event->type == InputEvent::Type::CursorPos) {
-                event = pendingInput_.erase(event);
-            } else {
-                ++event;
+        // Drop queued key/cursor events, keep the rest (drain, then re-publish what stays; order among
+        // the kept events is preserved).
+        std::vector<InputEvent> kept;
+        pendingInput_.Drain([&kept](const InputEvent& event) {
+            if (event.type != InputEvent::Type::Key && event.type != InputEvent::Type::CursorPos) {
+                kept.push_back(event);
             }
-        }
+        });
+        for (const InputEvent& event : kept) pendingInput_.Push(event);
     }
     pendingDelta_ = glm::vec2(0.0f);
     inputState_.mouseDelta = glm::vec2(0.0f);

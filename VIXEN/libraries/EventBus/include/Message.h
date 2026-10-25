@@ -169,6 +169,10 @@ struct BaseEventMessage {
     SenderID sender;
     std::chrono::steady_clock::time_point timestamp;
 
+    // Intrusive link for MessageBus's lock-free publish queue. Owned by the bus while the message is
+    // queued; never part of the payload. Accessed only through std::atomic_ref inside MessageBus.
+    BaseEventMessage* busNext = nullptr;
+
     BaseEventMessage(EventCategory flags, MessageType msgType, SenderID senderId)
         : categoryFlags(flags)
         , type(msgType)

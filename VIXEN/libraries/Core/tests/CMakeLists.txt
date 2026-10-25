@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.15)
+project(CoreTests)
+
+find_package(Threads REQUIRED)
+add_executable(test_nostall_primitives test_nostall_primitives.cpp)
+target_include_directories(test_nostall_primitives PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(test_nostall_primitives PRIVATE GTest::gtest_main Threads::Threads)
+set_target_properties(test_nostall_primitives PROPERTIES FOLDER "Tests/Core Tests")
+include(GoogleTest)
+vixen_gtest_discover_tests(Core test_nostall_primitives)

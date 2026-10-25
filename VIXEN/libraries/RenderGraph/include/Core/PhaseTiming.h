@@ -5,9 +5,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
-#include <mutex>
 #include <string>
 #include <vector>
+
+#include "PerThreadLog.h"
 
 // VIXEN_PHASE_TIMING=1: host wall-time census for compile phases, per-node Execute cost and
 // blocking waits. Output goes to stderr as [PHASE] / [NODEEXEC] / [HOSTWAIT] lines; the summary
@@ -33,27 +34,21 @@ struct Series {
     double total = 0.0;
 };
 
-struct Store {
-    std::mutex mutex;
-    std::map<std::string, Series> execute;
-    std::map<std::string, Series> waits;
+// Thread-local + merge (no-stall pattern 4): every thread appends its samples to its own log, the
+// summary merges all logs once when the graph is destroyed. Recording never takes a lock.
+struct Sample {
+    bool isWait = false;
+    std::string key;
+    double ms = 0.0;
 };
 
-inline Store& GetStore() {
-    static Store store;
-    return store;
+inline Vixen::PerThreadLog<Sample>& GetLog() {
+    static Vixen::PerThreadLog<Sample> log;
+    return log;
 }
 
-inline void Add(std::map<std::string, Series> Store::*which, const std::string& key, double ms) {
-    Store& store = GetStore();
-    std::lock_guard<std::mutex> lock(store.mutex);
-    Series& series = (store.*which)[key];
-    series.ms.push_back(ms);
-    series.total += ms;
-}
-
-inline void AddExecute(const std::string& node, double ms) { Add(&Store::execute, node, ms); }
-inline void AddWait(const std::string& site, double ms) { Add(&Store::waits, site, ms); }
+inline void AddExecute(const std::string& node, double ms) { GetLog().Append(Sample{false, node, ms}); }
+inline void AddWait(const std::string& site, double ms) { GetLog().Append(Sample{true, site, ms}); }
 
 inline double Percentile(std::vector<double> samples, double fraction) {
     if (samples.empty()) return 0.0;
@@ -73,12 +68,16 @@ inline void PrintSeries(const char* tag, const std::map<std::string, Series>& al
 
 inline void PrintSummary() {
     if (!Enabled()) return;
-    Store& store = GetStore();
-    std::lock_guard<std::mutex> lock(store.mutex);
-    PrintSeries("NODEEXEC", store.execute);
-    PrintSeries("HOSTWAIT", store.waits);
-    store.execute.clear();
-    store.waits.clear();
+    std::map<std::string, Series> execute;
+    std::map<std::string, Series> waits;
+    GetLog().ForEach([&](const Sample& sample) {
+        Series& series = (sample.isWait ? waits : execute)[sample.key];
+        series.ms.push_back(sample.ms);
+        series.total += sample.ms;
+    });
+    GetLog().Clear();
+    PrintSeries("NODEEXEC", execute);
+    PrintSeries("HOSTWAIT", waits);
 }
 
 class ScopedWait {

@@ -6,8 +6,8 @@
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"
 #include "LightTree.h"
 #include <memory>
-#include <mutex>
 #include <vector>
+#include "RcuSnapshot.h"
 
 namespace Vixen::RenderGraph {
 
@@ -55,7 +55,7 @@ public:
 
     /**
      * @brief Push a new light-tree cut (host -> node seam). Uploaded on the next
-     * Execute; thread-safe against concurrent ExecuteImpl reads via cutMutex_.
+     * Execute; safe against concurrent ExecuteImpl reads (immutable publish: Execute reads the cut it started with).
      */
     void SetLightTreeCut(std::vector<Vixen::SVO::LightTreeNode> cut);
 
@@ -69,8 +69,8 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
-    std::vector<Vixen::SVO::LightTreeNode> cut_;
-    std::mutex cutMutex_;
+    // Immutable publish: the host swaps in a whole new cut, Execute pins and reads one cut. Neither side waits.
+    Vixen::RcuSnapshot<std::vector<Vixen::SVO::LightTreeNode>> cut_;
 };
 
 } // namespace Vixen::RenderGraph

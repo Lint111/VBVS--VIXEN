@@ -1,12 +1,12 @@
 #pragma once
 
 #include "Message.h"
-#include "PreAllocatedQueue.h"
-#include "LockCensus.h"
+#include "RcuSnapshot.h"
+#include <array>
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <vector>
-#include <list>
-#include <mutex>
 #include <unordered_map>
 #include <memory>
 
@@ -35,13 +35,23 @@ using EventSubscriptionID = uint32_t;
  * - Filtered subscriptions by message type
  * - Queue-based async processing (safe points)
  * - Immediate dispatch option (for time-critical messages)
- * - Thread-safe emission (mutex-protected queue)
- * 
+ * - Thread-safe emission (lock-free MPSC queue, no mutex anywhere in the bus)
+ *
+ * No-stall design (VIXEN no-stall program, families EB1-EB3 removed):
+ * - Publish queue: intrusive Vyukov MPSC list. Publish() is one atomic exchange for any number of
+ *   producer threads; ProcessMessages() is the single owner of the consumer side (a second concurrent
+ *   caller returns immediately, the owner delivers).
+ * - Subscriptions: immutable dispatch table published through RcuSnapshot. Dispatch pins the table
+ *   it started with; Subscribe/Unsubscribe build a new table and swap it in. Contract: a handler
+ *   being unsubscribed may still run for a dispatch that started before Unsubscribe returned, so
+ *   unsubscribe from the thread that owns the handler's captured state, outside a running dispatch.
+ * - Statistics: relaxed atomics, per-type counts in a fixed slot table.
+ *
  * Architecture:
  * ```
- * Sender → Publish() → Queue (thread-safe)
+ * Sender → Publish() → MPSC queue (wait-free push)
  *                         ↓
- *             ProcessMessages() (main thread)
+ *             ProcessMessages() (owner thread)
  *                         ↓
  *           Subscribers receive messages
  * ```
@@ -151,7 +161,8 @@ public:
      * @brief Process all queued messages (call once per frame)
      * 
      * Dispatches messages to subscribers in FIFO order.
-     * Thread-safe - can be called while messages are being published.
+     * Thread-safe - can be called while messages are being published. Exactly one caller drains at a
+     * time: a call that arrives while another is draining returns at once (that drain delivers).
      */
     void ProcessMessages();
 
@@ -210,26 +221,27 @@ public:
     /**
      * @brief Get the expected capacity setting
      */
-    size_t GetExpectedCapacity() const { return expectedCapacity; }
+    size_t GetExpectedCapacity() const { return expectedCapacity.load(std::memory_order_relaxed); }
 
     // ========================================================================
     // Pre-Allocation (Sprint 5.5)
     // ========================================================================
 
     /**
-     * @brief Pre-allocate message queue storage
+     * @brief Declare the expected queue depth
      *
-     * Call during setup phase to prevent heap allocations during frame execution.
+     * Messages carry their own queue link, so there is no storage to pre-allocate any more; the
+     * declared depth drives the capacity warning and the growth diagnostic.
      * Should be called with expected maximum messages per frame.
      *
      * Heuristic: nodeCount * 3 events per node is a good starting point.
      *
-     * @param capacity Number of message slots to pre-allocate
+     * @param capacity Expected number of queued messages
      */
     void Reserve(size_t capacity);
 
     /**
-     * @brief Get current queue capacity (pre-allocated slots)
+     * @brief Get the declared queue capacity
      */
     size_t GetQueueCapacity() const;
 
@@ -244,6 +256,7 @@ public:
 private:
     enum class FilterMode : uint8_t { All = 0, Type = 1, Category = 2 };
 
+    // Immutable once published inside a SubscriptionTable.
     struct Subscription {
         EventSubscriptionID id;
         FilterMode mode = FilterMode::All;
@@ -252,34 +265,57 @@ private:
         MessageHandler handler;
     };
 
+    // The whole dispatch state as one immutable value. A copy shares the Subscription objects, so the
+    // raw pointers in the lookup maps stay valid in the copy.
+    struct SubscriptionTable {
+        std::vector<std::shared_ptr<const Subscription>> all;                     // subscription order
+        std::unordered_map<MessageType, std::vector<const Subscription*>> byType;  // emT -> subscribers
+        std::unordered_map<uint64_t, std::vector<const Subscription*>> byCategory; // single category bit -> subscribers
+    };
+
+    EventSubscriptionID AddSubscription(std::shared_ptr<const Subscription> sub);
     void DispatchMessage(const BaseEventMessage& message);
 
-    PreAllocatedQueue<std::unique_ptr<BaseEventMessage>> messageQueue_;
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB1> queueMutex;
+    // --- publish queue (Vyukov intrusive MPSC) ---
+    void PushQueued(BaseEventMessage* node);
+    BaseEventMessage* PopQueued();   // owner (consumer) only; nullptr = empty or a producer is mid-push
+    void DrainAndDelete();           // owner only
 
-    // Owning storage for subscriptions
-    std::list<Subscription> subscriptions;
-    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB2> subscriptionMutex;
+    BaseEventMessage queueStub_;
+    alignas(64) std::atomic<BaseEventMessage*> queueHead_;  // last pushed node (producers exchange here)
+    BaseEventMessage* queueTail_;                            // consumer-owned
+    std::atomic<int64_t> queuedCount_{0};                    // pushed - popped (incremented before the push)
+    std::atomic_flag consumerBusy_;                          // owner phase: one ProcessMessages/ClearQueue at a time
 
-    // Fast lookup by MessageType (emT) -> list of subscribers
-    std::unordered_map<MessageType, std::vector<Subscription*>> typeSubscriptions;
+    // --- subscriptions ---
+    RcuSnapshot<SubscriptionTable> subscriptions_;
+    std::atomic<EventSubscriptionID> nextSubscriptionID_{1};
 
-    // Optional: lookup by individual category bit -> subscribers
-    // key = uint64_t bit mask with single bit set
-    std::unordered_map<uint64_t, std::vector<Subscription*>> categorySubscriptions;
+    // --- statistics (relaxed atomics; per-type counts in a fixed insert-only slot table) ---
+    static constexpr size_t kTypeSlots = 256;
+    struct TypeSlot {
+        std::atomic<uint64_t> keyPlusOne{0};  // 0 = empty, else MessageType + 1
+        std::atomic<uint64_t> count{0};
+    };
+    void CountPublishedType(MessageType type);
 
-    EventSubscriptionID nextSubscriptionID = 1;
+    std::atomic<uint64_t> totalPublished_{0};
+    std::atomic<uint64_t> totalProcessed_{0};
+    std::atomic<uint64_t> categoryFilterHits_{0};
+    std::atomic<uint64_t> typeFilterHits_{0};
+    std::atomic<size_t> maxQueueSizeReached_{0};
+    std::atomic<uint32_t> capacityWarningCount_{0};
+    std::atomic<size_t> queueGrowthCount_{0};
+    std::array<TypeSlot, kTypeSlots> typeSlots_;
 
-    // Statistics
-    Stats stats;
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB3> statsMutex;
+    std::atomic<bool> loggingEnabled{false};
 
-    bool loggingEnabled = false;
-
-    // Capacity tracking
-    size_t expectedCapacity = 1024;  // Default expected capacity
-    size_t warningThreshold = 0;     // 80% of expectedCapacity (cached)
-    bool warningLoggedThisSession = false;  // Avoid spamming warnings
+    // Capacity tracking. No storage is pre-allocated any more (messages carry their own queue link);
+    // the numbers keep their diagnostic meaning: how deep the queue got relative to the declared size.
+    std::atomic<size_t> expectedCapacity{1024};   // Default expected capacity
+    std::atomic<size_t> warningThreshold{0};      // 80% of expectedCapacity (cached)
+    std::atomic<size_t> queueCapacity_{0};        // declared queue size (Reserve); doubles when exceeded
+    std::atomic<bool> warningLoggedThisSession{false};  // Avoid spamming warnings
 
     void UpdateWarningThreshold();
     void CheckCapacityWarning(size_t currentSize);

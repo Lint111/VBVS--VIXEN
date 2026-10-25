@@ -16,6 +16,8 @@
  */
 
 #include <gtest/gtest.h>
+#include <thread>
+#include <vector>
 #include "Core/ITaskProfile.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "Core/TaskProfiles/ResolutionTaskProfile.h"
@@ -27,6 +29,36 @@ using namespace Vixen::RenderGraph;
 // ============================================================================
 // SIMPLE TASK PROFILE TESTS
 // ============================================================================
+
+// ---- lock-free sample/prediction rings (no-stall ITaskProfile) --------------------------------------
+
+TEST(TaskProfileRingTest, ConcurrentRecordersAreAllCounted) {
+    SimpleTaskProfile profile("ringTask", "test");
+    constexpr int kThreads = 4;
+    constexpr int kPer = 5000;  // more than the ring holds: overwritten samples must still be counted
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&] {
+            for (int i = 0; i < kPer; ++i) profile.RecordMeasurement(1'000'000);
+        });
+    }
+    for (auto& th : threads) th.join();
+    profile.ProcessSamples();
+    EXPECT_EQ(profile.GetSampleCount(), static_cast<uint32_t>(kThreads * kPer));
+    EXPECT_FALSE(profile.HasPendingSamples());
+}
+
+TEST(TaskProfileRingTest, PredictionsAreConsumedOnce) {
+    SimpleTaskProfile profile("predTask", "test");
+    for (uint64_t i = 1; i <= 10; ++i) profile.RecordPredictionSample(i, i * 2);
+    EXPECT_TRUE(profile.HasPendingPredictions());
+    const auto first = profile.ConsumePendingPredictions();
+    ASSERT_EQ(first.size(), 10u);
+    EXPECT_EQ(first.front().estimatedNs, 1u);
+    EXPECT_EQ(first.back().actualNs, 20u);
+    EXPECT_TRUE(profile.ConsumePendingPredictions().empty());
+    EXPECT_FALSE(profile.HasPendingPredictions());
+}
 
 class SimpleTaskProfileTest : public ::testing::Test {
 protected:

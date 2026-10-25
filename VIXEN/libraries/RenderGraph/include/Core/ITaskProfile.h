@@ -31,8 +31,9 @@
 #include <algorithm>
 #include <functional>
 #include <chrono>
-#include "LockCensus.h"
-#include <mutex>
+#include <atomic>
+#include <vector>
+#include "OverwriteRing.h"
 
 namespace Vixen::RenderGraph {
 
@@ -442,13 +443,10 @@ public:
      * @param actualNs Measured execution time in nanoseconds
      */
     virtual void RecordMeasurement(uint64_t actualNs) {
-        std::lock_guard lock(samplesMutex_);
-        pendingSamples_.push_back(actualNs);
-
-        // Auto-process if we've accumulated too many samples
-        if (pendingSamples_.size() >= kMaxPendingSamples) {
-            ProcessSamplesLocked();
-        }
+        // Wait-free publish into the sample ring. When producers lap the processor by more than
+        // kMaxPendingSamples the oldest samples are overwritten (ring overflow policy); they are still
+        // counted in sampleCount_ by ProcessSamples().
+        pendingSamples_.Push(actualNs);
     }
 
     /**
@@ -461,15 +459,8 @@ public:
      * @param actualNs Actual measured time
      */
     void RecordPredictionSample(uint64_t estimatedNs, uint64_t actualNs) {
-        std::lock_guard lock(samplesMutex_);
-        pendingPredictions_.push_back({estimatedNs, actualNs});
-
-        // Auto-trim if we've accumulated too many
-        if (pendingPredictions_.size() >= kMaxPendingSamples) {
-            // Keep the most recent half
-            auto mid = pendingPredictions_.begin() + pendingPredictions_.size() / 2;
-            pendingPredictions_.erase(pendingPredictions_.begin(), mid);
-        }
+        // Wait-free publish; the ring keeps the most recent kMaxPendingSamples predictions.
+        pendingPredictions_.Push(PendingPrediction{estimatedNs, actualNs});
     }
 
     /**
@@ -481,9 +472,8 @@ public:
      * @return Vector of pending predictions (moved)
      */
     [[nodiscard]] std::vector<PendingPrediction> ConsumePendingPredictions() {
-        std::lock_guard lock(samplesMutex_);
-        auto result = std::move(pendingPredictions_);
-        pendingPredictions_.clear();
+        std::vector<PendingPrediction> result;
+        pendingPredictions_.Drain([&](const PendingPrediction& p) { result.push_back(p); });
         return result;
     }
 
@@ -491,8 +481,7 @@ public:
      * @brief Check if there are pending predictions - thread-safe
      */
     [[nodiscard]] bool HasPendingPredictions() const {
-        std::lock_guard lock(samplesMutex_);
-        return !pendingPredictions_.empty();
+        return pendingPredictions_.HasPending();
     }
 
     /**
@@ -509,24 +498,21 @@ public:
      * (e.g., exponential moving average).
      */
     virtual void ProcessSamples() {
-        std::lock_guard lock(samplesMutex_);
-        ProcessSamplesLocked();
+        ProcessSamplesImpl();
     }
 
     /**
      * @brief Get number of pending (unprocessed) samples (thread-safe)
      */
     [[nodiscard]] size_t GetPendingSampleCount() const {
-        std::lock_guard lock(samplesMutex_);
-        return pendingSamples_.size();
+        return pendingSamples_.PendingCount();
     }
 
     /**
      * @brief Check if there are pending samples to process (thread-safe)
      */
     [[nodiscard]] bool HasPendingSamples() const {
-        std::lock_guard lock(samplesMutex_);
-        return !pendingSamples_.empty();
+        return pendingSamples_.HasPending();
     }
 
     /**
@@ -623,32 +609,42 @@ public:
      * Derived classes should override to reset their specific calibration data.
      */
     virtual void ResetCalibration() {
-        std::lock_guard lock(samplesMutex_);
         workUnits_ = 0;  // Reset to baseline
         sampleCount_ = 0;
         lastMeasuredCostNs_ = 0;
         peakMeasuredCostNs_ = 0;
         isCalibrated_ = false;
         timing_ = false;  // Reset timing state
-        pendingSamples_.clear();  // Discard unprocessed samples
-        pendingPredictions_.clear();  // Discard unprocessed predictions
+        pendingSamples_.DiscardPending();  // Discard unprocessed samples
+        samplesDroppedAccounted_ = pendingSamples_.DroppedCount();
+        pendingPredictions_.DiscardPending();  // Discard unprocessed predictions
     }
 
 protected:
     /**
-     * @brief Process samples without locking (called with lock held)
+     * @brief Fold the published samples into the statistics (owner side of the sample ring)
+     *
+     * Exactly one caller folds a given range (the ring claims it with one CAS; a concurrent caller
+     * returns without waiting). Samples the ring overwrote before they were folded are added to
+     * sampleCount_ so the count stays exact; they cannot contribute to last/peak.
      */
-    void ProcessSamplesLocked() {
-        if (pendingSamples_.empty()) return;
-
-        for (uint64_t sample : pendingSamples_) {
+    void ProcessSamplesImpl() {
+        bool any = false;
+        pendingSamples_.Drain([&](uint64_t sample) {
             lastMeasuredCostNs_ = sample;
             peakMeasuredCostNs_ = std::max(peakMeasuredCostNs_, sample);
             ++sampleCount_;
+            any = true;
+        });
+
+        const uint64_t dropped = pendingSamples_.DroppedCount();
+        if (dropped > samplesDroppedAccounted_) {
+            sampleCount_ += static_cast<uint32_t>(dropped - samplesDroppedAccounted_);
+            samplesDroppedAccounted_ = dropped;
+            any = true;
         }
 
-        isCalibrated_ = true;
-        pendingSamples_.clear();
+        if (any) isCalibrated_ = true;
     }
 
     // Common state - derived classes can access
@@ -674,10 +670,10 @@ protected:
     bool timing_ = false;
 
     // Samples collection - raw measurements accumulated before processing
-    std::vector<uint64_t> pendingSamples_;
-    std::vector<PendingPrediction> pendingPredictions_;  ///< Prediction samples for error tracking
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RG2> samplesMutex_;  // Protects pendingSamples_ and pendingPredictions_
-    static constexpr size_t kMaxPendingSamples = 1024;  // Auto-process when exceeded
+    static constexpr size_t kMaxPendingSamples = 1024;  // Ring capacity: oldest samples are overwritten beyond this
+    Vixen::OverwriteRing<uint64_t, kMaxPendingSamples> pendingSamples_;
+    Vixen::OverwriteRing<PendingPrediction, kMaxPendingSamples> pendingPredictions_;  ///< Prediction samples for error tracking
+    uint64_t samplesDroppedAccounted_ = 0;  ///< pendingSamples_ overwrites already added to sampleCount_ (owner side)
 };
 
 /**

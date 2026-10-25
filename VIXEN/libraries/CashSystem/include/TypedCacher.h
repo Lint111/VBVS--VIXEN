@@ -19,8 +19,7 @@
 
 #ifdef _DEBUG
 #include "VixenHash.h"  // For collision detection
-#include <mutex>
-#include <unordered_map>
+#include "FixedKeyValueTable.h"
 #endif
 
 // Forward declarations for type safety
@@ -426,8 +425,9 @@ private:
 #ifdef _DEBUG
     // Collision detection: maps cache key -> content hash of CreateInfo
     // If same key appears with different content hash, we have a collision
-    mutable std::unordered_map<std::uint64_t, std::uint64_t> m_debugContentHashes;
-    mutable std::mutex m_debugMutex;
+    // Lock-free insert-only table (no mutex): concurrent GetOrCreate callers record and compare without
+    // waiting. Capacity-capped: once full, new keys are no longer checked (existing keys still are).
+    mutable ::Vixen::FixedKeyValueTable<2048> m_debugContentHashes;
 
     /**
      * @brief Compute content hash of CreateInfo for collision detection
@@ -448,19 +448,15 @@ private:
     void CheckCollision(std::uint64_t key, const CreateInfoT& ci) const {
         std::uint64_t contentHash = ComputeContentHash(ci);
 
-        std::lock_guard<std::mutex> lock(m_debugMutex);
-        auto it = m_debugContentHashes.find(key);
-        if (it != m_debugContentHashes.end()) {
-            if (it->second != contentHash) {
-                // COLLISION DETECTED!
-                LOG_ERROR("[" + std::string(name()) + "] HASH COLLISION DETECTED! "
-                          "Key=" + std::to_string(key) +
-                          " has different content (existing hash=" + std::to_string(it->second) +
-                          ", new hash=" + std::to_string(contentHash) + "). "
-                          "This indicates a bug in ComputeKey() implementation.");
-            }
-        } else {
-            m_debugContentHashes[key] = contentHash;
+        std::uint64_t existing = 0;
+        if (m_debugContentHashes.Observe(key, contentHash, existing) ==
+            ::Vixen::FixedKeyValueTable<2048>::Result::Differs) {
+            // COLLISION DETECTED!
+            LOG_ERROR("[" + std::string(name()) + "] HASH COLLISION DETECTED! "
+                      "Key=" + std::to_string(key) +
+                      " has different content (existing hash=" + std::to_string(existing) +
+                      ", new hash=" + std::to_string(contentHash) + "). "
+                      "This indicates a bug in ComputeKey() implementation.");
         }
     }
 #endif
