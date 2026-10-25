@@ -22,6 +22,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
+#include <utility>
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #include <emmintrin.h>
 #define YK_SIMD4_HAS_SSE2 1
@@ -156,10 +158,13 @@ inline f64 operator++(f64& a, int) { f64 old = a; ++a; return old; }
 inline f64& operator--(f64& a) { a -= f64(1.0); return a; }
 inline f64 operator--(f64& a, int) { f64 old = a; --a; return old; }
 
+template<class V, class = void> struct has_xyz : std::false_type {};
+template<class V> struct has_xyz<V, std::void_t<decltype(std::declval<const V&>().x), decltype(std::declval<const V&>().y), decltype(std::declval<const V&>().z)>> : std::true_type {};
 struct f32x3 {
     f32 yk_col0, yk_col1, yk_col2;
     f32x3() = default;
     f32x3(f32 x, f32 y, f32 z) : yk_col0(x), yk_col1(y), yk_col2(z) {}
+    template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> f32x3(const V& v) : f32x3(f32(v.x), f32(v.y), f32(v.z)) {}
 };
 inline f32x3 operator+(f32x3 a, f32x3 b) { return {a.yk_col0+b.yk_col0, a.yk_col1+b.yk_col1, a.yk_col2+b.yk_col2}; }
 inline f32x3 operator-(f32x3 a, f32x3 b) { return {a.yk_col0-b.yk_col0, a.yk_col1-b.yk_col1, a.yk_col2-b.yk_col2}; }
@@ -379,6 +384,36 @@ inline dual length(dual2 a){return sqrt_lanes(a.x*a.x+a.y*a.y);} inline dual len
 inline dual3 normalize(dual3 a){dual inv=rsqrt_lanes(a.x*a.x+a.y*a.y+a.z*a.z); return a*inv;}
 inline f32 min(f32 a, f32 b) { return select(a, b, b < a); }
 inline f32 max(f32 a, f32 b) { return select(a, b, a < b); }
+inline f32x2 min(f32x2 a, f32x2 b) { return {min(a.yk_col0, b.yk_col0), min(a.yk_col1, b.yk_col1)}; }
+inline f32x2 max(f32x2 a, f32x2 b) { return {max(a.yk_col0, b.yk_col0), max(a.yk_col1, b.yk_col1)}; }
+inline f32x2 min(f32x2 a, f32 b) { return {min(a.yk_col0, b), min(a.yk_col1, b)}; }
+inline f32x2 max(f32x2 a, f32 b) { return {max(a.yk_col0, b), max(a.yk_col1, b)}; }
+inline f32x2 min(f32 a, f32x2 b) { return {min(a, b.yk_col0), min(a, b.yk_col1)}; }
+inline f32x2 max(f32 a, f32x2 b) { return {max(a, b.yk_col0), max(a, b.yk_col1)}; }
+inline f32x3 min(f32x3 a, f32x3 b) { return {min(a.yk_col0, b.yk_col0), min(a.yk_col1, b.yk_col1), min(a.yk_col2, b.yk_col2)}; }
+inline f32x3 max(f32x3 a, f32x3 b) { return {max(a.yk_col0, b.yk_col0), max(a.yk_col1, b.yk_col1), max(a.yk_col2, b.yk_col2)}; }
+inline f32x3 min(f32x3 a, f32 b) { return {min(a.yk_col0, b), min(a.yk_col1, b), min(a.yk_col2, b)}; }
+inline f32x3 max(f32x3 a, f32 b) { return {max(a.yk_col0, b), max(a.yk_col1, b), max(a.yk_col2, b)}; }
+inline f32x3 min(f32 a, f32x3 b) { return {min(a, b.yk_col0), min(a, b.yk_col1), min(a, b.yk_col2)}; }
+inline f32x3 max(f32 a, f32x3 b) { return {max(a, b.yk_col0), max(a, b.yk_col1), max(a, b.yk_col2)}; }
+inline f32x4 min(f32x4 a, f32x4 b) { return {min(a.yk_col0, b.yk_col0), min(a.yk_col1, b.yk_col1), min(a.yk_col2, b.yk_col2), min(a.yk_col3, b.yk_col3)}; }
+inline f32x4 max(f32x4 a, f32x4 b) { return {max(a.yk_col0, b.yk_col0), max(a.yk_col1, b.yk_col1), max(a.yk_col2, b.yk_col2), max(a.yk_col3, b.yk_col3)}; }
+inline f32x4 min(f32x4 a, f32 b) { return {min(a.yk_col0, b), min(a.yk_col1, b), min(a.yk_col2, b), min(a.yk_col3, b)}; }
+inline f32x4 max(f32x4 a, f32 b) { return {max(a.yk_col0, b), max(a.yk_col1, b), max(a.yk_col2, b), max(a.yk_col3, b)}; }
+inline f32x4 min(f32 a, f32x4 b) { return {min(a, b.yk_col0), min(a, b.yk_col1), min(a, b.yk_col2), min(a, b.yk_col3)}; }
+inline f32x4 max(f32 a, f32x4 b) { return {max(a, b.yk_col0), max(a, b.yk_col1), max(a, b.yk_col2), max(a, b.yk_col3)}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 min(const V& a, float b) { return {min(f32(a.x), f32(b)), min(f32(a.y), f32(b)), min(f32(a.z), f32(b))}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 max(const V& a, float b) { return {max(f32(a.x), f32(b)), max(f32(a.y), f32(b)), max(f32(a.z), f32(b))}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 min(float a, const V& b) { return {min(f32(a), f32(b.x)), min(f32(a), f32(b.y)), min(f32(a), f32(b.z))}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 max(float a, const V& b) { return {max(f32(a), f32(b.x)), max(f32(a), f32(b.y)), max(f32(a), f32(b.z))}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator+(f32x3 a, const V& b) { return {a.yk_col0 + f32(b.x), a.yk_col1 + f32(b.y), a.yk_col2 + f32(b.z)}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator+(const V& a, f32x3 b) { return b + a; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator-(f32x3 a, const V& b) { return {a.yk_col0 - f32(b.x), a.yk_col1 - f32(b.y), a.yk_col2 - f32(b.z)}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator-(const V& a, f32x3 b) { return {f32(a.x) - b.yk_col0, f32(a.y) - b.yk_col1, f32(a.z) - b.yk_col2}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator*(f32x3 a, const V& b) { return {a.yk_col0 * f32(b.x), a.yk_col1 * f32(b.y), a.yk_col2 * f32(b.z)}; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator*(const V& a, f32x3 b) { return b * a; }
+template<class V, std::enable_if_t<has_xyz<V>::value, int> = 0> inline f32x3 operator/(f32x3 a, const V& b) { return {a.yk_col0 / f32(b.x), a.yk_col1 / f32(b.y), a.yk_col2 / f32(b.z)}; }
+inline f32x3 select(f32x3 whenFalse, f32x3 whenTrue, mask condition) { return {select(whenFalse.yk_col0, whenTrue.yk_col0, condition), select(whenFalse.yk_col1, whenTrue.yk_col1, condition), select(whenFalse.yk_col2, whenTrue.yk_col2, condition)}; }
 inline f32 abs(f32 x) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=std::fabs(v[i]); return f32::from_lanes(v); }
 inline f32 clamp(f32 x, f32 lo, f32 hi) { return min(max(x, lo), hi); }
 inline f32 saturate(f32 x) { return clamp(x, f32(0.0f), f32(1.0f)); }
@@ -658,28 +693,28 @@ inline constexpr std::array<RecipeValueTypePolicy, 3> RecipeValueTypePolicies{{
 }};
 struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; RecipeIntervalRule intervalRule; std::int8_t intervalData0, intervalData1; const char* name; };
 inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
-    {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Sphere, 0, 3, "Sphere"},
-    {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::AxisAlignedBox, 0, -1, "Box"},
-    {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "BoxRounded"},
-    {3, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Capsule"},
-    {4, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Cylinder"},
+    {0, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Sphere, 0, 3, "Sphere"},
+    {1, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::AxisAlignedBox, 0, -1, "Box"},
+    {2, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "BoxRounded"},
+    {3, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Capsule"},
+    {4, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Cylinder"},
     {5, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Plane"},
-    {6, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Torus"},
-    {7, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Ellipsoid"},
-    {8, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "HollowCylinder"},
-    {9, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "TaperedCylinder"},
-    {10, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Panel"},
-    {11, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Plank"},
-    {12, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RoundedBox"},
-    {14, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "CappedTorus"},
-    {15, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Cone"},
-    {16, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RoundCone"},
-    {17, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "FakeRoundCone"},
-    {18, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Segment"},
+    {6, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Torus"},
+    {7, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Ellipsoid"},
+    {8, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "HollowCylinder"},
+    {9, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "TaperedCylinder"},
+    {10, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Panel"},
+    {11, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Plank"},
+    {12, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RoundedBox"},
+    {14, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "CappedTorus"},
+    {15, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Cone"},
+    {16, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RoundCone"},
+    {17, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "FakeRoundCone"},
+    {18, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Segment"},
     {20, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "TriangularPrism"},
-    {21, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Pyramid"},
-    {22, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "HexPrism"},
-    {23, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Link"},
+    {21, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Pyramid"},
+    {22, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "HexPrism"},
+    {23, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Link"},
     {24, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::HardUnion, -1, -1, "Union"},
     {25, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "SmoothUnion"},
     {26, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::HardSubtract, -1, -1, "Subtract"},
@@ -695,16 +730,16 @@ inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
     {36, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Onion"},
     {37, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Transform"},
     {38, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Elongate"},
-    {39, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Twist"},
-    {40, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Bend"},
+    {39, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Twist"},
+    {40, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Bend"},
     {41, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MirrorX"},
     {42, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MirrorY"},
     {43, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MirrorZ"},
     {44, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RepeatInfinite"},
-    {45, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RepeatLimited"},
-    {46, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Revolution"},
-    {56, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSin"},
-    {57, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathCos"},
+    {45, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "RepeatLimited"},
+    {46, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Revolution"},
+    {56, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSin"},
+    {57, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathCos"},
     {58, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSmoothstep"},
     {59, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathRemap"},
     {60, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathAdd"},
@@ -716,8 +751,8 @@ inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
     {66, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathClamp"},
     {67, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathAbs"},
     {68, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathFrac"},
-    {69, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathPow"},
-    {70, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSqrt"},
+    {69, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathPow"},
+    {70, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSqrt"},
     {71, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLerp"},
     {72, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathNegate"},
     {73, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PositionChannel"},
@@ -725,11 +760,11 @@ inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
     {75, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathStep"},
     {76, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSign"},
     {77, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathSaturate"},
-    {78, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathExp"},
-    {79, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog"},
-    {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog2"},
+    {78, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathExp"},
+    {79, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog"},
+    {80, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "MathLog2"},
     {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Select"},
-    {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DistanceTo"},
+    {82, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DistanceTo"},
     {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, false, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Output"},
     {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PushParam"},
     {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ReadParam"},
@@ -745,43 +780,43 @@ inline constexpr std::array<RecipeOpcodeMetadata, 124> RecipeOpcodeTable{{
     {106, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Max"},
     {107, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 4, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3ScalarMul"},
     {108, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Dot"},
-    {109, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 3, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Normalize"},
+    {109, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 3, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "Float3Normalize"},
     {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamFloat3"},
     {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 3, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "DeclarePosition"},
     {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "InvokeRecipe"},
-    {151, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Hash32"},
-    {152, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Hash32Combine"},
-    {153, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Add"},
-    {154, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Sub"},
-    {155, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Mul"},
-    {156, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Min"},
-    {157, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Max"},
-    {158, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Equal"},
-    {159, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32NotEqual"},
-    {160, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Less"},
-    {161, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32LessEqual"},
-    {162, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Greater"},
-    {163, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32GreaterEqual"},
-    {164, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Add"},
-    {165, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Sub"},
-    {166, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Mul"},
-    {167, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Min"},
-    {168, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Max"},
-    {169, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Equal"},
-    {170, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16NotEqual"},
-    {171, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Less"},
-    {172, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16LessEqual"},
-    {173, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Greater"},
-    {174, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16GreaterEqual"},
-    {175, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "FloatToQ16"},
-    {176, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16ToFloat"},
-    {177, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToQ16"},
-    {178, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16ToU32"},
-    {179, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToFloat"},
+    {151, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Hash32"},
+    {152, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Hash32Combine"},
+    {153, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Add"},
+    {154, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Sub"},
+    {155, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Mul"},
+    {156, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Min"},
+    {157, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Max"},
+    {158, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Equal"},
+    {159, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32NotEqual"},
+    {160, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Less"},
+    {161, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32LessEqual"},
+    {162, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32Greater"},
+    {163, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32GreaterEqual"},
+    {164, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Add"},
+    {165, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Sub"},
+    {166, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Mul"},
+    {167, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Min"},
+    {168, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Max"},
+    {169, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Equal"},
+    {170, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16NotEqual"},
+    {171, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Less"},
+    {172, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16LessEqual"},
+    {173, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16Greater"},
+    {174, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16GreaterEqual"},
+    {175, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "FloatToQ16"},
+    {176, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16ToFloat"},
+    {177, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToQ16"},
+    {178, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "Q16ToU32"},
+    {179, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "U32ToFloat"},
     {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamU32"},
     {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamQ16"},
-    {182, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "GlyphOutline"},
-    {183, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PathDistance"},
+    {182, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "GlyphOutline"},
+    {183, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, RecipeIntervalRule::Unspecified, -1, -1, "PathDistance"},
 }};
 } // namespace Yeroket::Sdf::Generated
 // BEGIN GENERATED RECIPE ANALYSIS (CPU proof, compiled consumers; R441/R442)
@@ -2004,13 +2039,7 @@ inline std::string EmitRecipeCompiledGrid(const RecipeAnalysis& a, const std::st
 namespace Yeroket::Sdf::Generated {
 
 inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, float radius) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Sphere(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), center, radius);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col0 * yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col0) + (yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col1 * yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col1)) + (yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col2 * yk::simd4::f32x3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col2))) - radius));
 }
 
 inline yk::simd4::dual SdfCore_SphereGradientSimd4(yk::simd4::dual3 p, glm::vec3 const& center, float radius) noexcept {
@@ -2018,13 +2047,8 @@ inline yk::simd4::dual SdfCore_SphereGradientSimd4(yk::simd4::dual3 p, glm::vec3
 }
 
 inline yk::simd4::f32 SdfCore_BoxSimd4(yk::simd4::f32x3 p, glm::vec3 b) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Box(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), b);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32x3 q = yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - b.x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - b.y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - b.z));
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::max(q, 0.0f).yk_col0 * yk::simd4::max(q, 0.0f).yk_col0) + (yk::simd4::max(q, 0.0f).yk_col1 * yk::simd4::max(q, 0.0f).yk_col1)) + (yk::simd4::max(q, 0.0f).yk_col2 * yk::simd4::max(q, 0.0f).yk_col2))) + yk::simd4::min(yk::simd4::max(q.yk_col0, yk::simd4::max(q.yk_col1, q.yk_col2)), 0.0f)));
 }
 
 inline yk::simd4::dual SdfCore_BoxGradientSimd4(yk::simd4::dual3 p, glm::vec3 const& b) noexcept {
@@ -2033,13 +2057,8 @@ inline yk::simd4::dual SdfCore_BoxGradientSimd4(yk::simd4::dual3 p, glm::vec3 co
 }
 
 inline yk::simd4::f32 SdfCore_BoxRoundedSimd4(yk::simd4::f32x3 p, glm::vec3 halfExtents, float roundRadius) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_BoxRounded(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), halfExtents, roundRadius);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32x3 q = yk::simd4::f32x3((yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col0 + roundRadius), (yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col1 + roundRadius), (yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col2 + roundRadius));
+    return ((((yk::simd4::sqrt_lanes((((yk::simd4::max(q, 0.0f).yk_col0 * yk::simd4::max(q, 0.0f).yk_col0) + (yk::simd4::max(q, 0.0f).yk_col1 * yk::simd4::max(q, 0.0f).yk_col1)) + (yk::simd4::max(q, 0.0f).yk_col2 * yk::simd4::max(q, 0.0f).yk_col2))) + yk::simd4::min(yk::simd4::max(q.yk_col0, yk::simd4::max(q.yk_col1, q.yk_col2)), 0.0f))) - roundRadius));
 }
 
 inline yk::simd4::dual SdfCore_BoxRoundedGradientSimd4(yk::simd4::dual3 p, glm::vec3 const& halfExtents, float roundRadius) noexcept {
@@ -2048,13 +2067,9 @@ inline yk::simd4::dual SdfCore_BoxRoundedGradientSimd4(yk::simd4::dual3 p, glm::
 }
 
 inline yk::simd4::f32 SdfCore_CapsuleSimd4(yk::simd4::f32x3 p, float height, float radius) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Capsule(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), height, radius);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32x3 localP = p;
+    localP.yk_col1 -= yk::simd4::clamp(localP.yk_col1, -height, height);
+    return ((yk::simd4::sqrt_lanes((((localP.yk_col0 * localP.yk_col0) + (localP.yk_col1 * localP.yk_col1)) + (localP.yk_col2 * localP.yk_col2))) - radius));
 }
 
 inline yk::simd4::dual SdfCore_CapsuleGradientSimd4(yk::simd4::dual3 p, float height, float radius) noexcept {
@@ -2102,13 +2117,10 @@ inline yk::simd4::dual SdfCore_TorusGradientSimd4(yk::simd4::dual3 p, float majo
 }
 
 inline yk::simd4::f32 SdfCore_EllipsoidSimd4(yk::simd4::f32x3 p, glm::vec3 radii) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Ellipsoid(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), radii);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32x3 safeRadii = yk::simd4::max(radii, 0.0001f);
+    yk::simd4::f32 k0 = yk::simd4::sqrt_lanes((((yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col0 * yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col0) + (yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col1 * yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col1)) + (yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col2 * yk::simd4::f32x3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col2)));
+    yk::simd4::f32 k1 = yk::simd4::sqrt_lanes((((yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col0 * yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col0) + (yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col1 * yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col1)) + (yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col2 * yk::simd4::f32x3((p.yk_col0 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::f32x3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col2)));
+    return ((((k0 * (((k0 - 1.0f))))) / yk::simd4::max(k1, 0.0001f)));
 }
 
 inline yk::simd4::dual SdfCore_EllipsoidGradientSimd4(yk::simd4::dual3 p, glm::vec3 const& radii) noexcept {
@@ -2233,13 +2245,10 @@ inline yk::simd4::dual SdfCore_FakeRoundConeGradientSimd4(yk::simd4::dual3 p, fl
 }
 
 inline yk::simd4::f32 SdfCore_SegmentSimd4(yk::simd4::f32x3 p, glm::vec3 a, glm::vec3 b, float radius) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Segment(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), a, b, radius);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32x3 pa = yk::simd4::f32x3((p.yk_col0 - a.x), (p.yk_col1 - a.y), (p.yk_col2 - a.z));
+    yk::simd4::f32x3 ba = ((b - a));
+    yk::simd4::f32 h = yk::simd4::saturate(((((((pa.yk_col0 * ba.yk_col0) + (pa.yk_col1 * ba.yk_col1)) + (pa.yk_col2 * ba.yk_col2))) / ((((ba.yk_col0 * ba.yk_col0) + (ba.yk_col1 * ba.yk_col1)) + (ba.yk_col2 * ba.yk_col2))))));
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col0 * yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col0) + (yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col1 * yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col1)) + (yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col2 * yk::simd4::f32x3((pa.yk_col0 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::f32x3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col2))) - radius));
 }
 
 inline yk::simd4::dual SdfCore_SegmentGradientSimd4(yk::simd4::dual3 p, glm::vec3 const& a, glm::vec3 const& b, float radius) noexcept {
@@ -2260,13 +2269,18 @@ inline yk::simd4::dual SdfCore_TriangularPrismGradientSimd4(yk::simd4::dual3 p, 
 }
 
 inline yk::simd4::f32 SdfCore_PyramidSimd4(yk::simd4::f32x3 p, float height) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Pyramid(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), height);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    yk::simd4::f32 m2 = ((((height * height)) + 0.25f));
+    yk::simd4::f32x3 q = yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), p.yk_col1, yk::simd4::abs(p.yk_col2));
+    q = yk::simd4::select(q, yk::simd4::f32x3(q.yk_col2, q.yk_col1, q.yk_col0), (((q.yk_col2 > q.yk_col0))));
+    q.yk_col0 -= 0.5f;
+    q.yk_col2 -= 0.5f;
+    yk::simd4::f32x3 a = yk::simd4::f32x3(q.yk_col2, ((((height * q.yk_col1)) - ((0.5f * q.yk_col0)))), ((((height * q.yk_col0)) + ((0.5f * q.yk_col1)))));
+    yk::simd4::f32 s = yk::simd4::max(-a.yk_col0, 0.0f);
+    yk::simd4::f32 t = yk::simd4::saturate((((((a.yk_col1 - ((0.5f * q.yk_col2))))) / (((m2 + 0.25f))))));
+    yk::simd4::f32 da = ((((((m2 * (((a.yk_col0 + s))))) * (((a.yk_col0 + s))))) + ((a.yk_col1 * a.yk_col1))));
+    yk::simd4::f32 db = ((((((m2 * (((a.yk_col0 + ((0.5f * t))))))) * (((a.yk_col0 + ((0.5f * t))))))) + (((((a.yk_col1 - ((m2 * t))))) * (((a.yk_col1 - ((m2 * t)))))))));
+    yk::simd4::f32 d2 = yk::simd4::select(yk::simd4::min(da, db), 0.0f, (((yk::simd4::min(a.yk_col1, ((((-a.yk_col0 * m2)) - ((a.yk_col1 * 0.5f))))) > 0.0f))));
+    return ((yk::simd4::sqrt_lanes((((((d2 + ((a.yk_col2 * a.yk_col2))))) / m2))) * yk::simd4::sign(yk::simd4::max(a.yk_col2, -q.yk_col1))));
 }
 
 inline yk::simd4::dual SdfCore_PyramidGradientSimd4(yk::simd4::dual3 p, float height) noexcept {
@@ -2465,14 +2479,10 @@ inline yk::simd4::dual3 SdfCore_ElongateGradientSimd4(yk::simd4::dual3 p, glm::v
 }
 
 inline yk::simd4::f32x3 SdfCore_TwistSimd4(yk::simd4::f32x3 p, float k) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out_x[4], out_y[4], out_z[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        glm::vec3 value = SdfCore_Twist(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), k);
-        out_x[lane] = value.x; out_y[lane] = value.y; out_z[lane] = value.z;
-    }
-    return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
+    yk::simd4::f32 c = yk::simd4::cos(((k * p.yk_col1)));
+    yk::simd4::f32 s = yk::simd4::sin(((k * p.yk_col1)));
+    yk::simd4::f32x2 q = yk::simd4::f32x2(((((c * p.yk_col0)) - ((s * p.yk_col2)))), ((((s * p.yk_col0)) + ((c * p.yk_col2)))));
+    return yk::simd4::f32x3(q.yk_col0, p.yk_col1, q.yk_col1);
 }
 
 inline yk::simd4::dual3 SdfCore_TwistGradientSimd4(yk::simd4::dual3 p, float k) noexcept {
@@ -2483,14 +2493,10 @@ inline yk::simd4::dual3 SdfCore_TwistGradientSimd4(yk::simd4::dual3 p, float k) 
 }
 
 inline yk::simd4::f32x3 SdfCore_BendSimd4(yk::simd4::f32x3 p, float k) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out_x[4], out_y[4], out_z[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        glm::vec3 value = SdfCore_Bend(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), k);
-        out_x[lane] = value.x; out_y[lane] = value.y; out_z[lane] = value.z;
-    }
-    return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
+    yk::simd4::f32 c = yk::simd4::cos(((k * p.yk_col0)));
+    yk::simd4::f32 s = yk::simd4::sin(((k * p.yk_col0)));
+    yk::simd4::f32x2 q = yk::simd4::f32x2(((((c * p.yk_col0)) - ((s * p.yk_col1)))), ((((s * p.yk_col0)) + ((c * p.yk_col1)))));
+    return yk::simd4::f32x3(q.yk_col0, q.yk_col1, p.yk_col2);
 }
 
 inline yk::simd4::dual3 SdfCore_BendGradientSimd4(yk::simd4::dual3 p, float k) noexcept {
@@ -2533,14 +2539,7 @@ inline yk::simd4::dual3 SdfCore_RepeatInfiniteGradientSimd4(yk::simd4::dual3 p, 
 }
 
 inline yk::simd4::f32x3 SdfCore_RepeatLimitedSimd4(yk::simd4::f32x3 p, float spacing, glm::vec3 limit) noexcept {
-    alignas(16) float p_x[4], p_y[4], p_z[4];
-    p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
-    alignas(16) float out_x[4], out_y[4], out_z[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        glm::vec3 value = SdfCore_RepeatLimited(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), spacing, limit);
-        out_x[lane] = value.x; out_y[lane] = value.y; out_z[lane] = value.z;
-    }
-    return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
+    return yk::simd4::f32x3((p.yk_col0 - yk::simd4::f32x3((spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col0), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col1), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col2)).yk_col0), (p.yk_col1 - yk::simd4::f32x3((spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col0), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col1), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col2)).yk_col1), (p.yk_col2 - yk::simd4::f32x3((spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col0), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col1), (spacing * yk::simd4::f32x3(yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col0, -limit.x, limit.x), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col1, -limit.y, limit.y), yk::simd4::clamp(yk::simd4::f32x3(yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col0), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col1), yk::simd4::round_lanes(yk::simd4::f32x3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing)).yk_col2)).yk_col2, -limit.z, limit.z)).yk_col2)).yk_col2));
 }
 
 inline yk::simd4::dual3 SdfCore_RepeatLimitedGradientSimd4(yk::simd4::dual3 p, float spacing, glm::vec3 const& limit) noexcept {
@@ -2565,12 +2564,7 @@ inline yk::simd4::dual3 SdfCore_RevolutionGradientSimd4(yk::simd4::dual3 p, glm:
 }
 
 inline yk::simd4::f32 SdfCore_MathSinSimd4(yk::simd4::f32 x, float frequency, float phase, float amplitude) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathSin(x_lane[lane], frequency, phase, amplitude);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return ((yk::simd4::sin(((((x * frequency)) + phase))) * amplitude));
 }
 
 inline yk::simd4::dual SdfCore_MathSinGradientSimd4(yk::simd4::dual x, float frequency, float phase, float amplitude) noexcept {
@@ -2578,12 +2572,7 @@ inline yk::simd4::dual SdfCore_MathSinGradientSimd4(yk::simd4::dual x, float fre
 }
 
 inline yk::simd4::f32 SdfCore_MathCosSimd4(yk::simd4::f32 x, float frequency, float phase, float amplitude) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathCos(x_lane[lane], frequency, phase, amplitude);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return ((yk::simd4::cos(((((x * frequency)) + phase))) * amplitude));
 }
 
 inline yk::simd4::dual SdfCore_MathCosGradientSimd4(yk::simd4::dual x, float frequency, float phase, float amplitude) noexcept {
@@ -2679,12 +2668,7 @@ inline yk::simd4::dual SdfCore_MathFracGradientSimd4(yk::simd4::dual x) noexcept
 }
 
 inline yk::simd4::f32 SdfCore_MathPowSimd4(yk::simd4::f32 x, float power) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathPow(x_lane[lane], power);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return ((yk::simd4::pow(yk::simd4::abs(x), power) * yk::simd4::sign(x)));
 }
 
 inline yk::simd4::dual SdfCore_MathPowGradientSimd4(yk::simd4::dual x, float power) noexcept {
@@ -2692,12 +2676,7 @@ inline yk::simd4::dual SdfCore_MathPowGradientSimd4(yk::simd4::dual x, float pow
 }
 
 inline yk::simd4::f32 SdfCore_MathSqrtSimd4(yk::simd4::f32 x) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathSqrt(x_lane[lane]);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return yk::simd4::sqrt_lanes(yk::simd4::abs(x));
 }
 
 inline yk::simd4::dual SdfCore_MathSqrtGradientSimd4(yk::simd4::dual x) noexcept {
@@ -2753,12 +2732,7 @@ inline yk::simd4::dual SdfCore_MathSaturateGradientSimd4(yk::simd4::dual x) noex
 }
 
 inline yk::simd4::f32 SdfCore_MathExpSimd4(yk::simd4::f32 x) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathExp(x_lane[lane]);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return yk::simd4::exp(x);
 }
 
 inline yk::simd4::dual SdfCore_MathExpGradientSimd4(yk::simd4::dual x) noexcept {
@@ -2766,12 +2740,7 @@ inline yk::simd4::dual SdfCore_MathExpGradientSimd4(yk::simd4::dual x) noexcept 
 }
 
 inline yk::simd4::f32 SdfCore_MathLogSimd4(yk::simd4::f32 x) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathLog(x_lane[lane]);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return yk::simd4::log(yk::simd4::max(x, 1e-30f));
 }
 
 inline yk::simd4::dual SdfCore_MathLogGradientSimd4(yk::simd4::dual x) noexcept {
@@ -2779,12 +2748,7 @@ inline yk::simd4::dual SdfCore_MathLogGradientSimd4(yk::simd4::dual x) noexcept 
 }
 
 inline yk::simd4::f32 SdfCore_MathLog2Simd4(yk::simd4::f32 x) noexcept {
-    alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
-    alignas(16) float out[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_MathLog2(x_lane[lane]);
-    }
-    return yk::simd4::f32::from_lanes(out);
+    return yk::simd4::log2(yk::simd4::max(x, 1e-30f));
 }
 
 inline yk::simd4::dual SdfCore_MathLog2GradientSimd4(yk::simd4::dual x) noexcept {
@@ -2856,14 +2820,9 @@ inline yk::simd4::dual SdfCore_Float3DotGradientSimd4(yk::simd4::dual3 a, yk::si
 }
 
 inline yk::simd4::f32x3 SdfCore_Float3NormalizeSimd4(yk::simd4::f32x3 v) noexcept {
-    alignas(16) float v_x[4], v_y[4], v_z[4];
-    v.yk_col0.store_unaligned(v_x); v.yk_col1.store_unaligned(v_y); v.yk_col2.store_unaligned(v_z);
-    alignas(16) float out_x[4], out_y[4], out_z[4];
-    for (int lane = 0; lane < 4; ++lane) {
-        glm::vec3 value = SdfCore_Float3Normalize(glm::vec3(v_x[lane], v_y[lane], v_z[lane]));
-        out_x[lane] = value.x; out_y[lane] = value.y; out_z[lane] = value.z;
-    }
-    return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
+    yk::simd4::f32 lenSq = ((((((v.yk_col0 * v.yk_col0)) + ((v.yk_col1 * v.yk_col1)))) + ((v.yk_col2 * v.yk_col2))));
+    yk::simd4::f32 invLen = yk::simd4::select(((1.0f / yk::simd4::sqrt_lanes(lenSq))), 0.0f, ((lenSq < 1e-14f)));
+    return yk::simd4::f32x3((v.yk_col0 * invLen), (v.yk_col1 * invLen), (v.yk_col2 * invLen));
 }
 
 inline yk::simd4::dual3 SdfCore_Float3NormalizeGradientSimd4(yk::simd4::dual3 v) noexcept {
