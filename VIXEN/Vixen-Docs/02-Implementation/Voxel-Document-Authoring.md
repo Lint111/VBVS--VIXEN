@@ -92,27 +92,43 @@ With no argument it loads the default sample, `BuiltAssets/documents/sample_tri_
 3-layer document: base box, smooth-union sphere bulge at a corner, subtract cylinder that protrudes through
 a face so the cut is visible in silhouette).
 
-On startup the app reads the document, flattens it (no overrides yet), registers the resulting VRC1 blob
-as an in-memory recipe (`editor.document.current`), calls `SetRecipePool`, and renders one body instance
-through it. An RmlUi panel (`application/editor/ui/editor.rml` / `editor.rcss`) lists the layers — name,
-op label, enabled checkbox.
+On startup the app reads the document, flattens it, registers the resulting VRC1 blob as the editor's
+procedural recipe (`kEditorProceduralRecipeId`), and renders one body instance through it.
 
-## 3. The layer-toggle loop (dirty-flag, not `MarkNeedsRecompile`)
+The panel is `VIXEN/libraries/RenderGraph/assets/ui/editor.rml` / `editor.rcss`, a fixed 420 px column bound
+to the generated `EditorLayers` View (`EditorLayersView.h`). It has, top to bottom:
 
-Toggling a layer's checkbox does **not** trigger a full graph recompile. It mirrors the P2.3
-`SetBakeRecipe` pattern:
+- one row per layer: an enabled checkbox, the name, the op label, move-up (`ˆ`) and move-down (`ˇ`) buttons,
+  delete (`×`), and an `instruction 0 · data 0` value with `−` / `+`;
+- a **Recipe parameters** section: one `−` / `+` row per parameter (name, value, unit);
+- a toolbar: *Add rule layer*, *Undo*, *Redo*, *Save*.
 
-1. The checkbox event sets `enabledOverride[i]` on the app's live state and marks a dirty flag.
-2. On the next `Execute`, the app notices the dirty flag, re-runs `FlattenVoxelDocument` with the current
-   overrides, re-registers/re-uploads the recipe pool entry, and clears the flag.
-3. The next frame renders the new geometry.
+The arrow buttons use `ˆ` and `ˇ` because the bundled font (`LatoLatin-Regular.ttf`) has no U+2191/U+2193
+arrows; they rendered as empty boxes before. Any new glyph in `editor.rml` must be in that font, or the button
+renders as a box. The game's building-inspector HUD is not mounted in the editor: `EditorApplication` overrides
+`VulkanGraphApplication::MountsBuildingInspector()` to `false`, so only the owning app mounts that panel.
 
-This avoids the per-tick recompile cascade that a naive `MarkNeedsRecompile` call would trigger (see the
-`SetInstances` comment in `BodyOctreeSceneNode.cpp:132` for why that path is expensive and should not be
-hit every toggle). Known Inc1 scope boundary: the checkbox's visual checkmark is static CSS at load time
-(no live RmlUi data-model binding on `editor.rml`) — the toggle *logic* is fully live and correct (same
-code path the headless gate exercises), only the on-screen checkmark doesn't visually flip. Wiring a live
-data-model would mean editing `UIRenderNode` itself, out of scope for Inc1.
+## 3. Edits and the live loop
+
+UI clicks and the four key chords are dispatched through AppFlow (`rt_.DispatchBySelector` / `DispatchByKey`);
+camera input is read directly from `InputState` and is not an AppFlow action. The layer
+rows are data-model bound: `row.isChecked` drives the checkbox's `checked` class, and `ReconcileLayersView()`
+re-syncs the view from the document each frame.
+
+Edits set the `dirty_` flag. On the next `Update()` the app re-runs `FlattenVoxelDocument` with the current
+enabled mask and parameters (`ApplyDocumentToScene`) and re-uploads the recipe. What that costs depends on
+the edit:
+
+- **Parameter edits** (`−` / `+` on a parameter, or on `instruction 0 · data 0`) only change per-instance
+  values (`BodyInstanceGpu.recipeParams`, read by `ReadParam`). They do not recompile shaders.
+- **Structural edits** (toggle, add, delete, move) change the flattened bytecode. `ApplyDocumentToScene` then
+  calls `ReplaceProceduralRecipe` and `RecompileProceduralShader`, which rebuilds every recipe-consuming
+  shader family. Measured on the Dozen WSL box (2026-10-25, unqueued contended run): a layer toggle marked 7
+  shader families dirty and recompiled 49 graph nodes; the undo of that toggle took about 30 s to read back.
+  The absolute time is not a timing judgement; the recompile is the structure to watch (see R463, R465).
+
+The editor does not use a per-tick `MarkNeedsRecompile` cascade; the recompile happens only when the bytecode
+actually changes. Agent (channel) dispatches are not grouped, so N agent actions give N undo steps.
 
 ## 4. Save
 

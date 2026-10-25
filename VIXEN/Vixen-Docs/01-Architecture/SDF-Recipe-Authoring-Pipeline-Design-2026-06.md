@@ -1,6 +1,6 @@
 ---
 title: Arbitrary Recipe Authoring → Render — Spine + T1 (Stored)
-status: Design — approved 2026-06-29; first sub-project of the post-P2.4 arbitrary-recipe (FORMAT→EXECUTION) epic. Not yet planned/built.
+status: Design — approved 2026-06-29; first sub-project of the post-P2.4 arbitrary-recipe (FORMAT→EXECUTION) epic. Partly built: VIXEN's RecipeRegistry and the editor's procedural recipe path are in code (2026-10); the increments in §7 are the record of what remains.
 date: 2026-06-29
 updated: 2026-06-29
 tags: [architecture, sdf, recipe, kernel-codegen, content-format, provider, stored, materialization, authoring, cross-repo, future]
