@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Text/GlyphCellStore.h"
 #include "Text/GlyphOutline.h"
 
 #include <ft2build.h>
@@ -41,6 +42,14 @@ public:
     GlyphAtlas(const GlyphAtlas&) = delete;
     GlyphAtlas& operator=(const GlyphAtlas&) = delete;
 
+    // Seed this atlas from, and collect new cells for, the persistent glyph store. Call once,
+    // before the first glyph. The key's page dimension and range are taken from the atlas.
+    void AttachPersistentStore(const GlyphCacheKey& key);
+    // Publish cells generated since the last flush (atomic rename). Runs at destruction; call it
+    // earlier only from a shutdown path, never per frame.
+    bool Flush();
+    [[nodiscard]] std::size_t GeneratedGlyphCount() const noexcept;
+
     bool AddGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize);
     // Rasterize the same bounded contour instance used by world-space recipes.
     // pointsToPixels converts FreeType's 26.6 outline units to atlas pixels.
@@ -49,6 +58,14 @@ public:
     [[nodiscard]] std::shared_ptr<const GlyphOutlineInstance> GetOrAddOutline(
         FT_Face face, std::uint32_t glyphIndex,
         GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
+    // Returns the stable index into the atlas-owned immutable outline blob. The index is
+    // suitable for GlyphOutline recipe operands and is shared by every shaped layout that
+    // references the same (font, glyph) row.
+    [[nodiscard]] std::uint32_t GetOrAddOutlineIndex(
+        FT_Face face, std::uint32_t glyphIndex,
+        GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
+    [[nodiscard]] std::span<const GlyphOutlineInstance> OutlineBlob() const noexcept;
+    [[nodiscard]] std::uint64_t OutlineBlobBytes() const noexcept;
     [[nodiscard]] const AtlasGlyph* FindGlyph(std::uint32_t glyphIndex) const;
     // Preserve RmlUi's small outlined replacement glyph when no bundled face
     // provides a requested codepoint. The adapter owns one atlas per font size.
@@ -60,6 +77,7 @@ public:
     [[nodiscard]] float DistanceRange() const noexcept;
 
 private:
+    bool GenerateGlyph(FT_Face face, std::uint32_t glyphIndex, int fontSize);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

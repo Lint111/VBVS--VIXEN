@@ -443,6 +443,16 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
                   std::to_string(occupancyGrid_.size()) + " floats staged");
 }
 
+void BodyOctreeSceneNode::SetGlyphOutlineInstances(
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances) {
+    // R631: this payload is produced by the same shader-build callback as the spliced recipe
+    // source. The registry owns one content-deduplicated blob and the emitted operands carry
+    // its global indices, so the SSBO and generated shader are always one generation pair.
+    glyphOutlineInstances_ = std::move(glyphInstances);
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetGlyphOutlineInstances: " +
+                  std::to_string(glyphOutlineInstances_.size()) + " rows staged");
+}
+
 void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes) {
     emitterShapes_ = std::move(shapes);
     emitterTableDirty_ = true;
@@ -614,6 +624,9 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
     // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
+    // R631: runtime glyph-outline SSBO (binding 51), always emitted with a descriptor-valid
+    // one-byte placeholder when the active recipe set contains no glyph data.
+    ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
     // Surface-Shell ESVO cache — publish descriptor-valid placeholders until the
     // first complete generation is produced and re-emitted by ExecuteImpl.
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_);
@@ -801,6 +814,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
         // Publish shell handles with the config created from the same complete pool.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, shellDataBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_);
@@ -820,18 +834,12 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void BodyOctreeSceneNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // CRITICAL: recompile must NOT free in-flight GPU objects (WSL/Dozen VM-panic trap).
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
-    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Cleanup (recompile) - keeping persistent buffers");
-        return;
-    }
-
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Cleanup (final teardown) - destroying buffers");
+void BodyOctreeSceneNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    // CRITICAL: these buffers must never be freed by a recompile (in-flight GPU objects; the
+    // WSL/Dozen VM-panic trap), which is why they live here and not in TypedCleanupImpl.
+    NODE_LOG_INFO("[BodyOctreeSceneNode] DeviceRelease - destroying buffers");
     DestroyBuffers();
 }
 
@@ -1334,6 +1342,15 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
         occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
 
+    // R631: the glyph outline payload is runtime data. Keeping it out of the generated GLSL
+    // source prevents the driver from unrolling one large compile-time object per recipe.
+    const VkDeviceSize glyphOutlineSize = std::max<VkDeviceSize>(
+        glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance), 1);
+    CreateHostBuffer(device, glyphOutlineSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        glyphOutlineInstances_.empty() ? nullptr : glyphOutlineInstances_.data(),
+        glyphOutlineBuffer_, glyphOutlineMemory_, "glyph outline SSBO");
+
     // E6-T2: charge every wholesale CreateHostBuffer call separately.  A
     // one-byte placeholder is still a known allocation and remains visible in
     // the ledger; it is not silently folded into the brick upload row.
@@ -1348,6 +1365,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
     RecordWholeBufferUpload(static_cast<uint64_t>(mipPoolSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineSize));
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
@@ -1358,7 +1376,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
                   std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
                   std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B, occupancyGrid=" +
-                  std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B, glyphOutline=" +
+                  std::to_string(static_cast<uint64_t>(glyphOutlineSize)) + "B)");
 
     // Batch 10 (validator-requested cheap add): NODE_LOG_INFO above is disabled
     // by default for these nodes and its absence blocked settling the batch-9
@@ -1672,6 +1691,7 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
     retire(mipPoolBuffer_,       mipPoolMemory_);
     retire(tierRefTableBuffer_,  tierRefTableMemory_);
     retire(occupancyGridBuffer_, occupancyGridMemory_);
+    retire(glyphOutlineBuffer_,  glyphOutlineMemory_);
 
     // The RT acceleration structure references the shell/proxy source about to be replaced.
     // Its AS handles and tracked buffer allocations are retired on the SAME clock so a still
@@ -2070,6 +2090,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
     destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
+    destroy(glyphOutlineBuffer_,  glyphOutlineMemory_);  // R631
 }
 
 // ============================================================================

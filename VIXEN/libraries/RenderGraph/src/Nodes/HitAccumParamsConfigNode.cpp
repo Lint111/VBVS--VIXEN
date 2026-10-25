@@ -82,17 +82,10 @@ void* HitAccumParamsConfigNode::MapCurrentForWrite(uint32_t frameIndex) const {
     return perFrame_.GetUniformBufferMapped(frameIndex % kRingSize);
 }
 
-void HitAccumParamsConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (KI-004 class) left stale handles
-    // that crashed the first post-recovery use/teardown. Mirrors ShadowConfigNode's guard.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[HitAccumParamsConfigNode] Cleanup (recompile) - keeping persistent ring buffers");
-        return;
-    }
-
-    NODE_LOG_INFO("[HitAccumParamsConfigNode] Cleanup (final teardown) - destroying ring buffers");
+void HitAccumParamsConfigNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[HitAccumParamsConfigNode] DeviceRelease - destroying ring buffers");
     perFrame_.Cleanup();
 }
 

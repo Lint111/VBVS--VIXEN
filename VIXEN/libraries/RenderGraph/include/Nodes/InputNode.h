@@ -93,6 +93,7 @@ protected:
     void TypedCompileImpl(TypedCompileContext& ctx) override;
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedShutdownImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Per-key state for tracking held duration

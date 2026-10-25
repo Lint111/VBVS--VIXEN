@@ -272,7 +272,7 @@ public:
             hooks.record,
             [initialize = hooks.initialize,
              reported = params.providerInitializationReported](VulkanDevice* device) {
-                UpscalerProviderInitializationResult result = initialize(device);
+                RenderModuleProviderInitializationResult result = initialize(device);
                 if (reported) reported(std::move(result));
             },
             hooks.cleanup);
@@ -291,17 +291,17 @@ public:
 };
 #endif
 
-void ResetNoUpscalerHistory(void*, UpscalerHistoryResetCause) noexcept {}
+void ResetNoUpscalerHistory(void*, RenderModuleHistoryResetCause) noexcept {}
 
-constexpr UpscalerImageFormat kRgba8Format[] = {UpscalerImageFormat::Rgba8Unorm};
-constexpr UpscalerFrameInput kColorInput[] = {UpscalerFrameInput::Color};
+constexpr RenderModuleImageFormat kRgba8Format[] = {RenderModuleImageFormat::Rgba8Unorm};
+constexpr RenderModuleFrameInput kColorInput[] = {RenderModuleFrameInput::Color};
 #if VIXEN_WITH_FSR3
-constexpr UpscalerFrameInput kFsr3Inputs[]{
-    UpscalerFrameInput::Color,
-    UpscalerFrameInput::Depth,
-    UpscalerFrameInput::MotionVectors,
-    UpscalerFrameInput::Jitter,
-    UpscalerFrameInput::Exposure,
+constexpr RenderModuleFrameInput kFsr3Inputs[]{
+    RenderModuleFrameInput::Color,
+    RenderModuleFrameInput::Depth,
+    RenderModuleFrameInput::MotionVectors,
+    RenderModuleFrameInput::Jitter,
+    RenderModuleFrameInput::Exposure,
 };
 #endif
 constexpr UpscalerExternalResourceDependency kNativeDependencies[] = {

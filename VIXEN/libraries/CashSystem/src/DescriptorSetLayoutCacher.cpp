@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DescriptorSetLayoutCacher.h"
+#include "CacheKeyHasher.h"
 #include "VulkanDevice.h"  // For Vixen::Vulkan::Resources::VulkanDevice
 #include <sstream>
 #include <functional>
@@ -74,10 +75,19 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::Create(
 }
 
 std::uint64_t DescriptorSetLayoutCacher::ComputeKey(const DescriptorSetLayoutCreateParams& ci) const {
-    // Use layoutKey directly (typically descriptorInterfaceHash from bundle)
-    // This enables content-based caching - same layout = same cache entry
-    std::hash<std::string> hasher;
-    return hasher(ci.layoutKey);
+    // layoutKey (typically the bundle's descriptorInterfaceHash) plus the binding content: two
+    // callers that reuse a key string for different bindings must not share one layout.
+    CacheKeyHasher hasher;
+    hasher.Add(std::string_view(ci.layoutKey)).Add(ci.descriptorSetIndex);
+    hasher.Add(static_cast<uint32_t>(ci.manualBindings.size()));
+    for (const VkDescriptorSetLayoutBinding& binding : ci.manualBindings) {
+        hasher.Add(binding.binding)
+              .Add(binding.descriptorType)
+              .Add(binding.descriptorCount)
+              .Add(binding.stageFlags)
+              .Add(reinterpret_cast<uint64_t>(binding.pImmutableSamplers));
+    }
+    return hasher.Finalize();
 }
 
 void DescriptorSetLayoutCacher::Cleanup() {

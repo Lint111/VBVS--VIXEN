@@ -1,6 +1,8 @@
 #include "Nodes/RayTracingPipelineNode.h"
 #include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
+#include "Core/RenderGraph.h"
+#include "NodeHelpers/SharedPipelineCaches.h"
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "ShaderDataBundle.h"
@@ -485,7 +487,7 @@ bool RayTracingPipelineNode::CreateRTPipeline() {
     VkResult result = vkCreateRayTracingPipelinesKHR_(
         device,
         VK_NULL_HANDLE,  // deferredOperation
-        VK_NULL_HANDLE,  // pipelineCache
+        ::RenderGraph::NodeHelpers::SharedGraphicsPipelineCache(GetOwningGraph(), vulkanDevice_),
         1,
         &pipelineInfo,
         nullptr,

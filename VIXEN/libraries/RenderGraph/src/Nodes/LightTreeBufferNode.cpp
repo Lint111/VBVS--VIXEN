@@ -106,13 +106,10 @@ void LightTreeBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void LightTreeBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[LightTreeBufferNode] Cleanup (recompile) - keeping persistent ring buffers");
-        return;
-    }
-
-    NODE_LOG_INFO("[LightTreeBufferNode] Cleanup (final teardown) - destroying ring buffers");
+void LightTreeBufferNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[LightTreeBufferNode] DeviceRelease - destroying ring buffers");
     perFrame_.Cleanup();
 }
 

@@ -165,17 +165,10 @@ void StorageBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void StorageBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
-    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[StorageBufferNode] Cleanup (recompile) - keeping persistent storage buffer");
-        return;
-    }
-
-    NODE_LOG_INFO("[StorageBufferNode] Cleanup (final teardown) - destroying storage buffer");
+void StorageBufferNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[StorageBufferNode] DeviceRelease - destroying storage buffer");
     perFrame_.Cleanup();
     DestroyBuffer();
 }

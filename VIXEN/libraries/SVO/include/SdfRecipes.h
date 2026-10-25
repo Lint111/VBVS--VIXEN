@@ -70,18 +70,36 @@ inline glm::vec3 sdfGradient(uint32_t recipeId, const glm::vec3& p,
     return glm::normalize(glm::vec3(gx, gy, gz));
 }
 
+// R716: the recipe's own bound on how far evalSdf can overstate the true distance.
+// |grad(length(d) - r)| = 1. For s = sin(fx)sin(fy)sin(fz), |grad s|^2 / f^2 =
+// (1-a)bc + a(1-b)c + ab(1-c) with a,b,c the three sin^2 terms in [0,1]; it is multilinear,
+// so its maximum over [0,1]^3 is at a vertex, where it is 1. Hence L = 1 + amp * freq
+// (sharp: reached where two sines are +-1 and the third crosses zero).
+inline float recipeLipschitzBound(uint32_t recipeId, const RecipeParams& rp) {
+    return recipeId == RECIPE_DISPLACED_SPHERE
+        ? 1.0f + std::fabs(rp.displaceAmp) * std::fabs(rp.displaceFreq) : 1.0f;
+}
+
 struct TraceHit {
     bool      hit    = false;
     float     t      = 0.0f;
     glm::vec3 point  = glm::vec3(0.0f);
     glm::vec3 normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    bool      budgetExhausted = false;  // R716: counted, resolved by closest approach
 };
 
 // Sphere-trace the recipe within its bounding sphere. Returns the nearest hit.
+// footprintBase + t * footprintPerT is the ray's footprint width at t (the pixel cone).
+// Where the Lipschitz-bounded step falls below the footprint the estimate is inconclusive
+// at pixel scale, so the march samples at footprint spacing and resolves the first sign
+// change (last known-outside to known-inside) by bisection. A zero footprint keeps the
+// plain bounded sphere-trace. Mirrors traceProceduralBody in SdfRecipes.glsl.
 inline TraceHit traceProcedural(uint32_t recipeId, const glm::vec3& ro, const glm::vec3& rd,
-                                const glm::vec3& center, const RecipeParams& rp) {
-    const float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? rp.displaceAmp : 0.0f;
-    const float boundR  = rp.radius + maxDisp + 0.01f;
+                                const glm::vec3& center, const RecipeParams& rp,
+                                float footprintBase = 0.0f, float footprintPerT = 0.0f) {
+    const float maxDisp = (recipeId == RECIPE_DISPLACED_SPHERE) ? std::fabs(rp.displaceAmp) : 0.0f;
+    const float shellR  = rp.radius + maxDisp;
+    const float boundR  = shellR + 0.01f;
 
     // Ray vs bounding sphere → [tNear, tFar].
     const glm::vec3 oc = ro - center;
@@ -100,22 +118,62 @@ inline TraceHit traceProcedural(uint32_t recipeId, const glm::vec3& ro, const gl
     if (tFar < 0.0f) return miss;
 
     float t = tNear;
+    // Every step advances at least the footprint, which only grows with t, so a positive
+    // entry footprint bounds the steps the interval can take. A zero footprint keeps the
+    // plain march's budget, and its exhaustion is reported.
     const int   MAX_STEPS  = 128;
-    const float EPS        = 1e-3f;  // hit threshold (independent of gradient h in sdfGradient, which coincidentally equals EPS)
-    // Step factor = 1/Lipschitz so the sphere-trace never overshoots the iso-surface.
-    // L = 1 (radial term) + maxDisp*freq*sqrt(3) (displacement-gradient bound); maxDisp=0
-    // gives 1.0 for the plain sphere, self-adjusting for any displaced params (no magic).
-    const float stepScale  = 1.0f / (1.0f + maxDisp * rp.displaceFreq * 1.7320508f);
-    for (int i = 0; i < MAX_STEPS; ++i) {
-        const glm::vec3 p = ro + rd * t;
+    const int   MAX_BOUNDED_STEPS = 2048;  // the uber march's ceiling; past it, reported
+    const float entryFootprint = footprintBase + tNear * footprintPerT;
+    const int   stepBudget = entryFootprint > 0.0f
+        ? static_cast<int>(glm::min(std::ceil((tFar - tNear) / entryFootprint), float(MAX_BOUNDED_STEPS))) + 1
+        : MAX_STEPS;
+    const float stepScale  = 1.0f / recipeLipschitzBound(recipeId, rp);
+    bool  haveOutside = false;
+    float outsideT = tNear;
+    float closestT = tNear;
+    float closestGap = 1e30f;
+    for (int i = 0; i < stepBudget; ++i) {
+        glm::vec3 p = ro + rd * t;
         const float d = evalSdf(recipeId, p, center, rp);
-        if (d < EPS) {
+        if (d <= 0.0f) {
+            if (haveOutside) {
+                float insideT = t;
+                for (int refine = 0; refine < 32; ++refine) {
+                    const float midT = 0.5f * (outsideT + insideT);
+                    if (midT <= outsideT || midT >= insideT) break;
+                    if (evalSdf(recipeId, ro + rd * midT, center, rp) > 0.0f) outsideT = midT;
+                    else insideT = midT;
+                }
+                t = outsideT;
+                p = ro + rd * t;
+            }
             return TraceHit{true, t, p, sdfGradient(recipeId, p, center, rp)};
         }
-        t += d * stepScale;
-        if (t > tFar) break;
+        const float footprint = glm::max(footprintBase + t * footprintPerT, 0.0f);
+        if (d - footprint < closestGap) {
+            closestGap = d - footprint;
+            closestT = t;
+        }
+        haveOutside = true;
+        outsideT = t;
+        // Outside the displacement shell the surface is at least |d| - shellR away.
+        const float shellGap = glm::length(p - center) - shellR;
+        const float step = glm::max(glm::max(d * stepScale, shellGap), footprint);
+        const float nextT = t + step;
+        if (nextT <= t) return TraceHit{true, t, p, sdfGradient(recipeId, p, center, rp)};
+        if (t >= tFar) return miss;
+        t = glm::min(nextT, tFar);
     }
-    return miss;
+    TraceHit exhausted = miss;
+    exhausted.budgetExhausted = true;
+    if (closestGap <= 0.0f) {
+        const glm::vec3 p = ro + rd * closestT;
+        exhausted.hit = true;
+        exhausted.t = closestT;
+        exhausted.point = p;
+        exhausted.normal = sdfGradient(recipeId, p, center, rp);
+    }
+    return exhausted;
 }
 
 }  // namespace Vixen::SVO

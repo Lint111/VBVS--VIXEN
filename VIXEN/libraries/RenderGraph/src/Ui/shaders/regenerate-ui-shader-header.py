@@ -55,6 +55,11 @@ def format_array(name: str, words: list[int]) -> str:
     return "\n".join(lines)
 
 
+def is_current(path: Path, contents: str) -> bool:
+    # A CRLF checkout (core.autocrlf) of an unchanged header is current too.
+    return path.is_file() and path.read_bytes().replace(b"\r\n", b"\n") == contents.encode("utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--glslc", help="path to glslc; defaults to the PATH/VIXEN SDK search")
@@ -133,14 +138,18 @@ def main() -> None:
             )
             generated.append((args.text_output, text_header))
         if args.check:
-            stale = [str(path) for path, contents in generated
-                     if not path.is_file() or path.read_text(encoding="utf-8") != contents]
+            stale = [str(path) for path, contents in generated if not is_current(path, contents)]
             if stale:
                 raise SystemExit("generated SPIR-V headers are stale: " + ", ".join(stale))
         else:
+            # Write only changed bytes, always LF: an unchanged header keeps its mtime, so the
+            # always-run build target does not recompile and relink its consumers, and a Windows
+            # build does not dirty the checked-in headers with CRLF.
             for path, contents in generated:
+                if is_current(path, contents):
+                    continue
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(contents, encoding="utf-8")
+                path.write_bytes(contents.encode("utf-8"))
 
 
 if __name__ == "__main__":

@@ -18,6 +18,9 @@ protected:
     void TypedCompileImpl(TypedCompileContext&) override {}
     void TypedExecuteImpl(TypedExecuteContext&) override {}
     void TypedCleanupImpl(TypedCleanupContext&) override {}
+    void TypedDeviceReleaseImpl(TypedCleanupContext&) override {}
+    void TypedShutdownImpl(TypedCleanupContext&) override {}
+    void RecompileImpl(RecompileCause) override {}
 };
 
 class StrictVariadicNodeConsumer : public VariadicTypedNode<LifecycleProbeConfig> {

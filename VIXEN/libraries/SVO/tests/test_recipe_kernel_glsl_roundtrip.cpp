@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <regex>
+#include <string_view>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -81,7 +82,15 @@ TEST(RecipeKernelGlslRoundtrip, EmittedFunctionsCompileThroughRealShaderCompiler
         << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
     std::ostringstream kss;
     kss << kernelFile.rdbuf();
-    const std::string sdfCoreGlsl = kss.str();
+    // The kernels read the shared glyph blob: declare it right after the struct they define.
+    std::string sdfCoreGlsl = kss.str();
+    constexpr std::string_view glyphStructEnd = "#endif // GLYPHOUTLINEINSTANCE_GLSL\n";
+    if (const auto at = sdfCoreGlsl.find(glyphStructEnd); at != std::string::npos) {
+        sdfCoreGlsl.insert(at + glyphStructEnd.size(),
+            "layout(set = 0, std430, binding = 31) readonly buffer GlyphOutlineBuffer {\n"
+            "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+            "};\n");
+    }
 
     const std::regex fnNameRe(R"(float\s+(sdfRecipe_\w+)\s*\()");
 

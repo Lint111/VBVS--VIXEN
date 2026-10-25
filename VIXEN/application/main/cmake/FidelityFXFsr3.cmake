@@ -6,11 +6,11 @@ set(FFX_SHADER_COMPILER "${FFX_SHADER_TOOL_DIR}/FidelityFX_SC.exe")
 set(FFX_SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/fidelityfx-fsr3")
 file(MAKE_DIRECTORY "${FFX_SHADER_OUTPUT_DIR}")
 
-if(WIN32)
-    set(FFX_TOOL_PATH "${FFX_SHADER_TOOL_DIR};$ENV{PATH}")
-else()
-    set(FFX_TOOL_PATH "${FFX_SHADER_TOOL_DIR}:$ENV{PATH}")
-endif()
+# Keep the custom-command line stable across queued builds.  The shader
+# compiler and glslang validator are colocated in this directory, so the
+# ambient PATH is neither needed for lookup nor safe to embed in Ninja: the
+# live build queue adds a different temporary PATH on each invocation.
+set(FFX_TOOL_PATH "${FFX_SHADER_TOOL_DIR}")
 
 set(FFX_FSR3_SHADER_BASE_ARGS
     -compiler=glslang -e CS --target-env vulkan1.2 -S comp -Os -DFFX_GLSL=1

@@ -11,6 +11,7 @@
 // Forward declarations
 namespace CashSystem {
     class DescriptorCacher;
+    struct DescriptorSetLayoutWrapper;
 }
 
 namespace ShaderManagement {
@@ -118,6 +119,9 @@ private:
 
     // Vulkan resources
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    // Owns descriptorSetLayout: DescriptorSetLayoutCacher keys it by binding content, so the handle
+    // is stable for PipelineLayoutCacher (which keys pipeline layouts by set-layout handle).
+    std::shared_ptr<CashSystem::DescriptorSetLayoutWrapper> setLayoutWrapper;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
 

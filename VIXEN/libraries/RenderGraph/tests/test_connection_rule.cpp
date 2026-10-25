@@ -307,8 +307,8 @@ TEST(DirectConnectionRuleTest, CannotHandleAccumulationConnection) {
 
 TEST(DirectConnectionRuleTest, CannotHandleBindingConnection) {
     // DirectConnectionRule does NOT handle binding targets: they route to
-    // VariadicConnectionRule (which binds the resource + registers the populate
-    // hooks). Direct's Resolve would no-op a binding, leaving descriptors unbound.
+    // VariadicConnectionRule (which declares the variadic slot; the variadic node
+    // populates it). Direct's Resolve would no-op a binding, leaving descriptors unbound.
     // See 51927757 (restore voxel rendering — binding-rule routing).
     DirectConnectionRule rule;
 

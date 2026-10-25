@@ -235,17 +235,10 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void LightingConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
-    // left stale handles that crashed the first post-recovery use/teardown (KI-004 class).
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[LightingConfigNode] Cleanup (recompile) - keeping persistent ring buffers");
-        return;
-    }
-
-    NODE_LOG_INFO("[LightingConfigNode] Cleanup (final teardown) - destroying ring buffers");
+void LightingConfigNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[LightingConfigNode] DeviceRelease - destroying ring buffers");
     perFrame_.Cleanup();
 }
 

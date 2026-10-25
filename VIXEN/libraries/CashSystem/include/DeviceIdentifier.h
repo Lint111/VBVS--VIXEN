@@ -151,6 +151,11 @@ public:
      * @brief Save all caches to disk for this device
      */
     bool SaveAll(const std::filesystem::path& directory) const;
+
+    /**
+     * @brief Persist warm driver state (pipeline cache blobs) of every cacher now
+     */
+    void PersistWarmState() const;
     
     /**
      * @brief Load all caches from disk for this device
@@ -215,9 +220,7 @@ private:
     // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
     // Access via m_device->GetBudgetManager() instead
 
-    // TypeRegistry will be embedded here for device-specific type registration
-    // This maintains the type-safe caching but per-device
-    // For now, we'll use a placeholder until we refactor TypeRegistry
+    // Per-device cachers (type-safe caching, scoped to this device)
     std::vector<std::unique_ptr<CacherBase>> m_deviceCachers;
 
     void OnInitialize();

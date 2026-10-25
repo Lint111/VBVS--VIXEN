@@ -148,9 +148,16 @@ public:
         VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL
     );
 
+    // The device-wide VkPipelineCache every graphics pipeline uses, created on first use and seeded
+    // from the device/driver-keyed shared store (SharedPipelineCacheStore). Pipelines created
+    // outside this cacher (ray tracing, hand-built graphics) pass it too, so PersistWarmState()
+    // carries them across runs and build trees. VK_NULL_HANDLE only if no cache can be created.
+    VkPipelineCache SharedPipelineCache();
+
     // Serialization
     bool SerializePayloadToFile(const std::filesystem::path& path) const override;
     bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
+    void PersistWarmState() const override;
     std::string_view name() const noexcept override { return "PipelineCacher"; }
 
 protected:
@@ -166,6 +173,8 @@ private:
     void CreatePipeline(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
     void CreatePipelineLayout(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
     void CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
+    // Merges every pipeline cache into one blob; false when there is nothing to merge, throws on Vulkan failure.
+    bool MergeCachesToBlob(std::vector<uint8_t>& cacheData, size_t& mergedCacheCount) const;
 
     // Global pipeline cache loaded from disk (used for all new pipeline creations)
     // Read unlocked on the pipeline-creation path, written by DeserializeFromFile()/Cleanup():

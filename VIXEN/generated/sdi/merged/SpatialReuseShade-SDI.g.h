@@ -133,17 +133,17 @@ struct AccumulationConfigSSBO {
  * @brief PrevCameraConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x1177bc19aa02887c (for runtime discovery)
+ * Layout VixenHash: 0x5945e7414a2c742c (for runtime discovery)
  */
 struct PrevCameraConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x1177bc19aa02887cULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x5945e7414a2c742cULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "PrevCameraConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 80;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -384,6 +384,26 @@ struct MiningBeamInstanceTransformBuffer {
         static constexpr const char* TYPE = "MiningBeamInstanceTransform";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 96;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief GlyphOutlineBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xff580e90c5d8ca0c (for runtime discovery)
+ */
+struct GlyphOutlineBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xff580e90c5d8ca0cULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "GlyphOutlineInstance";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 3616;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -789,6 +809,21 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    /**
+     * @brief GlyphOutlineBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding51 {
+        static constexpr const char* NAME = "GlyphOutlineBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 51;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = GlyphOutlineBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -819,6 +854,7 @@ using MiningBeamBodyInstanceBuffer = Set0::Binding45;
 using MiningBeamInstanceTransformBuffer = Set0::Binding46;
 using sceneRadianceHistoryOutput = Set0::Binding48;
 using worldPosHistoryOutput = Set0::Binding49;
+using GlyphOutlineBuffer = Set0::Binding51;
 } // namespace Bind
 
 namespace Push {
@@ -1035,6 +1071,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"MiningBeamInstanceTransformBuffer", false, 0, 46, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding46},
     {"sceneRadianceHistoryOutput", false, 0, 48, 0, Access::WriteOnly, 0, nullptr},
     {"worldPosHistoryOutput", false, 0, 49, 0, Access::WriteOnly, 0, nullptr},
+    {"GlyphOutlineBuffer", false, 0, 51, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1071,7 +1108,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 41;
+    static constexpr uint32_t NUM_MEMBERS = 42;
     static constexpr uint32_t NUM_FEATURES = 3;
 };
 

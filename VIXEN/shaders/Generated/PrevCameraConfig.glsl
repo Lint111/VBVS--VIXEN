@@ -4,6 +4,10 @@
 struct PrevCameraConfig {
     mat4 prevViewProj;
     vec3 reconstructionSampling;
-    uint _samplingPadding;
+    uint inputWidth;
+    uint inputHeight;
+    float historyWeight;
+    uint _tailPadding1;
+    uint _tailPadding2;
 };
 #endif // PREVCAMERACONFIG_GLSL

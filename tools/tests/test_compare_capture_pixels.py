@@ -3,6 +3,7 @@ import ast
 import contextlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -98,6 +99,42 @@ class CompareCapturePixelsTests(unittest.TestCase):
             self.assertIn("pixel_diff=unavailable", text)
             self.assertFalse((root / "crops").exists())
             self.assertFalse((root / "s.png").exists())
+
+    def test_reference_provenance_is_printed_for_current_reference(self):
+        repository = Path(__file__).parents[2]
+        source_commit = tool._git_commit(repository, "HEAD")
+        with tempfile.TemporaryDirectory() as directory:
+            provenance = Path(directory) / "reference-provenance.json"
+            provenance.write_text(json.dumps({
+                "source_commit": source_commit,
+                "captured_at": "2026-10-25T13:11:00+03:00",
+                "machine": "test-machine",
+                "driver": {"name": "test-driver"},
+                "resolution": [500, 500],
+                "known_visual_changes": [],
+            }), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertFalse(tool.check_reference_provenance(provenance, repository, source_commit))
+            self.assertIn(f"reference provenance: commit={source_commit}", out.getvalue())
+            self.assertIn("machine=test-machine", out.getvalue())
+
+    def test_reference_provenance_rejects_a_known_visual_change(self):
+        repository = Path(__file__).parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            provenance = Path(directory) / "reference-provenance.json"
+            provenance.write_text(json.dumps({
+                "source_commit": "0e405d71ec4b8f93d9d2ec34aa747d6d91eb702a",
+                "known_visual_changes": [{
+                    "commit": "bff5507184efcfb6bbbcaf6a079d1e28b741f2fc",
+                    "title": "affine look-dev instance placement",
+                }],
+            }), encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                self.assertTrue(tool.check_reference_provenance(provenance, repository, "HEAD"))
+            self.assertIn("references older than", err.getvalue())
+            self.assertIn("affine look-dev instance placement", err.getvalue())
 
 
 if __name__ == "__main__":

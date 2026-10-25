@@ -154,7 +154,7 @@ TEST(RecipeNestedInvocation, CpuInterpreterMatchesCpuComposedReference) {
             progB.data(), static_cast<uint32_t>(progB.size()), p);
         float boxValue = Vixen::SVO::Recipe::evalRecipe(
             std::vector<SdfInstruction>{ boxOp(kBoxHalfExtents) }.data(), 1, p);
-        float expected = Yeroket::Sdf::Generated::SdfCore_SmoothUnion(bValue, boxValue, kSmoothK);
+        float expected = Yeroket::Sdf::Kernels::SdfCore_SmoothUnion(bValue, boxValue, kSmoothK);
 
         EXPECT_NEAR(actual, expected, 1e-5f)
             << "Mismatch at (" << p.x << ", " << p.y << ", " << p.z << ")";
@@ -237,7 +237,7 @@ TEST(RecipeNestedInvocation, GlslEmitCompilesAndInlinesCallee) {
     std::ostringstream kss; kss << kernelFile.rdbuf();
 
     std::ostringstream shaderSrc;
-    shaderSrc << "#version 450\n" << kss.str() << "\n" << fieldFn << "\n";
+    shaderSrc << "#version 450\n" << Vixen::SVO::Recipe::WithoutGlyphOutlineKernel(kss.str()) << "\n" << fieldFn << "\n";
     shaderSrc << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
@@ -544,7 +544,7 @@ TEST_F(RecipeNestedInvocationGpuParityTest, GlslMatchesCpuEvalForNestedRecipe) {
     std::ostringstream kss; kss << kernelFile.rdbuf();
 
     std::ostringstream shaderSrc;
-    shaderSrc << "#version 450\n" << kss.str() << "\n" << fieldFn << "\n";
+    shaderSrc << "#version 450\n" << Vixen::SVO::Recipe::WithoutGlyphOutlineKernel(kss.str()) << "\n" << fieldFn << "\n";
     shaderSrc << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };

@@ -127,23 +127,6 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 #define USE_COMPRESSED_SHADER 1  // Default: compressed baseline
 #endif
 
-// Baked-perf-pipeline M2b (Task 2b.1): shaderCacheManager_'s config. Default cache dir is a
-// relative "cache/shaders" (gitignored via "cache/" at repo root -- same convention as the
-// app's other relative shader search paths like "shaders/"); VIXEN_SHADER_CACHE_DIR overrides
-// it, VIXEN_SHADER_CACHE_DISABLE=1 disables caching outright (e.g. for a clean-recompile A/B)
-// without deleting whatever is already on disk.
-ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig() {
-    ShaderManagement::ShaderCacheConfig config;
-    config.cacheDirectory = Vixen::RuntimeCacheDirectory() / "shaders";
-    if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR")) {
-        config.cacheDirectory = dirEnv;
-    }
-    if (const char* disableEnv = std::getenv("VIXEN_SHADER_CACHE_DISABLE")) {
-        config.enabled = (std::atoi(disableEnv) == 0);
-    }
-    return config;
-}
-
 VulkanGraphApplication::VulkanGraphApplication()
     : VulkanApplicationBase(),
       currentFrame(0),
@@ -179,6 +162,20 @@ VulkanGraphApplication::VulkanGraphApplication()
         } else if (mainLogger) {
             mainLogger->Warning("Unknown VIXEN_UPSCALER='" + std::string(requested) +
                                 "'; using the native render path");
+        }
+    }
+
+    // The anti-aliasing request rides the same seam; the graph still decides eligibility (a
+    // canonical capture never admits a provider).
+    if (const char* env = std::getenv("VIXEN_ANTI_ALIASING")) {
+        const std::string_view requested(env);
+        if (requested == "none" || requested == "off") {
+            renderPathConfig_.antiAliasing = "none";
+        } else if (requested == "taa") {
+            renderPathConfig_.antiAliasing = "taa";
+        } else if (mainLogger) {
+            mainLogger->Warning("Unknown VIXEN_ANTI_ALIASING='" + std::string(requested) +
+                                "'; keeping the requested provider");
         }
     }
 
@@ -244,6 +241,10 @@ void VulkanGraphApplication::CreateEngineContext() {
     nodeRegistry = &engine_->Registry();
     messageBus = &engine_->Bus();
     renderGraph = &engine_->Graph();
+    // Graph recompiles drain the GPU on this thread; keep the window's message pump alive meanwhile.
+    renderGraph->SetIdleWaitPump([this] {
+        if (presentationTarget_ == PresentationTarget::Window) glfwPollEvents();
+    });
     mainLogger->Info("EngineContext created (MainCacher initialized, autonomous CalibrationStore active)");
 
     messageBus->Subscribe(
@@ -333,7 +334,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             if (selectedCandidate == upscalerCandidatesForCompile_.end()) {
                 throw std::logic_error("Compiled upscaler provider is absent from its candidate set");
             }
-            UpscalerProviderInitializationResult initialization{
+            RenderModuleProviderInitializationResult initialization{
                 selectedUpscalerProviderId_, true, {}};
             if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
                 initialization = *reportedUpscalerInitialization_;
@@ -345,7 +346,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             if (initialization.initialized) {
                 selectedCandidate->eligibility.initialized = true;
                 const auto initializedSelection =
-                    SelectUpscalerProvider(upscalerCandidatesForCompile_);
+                    SelectRenderModuleProvider(upscalerCandidatesForCompile_);
                 if (!initializedSelection.selected ||
                     initializedSelection.selected->id != selectedUpscalerProviderId_) {
                     throw std::logic_error(
@@ -358,7 +359,7 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
             }
 
             if (upscalerInitializationFailures_.size() >= 3 ||
-                !RecordUpscalerProviderInitializationFailure(
+                !RecordRenderModuleProviderInitializationFailure(
                     upscalerInitializationFailures_, initialization.providerId)) {
                 // No provider is left to try: report through the host-facing error state.
                 lastError_ = "Prepare failed: " + initialization.message;
@@ -438,8 +439,8 @@ bool VulkanGraphApplication::Render() {
         // A provider fault latched by the previous frame demotes through Prepare()'s fallback path:
         // the failed provider joins the failure list and the graph is rebuilt with the next one.
         if (reportedUpscalerInitialization_ && !reportedUpscalerInitialization_->initialized) {
-            const UpscalerProviderInitializationResult fault = *reportedUpscalerInitialization_;
-            if (!RecordUpscalerProviderInitializationFailure(upscalerInitializationFailures_,
+            const RenderModuleProviderInitializationResult fault = *reportedUpscalerInitialization_;
+            if (!RecordRenderModuleProviderInitializationFailure(upscalerInitializationFailures_,
                                                               fault.providerId)) {
                 lastError_ = "Render failed: upscaler provider '" + fault.providerId +
                              "' faulted and no provider is left: " + fault.message;
@@ -1115,7 +1116,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // no gradient taps; the per-recipe shade kernel (queued after all march
             // passes below) computes the identical normal on the final winner.
             const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeComputeShader(
-                *entry, recipeId, coreBuf.str(), /*emitGradientNormal=*/!bucketedShadeEnabled_);
+                *entry, recipeId, coreBuf.str(), /*emitGradientNormal=*/!bucketedShadeEnabled_,
+                proceduralRecipes_.GlyphInstanceBase(recipeId));
 
             // AddStageFromSpirv is a stub in this codebase today (ShaderBundleBuilder.cpp's own
             // "TODO: Store SPIRV separately, for now this is a placeholder" -- it discards the
@@ -1241,18 +1243,20 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // layout does not opt into (BuildDescriptorSetLayoutFromReflection's own default).
             VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
             VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
-            std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
+            const uint32_t bindingCount = entry->glyphInstances.empty() ? 5u : 6u;
+            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * bindingCount);
+            std::vector<VkWriteDescriptorSet> writes(frameSetCount * bindingCount);
             for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                VkBuffer buffers[5] = {
+                VkBuffer buffers[6] = {
                     bodyScene->GetInstanceBufferHandle(frameSlot),
                     bucketMembersBuf,
                     hitRecordBuf,
                     bucketMetaNode->GetBufferHandle(frameSlot),
                     bodyScene->GetInstanceTransformBufferHandle(frameSlot),
+                    bodyScene->GetGlyphOutlineBufferHandle(),
                 };
-                for (uint32_t binding = 0; binding < 5u; ++binding) {
-                    const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
+                for (uint32_t binding = 0; binding < bindingCount; ++binding) {
+                    const size_t writeIndex = static_cast<size_t>(frameSlot) * bindingCount + binding;
                     bufInfos[writeIndex] = { buffers[binding], 0, VK_WHOLE_SIZE };
                     writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[writeIndex].dstSet = descriptorSets[frameSlot];
@@ -1368,7 +1372,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             std::ifstream coreFile(corePath);
             std::ostringstream coreBuf;
             coreBuf << coreFile.rdbuf();
-            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeShadeShader(*entry, shadeRecipeId, coreBuf.str());
+            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeShadeShader(
+                *entry, shadeRecipeId, coreBuf.str(), proceduralRecipes_.GlyphInstanceBase(shadeRecipeId));
             ShaderManagement::CompilationOptions opts;
             opts.validateSpirv = false;
             ShaderManagement::ShaderBundleBuilder bundleBuilder;
@@ -1427,18 +1432,20 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                 if (pipelineWrapper && pipelineWrapper->pipeline != VK_NULL_HANDLE) {
                                     const VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
                                     const VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
-                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
+                                    const uint32_t bindingCount = entry->glyphInstances.empty() ? 5u : 6u;
+                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * bindingCount);
+                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * bindingCount);
                                     for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                                        const VkBuffer bufHandles[5] = {
+                                        const VkBuffer bufHandles[6] = {
                                             bodyScene->GetInstanceBufferHandle(frameSlot),
                                             bucketMembersBuf,
                                             hitRecordBuf,
                                             bucketMetaNode->GetBufferHandle(frameSlot),
                                             bodyScene->GetInstanceTransformBufferHandle(frameSlot),
+                                            bodyScene->GetGlyphOutlineBufferHandle(),
                                         };
-                                        for (uint32_t binding = 0; binding < 5u; ++binding) {
-                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
+                                        for (uint32_t binding = 0; binding < bindingCount; ++binding) {
+                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * bindingCount + binding;
                                             bufInfos[writeIndex] = { bufHandles[binding], 0, VK_WHOLE_SIZE };
                                             writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                                             writes[writeIndex].dstSet = descriptorSets[frameSlot];
@@ -1861,6 +1868,11 @@ void VulkanGraphApplication::PostTick() {
     }
     if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
         passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
+    }
+    for (const auto& generated : generatedSystems_.Stages()) {
+        if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(generated.stage))) {
+            passes.push_back({generated.entry->className, stage->GetGPUPerformanceLogger()});
+        }
     }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});
@@ -4054,8 +4066,8 @@ void VulkanGraphApplication::CompileRenderGraph() {
     graphCompiled = true;
 
     // Baked-perf-pipeline M2b (Task 2b.2): log the process-wide shader-cache telemetry right
-    // after Compile() -- every ShaderLibraryNode::CompileImpl (the 4 live builders wired to
-    // shaderCacheManager_ in BuildRenderGraph.cpp) funnels into this ONE ShaderLogger::
+    // after Compile() -- every ShaderBundleBuilder::Build() (cached by default through
+    // ShaderManagement::DefaultShaderCacheManager()) funnels into this ONE ShaderLogger::
     // GetTelemetry() singleton's cacheHits/cacheMisses counters via ShaderBundleBuilder::Build().
     // Info level (not the cache-hit path's own Debug-level log line) so this is visible in a
     // default run without raising the whole app's log verbosity -- the evidence line the

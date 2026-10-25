@@ -132,29 +132,18 @@ void InstanceNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Instance is created during Compile and remains valid
 }
 
-void InstanceNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // The VkInstance is instance-level and SURVIVES a device loss (only the device + its children are
-    // rebuilt). Keep it across a recompile / device-loss rebuild — exactly like WindowNode keeps the
-    // window+surface. The surface is created FROM this instance, so destroying it here while WindowNode
-    // keeps the surface would dangle the surface and trip VUID-vkDestroyInstance-instance-00629. Release
-    // only on final teardown.
+void InstanceNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Kept across recompiles. The surface is created FROM this instance, so destroying it on a
+    // recompile while WindowNode keeps the surface would dangle the surface and trip
+    // VUID-vkDestroyInstance-instance-00629.
     //
-    // EXCEPTION — DeviceLost: Mesa Dozen (Vulkan over D3D12) keeps the removed ID3D12Device on the
+    // Released on device loss (and shutdown): Mesa Dozen (Vulkan over D3D12) keeps the removed ID3D12Device on the
     // instance's VkPhysicalDevice, so vkCreateDevice on it after a real device removal SIGSEGVs inside
     // dzn, while a FRESH VkInstance creates a working device (reproduced by tools/gpuharden/
     // device_loss_probe: --recover same crashes, --recover fresh succeeds). Recovery therefore
     // recreates the instance. The instance-scoped children (WindowNode's and SwapChainNode's
     // surfaces) are destroyed first in the reverse-order teardown and recreated on rebuild.
-    if (ctx.reason == CleanupReason::DeviceLost) {
-        NODE_LOG_INFO("[InstanceNode] Cleanup (device-loss): destroying the VkInstance so recovery re-enumerates the adapter");
-        DestroyVulkanInstance();
-        return;
-    }
-    if (ctx.reason != CleanupReason::FinalTeardown) {
-        NODE_LOG_INFO("[InstanceNode] Cleanup (recompile/device-loss): keeping the persistent VkInstance");
-        return;
-    }
-    NODE_LOG_INFO("[InstanceNode] Cleanup: Destroying Vulkan instance");
+    NODE_LOG_INFO("[InstanceNode] DeviceRelease: destroying the VkInstance");
     DestroyVulkanInstance();
 }
 

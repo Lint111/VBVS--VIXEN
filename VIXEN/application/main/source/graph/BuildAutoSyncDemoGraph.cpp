@@ -14,10 +14,10 @@
 //
 // Handle-timing: pipeline/render-pass/framebuffer/descriptor-set handles are
 // produced by their NODES at COMPILE time, but this function runs at graph-BUILD
-// time. We therefore resolve the concrete handles in a post-compile callback
-// (RenderGraph::RegisterPostNodeCompileCallback) — VIXEN's idiomatic mechanism
-// for acting on a just-compiled node's outputs — and feed them to PassGroupNode
-// via its existing host-assembly API (AddComputePass / AddRenderPass). A single
+// time. We therefore resolve the concrete handles in PassGroupNode's pass
+// assembler (PassGroupNode::SetPassAssembler), which runs inside PassGroupNode's
+// own compile, and feed them through its host-assembly API (AddComputePass /
+// AddRenderPass). A single
 // GENERIC compile-ordering input slot (PassGroupNodeConfig::COMPILE_AFTER) forces
 // PassGroupNode to compile AFTER its handle sources, so the pass list is fully
 // populated before PassGroupNode::CompileImpl bakes the schedule.
@@ -353,39 +353,19 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
     batch.RegisterAll();
 
     // ===================================================================
-    // PHASE 2: Compile-time handle resolution (post-compile callback)
+    // PHASE 2: Compile-time handle resolution (PassGroupNode's pass assembler)
     // ===================================================================
     // PassGroupNode needs CONCRETE pipeline/render-pass/framebuffer/descriptor-set
-    // handles, which only exist after those nodes compile. We fill its pass list in a
-    // post-compile callback that fires once ALL handle-source nodes report Compiled
-    // (callbacks fire after each node compiles, in topological order). The COMPILE_AFTER
-    // edge guarantees PassGroupNode compiles after this fill completes.
+    // handles, which only exist after those nodes compile. Its compile-ordering edges
+    // place it after every handle source, so its own compile fills the pass list.
     RenderGraph* graph = renderGraph;
-    renderGraph->RegisterPostNodeCompileCallback(
+    auto* passGroup = static_cast<PassGroupNode*>(graph->GetInstance(passGroupNode));
+    passGroup->SetPassAssembler(
         [this, graph, ssboNode, fillPipeline, postPipeline, gfxPipeline,
-         fillDescSet, postDescSet, gfxDescSet, renderPassNode, framebufferNode,
-         passGroupNode](NodeInstance* /*justCompiled*/) {
-
-            auto* pg = static_cast<PassGroupNode*>(graph->GetInstance(passGroupNode));
-            if (!pg || pg->PassCount() > 0) {
-                return;  // already assembled, or node missing
-            }
-
-            // All handle-source nodes that must be compiled before we can read handles.
-            // The callback fires after each node is marked Compiled; once the LAST of these
-            // sources reports Compiled, every handle is available and we assemble. PassGroupNode
-            // is topologically ordered after all 9 (one Dependency-role variadic edge each), so
-            // this assembly always runs before PassGroupNode::CompileImpl.
-            const NodeHandle sources[] = {
-                ssboNode, fillPipeline, postPipeline, gfxPipeline,
-                fillDescSet, postDescSet, gfxDescSet, renderPassNode, framebufferNode
-            };
-            for (NodeHandle h : sources) {
-                NodeInstance* n = graph->GetInstance(h);
-                if (!n || n->GetState() != NodeState::Compiled) {
-                    return;  // not all sources ready yet — wait for a later callback
-                }
-            }
+         fillDescSet, postDescSet, gfxDescSet, renderPassNode,
+         framebufferNode](PassGroupNode& pg) {
+            // Runs inside PassGroupNode's own compile. PassGroupNode is topologically ordered after
+            // all 9 handle sources (one Dependency-role variadic edge each), so every handle exists.
 
             // ---- Read concrete handles from compiled node outputs ----
             auto outHandle = [&](NodeHandle h, uint32_t slotIndex, auto tag) {
@@ -474,9 +454,9 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
             draw.accesses       = { { ssboRes, AccessKind::FragmentStorageRead, false } };
             draw.debugName      = "autosync_present";
 
-            pg->AddComputePass(std::move(fill));
-            pg->AddComputePass(std::move(post));
-            pg->AddRenderPass(std::move(draw));
+            pg.AddComputePass(std::move(fill));
+            pg.AddComputePass(std::move(post));
+            pg.AddRenderPass(std::move(draw));
 
             mainLogger->Info("[BuildAutoSyncDemoGraph] PassGroupNode assembled: 3 passes (fill->post->present), "
                              "extent " + std::to_string(w) + "x" + std::to_string(h));

@@ -9,7 +9,6 @@
 #include "INodeWiring.h"
 #include "SlotTask.h"
 #include "Memory/ResourceBudgetManager.h"
-#include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
 #include "ITaskProfile.h"  // Sprint 6.3: Task profile system
 #include <string>
@@ -354,9 +353,25 @@ public:
      * @brief Mark this node as needing recompilation
      * 
      * Called when the node receives an event that invalidates its current state.
-     * The RenderGraph will recompile dirty nodes at the next safe point.
+     * The RenderGraph will recompile dirty nodes at the next safe point, and hands `cause` to the
+     * node's RecompileImpl.
      */
-    void MarkNeedsRecompile();
+    void MarkNeedsRecompile(RecompileCause cause = RecompileCause::InputsChanged);
+
+    /// @brief The node in this node's graph with `handle`, or null (no graph / invalid handle)
+    NodeInstance* ResolveGraphNode(NodeHandle handle) const;
+
+    /// @brief Cause recorded by the last MarkNeedsRecompile (read by RenderGraph's recompile wave)
+    RecompileCause GetPendingRecompileCause() const { return pendingRecompileCause_; }
+
+    /**
+     * @brief Recompile entry point used by RenderGraph: RecompileImpl(cause), then the recompile
+     *        teardown (CleanupImpl only). The graph then runs Setup() and Compile().
+     */
+    void BeginRecompile(RecompileCause cause) {
+        RecompileImpl(cause);
+        Cleanup(CleanupReason::Recompile);
+    }
 
     /**
      * @brief Check if node needs recompilation
@@ -367,7 +382,10 @@ public:
      * @brief Clear the recompilation flag
      * Called by RenderGraph after recompiling the node
      */
-    void ClearNeedsRecompile() { needsRecompile = false; }
+    void ClearNeedsRecompile() {
+        needsRecompile = false;
+        pendingRecompileCause_ = RecompileCause::InputsChanged;
+    }
 
     /**
      * @brief Reset the cleanup flag
@@ -503,21 +521,14 @@ public:
      *
      * Automatically handles:
      * - Reset compile-time input tracking
-     * - Execute PreSetup hooks
      * - Calls SetupImpl() for derived class logic
-     * - Execute PostSetup hooks
      *
      * Derived classes should override SetupImpl(), NOT this method.
      */
     virtual void Setup() {
         try {
             ResetInputsUsedInCompile();
-            // Debug output disabled for clean benchmark output
-            // std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
-            ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
             SetupImpl();
-            // std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
-            ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
         } catch (const std::exception& e) {
             std::cerr << "[NodeInstance::Setup] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
             throw;
@@ -531,19 +542,14 @@ public:
      * @brief Compile lifecycle method with automatic cleanup registration
      *
      * Automatically handles:
-     * - Execute PreCompile hooks
      * - Calls CompileImpl() for derived class logic
-     * - Execute PostCompile hooks
      * - Registers node in CleanupStack (prevents forgetting RegisterCleanup())
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
     virtual void Compile() final {
         try {
-            ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
             CompileImpl();
-
-            ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
             RegisterCleanup();
         } catch (const std::exception& e) {
             std::cerr << "[NodeInstance::Compile] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
@@ -558,21 +564,17 @@ public:
      * @brief Execute lifecycle method with automatic task orchestration
      *
      * Automatically handles:
-     * - Execute PreExecute hooks
      * - Analyzes slot configuration to determine task count
      * - Generates tasks based on SlotScope and array sizes
      * - Sets up task-local In()/Out() context for each task
      * - Calls ExecuteImpl() for each task with pre-bound slot access
      * - Node implementations use In()/Out() without knowing about indices
-     * - Execute PostExecute hooks
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
     virtual void Execute() final {
         try {
-            ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
             ExecuteImpl();
-            ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
         } catch (const std::exception& e) {
             std::cerr << "[NodeInstance::Execute] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
             throw;
@@ -601,23 +603,27 @@ public:
      * is only called once, even if Cleanup() is called multiple times
      * (e.g., from CleanupStack and from destructor).
      *
-     * Automatically handles:
-     * - Execute PreCleanup hooks
-     * - Calls CleanupImpl() for derived class logic
-     * - Execute PostCleanup hooks
-     *
-     * Derived classes (like TypedNode) can override this method to implement
-     * task-based cleanup, following the same pattern as Execute().
+     * The graph says why it is tearing the node down; the node never has to ask. Each resource
+     * scope has its own event, run inner to outer, so a node puts each resource in the event that
+     * matches how long it lives and never branches on the reason:
+     * - CleanupImpl()       every teardown: recompile, device loss and shutdown (what Compile built)
+     * - DeviceReleaseImpl() device loss and shutdown: device-child state kept across recompiles
+     * - ShutdownImpl()      shutdown only: state that outlives the device (OS window, RmlUi, ...)
+     * A recompile therefore never runs DeviceReleaseImpl/ShutdownImpl, so nothing persistent is
+     * destroyed and no device wait can be reached from a resize (FR-7).
      */
     virtual void Cleanup(CleanupReason reason = CleanupReason::FinalTeardown) final {
         if (cleanedUp) {
             return;  // Already cleaned up
         }
-        cleanupReason_ = reason;  // remembered so CleanupImpl()'s context carries it (recompile vs final teardown)
         try {
-            ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
             CleanupImpl();
-            ExecuteNodeHook(NodeLifecyclePhase::PostCleanup);
+            if (reason != CleanupReason::Recompile) {
+                DeviceReleaseImpl();
+            }
+            if (reason == CleanupReason::FinalTeardown) {
+                ShutdownImpl();
+            }
             cleanedUp = true;
         } catch (const std::exception& e) {
             std::cerr << "[NodeInstance::Cleanup] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
@@ -780,15 +786,16 @@ protected:
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             CleanupContext ctx = CreateCleanupContext(taskIndex);
-            ctx.reason = cleanupReason_;  // recompile vs final teardown — flows to CleanupImpl(ctx) overrides
             CleanupImpl(ctx);
         }
     }
 
     /**
-     * @brief Cleanup implementation with context (final implementation)
+     * @brief Release what Compile built (final implementation)
      *
-     * Override this in concrete nodes to implement actual cleanup logic.
+     * Runs on EVERY teardown: recompile, device loss and shutdown. Keep it lightweight: no
+     * vkDeviceWaitIdle or fence wait (the recompile path drains the graph devices once, before any
+     * node cleanup). State that must survive a recompile belongs in DeviceReleaseImpl/ShutdownImpl.
      *
      * @param ctx Cleanup context (no input/output access during cleanup)
      *
@@ -798,6 +805,47 @@ protected:
     virtual void CleanupImpl(CleanupContext& /*ctx*/) {
         // Default: no-op (some nodes don't allocate resources)
     }
+
+    /// @brief Task orchestration for the device-release event (see Cleanup()).
+    virtual void DeviceReleaseImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CleanupContext ctx = CreateCleanupContext(taskIndex);
+            DeviceReleaseImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Release device-child state that persists across recompiles
+     *
+     * Runs on device loss and on shutdown, after CleanupImpl; never on a recompile. The device is
+     * drained before this runs (RecoverFromDeviceLoss / graph teardown).
+     */
+    virtual void DeviceReleaseImpl(CleanupContext& /*ctx*/) {}
+
+    /// @brief Task orchestration for the shutdown event (see Cleanup()).
+    virtual void ShutdownImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CleanupContext ctx = CreateCleanupContext(taskIndex);
+            ShutdownImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Release state that outlives the device (OS window, UI library, host-side caches)
+     *
+     * Runs once, on final teardown, after DeviceReleaseImpl.
+     */
+    virtual void ShutdownImpl(CleanupContext& /*ctx*/) {}
+
+    /**
+     * @brief The node is about to be recompiled (before CleanupImpl, Setup and Compile run again)
+     *
+     * @param cause Why: the node's own state was invalidated, its surface was resized, or a node it
+     *        depends on is being recompiled in the same wave.
+     */
+    virtual void RecompileImpl(RecompileCause /*cause*/) {}
 
     // ============================================================================
     // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
@@ -876,16 +924,6 @@ protected:
      * @return SlotScope enum value (defaults to NodeLevel if not found)
      */
     SlotScope GetSlotScope(uint32_t slotIndex) const;
-
-    /**
-     * @brief Execute node-level lifecycle hooks
-     *
-     * Called automatically during Setup/Compile/Execute/Cleanup lifecycle methods.
-     * Delegates to RenderGraph's hook system if graph is available.
-     *
-     * @param phase Lifecycle phase to execute hooks for
-     */
-    void ExecuteNodeHook(NodeLifecyclePhase phase);
 
 public:
     // ============================================================================
@@ -1106,7 +1144,7 @@ protected:
     // TypedNode::InAll() to assemble std::vector<T> from the producers' current outputs.
     std::map<uint32_t, std::vector<AccumulationSource>> accumulationSources_;
     bool cleanedUp = false;  // Cleanup protection flag
-    CleanupReason cleanupReason_ = CleanupReason::FinalTeardown;  // why Cleanup() was called; flows into CleanupContext
+    RecompileCause pendingRecompileCause_ = RecompileCause::InputsChanged;  // set by MarkNeedsRecompile
 
     // Metrics
     size_t inputMemoryFootprint = 0;

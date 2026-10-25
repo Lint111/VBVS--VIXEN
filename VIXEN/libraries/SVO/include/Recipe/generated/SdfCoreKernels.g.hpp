@@ -4,10 +4,12 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <bit>
+#include "GlyphOutlineInstance.g.hpp"
+#include "PathInstance.g.hpp"
 
-namespace Yeroket::Sdf::Generated {
+namespace Yeroket::Sdf::Kernels {
 
-inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
+inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) noexcept {
     float minimumDistance = 1.0e20f;
     uint32_t crossings = 0u;
     int32_t winding = 0;
@@ -77,7 +79,7 @@ inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) {
     return (inside ? -minimumDistance : minimumDistance);
 }
 
-inline float SdfCore_PathDistance(glm::vec3 p, PathInstance path) {
+inline float SdfCore_PathDistance(glm::vec3 p, PathInstance path) noexcept {
     glm::vec3 query = p;
     if (path.Dimension == 2u)
     {
@@ -285,69 +287,69 @@ inline float SdfCore_PathDistance(glm::vec3 p, PathInstance path) {
     return (inside ? -minimumDistance : minimumDistance);
 }
 
-inline float SdfCore_Sphere(glm::vec3 p, glm::vec3 center, float radius) {
+inline float SdfCore_Sphere(glm::vec3 p, glm::vec3 center, float radius) noexcept {
     return glm::length(p - center) - radius;
 }
 
-inline float SdfCore_Union(float a, float b) {
+inline float SdfCore_Union(float a, float b) noexcept {
     return glm::min(a, b);
 }
 
-inline float SdfCore_Box(glm::vec3 p, glm::vec3 b) {
+inline float SdfCore_Box(glm::vec3 p, glm::vec3 b) noexcept {
     glm::vec3 q = glm::abs(p) - b;
     return glm::length(glm::max(q, 0.0f)) + glm::min(glm::max(q.x, glm::max(q.y, q.z)), 0.0f);
 }
 
-inline float SdfCore_SmoothUnion(float a, float b, float k) {
+inline float SdfCore_SmoothUnion(float a, float b, float k) noexcept {
     float h = glm::clamp(0.5f + 0.5f * (b - a) / k, 0.0f, 1.0f);
     return glm::mix(b, a, h) - k * h * (1.0f - h);
 }
 
-inline glm::vec3 SdfCore_MirrorX(glm::vec3 p) {
+inline glm::vec3 SdfCore_MirrorX(glm::vec3 p) noexcept {
     return glm::vec3(glm::abs(p.x), p.y, p.z);
 }
 
-inline glm::vec3 SdfCore_MirrorY(glm::vec3 p) {
+inline glm::vec3 SdfCore_MirrorY(glm::vec3 p) noexcept {
     return glm::vec3(p.x, glm::abs(p.y), p.z);
 }
 
-inline glm::vec3 SdfCore_MirrorZ(glm::vec3 p) {
+inline glm::vec3 SdfCore_MirrorZ(glm::vec3 p) noexcept {
     return glm::vec3(p.x, p.y, glm::abs(p.z));
 }
 
-inline glm::vec3 SdfCore_Elongate(glm::vec3 p, glm::vec3 h) {
+inline glm::vec3 SdfCore_Elongate(glm::vec3 p, glm::vec3 h) noexcept {
     return p - glm::clamp(p, -h, h);
 }
 
-inline glm::vec3 SdfCore_Revolution(glm::vec3 p, glm::vec3 center, float offset) {
+inline glm::vec3 SdfCore_Revolution(glm::vec3 p, glm::vec3 center, float offset) noexcept {
     glm::vec3 pp = p - center;
     glm::vec2 q = glm::vec2(glm::length(glm::vec2(pp.x, pp.z)) - offset, pp.y);
     return glm::vec3(q.x, q.y, 0) + center;
 }
 
-inline glm::vec3 SdfCore_Twist(glm::vec3 p, float k) {
+inline glm::vec3 SdfCore_Twist(glm::vec3 p, float k) noexcept {
     float c = glm::cos(k * p.y);
     float s = glm::sin(k * p.y);
     glm::vec2 q = glm::vec2(c * p.x - s * p.z, s * p.x + c * p.z);
     return glm::vec3(q.x, p.y, q.y);
 }
 
-inline glm::vec3 SdfCore_Bend(glm::vec3 p, float k) {
+inline glm::vec3 SdfCore_Bend(glm::vec3 p, float k) noexcept {
     float c = glm::cos(k * p.x);
     float s = glm::sin(k * p.x);
     glm::vec2 q = glm::vec2(c * p.x - s * p.y, s * p.x + c * p.y);
     return glm::vec3(q.x, q.y, p.z);
 }
 
-inline glm::vec3 SdfCore_RepeatInfinite(glm::vec3 p, glm::vec3 spacing) {
+inline glm::vec3 SdfCore_RepeatInfinite(glm::vec3 p, glm::vec3 spacing) noexcept {
     return glm::mod(glm::abs(p) + spacing * 0.5f, spacing) - spacing * 0.5f;
 }
 
-inline glm::vec3 SdfCore_RepeatLimited(glm::vec3 p, float spacing, glm::vec3 limit) {
+inline glm::vec3 SdfCore_RepeatLimited(glm::vec3 p, float spacing, glm::vec3 limit) noexcept {
     return p - spacing * glm::clamp(glm::round(p / spacing), -limit, limit);
 }
 
-inline glm::vec3 SdfCore_Transform(glm::vec3 p, glm::vec3 translation, glm::vec4 invRotXYZW, glm::vec3 invScale) {
+inline glm::vec3 SdfCore_Transform(glm::vec3 p, glm::vec3 translation, glm::vec4 invRotXYZW, glm::vec3 invScale) noexcept {
     glm::vec3 v = p - translation;
     glm::vec3 qv = glm::vec3(invRotXYZW.x, invRotXYZW.y, invRotXYZW.z);
     float qw = invRotXYZW.w;
@@ -356,95 +358,95 @@ inline glm::vec3 SdfCore_Transform(glm::vec3 p, glm::vec3 translation, glm::vec4
     return rotated * invScale;
 }
 
-inline float SdfCore_Intersect(float a, float b) {
+inline float SdfCore_Intersect(float a, float b) noexcept {
     return glm::max(a, b);
 }
 
-inline float SdfCore_Subtract(float a, float b) {
+inline float SdfCore_Subtract(float a, float b) noexcept {
     return glm::max(a, -b);
 }
 
-inline float SdfCore_Xor(float a, float b) {
+inline float SdfCore_Xor(float a, float b) noexcept {
     return glm::max(glm::min(a, b), -glm::max(a, b));
 }
 
-inline float SdfCore_SmoothIntersect(float a, float b, float k) {
+inline float SdfCore_SmoothIntersect(float a, float b, float k) noexcept {
     float h = glm::clamp(0.5f - 0.5f * (b - a) / k, 0.0f, 1.0f);
     return glm::mix(b, a, h) + k * h * (1.0f - h);
 }
 
-inline float SdfCore_SmoothSubtract(float a, float b, float k) {
+inline float SdfCore_SmoothSubtract(float a, float b, float k) noexcept {
     float h = glm::clamp(0.5f - 0.5f * (b + a) / k, 0.0f, 1.0f);
     return glm::mix(a, -b, h) + k * h * (1.0f - h);
 }
 
-inline float SdfCore_SmoothMax(float a, float b, float k) {
+inline float SdfCore_SmoothMax(float a, float b, float k) noexcept {
     float h = glm::max(k - glm::abs(a - b), 0.0f) / k;
     return glm::max(a, b) + h * h * h * k * (1.0f / 6.0f);
 }
 
-inline float SdfCore_SmoothUnionCubic(float a, float b, float k) {
+inline float SdfCore_SmoothUnionCubic(float a, float b, float k) noexcept {
     float h = glm::max(k - glm::abs(a - b), 0.0f) / k;
     return glm::min(a, b) - h * h * h * k * (1.0f / 6.0f);
 }
 
-inline float SdfCore_SmoothIntersectCubic(float a, float b, float k) {
+inline float SdfCore_SmoothIntersectCubic(float a, float b, float k) noexcept {
     float h = glm::max(k - glm::abs(a - b), 0.0f) / k;
     return glm::max(a, b) + h * h * h * k * (1.0f / 6.0f);
 }
 
-inline float SdfCore_SmoothSubtractCubic(float a, float b, float k) {
+inline float SdfCore_SmoothSubtractCubic(float a, float b, float k) noexcept {
     float h = glm::max(k - glm::abs(-b - a), 0.0f) / k;
     return glm::max(a, -b) + h * h * h * k * (1.0f / 6.0f);
 }
 
-inline float SdfCore_Round(float d, float r) {
+inline float SdfCore_Round(float d, float r) noexcept {
     return d - r;
 }
 
-inline float SdfCore_Onion(float d, float r) {
+inline float SdfCore_Onion(float d, float r) noexcept {
     return glm::abs(d) - r;
 }
 
-inline float SdfCore_BoxRounded(glm::vec3 p, glm::vec3 halfExtents, float roundRadius) {
+inline float SdfCore_BoxRounded(glm::vec3 p, glm::vec3 halfExtents, float roundRadius) noexcept {
     glm::vec3 q = glm::abs(p) - halfExtents + roundRadius;
     return glm::length(glm::max(q, 0.0f)) + glm::min(glm::max(q.x, glm::max(q.y, q.z)), 0.0f) - roundRadius;
 }
 
-inline float SdfCore_Capsule(glm::vec3 p, float height, float radius) {
+inline float SdfCore_Capsule(glm::vec3 p, float height, float radius) noexcept {
     glm::vec3 localP = p;
     localP.y -= glm::clamp(localP.y, -height, height);
     return glm::length(localP) - radius;
 }
 
-inline float SdfCore_Cylinder(glm::vec3 p, float height, float radius) {
+inline float SdfCore_Cylinder(glm::vec3 p, float height, float radius) noexcept {
     glm::vec2 d = glm::vec2(glm::length(glm::vec2(p.x, p.z)) - radius, glm::abs(p.y) - height);
     return glm::min(glm::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, 0.0f));
 }
 
-inline float SdfCore_Plane(glm::vec3 p, glm::vec3 normal, float distance) {
+inline float SdfCore_Plane(glm::vec3 p, glm::vec3 normal, float distance) noexcept {
     return glm::dot(p, normal) + distance;
 }
 
-inline float SdfCore_Torus(glm::vec3 p, float majorRadius, float minorRadius) {
+inline float SdfCore_Torus(glm::vec3 p, float majorRadius, float minorRadius) noexcept {
     glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)) - majorRadius, p.y);
     return glm::length(q) - minorRadius;
 }
 
-inline float SdfCore_Ellipsoid(glm::vec3 p, glm::vec3 radii) {
+inline float SdfCore_Ellipsoid(glm::vec3 p, glm::vec3 radii) noexcept {
     glm::vec3 safeRadii = glm::max(radii, 0.0001f);
     float k0 = glm::length(p / safeRadii);
     float k1 = glm::length(p / (safeRadii * safeRadii));
     return k0 * (k0 - 1.0f) / glm::max(k1, 0.0001f);
 }
 
-inline float SdfCore_HollowCylinder(glm::vec3 p, float halfLen, float outerR, float wall) {
+inline float SdfCore_HollowCylinder(glm::vec3 p, float halfLen, float outerR, float wall) noexcept {
     glm::vec2 d = glm::vec2(glm::length(glm::vec2(p.x, p.z)) - outerR, glm::abs(p.y) - halfLen);
     float cyl = glm::min(glm::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, 0.0f));
     return glm::abs(cyl) - wall;
 }
 
-inline float SdfCore_TaperedCylinder(glm::vec3 p, float height, float r1, float r2) {
+inline float SdfCore_TaperedCylinder(glm::vec3 p, float height, float r1, float r2) noexcept {
     glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
     glm::vec2 k1 = glm::vec2(r2, height);
     glm::vec2 k2 = glm::vec2(r2 - r1, 2.0f * height);
@@ -454,7 +456,7 @@ inline float SdfCore_TaperedCylinder(glm::vec3 p, float height, float r1, float 
     return s * glm::sqrt(glm::min(glm::dot(ca, ca), glm::dot(cb, cb)));
 }
 
-inline float SdfCore_Cone(glm::vec3 p, glm::vec2 angle, float height) {
+inline float SdfCore_Cone(glm::vec3 p, glm::vec2 angle, float height) noexcept {
     glm::vec2 q = height * glm::vec2(angle.x / angle.y, -1.0f);
     glm::vec2 w = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
     glm::vec2 a = w - q * glm::clamp(glm::dot(w, q) / glm::dot(q, q), 0.0f, 1.0f);
@@ -465,24 +467,24 @@ inline float SdfCore_Cone(glm::vec3 p, glm::vec2 angle, float height) {
     return glm::sqrt(d) * glm::sign(s);
 }
 
-inline float SdfCore_CappedTorus(glm::vec3 p, glm::vec2 sc, float majorRadius, float minorRadius) {
+inline float SdfCore_CappedTorus(glm::vec3 p, glm::vec2 sc, float majorRadius, float minorRadius) noexcept {
     glm::vec3 localP = p;
     localP.x = glm::abs(localP.x);
     float k = ((sc.y * localP.x > sc.x * localP.z) ? glm::dot(glm::vec2(localP.x, localP.z), sc) : glm::length(glm::vec2(localP.x, localP.z)));
     return glm::sqrt(glm::dot(localP, localP) + majorRadius * majorRadius - 2.0f * majorRadius * k) - minorRadius;
 }
 
-inline float SdfCore_Link(glm::vec3 p, float halfLength, float majorRadius, float minorRadius) {
+inline float SdfCore_Link(glm::vec3 p, float halfLength, float majorRadius, float minorRadius) noexcept {
     glm::vec3 q = glm::vec3(p.x, glm::max(glm::abs(p.y) - halfLength, 0.0f), p.z);
     return glm::length(glm::vec2(glm::length(glm::vec2(q.x, q.y)) - majorRadius, q.z)) - minorRadius;
 }
 
-inline float SdfCore_TriangularPrism(glm::vec3 p, glm::vec2 h) {
+inline float SdfCore_TriangularPrism(glm::vec3 p, glm::vec2 h) noexcept {
     glm::vec3 q = glm::abs(p);
     return glm::max(q.z - h.y, glm::max(q.x * 0.866025f + p.y * 0.5f, -p.y) - h.x * 0.5f);
 }
 
-inline float SdfCore_HexPrism(glm::vec3 p, glm::vec2 h) {
+inline float SdfCore_HexPrism(glm::vec3 p, glm::vec2 h) noexcept {
     float k0 = 0.8660254f;
     float kz = 0.57735f;
     glm::vec3 q = glm::abs(p);
@@ -493,7 +495,7 @@ inline float SdfCore_HexPrism(glm::vec3 p, glm::vec2 h) {
     return glm::min(glm::max(d.x, d.y), 0.0f) + glm::length(glm::max(d, 0.0f));
 }
 
-inline float SdfCore_Pyramid(glm::vec3 p, float height) {
+inline float SdfCore_Pyramid(glm::vec3 p, float height) noexcept {
     float m2 = height * height + 0.25f;
     glm::vec3 q = glm::vec3(glm::abs(p.x), p.y, glm::abs(p.z));
     q = ((q.z > q.x) ? glm::vec3(q.z, q.y, q.x) : q);
@@ -508,21 +510,21 @@ inline float SdfCore_Pyramid(glm::vec3 p, float height) {
     return glm::sqrt((d2 + a.z * a.z) / m2) * glm::sign(glm::max(a.z, -q.y));
 }
 
-inline float SdfCore_Segment(glm::vec3 p, glm::vec3 a, glm::vec3 b, float radius) {
+inline float SdfCore_Segment(glm::vec3 p, glm::vec3 a, glm::vec3 b, float radius) noexcept {
     glm::vec3 pa = p - a;
     glm::vec3 ba = b - a;
     float h = glm::clamp(glm::dot(pa, ba) / glm::dot(ba, ba), 0.0f, 1.0f);
     return glm::length(pa - ba * h) - radius;
 }
 
-inline float SdfCore_FakeRoundCone(glm::vec3 p, float r1, float r2, float height) {
+inline float SdfCore_FakeRoundCone(glm::vec3 p, float r1, float r2, float height) noexcept {
     glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
     float h = glm::clamp(q.y / height, 0.0f, 1.0f);
     float r = glm::mix(r1, r2, h);
     return glm::length(glm::vec2(q.x, q.y - height * h)) - r;
 }
 
-inline float SdfCore_RoundCone(glm::vec3 p, float r1, float r2, float height) {
+inline float SdfCore_RoundCone(glm::vec3 p, float r1, float r2, float height) noexcept {
     glm::vec2 q = glm::vec2(glm::length(glm::vec2(p.x, p.z)), p.y);
     float b = (r1 - r2) / height;
     float a = glm::sqrt(1.0f - b * b);
@@ -535,141 +537,141 @@ inline float SdfCore_RoundCone(glm::vec3 p, float r1, float r2, float height) {
     return d;
 }
 
-inline float SdfCore_MathSin(float x, float frequency, float phase, float amplitude) {
+inline float SdfCore_MathSin(float x, float frequency, float phase, float amplitude) noexcept {
     return glm::sin(x * frequency + phase) * amplitude;
 }
 
-inline float SdfCore_MathCos(float x, float frequency, float phase, float amplitude) {
+inline float SdfCore_MathCos(float x, float frequency, float phase, float amplitude) noexcept {
     return glm::cos(x * frequency + phase) * amplitude;
 }
 
-inline float SdfCore_MathSmoothstep(float x, float edge0, float edge1) {
+inline float SdfCore_MathSmoothstep(float x, float edge0, float edge1) noexcept {
     return glm::smoothstep(edge0, edge1, x);
 }
 
-inline float SdfCore_MathRemap(float x, float inMin, float inMax, float outMin, float outMax) {
+inline float SdfCore_MathRemap(float x, float inMin, float inMax, float outMin, float outMax) noexcept {
     return outMin + (x - inMin) / glm::max(inMax - inMin, 1e-8f) * (outMax - outMin);
 }
 
-inline float SdfCore_MathClamp(float x, float lo, float hi) {
+inline float SdfCore_MathClamp(float x, float lo, float hi) noexcept {
     return glm::clamp(x, lo, hi);
 }
 
-inline float SdfCore_MathAbs(float x) {
+inline float SdfCore_MathAbs(float x) noexcept {
     return glm::abs(x);
 }
 
-inline float SdfCore_MathFrac(float x) {
+inline float SdfCore_MathFrac(float x) noexcept {
     return glm::fract(x);
 }
 
-inline float SdfCore_MathPow(float x, float power) {
+inline float SdfCore_MathPow(float x, float power) noexcept {
     return glm::pow(glm::abs(x), power) * glm::sign(x);
 }
 
-inline float SdfCore_MathSqrt(float x) {
+inline float SdfCore_MathSqrt(float x) noexcept {
     return glm::sqrt(glm::abs(x));
 }
 
-inline float SdfCore_MathNegate(float x) {
+inline float SdfCore_MathNegate(float x) noexcept {
     return -x;
 }
 
-inline float SdfCore_MathStep(float x, float edge) {
+inline float SdfCore_MathStep(float x, float edge) noexcept {
     return glm::step(edge, x);
 }
 
-inline float SdfCore_MathSign(float x) {
+inline float SdfCore_MathSign(float x) noexcept {
     return glm::sign(x);
 }
 
-inline float SdfCore_MathSaturate(float x) {
+inline float SdfCore_MathSaturate(float x) noexcept {
     return glm::clamp(x, 0.0f, 1.0f);
 }
 
-inline float SdfCore_MathExp(float x) {
+inline float SdfCore_MathExp(float x) noexcept {
     return glm::exp(x);
 }
 
-inline float SdfCore_MathLog(float x) {
+inline float SdfCore_MathLog(float x) noexcept {
     return glm::log(glm::max(x, 1e-30f));
 }
 
-inline float SdfCore_MathLog2(float x) {
+inline float SdfCore_MathLog2(float x) noexcept {
     return glm::log2(glm::max(x, 1e-30f));
 }
 
-inline float SdfCore_MathAdd(float a, float b) {
+inline float SdfCore_MathAdd(float a, float b) noexcept {
     return a + b;
 }
 
-inline float SdfCore_MathSub(float a, float b) {
+inline float SdfCore_MathSub(float a, float b) noexcept {
     return a - b;
 }
 
-inline float SdfCore_MathMul(float a, float b) {
+inline float SdfCore_MathMul(float a, float b) noexcept {
     return a * b;
 }
 
-inline float SdfCore_MathDiv(float a, float b) {
+inline float SdfCore_MathDiv(float a, float b) noexcept {
     return (b != 0.0f ? a / b : 0.0f);
 }
 
-inline float SdfCore_MathMin(float a, float b) {
+inline float SdfCore_MathMin(float a, float b) noexcept {
     return glm::min(a, b);
 }
 
-inline float SdfCore_MathMax(float a, float b) {
+inline float SdfCore_MathMax(float a, float b) noexcept {
     return glm::max(a, b);
 }
 
-inline float SdfCore_MathLerp(float a, float b, float t) {
+inline float SdfCore_MathLerp(float a, float b, float t) noexcept {
     return glm::mix(a, b, t);
 }
 
-inline float SdfCore_Select(float cond, float a, float b, float thr) {
+inline float SdfCore_Select(float cond, float a, float b, float thr) noexcept {
     return (cond > thr ? a : b);
 }
 
-inline float SdfCore_Displacement(float sdf, float disp, float scale) {
+inline float SdfCore_Displacement(float sdf, float disp, float scale) noexcept {
     return sdf + disp * scale;
 }
 
-inline glm::vec3 SdfCore_Float3Add(glm::vec3 a, glm::vec3 b) {
+inline glm::vec3 SdfCore_Float3Add(glm::vec3 a, glm::vec3 b) noexcept {
     return a + b;
 }
 
-inline glm::vec3 SdfCore_Float3Sub(glm::vec3 a, glm::vec3 b) {
+inline glm::vec3 SdfCore_Float3Sub(glm::vec3 a, glm::vec3 b) noexcept {
     return a - b;
 }
 
-inline glm::vec3 SdfCore_Float3MulComponentWise(glm::vec3 a, glm::vec3 b) {
+inline glm::vec3 SdfCore_Float3MulComponentWise(glm::vec3 a, glm::vec3 b) noexcept {
     return a * b;
 }
 
-inline glm::vec3 SdfCore_Float3Min(glm::vec3 a, glm::vec3 b) {
+inline glm::vec3 SdfCore_Float3Min(glm::vec3 a, glm::vec3 b) noexcept {
     return glm::min(a, b);
 }
 
-inline glm::vec3 SdfCore_Float3Max(glm::vec3 a, glm::vec3 b) {
+inline glm::vec3 SdfCore_Float3Max(glm::vec3 a, glm::vec3 b) noexcept {
     return glm::max(a, b);
 }
 
-inline glm::vec3 SdfCore_Float3ScalarMul(glm::vec3 v, float s) {
+inline glm::vec3 SdfCore_Float3ScalarMul(glm::vec3 v, float s) noexcept {
     return v * s;
 }
 
-inline float SdfCore_Float3Dot(glm::vec3 a, glm::vec3 b) {
+inline float SdfCore_Float3Dot(glm::vec3 a, glm::vec3 b) noexcept {
     return glm::dot(a, b);
 }
 
-inline glm::vec3 SdfCore_Float3Normalize(glm::vec3 v) {
+inline glm::vec3 SdfCore_Float3Normalize(glm::vec3 v) noexcept {
     float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
     float invLen = (lenSq < 1e-14f ? 0.0f : 1.0f / glm::sqrt(lenSq));
     return v * invLen;
 }
 
-inline uint32_t SdfCore_Hash32(uint32_t valueBits) {
+inline uint32_t SdfCore_Hash32(uint32_t valueBits) noexcept {
     uint32_t x = valueBits;
     x ^= x >> 16;
     x *= 0x7feb352du;
@@ -679,7 +681,7 @@ inline uint32_t SdfCore_Hash32(uint32_t valueBits) {
     return x;
 }
 
-inline uint32_t SdfCore_Hash32Combine(uint32_t stateBits, uint32_t valueBits) {
+inline uint32_t SdfCore_Hash32Combine(uint32_t stateBits, uint32_t valueBits) noexcept {
     uint32_t x = (stateBits ^ valueBits) + 0x9e3779b9u;
     x ^= x >> 16;
     x *= 0x7feb352du;
@@ -689,51 +691,51 @@ inline uint32_t SdfCore_Hash32Combine(uint32_t stateBits, uint32_t valueBits) {
     return x;
 }
 
-inline uint32_t SdfCore_U32Add(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Add(uint32_t a, uint32_t b) noexcept {
     return a + b;
 }
 
-inline uint32_t SdfCore_U32Sub(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Sub(uint32_t a, uint32_t b) noexcept {
     return a - b;
 }
 
-inline uint32_t SdfCore_U32Mul(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Mul(uint32_t a, uint32_t b) noexcept {
     return a * b;
 }
 
-inline uint32_t SdfCore_U32Min(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Min(uint32_t a, uint32_t b) noexcept {
     return glm::min(a, b);
 }
 
-inline uint32_t SdfCore_U32Max(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Max(uint32_t a, uint32_t b) noexcept {
     return glm::max(a, b);
 }
 
-inline uint32_t SdfCore_U32Equal(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Equal(uint32_t a, uint32_t b) noexcept {
     return (a == b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_U32NotEqual(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32NotEqual(uint32_t a, uint32_t b) noexcept {
     return (a != b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_U32Less(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Less(uint32_t a, uint32_t b) noexcept {
     return (a < b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_U32LessEqual(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32LessEqual(uint32_t a, uint32_t b) noexcept {
     return (a <= b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_U32Greater(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32Greater(uint32_t a, uint32_t b) noexcept {
     return (a > b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_U32GreaterEqual(uint32_t a, uint32_t b) {
+inline uint32_t SdfCore_U32GreaterEqual(uint32_t a, uint32_t b) noexcept {
     return (a >= b ? 1u : 0u);
 }
 
-inline int32_t SdfCore_Q16Add(int32_t a, int32_t b) {
+inline int32_t SdfCore_Q16Add(int32_t a, int32_t b) noexcept {
     if (b > 0 && a > 2147483647 - b)
     {
         return 2147483647;
@@ -745,7 +747,7 @@ inline int32_t SdfCore_Q16Add(int32_t a, int32_t b) {
     return a + b;
 }
 
-inline int32_t SdfCore_Q16Sub(int32_t a, int32_t b) {
+inline int32_t SdfCore_Q16Sub(int32_t a, int32_t b) noexcept {
     if (b < 0 && a > 2147483647 + b)
     {
         return 2147483647;
@@ -757,7 +759,7 @@ inline int32_t SdfCore_Q16Sub(int32_t a, int32_t b) {
     return a - b;
 }
 
-inline int32_t SdfCore_Q16Mul(int32_t a, int32_t b) {
+inline int32_t SdfCore_Q16Mul(int32_t a, int32_t b) noexcept {
     bool negative = (a < 0) != (b < 0);
     uint32_t aMagnitude = (a < 0 ? (uint32_t)(-(a + 1)) + 1u : (uint32_t)a);
     uint32_t bMagnitude = (b < 0 ? (uint32_t)(-(b + 1)) + 1u : (uint32_t)b);
@@ -799,39 +801,39 @@ inline int32_t SdfCore_Q16Mul(int32_t a, int32_t b) {
     return -(int32_t)roundedLow;
 }
 
-inline int32_t SdfCore_Q16Min(int32_t a, int32_t b) {
+inline int32_t SdfCore_Q16Min(int32_t a, int32_t b) noexcept {
     return glm::min(a, b);
 }
 
-inline int32_t SdfCore_Q16Max(int32_t a, int32_t b) {
+inline int32_t SdfCore_Q16Max(int32_t a, int32_t b) noexcept {
     return glm::max(a, b);
 }
 
-inline uint32_t SdfCore_Q16Equal(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16Equal(int32_t a, int32_t b) noexcept {
     return (a == b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_Q16NotEqual(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16NotEqual(int32_t a, int32_t b) noexcept {
     return (a != b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_Q16Less(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16Less(int32_t a, int32_t b) noexcept {
     return (a < b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_Q16LessEqual(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16LessEqual(int32_t a, int32_t b) noexcept {
     return (a <= b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_Q16Greater(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16Greater(int32_t a, int32_t b) noexcept {
     return (a > b ? 1u : 0u);
 }
 
-inline uint32_t SdfCore_Q16GreaterEqual(int32_t a, int32_t b) {
+inline uint32_t SdfCore_Q16GreaterEqual(int32_t a, int32_t b) noexcept {
     return (a >= b ? 1u : 0u);
 }
 
-inline int32_t SdfCore_FloatToQ16(float value) {
+inline int32_t SdfCore_FloatToQ16(float value) noexcept {
     uint32_t bits = std::bit_cast<std::uint32_t>(value);
     bool negative = (bits & 0x80000000u) != 0u;
     uint32_t exponent = (bits >> 23) & 0xffu;
@@ -889,11 +891,11 @@ inline int32_t SdfCore_FloatToQ16(float value) {
     return -(int32_t)magnitude;
 }
 
-inline float SdfCore_Q16ToFloat(int32_t value) {
+inline float SdfCore_Q16ToFloat(int32_t value) noexcept {
     return (float)value * (1.0f / 65536.0f);
 }
 
-inline int32_t SdfCore_U32ToQ16(uint32_t value) {
+inline int32_t SdfCore_U32ToQ16(uint32_t value) noexcept {
     if (value > 32767u)
     {
         return 2147483647;
@@ -901,7 +903,7 @@ inline int32_t SdfCore_U32ToQ16(uint32_t value) {
     return (int32_t)(value << 16);
 }
 
-inline uint32_t SdfCore_Q16ToU32(int32_t value) {
+inline uint32_t SdfCore_Q16ToU32(int32_t value) noexcept {
     if (value < 0)
     {
         return 0u;
@@ -919,8 +921,8 @@ inline uint32_t SdfCore_Q16ToU32(int32_t value) {
     return whole;
 }
 
-inline float SdfCore_U32ToFloat(uint32_t value) {
+inline float SdfCore_U32ToFloat(uint32_t value) noexcept {
     return (float)value;
 }
 
-} // namespace Yeroket::Sdf::Generated
+} // namespace Yeroket::Sdf::Kernels

@@ -16,6 +16,10 @@ hud_dir="$capture_root/hud"
 editor_dir="$capture_root/editor"
 mkdir -p "$hud_dir" "$editor_dir"
 
+# Captures read pixels back; they do not need a visible window. Hidden by default so concurrent
+# lane runs never stack windows on a shared desktop. VIXEN_HIDDEN_WINDOW=0 shows them.
+export VIXEN_HIDDEN_WINDOW="${VIXEN_HIDDEN_WINDOW:-1}"
+
 # Match the runtime environment configured for CTest in
 # VIXEN/cmake/VixenTesting.cmake. This script launches the applications directly,
 # so CTest's ENVIRONMENT properties (library path, VK_ICD_FILENAMES, VK_LAYER_PATH)

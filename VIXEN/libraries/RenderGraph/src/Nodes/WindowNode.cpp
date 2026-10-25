@@ -7,7 +7,7 @@
 #include "Core/NodeLogging.h"
 #include "Message.h"
 #include "EventTypes/RenderGraphEvents.h"
-#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW, fail-scenario runner)
+#include <cstdlib>  // std::getenv (VIXEN_HIDDEN_WINDOW)
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -72,11 +72,11 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
-        // Fail-scenario runner: create the window hidden so the sweep runs unattended.
+        // VIXEN_HIDDEN_WINDOW=1: create the window hidden. Test and capture harnesses set it so
+        // unattended GPU runs never put windows on a desktop; the swapchain, resize events and
+        // presentation still work on a hidden window.
         if (const char* hid = std::getenv("VIXEN_HIDDEN_WINDOW"); hid && hid[0] == '1')
             glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-#endif
 
         window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height),
                                   "Vixen Render Graph", nullptr, nullptr);
@@ -86,6 +86,18 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
             std::string msg = std::string("WindowNode: glfwCreateWindow failed: ") + (err ? err : "unknown");
             NODE_LOG_ERROR(msg);
             throw std::runtime_error(msg);
+        }
+
+        // The OS may have changed the client size between the request and now (work-area clamp, cascade,
+        // DPI): events fired before the callbacks below were installed are lost, so seed the
+        // published extent from the real framebuffer, not from the parameters.
+        {
+            int fbw = 0, fbh = 0;
+            glfwGetFramebufferSize(window, &fbw, &fbh);
+            if (fbw > 0 && fbh > 0) {
+                width = static_cast<uint32_t>(fbw);
+                height = static_cast<uint32_t>(fbh);
+            }
         }
 
         // Route GLFW callbacks back to this instance (replaces the Win32 WndProc + GWLP_USERDATA).
@@ -128,15 +140,21 @@ void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
                   ", height=" + std::to_string(height) + ")");
 }
 
-void WindowNode::RecordPendingResize(uint32_t w, uint32_t h) {
-    hasPendingResize_ = true;
-    pendingResizeWidth_ = w;
-    pendingResizeHeight_ = h;
-    lastResizeEventTime_ = glfwGetTime();
+void WindowNode::ObserveFramebufferSize(uint32_t w, uint32_t h) {
+    resize_.Observe(w, h, width, height, glfwGetTime());
+}
+
+void WindowNode::PollFramebufferSize() {
+    // The callback is an optimisation, the framebuffer size is the truth: an OS-driven move, DPI
+    // change or maximise whose callback never reached us (or was filtered) is still noticed here.
+    if (!window) return;
+    int fbw = 0, fbh = 0;
+    glfwGetFramebufferSize(window, &fbw, &fbh);
+    if (fbw > 0 && fbh > 0) ObserveFramebufferSize(static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh));
 }
 
 bool WindowNode::PendingResizeIsSettled() const {
-    return hasPendingResize_ && (glfwGetTime() - lastResizeEventTime_) >= kResizeDebounceSeconds;
+    return resize_.Settled(glfwGetTime());
 }
 
 void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -165,21 +183,20 @@ void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             // SwapChainNode recreation + transitive recompile of ~10 nodes per event (16 waves
             // observed for a single "slow" drag), starving the render loop enough that the compositor
             // showed stale/ghosted frames and input lagged. Applied below, once settled.
-            if (event.width != width || event.height != height) {
-                RecordPendingResize(event.width, event.height);
-            }
+            ObserveFramebufferSize(event.width, event.height);
             continue;
         }
         PublishNonResizeEvent(event);
     }
+    PollFramebufferSize();
 
     // Apply a settled pending resize (may fire on a tick with no new event this frame -- that's the
     // whole point of a trailing-edge debounce: react once activity has actually stopped).
     if (PendingResizeIsSettled()) {
-        width = pendingResizeWidth_;
-        height = pendingResizeHeight_;
+        width = resize_.Width();
+        height = resize_.Height();
         wasResized = true;
-        hasPendingResize_ = false;
+        resize_.Clear();
 
         ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
         ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
@@ -192,7 +209,7 @@ void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // VoxelSelectionProviderNode reads the new extent live every frame, so the next click's
         // readback copy samples outside the ring image's bounds (undefined behavior, observed as a
         // crash on lavapipe).
-        MarkNeedsRecompile();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
@@ -217,13 +234,12 @@ void WindowNode::ProcessPendingEvents() {
     for (const auto& event : eventsToProcess) {
         if (event.type == WindowEvent::Type::Resize) {
             // Same trailing-edge debounce as ExecuteImpl -- record only, apply once settled below.
-            if (event.width != width || event.height != height) {
-                RecordPendingResize(event.width, event.height);
-            }
+            ObserveFramebufferSize(event.width, event.height);
             continue;
         }
         PublishNonResizeEvent(event);
     }
+    PollFramebufferSize();
 
     // No ctx here (this runs outside node Execute()) -- update state + bus-publish the resize so
     // SwapChainNode still hears about it and marks itself dirty. The graph-slot outputs
@@ -233,11 +249,11 @@ void WindowNode::ProcessPendingEvents() {
     // refreshes SwapChainNode + the pick/viewport consumers. While paused the recompile defers and
     // runs on the restore Update -- exactly the desired timing.
     if (PendingResizeIsSettled()) {
-        width = pendingResizeWidth_;
-        height = pendingResizeHeight_;
+        width = resize_.Width();
+        height = resize_.Height();
         wasResized = true;
-        hasPendingResize_ = false;
-        MarkNeedsRecompile();
+        resize_.Clear();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
@@ -292,7 +308,6 @@ void WindowNode::OnFramebufferSize(GLFWwindow* w, int width, int height) {
     WindowNode* self = FromGlfw(w);
     if (!self || width <= 0 || height <= 0) return;  // 0-size = minimised; ignore
     auto uw = static_cast<uint32_t>(width), uh = static_cast<uint32_t>(height);
-    if (uw == self->width && uh == self->height) return;  // only on a real change
     self->pendingEvents.Push({WindowEvent::Type::Resize, uw, uh});
 }
 
@@ -323,38 +338,25 @@ size_t WindowNode::PendingEventCountForTest() const {
 }
 #endif
 
-void WindowNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
-    // only the swapchain follows recompiles. Tear them down solely on final application teardown.
-    if (ctx.reason == CleanupReason::DeviceLost) {
-        // The VkInstance is recreated on device loss (InstanceNode); the surface is instance-scoped
-        // and must be destroyed against the old instance first. The window survives.
-        NODE_LOG_INFO("[WindowNode] Cleanup (device-loss) - destroying surface, keeping window");
-        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
-            fpDestroySurfaceKHR(vkInstance, surface, nullptr);
-        }
-        surface = VK_NULL_HANDLE;
-        if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
-            surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
-        }
-        return;
-    }
-    if (ctx.reason != CleanupReason::FinalTeardown) {
-        NODE_LOG_INFO("[WindowNode] Cleanup (recompile) - keeping persistent window + surface");
-        return;
-    }
-
-    NODE_LOG_INFO("[WindowNode] Cleanup (final teardown) - destroying surface + window");
-
+// Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) runs neither event below,
+// so only the swapchain follows recompiles.
+void WindowNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // The surface is instance-scoped and the VkInstance is recreated on device loss (InstanceNode),
+    // so it is destroyed against the old instance on device loss and on shutdown. The window survives
+    // a device loss.
+    NODE_LOG_INFO("[WindowNode] DeviceRelease - destroying surface");
     if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
         fpDestroySurfaceKHR(vkInstance, surface, nullptr);
-        surface = VK_NULL_HANDLE;
     }
+    surface = VK_NULL_HANDLE;
     // Keep the published SURFACE output handle consistent with the now-destroyed surface.
     if (Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0)) {
         surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);
     }
+}
 
+void WindowNode::TypedShutdownImpl(TypedCleanupContext& ctx) {
+    NODE_LOG_INFO("[WindowNode] Shutdown - destroying window");
     if (window) {
         glfwDestroyWindow(window);
         window = nullptr;

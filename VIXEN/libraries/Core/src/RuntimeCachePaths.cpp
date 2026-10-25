@@ -34,7 +34,7 @@ namespace {
 
 constexpr auto kStaleTemporaryDirectoryAge = std::chrono::hours(24);
 
-bool IsProcessAlive(std::uint64_t processId) noexcept {
+bool IsProcessAliveImpl(std::uint64_t processId) noexcept {
     if (processId == 0) return false;
 
 #ifdef _WIN32
@@ -104,7 +104,7 @@ void SweepStaleTemporaryDirectories() noexcept {
         if (entryError || now - modifiedAt < kStaleTemporaryDirectoryAge) continue;
 
         std::uint64_t processId = 0;
-        if (!ParseTemporaryDirectoryName(entry.path(), processId) || IsProcessAlive(processId)) {
+        if (!ParseTemporaryDirectoryName(entry.path(), processId) || IsProcessAliveImpl(processId)) {
             continue;
         }
 
@@ -173,8 +173,58 @@ std::filesystem::path RuntimeCacheDirectory() {
 #ifdef VIXEN_RUNTIME_CACHE_DIR
     return std::filesystem::path(VIXEN_RUNTIME_CACHE_DIR);
 #else
-    return std::filesystem::path("cache");
+    return UserCacheDirectory();
 #endif
+}
+
+std::filesystem::path SharedDeviceCacheDirectory() {
+    const auto environmentPath = [](const char* name) -> std::filesystem::path {
+        const char* value = std::getenv(name);
+        return value && *value ? std::filesystem::path(value) : std::filesystem::path();
+    };
+
+    if (auto explicitRoot = environmentPath("VIXEN_SHARED_CACHE_DIR"); !explicitRoot.empty()) {
+        return explicitRoot;
+    }
+    if (auto overriddenRuntime = environmentPath("VIXEN_CACHE_DIR"); !overriddenRuntime.empty()) {
+        return overriddenRuntime / "shared";
+    }
+#ifdef _WIN32
+    if (auto localAppData = environmentPath("LOCALAPPDATA"); !localAppData.empty()) {
+        return localAppData / "VIXEN" / "cache";
+    }
+#else
+    if (auto xdgCache = environmentPath("XDG_CACHE_HOME"); !xdgCache.empty()) {
+        return xdgCache / "vixen";
+    }
+    if (auto home = environmentPath("HOME"); !home.empty()) {
+        return home / ".cache" / "vixen";
+    }
+#endif
+    return RuntimeCacheDirectory() / "shared";
+}
+
+std::filesystem::path UserCacheDirectory() {
+    // Absolute and independent of the working directory: two processes started from different
+    // directories (or the same build directory) must agree on where shared state lives.
+    std::error_code ec;
+#ifdef _WIN32
+    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local) {
+        return std::filesystem::path(local) / "vixen";
+    }
+#else
+    if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg && *xdg) {
+        return std::filesystem::path(xdg) / "vixen";
+    }
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        return std::filesystem::path(home) / ".cache" / "vixen";
+    }
+#endif
+    return std::filesystem::absolute(std::filesystem::temp_directory_path(ec) / "vixen-cache", ec);
+}
+
+bool IsProcessAlive(std::uint64_t processId) noexcept {
+    return ::Vixen::IsProcessAliveImpl(processId);
 }
 
 std::uint64_t CurrentProcessId() noexcept {

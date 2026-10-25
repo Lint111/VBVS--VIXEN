@@ -289,3 +289,118 @@ TEST_F(ShaderCompilerTest, CompileVertexAndFragmentShaders) {
     EXPECT_FALSE(vertResult.spirv.empty());
     EXPECT_FALSE(fragResult.spirv.empty());
 }
+
+// ===== Compile cache (every compile is cached by default) =====
+
+#include "ShaderCacheManager.h"
+#include "ShaderBundleBuilder.h"
+
+namespace {
+const char* kCacheComputeSource = R"(
+    #version 450
+    layout(local_size_x = 8) in;
+    layout(std430, binding = 0) buffer Data { float values[]; };
+    void main() { values[gl_GlobalInvocationID.x] *= 3.0; }
+)";
+} // namespace
+
+TEST_F(ShaderCompilerTest, CompileCache_SecondCompileIsServedFromCache) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+    ShaderCompiler compiler;
+    compiler.SetCache(&cache);
+
+    auto first = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    ASSERT_TRUE(first.success) << first.errorLog;
+    EXPECT_FALSE(first.fromCache);
+
+    auto second = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    ASSERT_TRUE(second.success);
+    EXPECT_TRUE(second.fromCache);
+    EXPECT_EQ(first.spirv, second.spirv);
+}
+
+TEST_F(ShaderCompilerTest, CompileCache_OptionChangeIsAMiss) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+    ShaderCompiler compiler;
+    compiler.SetCache(&cache);
+
+    ASSERT_TRUE(compiler.Compile(ShaderStage::Compute, kCacheComputeSource).success);
+    CompilationOptions other;
+    other.optimizePerformance = false;
+    auto changed = compiler.Compile(ShaderStage::Compute, kCacheComputeSource, "main", other);
+    ASSERT_TRUE(changed.success);
+    EXPECT_FALSE(changed.fromCache);
+}
+
+TEST_F(ShaderCompilerTest, CompileCache_FailedCompileIsNotStored) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+    ShaderCompiler compiler;
+    compiler.SetCache(&cache);
+
+    const std::string broken = "#version 450\nvoid main() { undefined_symbol = 1; }\n";
+    EXPECT_FALSE(compiler.Compile(ShaderStage::Compute, broken).success);
+    auto again = compiler.Compile(ShaderStage::Compute, broken);
+    EXPECT_FALSE(again.success);
+    EXPECT_FALSE(again.fromCache);
+}
+
+TEST_F(ShaderCompilerTest, CompileCache_NullCacheAlwaysCompiles) {
+    ShaderCompiler compiler;
+    compiler.SetCache(nullptr);
+    ASSERT_TRUE(compiler.Compile(ShaderStage::Compute, kCacheComputeSource).success);
+    auto second = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    ASSERT_TRUE(second.success);
+    EXPECT_FALSE(second.fromCache);
+}
+
+TEST_F(ShaderCompilerTest, CompileCache_CorruptEntryIsRejectedAndRecompiled) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+    ShaderCompiler compiler;
+    compiler.SetCache(&cache);
+
+    auto first = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    ASSERT_TRUE(first.success);
+    for (const auto& entry : std::filesystem::directory_iterator(config.cacheDirectory)) {
+        if (entry.path().extension() != ".spv") continue;
+        std::fstream file(entry.path(), std::ios::in | std::ios::out | std::ios::binary);
+        file.seekp(-4, std::ios::end);
+        const char garbage[4] = {'\x13', '\x37', '\x13', '\x37'};
+        file.write(garbage, sizeof(garbage));
+    }
+    auto second = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    ASSERT_TRUE(second.success);
+    EXPECT_FALSE(second.fromCache);
+    EXPECT_EQ(first.spirv, second.spirv);
+}
+
+TEST_F(ShaderCompilerTest, CompileCache_BuilderCachesWithoutOptIn) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+
+    auto build = [&](bool disable) {
+        ShaderBundleBuilder builder;
+        builder.SetProgramName("CacheProbe")
+               .SetPipelineType(PipelineTypeConstraint::Compute)
+               .EnableSdiGeneration(false)
+               .EnableCaching(&cache)
+               .AddStage(ShaderStage::Compute, kCacheComputeSource);
+        if (disable) builder.DisableCaching();
+        return builder.Build();
+    };
+    ASSERT_TRUE(build(false).success);
+    const auto hit = build(false);
+    ASSERT_TRUE(hit.success) << hit.errorMessage;
+    EXPECT_TRUE(hit.bundle != nullptr);
+    const auto bypass = build(true);
+    ASSERT_TRUE(bypass.success);
+    EXPECT_EQ(cache.GetStatistics().totalCacheHits, 1u);
+}

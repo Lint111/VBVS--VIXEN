@@ -1,38 +1,43 @@
 using System;
 using Undertow.Modding.Schema;
 using Undertow.Sim.Systems;
+using Vixen.Gpu;
 using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
 
-// The GPU wizard recognizes these names as GLSL intrinsics. They exist only as
-// syntax in this source root; the generated body is the executable implementation.
-internal static class math
-{
-    public static float max(float left, float right) => throw new NotSupportedException();
-    public static float pow(float value, float exponent) => throw new NotSupportedException();
-    public static float clamp(float value, float minimum, float maximum) => throw new NotSupportedException();
-    public static float select(float whenFalse, float whenTrue, bool condition) => throw new NotSupportedException();
-}
-
 [KernelSystem(Emit = KernelEmitTargets.Glsl)]
 public static class ExposureTonemapSystem
 {
+    // Private declarations remain syntax-only: callable reach must not emit their
+    // managed reference bodies ahead of the GLSL visitor's math.* intrinsic map.
+#pragma warning disable CS8981
+    private static class math
+    {
+        private static float max(float left, float right) => left > right ? left : right;
+        private static float pow(float value, float exponent) => (float)Math.Pow(value, exponent);
+        private static float clamp(float value, float minimum, float maximum)
+            => value < minimum ? minimum : value > maximum ? maximum : value;
+        private static float select(float whenFalse, float whenTrue, bool condition)
+            => condition ? whenTrue : whenFalse;
+    }
+#pragma warning restore CS8981
+
     [GaiaQuery]
     public static QuerySpec Select() => Gaia.Query()
-        .All<StateFrameTargetsRef, Rgba16f>(row => row.SceneRadianceHistoryOutput)
-        .All<StateFrameTargetsRef, Rgba8>(row => row.OutputImage);
+        .All<FrameTargetsRef, Rgba16f>(row => row.ResolvedRadiance)
+        .All<FrameTargetsRef, Rgba8>(row => row.OutputImage);
 
     [Update]
     public static void Run(
-        in Texture2D<Rgba16f> sceneRadianceHistoryOutput,
+        in Texture2D<Rgba16f> resolvedRadiance,
         ref Texture2D<Rgba8> outputImage,
-        in float[] meter,
+        in ExposureMeterState[] meter,
         in LightingConfig[] LightingConfigSSBO,
         int i)
     {
-        Rgba16f source = sceneRadianceHistoryOutput.Current[i];
-        float exposure = math.pow(2.0f, meter[0] + LightingConfigSSBO[0].exposureCompensationEV);
+        Rgba16f source = resolvedRadiance.Current[i];
+        float exposure = math.pow(2.0f, meter[0].log2Exposure + LightingConfigSSBO[0].exposureCompensationEV);
 
         float red = math.max(source.x * exposure, 0.0f);
         float green = math.max(source.y * exposure, 0.0f);

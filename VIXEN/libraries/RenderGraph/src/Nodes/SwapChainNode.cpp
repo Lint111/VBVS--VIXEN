@@ -8,6 +8,9 @@
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
 #include "Message.h"
+#define GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -49,7 +52,7 @@ void SwapChainNode::TypedSetupImpl(TypedSetupContext& ctx) {
             [this](const EventBus::BaseEventMessage& msg) -> bool {
                 // Mark this node for recompilation
                 NODE_LOG_INFO("[SwapChainNode] Received WindowResizedMessage - marking self for recompilation");
-                MarkNeedsRecompile();
+                MarkNeedsRecompile(RecompileCause::SurfaceResized);
                 return true; // Message handled
             }
         );
@@ -95,6 +98,7 @@ void SwapChainNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Get input resources from connected nodes
     NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading inputs...");
     GLFWwindow* window = ctx.In(SwapChainNodeConfig::WINDOW);
+    traceWindow_ = window;
     width = ctx.In(SwapChainNodeConfig::WIDTH);
     height = ctx.In(SwapChainNodeConfig::HEIGHT);
     VkInstance instance = ctx.In(SwapChainNodeConfig::INSTANCE);
@@ -273,14 +277,20 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     auto* dev = GetDevice();
     VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
+    // Every teardown (recompile included): the image views. Surface + swapchain survive a recompile
+    // (oldSwapchain reuse); TypedDeviceReleaseImpl releases them.
+    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] destroying image views (surface + swapchain kept for oldSwapchain reuse)");
+    swapChainWrapper->DestroyImageViewsOnly(device);
+}
+
+void SwapChainNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
     // The VkSurfaceKHR is PERSISTENT across recompiles, mirroring WindowNode's window+surface
-    // (see WindowNode.cpp CleanupImpl). Destroying/recreating the surface every recompile (the old
-    // unconditional Destroy() below) was pure waste -- the surface doesn't depend on extent. Tear
-    // it down on final teardown and on DeviceLost (the VkInstance is recreated there, and a surface is
+    // (see WindowNode::TypedDeviceReleaseImpl). Destroying/recreating the surface every recompile (the old
+    // unconditional Destroy() in cleanup) was pure waste -- the surface doesn't depend on extent. Tear
+    // it down on shutdown and on device loss (the VkInstance is recreated there, and a surface is
     // INSTANCE-scoped, so it cannot outlive the instance it was created from).
     //
-    // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be treated like Recompile on
-    // DeviceLost. On an ordinary Recompile the handle survives because the SAME device recreates it
+    // The swapchain HANDLE, however, is DEVICE-scoped and must NOT be kept on device loss. On an ordinary Recompile the handle survives because the SAME device recreates it
     // (CreateSwapchainAndViews() passes the still-live handle as oldSwapchain to vkCreateSwapchainKHR
     // and destroys it only after the new one is created, letting the driver recycle/hand over
     // presentation state). On DeviceLost, RenderGraph::RecoverFromDeviceLoss() has DeviceNode create
@@ -288,31 +298,35 @@ void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // about-to-be-destroyed device. Passing it as oldSwapchain into the NEW device's
     // fpCreateSwapchainKHR/fpDestroySwapchainKHR (resolved via the new device's dispatch table) is
     // exactly the KI-004 class of bug (a resource carrying stale device state across recovery) and
-    // segfaults deep in the driver (KI-013) -- so DeviceLost must destroy the swapchain handle now,
-    // against the OLD (still valid, merely lost) device, same as FinalTeardown would, while still
-    // keeping the surface alive like a Recompile.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Recompile - destroying image views only, keeping surface + swapchain (for oldSwapchain reuse)");
-        swapChainWrapper->DestroyImageViewsOnly(device);
+    // segfaults deep in the driver (KI-013) -- so device loss must destroy the swapchain handle now,
+    // against the OLD (still valid, merely lost) device, same as shutdown does.
+    if (!swapChainWrapper) {
         return;
     }
+    auto* dev = GetDevice();
+    VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
-    if (ctx.reason == CleanupReason::DeviceLost) {
-        NODE_LOG_INFO("[SwapChainNode::CleanupImpl] DeviceLost - destroying swapchain + image views (device-scoped; cannot survive a device recreation) and the instance-scoped surface");
-        swapChainWrapper->DestroySwapChain(device);
-        // The VkInstance is recreated on device loss, so this instance-scoped surface cannot survive
-        // either (see InstanceNode::TypedCleanupImpl). Destroy it against the still-live old instance.
-        VkInstance lostInstance = VK_NULL_HANDLE;
-        if (Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0)) {
-            lostInstance = res->GetHandle<VkInstance>();
-        }
-        if (lostInstance != VK_NULL_HANDLE) {
-            swapChainWrapper->DestroySurface(lostInstance);
-        }
+    NODE_LOG_INFO("[SwapChainNode] DeviceRelease - destroying swapchain (device-scoped; cannot survive a device recreation) and the instance-scoped surface");
+    swapChainWrapper->DestroySwapChain(device);
+    // The VkInstance is recreated on device loss, so this instance-scoped surface cannot survive
+    // either (see InstanceNode::TypedDeviceReleaseImpl). Destroy it against the still-live old instance.
+    VkInstance lostInstance = VK_NULL_HANDLE;
+    if (Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0)) {
+        lostInstance = res->GetHandle<VkInstance>();
+    }
+    if (lostInstance != VK_NULL_HANDLE) {
+        swapChainWrapper->DestroySurface(lostInstance);
+    }
+}
+
+void SwapChainNode::TypedShutdownImpl(TypedCleanupContext& ctx) {
+    if (!swapChainWrapper) {
         return;
     }
+    auto* dev = GetDevice();
+    VkDevice device = (dev != nullptr) ? dev->device : VK_NULL_HANDLE;
 
-    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Final teardown - destroying swapchain + surface");
+    NODE_LOG_INFO("[SwapChainNode] Shutdown - releasing the swapchain wrapper");
 
     // Get VkInstance for surface destruction
     VkInstance instance = VK_NULL_HANDLE;
@@ -382,12 +396,59 @@ void SwapChainNode::SetSwapChainWrapper(VulkanSwapChain* swapchain) {
     swapChainWrapper = swapchain;
 }
 
+void SwapChainNode::TraceExtents(const char* where) {
+    static const bool enabled = [] {
+        const char* value = std::getenv("VIXEN_RESIZE_TRACE");
+        return value && value[0] == '1';
+    }();
+    if (!enabled || !swapChainWrapper) return;
+    int fbw = 0, fbh = 0;
+    if (traceWindow_) glfwGetFramebufferSize(traceWindow_, &fbw, &fbh);
+    const VkExtent2D sc = swapChainWrapper->scPublicVars.Extent;
+    if (lastTraceFramebuffer_[0] == static_cast<uint32_t>(fbw) && lastTraceFramebuffer_[1] == static_cast<uint32_t>(fbh) &&
+        lastTraceSwapchain_[0] == sc.width && lastTraceSwapchain_[1] == sc.height) return;
+    lastTraceFramebuffer_[0] = static_cast<uint32_t>(fbw);
+    lastTraceFramebuffer_[1] = static_cast<uint32_t>(fbh);
+    lastTraceSwapchain_[0] = sc.width;
+    lastTraceSwapchain_[1] = sc.height;
+    const auto now = std::chrono::system_clock::now();
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::fprintf(stderr, "[RESIZE_TRACE] t_ms=%lld where=%s framebuffer=%dx%d swapchain=%ux%u\n",
+                 static_cast<long long>(ms), where, fbw, fbh, sc.width, sc.height);
+}
+
+void SwapChainNode::CheckSurfaceExtentDrift() {
+    const VkExtent2D surfaceExtent = swapChainWrapper->QueryCurrentSurfaceExtent(*GetDevice()->gpu);
+    const VkExtent2D& liveExtent = swapChainWrapper->scPublicVars.Extent;
+    const bool usable = surfaceExtent.width > 0 && surfaceExtent.height > 0;  // 0x0: minimised
+    if (!usable || (surfaceExtent.width == liveExtent.width && surfaceExtent.height == liveExtent.height)) {
+        extentDrifting_ = false;
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!extentDrifting_) {
+        extentDrifting_ = true;
+        extentDriftSince_ = now;
+        return;
+    }
+    if (std::chrono::duration<double>(now - extentDriftSince_).count() < kExtentDriftSeconds) return;
+
+    NODE_LOG_INFO("[SwapChainNode] surface extent " + std::to_string(surfaceExtent.width) + "x" +
+                  std::to_string(surfaceExtent.height) + " differs from swapchain " +
+                  std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height) +
+                  " with no resize signal -- recreating");
+    extentDrifting_ = false;
+    MarkNeedsRecompile();
+}
+
 uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     if (!swapChainWrapper) {
         std::string errorMsg = "SwapChainNode: swapchain wrapper not set";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+    CheckSurfaceExtentDrift();
+    TraceExtents("acquire");
 
     auto* devicePtr = GetDevice();
     const auto acquireStarted = std::chrono::steady_clock::now();
@@ -429,7 +490,7 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         }
 
         // Mark node as needing recompilation - will be handled in next Update()
-        MarkNeedsRecompile();
+        MarkNeedsRecompile(RecompileCause::SurfaceResized);
 
         // Return invalid index to skip this frame
         // Recompilation will happen in the next Update() cycle
@@ -463,7 +524,7 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
                           + std::to_string(liveExtent.width) + "x" + std::to_string(liveExtent.height)
                           + " -> " + std::to_string(surfaceExtent.width) + "x" + std::to_string(surfaceExtent.height)
                           + " -- recreating");
-            MarkNeedsRecompile();
+            MarkNeedsRecompile(RecompileCause::SurfaceResized);
         }
         return currentImageIndex;
     }
@@ -632,6 +693,7 @@ void SwapChainNode::CreateSwapchainAndViews() {
     // Extent from the image extent leaves the unrendered image remainder as garbage strips.
 
     NODE_LOG_INFO("[SwapChainNode] Swapchain created with " + std::to_string(imageCount) + " images");
+    TraceExtents("compile");
 }
 
 void SwapChainNode::PublishCompileOutputs(TypedCompileContext& ctx) {

@@ -1,0 +1,56 @@
+{
+  "schema": "vixen-lookdev-reference/v1",
+  "reference_set": "R432 look-dev turntable",
+  "source_commit": "6f3c64e1a49a663fa5049a44028517276f6e5aa7",
+  "captured_at": "2026-10-25T13:11:00+03:00",
+  "machine": "ws",
+  "driver": {
+    "device": "Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)",
+    "name": "Dozen",
+    "info": "Mesa 25.2.8 (git-f97d7dcca0)",
+    "api": "Vulkan 1.2.318",
+    "icd": "dzn_icd.json"
+  },
+  "display": ":0",
+  "resolution": [500, 500],
+  "warmup_frames": 64,
+  "angles": [0, 1, 2, 3],
+  "states": ["midday", "late-afternoon", "overcast", "night-service"],
+  "capture_mode": "Release, VIXEN_WITH_FSR3=OFF, one fresh process plus one repeat per state",
+  "known_visual_changes": [
+    {
+      "commit": "bff5507184efcfb6bbbcaf6a079d1e28b741f2fc",
+      "title": "affine look-dev instance placement"
+    },
+    {
+      "commit": "7108bd8877163775ce6177916ed1beb8d30d428a",
+      "title": "generated hull material outputs and material residency"
+    },
+    {
+      "commit": "75d3d28213cb6d13e8122b2f57619d6f4bdf5710",
+      "title": "restore look-dev hull material read"
+    },
+    {
+      "commit": "4b9ddc502993eb9f5a02c36ec76dcdefc2846aca",
+      "title": "night-service windows, worklight, and flood spill"
+    },
+    {
+      "commit": "363bf151f4ce36cde01ce00d98e72baec06f4f75",
+      "title": "move night lights outside the hull for cast spill"
+    },
+    {
+      "commit": "8f6e990a94881c202f0d5d6ac976d00493b33004",
+      "title": "scene-declared sky and cel profile"
+    },
+    {
+      "commit": "652ea869c82e58fce25f4800d86ecda1d96e6c07",
+      "title": "bimodal scene look capture set"
+    }
+  ],
+  "witness": {
+    "source": "cx-simd4recipe2 canonical current-lookdev capture",
+    "evidence": "/home/liory/codeman-cases/undertow/reports/cx-simd4recipe2-evidence/lookdev-compare.log",
+    "repeat_pairs": 16,
+    "byte_identical": true
+  }
+}

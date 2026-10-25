@@ -83,6 +83,12 @@ void DeviceRegistry::ClearAll() {
     m_deviceCachers.clear();
 }
 
+void DeviceRegistry::PersistWarmState() const {
+    for (const auto& cacher : m_deviceCachers) {
+        if (cacher) cacher->PersistWarmState();
+    }
+}
+
 bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);
 

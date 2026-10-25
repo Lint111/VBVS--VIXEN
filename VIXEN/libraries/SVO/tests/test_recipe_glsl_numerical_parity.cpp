@@ -82,6 +82,7 @@
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
 #include "ShaderCompiler.h"
+#include "ShaderPreprocessor.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
@@ -209,10 +210,23 @@ std::vector<glm::vec3> BuildSamplePoints() {
 // RecipeGlslCompiles gate below still pass a caller-chosen (usually zero-filled) params
 // buffer once per compile, matching evalRecipe()'s own default-empty-span CPU reference.
 // ---------------------------------------------------------------------------
+std::string ReadGlyphInstanceGlsl() {
+    ShaderManagement::ShaderPreprocessor preprocessor;
+    const auto result = preprocessor.PreprocessFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
+    return result.success ? result.processedSource : std::string{};
+}
+
+std::string GlyphBufferDeclaration() {
+    return "layout(set = 0, binding = 3, std430) readonly buffer InGlyphs { "
+           "GlyphOutlineInstance glyphOutlineInstances[]; };\n";
+}
+
 std::string ComposeComputeShader(const std::string& sdfCoreGlsl,
                                   const std::string& emittedFieldFn) {
     std::ostringstream ss;
     ss << "#version 450\n";
+    ss << ReadGlyphInstanceGlsl() << "\n";
+    ss << GlyphBufferDeclaration();
     ss << sdfCoreGlsl << "\n";
     ss << emittedFieldFn << "\n";
     ss << R"GLSL(
@@ -241,14 +255,16 @@ std::string ComposeGlyphComputeShader(const std::string& glyphInstanceGlsl,
                                       const std::string& sdfCoreGlsl,
                                       const std::string& emittedFieldFn) {
     std::ostringstream ss;
-    ss << "#version 450\n" << glyphInstanceGlsl << "\n" << sdfCoreGlsl << "\n";
+    ss << "#version 450\n" << glyphInstanceGlsl << "\n";
+    // R631: the runtime glyph SSBO must be declared before the emitted field function is
+    // parsed; the function now indexes this buffer instead of defining a local literal array.
+    ss << GlyphBufferDeclaration() << sdfCoreGlsl << "\n";
     ss << emittedFieldFn << "\n";
     ss << R"GLSL(
 layout(local_size_x = 64) in;
 layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
 layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };
 layout(set = 0, binding = 2, std430) readonly buffer InParams { float params[6]; };
-layout(set = 0, binding = 3, std430) readonly buffer InGlyphs { GlyphOutlineInstance glyphOutlineInstances[]; };
 void main() {
     if (gl_GlobalInvocationID.x >= points.length()) return;
     float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);
@@ -270,6 +286,8 @@ std::string ComposeComputeShaderWithDeclaredPosition(const std::string& sdfCoreG
                                                       const std::string& emittedFieldFn) {
     std::ostringstream ss;
     ss << "#version 450\n";
+    ss << ReadGlyphInstanceGlsl() << "\n";
+    ss << GlyphBufferDeclaration();
     ss << sdfCoreGlsl << "\n";
     ss << emittedFieldFn << "\n";
     ss << R"GLSL(
@@ -475,7 +493,7 @@ protected:
                               const std::vector<glm::vec3>& points,
                               std::vector<float>& outValues,
                               const std::array<float, 6>& params = {},
-                              std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {}) {
+                              std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {}) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed GPU target; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
@@ -515,10 +533,10 @@ protected:
             vkUnmapMemory(logicalDevice_, paramsMem);
         }
 
-        const Yeroket::Sdf::Generated::GlyphOutlineInstance emptyGlyph{};
-        const std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphRows =
+        const Yeroket::Sdf::Kernels::GlyphOutlineInstance emptyGlyph{};
+        const std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphRows =
             glyphInstances.empty()
-                ? std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance>(&emptyGlyph, 1)
+                ? std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>(&emptyGlyph, 1)
                 : glyphInstances;
         const VkDeviceSize glyphSize = static_cast<VkDeviceSize>(glyphRows.size_bytes());
         VkBuffer glyphBuf = VK_NULL_HANDLE; VkDeviceMemory glyphMem = VK_NULL_HANDLE;
@@ -941,8 +959,8 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
 }
 
 TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
-    using GlyphInstance = Yeroket::Sdf::Generated::GlyphOutlineInstance;
-    using GlyphSegment = Yeroket::Sdf::Generated::PathSegment;
+    using GlyphInstance = Yeroket::Sdf::Kernels::GlyphOutlineInstance;
+    using GlyphSegment = Yeroket::Sdf::Kernels::PathSegment;
 
     auto appendContour = [](GlyphInstance& glyph, std::initializer_list<glm::vec2> vertices) {
         ASSERT_GE(vertices.size(), 3U);
@@ -988,11 +1006,10 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
     std::array<GlyphInstance, 2> glyphInstances{makeGlyph(false), makeGlyph(true)};
     const std::span<const GlyphInstance> glyphRows(glyphInstances);
 
-    std::ifstream glyphFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
-    ASSERT_TRUE(glyphFile.good()) << "Cannot open generated glyph layout: "
-                                 << GLYPH_OUTLINE_INSTANCE_GLSL_PATH;
-    std::ostringstream glyphSource;
-    glyphSource << glyphFile.rdbuf();
+    ShaderManagement::ShaderPreprocessor glyphPreprocessor;
+    const auto glyphSource = glyphPreprocessor.PreprocessFile(GLYPH_OUTLINE_INSTANCE_GLSL_PATH);
+    ASSERT_TRUE(glyphSource.success) << "Cannot resolve generated glyph layout: "
+                                     << GLYPH_OUTLINE_INSTANCE_GLSL_PATH << ": " << glyphSource.errorMessage;
     std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
     ASSERT_TRUE(kernelFile.good()) << "Cannot open generated SDF kernels: "
                                    << SDF_CORE_KERNELS_GLSL_PATH;
@@ -1026,7 +1043,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
         const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
             &instruction, 1U, /*recipeId=*/0, false, nullptr, glyphRows);
         const std::string shaderSource = ComposeGlyphComputeShader(
-            glyphSource.str(), kernelSource.str(), fieldFn);
+            glyphSource.processedSource, kernelSource.str(), fieldFn);
         ShaderManagement::CompilationOptions options;
         options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
         auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSource, "main", options);
@@ -1681,7 +1698,8 @@ TEST_F(RecipeGlslNumericalParityTest, KernelEmittedGlslMatchesCpuEval_BothParamT
         // Compose with the emitted function's OWN declared name (the kernel
         // side owns the <id> choice — same tolerance as the CPU round-trip).
         std::ostringstream ss;
-        ss << "#version 450\n" << sdfCoreGlsl << "\n" << it->second << "\n"
+        ss << "#version 450\n" << ReadGlyphInstanceGlsl() << "\n"
+           << GlyphBufferDeclaration() << sdfCoreGlsl << "\n" << it->second << "\n"
            << "layout(local_size_x = 64) in;\n"
            << "layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };\n"
            << "layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };\n"

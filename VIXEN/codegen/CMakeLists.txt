@@ -112,7 +112,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "b1576418a1ca4cf29dd22853ff3cd1aba6372c83")
+set(_vixen_tracked_yeroket_kernel_sha "bb618381b1a86bc6596d092eb0b816b436932698")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -134,8 +134,14 @@ endif()
 set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
 set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
 set(_out_gpu_kind_cs "${_schema_gpu_generated}/FrameTargets.g.cs")
-set(_out_gpu_tonemap_glsl "${VIXEN_ROOT}/shaders/Generated/ExposureTonemapSystem.comp")
-set(_out_gpu_tonemap_header "${VIXEN_ROOT}/application/main/include/Generated/ExposureTonemapSystem.g.h")
+# The frame-target GPU composition emits one runner manifest, schedule, node
+# configuration, and one GLSL file per declared system.
+set(_out_gpu_systems_manifest "${VIXEN_ROOT}/shaders/Generated/GpuSystems.manifest.json")
+set(_out_gpu_systems_glsl_dir "${VIXEN_ROOT}/shaders/Generated")
+set(_out_gpu_systems_schedule "${_schema_gpu_generated}/GpuSchedule.g.h")
+set(_out_gpu_systems_node_config "${_schema_gpu_generated}/GpuNodes.g.inc")
+string(SHA256 _gpu_systems_stack_hash "vixen:frame-targets")
+string(SUBSTRING "${_gpu_systems_stack_hash}" 0 16 _gpu_systems_stack_hash)
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     if(NOT _schema_catalog_source AND NOT VIXEN_RENDERER_PROVIDER_MODE)
         message(FATAL_ERROR
@@ -256,8 +262,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         endif()
         _codegen_to_wsl_path("${_out_gpu_schema_json}" _out_gpu_schema_json_run)
         _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
-        _codegen_to_wsl_path("${_out_gpu_tonemap_glsl}" _out_gpu_tonemap_glsl_run)
-        _codegen_to_wsl_path("${_out_gpu_tonemap_header}" _out_gpu_tonemap_header_run)
+        _codegen_to_wsl_path("${_out_gpu_systems_manifest}" _out_gpu_systems_manifest_run)
+        _codegen_to_wsl_path("${_out_gpu_systems_glsl_dir}" _out_gpu_systems_glsl_dir_run)
+        _codegen_to_wsl_path("${_out_gpu_systems_schedule}" _out_gpu_systems_schedule_run)
+        _codegen_to_wsl_path("${_out_gpu_systems_node_config}" _out_gpu_systems_node_config_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
         # builds consume the committed AppFlow/ViewNounId headers when this tool is absent.
         set(_schema_catalog_run "")
@@ -299,12 +307,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels" _glyph_outline_schema_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp" _out_glyph_outline_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl" _out_glyph_outline_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256" _out_glyph_outline_layout_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp" _out_path_instance_cpp_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl" _out_path_instance_glsl_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256" _out_path_instance_layout_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_cpp_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe" _out_glyph_outline_glsl_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated" _out_glyph_outline_layout_dir_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
@@ -330,29 +335,28 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
-        # Callables sweep is wider than the appflow schema itself (row-deltas link 2/step-7B):
-        # UndertowViewCallables.cs lives in view-schemas/, not appflow-schemas/, so --callable-cpp
-        # needs the codegen root (parent of both) to pick up both [KernelCallable] sources.
-        # --schema is a single recursive dir sweep filtered by attribute name (Program.cs's
-        # --callable-cpp branch), so sweeping the wider root is safe -- config-schemas/ has no
-        # [KernelCallable] methods and contributes nothing to the emitted header.
-        _codegen_to_wsl_path("${_cg}" _schema_callables_run)
+        # Each callable namespace is emitted to its own header; --callable-cpp intentionally
+        # rejects a mixed-namespace sweep so the C# -> C++ namespace rule remains one-to-one.
+        _codegen_to_wsl_path("${_cg}" _schema_all_run)
+        # The material colour callable lives beside its C++ consumer, outside the codegen root.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/schemas" _schema_material_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/MaterialColor.g.hpp" _out_material_color_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/MaterialColor.glsl" _out_material_color_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow" _out_appflow_data_run)
         # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
         # (struct-qualified members). #included by IViewDataProvider.h, replacing the Inc-A hand-stub.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h" _out_view_noun_hdr_run)
-        # --callable-cpp's tool-owned output moved to AppFlowCallables.generated.g.hpp (row-deltas
-        # link 2/step-7B): UndertowViewCallables.IdentityString is `string`-typed, and
+        # --callable-cpp's tool-owned outputs are namespace-specific (row-deltas link 2/step-7B):
+        # UndertowViewCallables.IdentityString is `string`-typed, and
         # CppMappingTables has no string->C++ mapping (no bare C++ type for it, unlike
         # int/float/bool/uint), so a transpiled `inline string IdentityString(string v)` never
         # compiles -- a genuine tool gap, not fixable from the schema side alone without editing
-        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known path every
-        # UndertowHud*.typed.g.h #includes) is now a small, hand-authored, NOT-drift-checked shim
-        # (see the file itself) that #includes this tool-owned header and adds the one hand-written
-        # Rml::String overload the tool cannot express -- same "consumer defines by hand" precedent
-        # as EditorLayersView's activeLayerCountOverride hook.
+        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known umbrella path
+        # every generated view accessor includes) remains a small hand-authored shim that includes
+        # both namespace-specific headers and adds the one hand-written Rml::String overload.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp" _out_callables_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/UndertowViewCallables.generated.g.hpp" _out_view_callables_hdr_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} --cd / -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -366,8 +370,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_sim_framework_run "${_schema_sim_framework}")
         set(_out_gpu_schema_json_run "${_out_gpu_schema_json}")
         set(_out_gpu_kind_cs_run "${_out_gpu_kind_cs}")
-        set(_out_gpu_tonemap_glsl_run "${_out_gpu_tonemap_glsl}")
-        set(_out_gpu_tonemap_header_run "${_out_gpu_tonemap_header}")
+        set(_out_gpu_systems_manifest_run "${_out_gpu_systems_manifest}")
+        set(_out_gpu_systems_glsl_dir_run "${_out_gpu_systems_glsl_dir}")
+        set(_out_gpu_systems_schedule_run "${_out_gpu_systems_schedule}")
+        set(_out_gpu_systems_node_config_run "${_out_gpu_systems_node_config}")
         # See the WSL-bridge block's engine-standalone caveat above.
         set(_schema_catalog_run "${_schema_catalog_source}")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
@@ -403,12 +409,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_glyph_outline_schema_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels")
-        set(_out_glyph_outline_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.g.hpp")
-        set(_out_glyph_outline_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl")
-        set(_out_glyph_outline_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/GlyphOutlineInstance.layout.sha256")
-        set(_out_path_instance_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.g.hpp")
-        set(_out_path_instance_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/PathInstance.g.glsl")
-        set(_out_path_instance_layout_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/PathInstance.layout.sha256")
+        set(_out_glyph_outline_cpp_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
+        set(_out_glyph_outline_glsl_dir_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe")
+        set(_out_glyph_outline_layout_dir_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
@@ -431,16 +434,18 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_blob_data_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
-        # See the WSL-bridge branch's comment above: --callable-cpp sweeps the codegen root so it
-        # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
-        set(_schema_callables_run "${_cg}")
+        set(_schema_all_run "${_cg}")
+        set(_schema_material_run "${VIXEN_ROOT}/libraries/SVO/schemas")
+        set(_out_material_color_hdr_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/MaterialColor.g.hpp")
+        set(_out_material_color_glsl_run "${VIXEN_ROOT}/shaders/Generated/MaterialColor.glsl")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
         set(_out_appflow_data_run "${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow")
         # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
         set(_out_view_noun_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h")
-        # See the WSL-bridge branch's comment above: tool-owned output moved to
-        # AppFlowCallables.generated.g.hpp; AppFlowCallables.g.hpp is now a hand-authored shim.
+        # Tool-owned outputs are namespace-specific; AppFlowCallables.g.hpp is the hand-authored
+        # umbrella shim.
         set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp")
+        set(_out_view_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/UndertowViewCallables.generated.g.hpp")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -649,40 +654,23 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
-    # The text recipe carries one fixed-width contour bucket in each typed glyph
-    # instance. Keep its C++/GLSL std430 faces and width-sensitive layout hash
-    # generated from the same [GpuStruct] declaration as SdfCore_GlyphOutline.
+    # The text and path recipes carry fixed-width contour buckets in typed
+    # instances that share PathPoint and PathSegment. One run emits one header per
+    # type, so the shared types are defined once and included.
     set(_glyph_outline_args
         "${_yk_dll_run}"
-        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block GlyphOutlineInstance
-        --out-cpp "${_out_glyph_outline_cpp_run}"
-        --out-glsl "${_out_glyph_outline_glsl_run}"
-        --out-layout-hash "${_out_glyph_outline_layout_run}")
+        --schema "${_glyph_outline_schema_run}"
+        --recipe-parameter-block GlyphOutlineInstance --recipe-parameter-block PathInstance
+        --out-cpp-dir "${_out_glyph_outline_cpp_dir_run}"
+        --out-glsl-dir "${_out_glyph_outline_glsl_dir_run}"
+        --out-layout-hash-dir "${_out_glyph_outline_layout_dir_run}")
     vixen_add_codegen_check(glyph_outline_instance_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args} --check
-        COMMENT "[codegen] golden check: GlyphOutlineInstance bucket layout and std430 fingerprint"
+        COMMENT "[codegen] golden check: GlyphOutlineInstance and PathInstance bucket layouts and std430 fingerprints"
         VERBATIM)
     add_custom_target(glyph_outline_instance_regen
         COMMAND ${_CODEGEN_RUNNER} ${_glyph_outline_args}
-        COMMENT "[codegen] regenerate GlyphOutlineInstance C++/GLSL faces and layout fingerprint"
-        JOB_POOL msbuild
-        VERBATIM)
-
-    # The general path instance shares PathPoint/PathSegment with the glyph bucket; the kernel
-    # guards each shared struct per block, so both headers can be included together.
-    set(_path_instance_args
-        "${_yk_dll_run}"
-        --schema "${_glyph_outline_schema_run}" --recipe-parameter-block PathInstance
-        --out-cpp "${_out_path_instance_cpp_run}"
-        --out-glsl "${_out_path_instance_glsl_run}"
-        --out-layout-hash "${_out_path_instance_layout_run}")
-    vixen_add_codegen_check(path_instance_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args} --check
-        COMMENT "[codegen] golden check: PathInstance bucket layout and std430 fingerprint"
-        VERBATIM)
-    add_custom_target(path_instance_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_path_instance_args}
-        COMMENT "[codegen] regenerate PathInstance C++/GLSL faces and layout fingerprint"
+        COMMENT "[codegen] regenerate GlyphOutlineInstance and PathInstance C++/GLSL faces and layout fingerprints"
         JOB_POOL msbuild
         VERBATIM)
 
@@ -691,6 +679,13 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     set(_recipe_simd_args
         "${_yk_dll_run}"
         --recipe-simd-cpp
+        --namespace Vixen::SVO::Recipe
+        --include <glm/glm.hpp>
+        --include Recipe/RecipeRegistry.h
+        --include Recipe/RecipeStack.h
+        --include Recipe/generated/RecipeContainer.g.h
+        --include Recipe/generated/SdfCoreKernels.g.hpp
+        --include Recipe/generated/VoxelDocument.g.h
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
@@ -780,9 +775,8 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
-    # ExposureTonemapSystem is the first VIXEN render pass owned by a GPU-domain
-    # [KernelSystem]. Its texture selectors derive the image descriptors and its
-    # body emits both the shader and the C++ binding/dispatch contract.
+    # The GPU-domain [KernelSystem]s form one generated composition consumed by
+    # GeneratedSystemStages, so the build derives every system in one pass.
     if(EXISTS "${_schema_sim_framework}/SystemDeclarations.cs"
         AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
         # SchemaJsonSourceEmitter resolves every declaration referenced by the
@@ -861,7 +855,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             VERBATIM)
         add_dependencies(frame_targets_ref_regen frame_targets_schema_regen)
 
-        set(_exposure_tonemap_gpu_args
+        set(_gpu_systems_args
             "${_yk_dll_run}"
             --schema "${_schema_gpu_systems_run}"
             --schema "${_schema_gpu_generated_run}"
@@ -869,28 +863,30 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             --schema "${_schema_sim_framework_run}"
             --schema "${_schema_config_run}"
             --schema-json "${_out_gpu_schema_json_run}"
-            --gaia-gpu-system ExposureTonemapSystem
-            --out-glsl "${_out_gpu_tonemap_glsl_run}"
-            --out-header "${_out_gpu_tonemap_header_run}")
-        vixen_add_codegen_check(exposure_tonemap_gpu_check ALL
-            COMMAND ${_CODEGEN_RUNNER} ${_exposure_tonemap_gpu_args} --check
-            COMMENT "[codegen] golden check: exposure tone-map GLSL and C++ match the GPU system"
+            --gaia-gpu-schedule --stack-hash "${_gpu_systems_stack_hash}"
+            --out-header "${_out_gpu_systems_schedule_run}"
+            --out-node-config "${_out_gpu_systems_node_config_run}"
+            --out-manifest "${_out_gpu_systems_manifest_run}"
+            --out-glsl-dir "${_out_gpu_systems_glsl_dir_run}")
+        vixen_add_codegen_check(gpu_systems_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_gpu_systems_args} --check
+            COMMENT "[codegen] golden check: GPU system manifest, shaders and schedule match their systems"
             VERBATIM)
-        add_dependencies(exposure_tonemap_gpu_check frame_targets_schema_check frame_targets_ref_check)
-        add_custom_target(exposure_tonemap_gpu_regen
-            COMMAND ${_CODEGEN_RUNNER} ${_exposure_tonemap_gpu_args}
-            COMMENT "[codegen] regenerate exposure tone-map GLSL and C++"
+        add_dependencies(gpu_systems_check frame_targets_schema_check frame_targets_ref_check)
+        add_custom_target(gpu_systems_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_gpu_systems_args}
+            COMMENT "[codegen] regenerate GPU system manifest, shaders and schedule"
             JOB_POOL msbuild
             VERBATIM)
-        add_dependencies(exposure_tonemap_gpu_regen frame_targets_ref_regen)
-        # One supported refresh: frame-target schema, typed refs, tone-map outputs and the UI SPIR-V header.
+        add_dependencies(gpu_systems_regen frame_targets_ref_regen)
+        # One supported refresh: schema, typed refs, composition outputs and UI SPIR-V.
         if(TARGET ui_shader_spirv_regen)
             add_custom_target(frame_targets_refresh)
-            add_dependencies(frame_targets_refresh exposure_tonemap_gpu_regen ui_shader_spirv_regen)
+            add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen)
         endif()
     else()
         message(WARNING
-            "[codegen] ExposureTonemapSystem GPU-system drift guard DISABLED: "
+            "[codegen] GPU-system drift guard DISABLED: "
             "the pinned kernel schema or Undertow.Sim.Framework/SystemDeclarations.cs is unavailable")
     endif()
 
@@ -1143,7 +1139,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # hand-authored data-bound markup, not composed from a generated RML fragment like hud.rml.
     set(_view_editor_layers_args
         "${_yk_dll_run}"
-        --schema "${_schema_view_run}" --view EditorLayers
+        --schema "${_schema_all_run}" --view EditorLayers
         --out-header "${_out_editor_layers_header_run}")
     vixen_add_codegen_check(view_editor_layers_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
@@ -1273,22 +1269,59 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             VERBATIM)
     endif()
 
-    # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
-    # [KernelCallable] method body in the AppFlow schema dir to neutral C++ via CppAstVisitor —
-    # domain-blind, no [SdfCoreKernel] filter. Proves the kernel transplants LOGIC, not just DATA.
-    # Same schema dir as appflow_check; the AppFlow model builder ignores AppFlowCallables.cs
-    # (no [Flow*] attrs on it) so AppFlow.g.h stays byte-identical.
-    set(_callables_args
+    # --- Kernel callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants each
+    # C# namespace to its matching C++ namespace. The kernel contract is one native namespace per
+    # invocation, so AppFlow.Reference and ViewSchemas are separate generated headers; the
+    # hand-authored AppFlowCallables.g.hpp umbrella keeps the historical include path stable.
+    set(_appflow_callables_args
         "${_yk_dll_run}"
-        --schema "${_schema_callables_run}" --callable-cpp
+        --schema "${_schema_appflow_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
-    vixen_add_codegen_check(callables_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
-        COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
+    set(_view_callables_args
+        "${_yk_dll_run}"
+        --schema "${_schema_view_run}" --callable-cpp
+        --out-header "${_out_view_callables_hdr_run}")
+    vixen_add_codegen_check(callables_appflow_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_callables_args} --check
+        COMMENT "[codegen] golden check: AppFlow callable namespace header matches canonical schema"
         VERBATIM)
+    vixen_add_codegen_check(callables_view_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_callables_args} --check
+        COMMENT "[codegen] golden check: View callable namespace header matches canonical schema"
+        VERBATIM)
+    add_custom_target(callables_check ALL DEPENDS callables_appflow_check callables_view_check)
     add_custom_target(callables_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
-        COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
+        COMMAND ${_CODEGEN_RUNNER} ${_appflow_callables_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_view_callables_args}
+        COMMENT "[codegen] regenerate callable namespace headers"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- Material colour table (R619.1): one [KernelCallable] in libraries/SVO/schemas/ generates the
+    # C++ face (SVORebuild's DXT colour derivation) and the GLSL face (Materials.glsl).
+    set(_material_color_cpp_args
+        "${_yk_dll_run}"
+        --schema "${_schema_material_run}" --callable-cpp
+        --out-header "${_out_material_color_hdr_run}")
+    set(_material_color_glsl_args
+        "${_yk_dll_run}"
+        --callable-glsl --schema "${_schema_material_run}"
+        --out-glsl "${_out_material_color_glsl_run}")
+    vixen_add_codegen_check(material_color_cpp_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args} --check
+        COMMENT "[codegen] golden check: MaterialColor.g.hpp matches the material colour callable"
+        VERBATIM)
+    vixen_add_codegen_check(material_color_glsl_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args} --check
+        COMMENT "[codegen] golden check: MaterialColor.glsl matches the material colour callable"
+        VERBATIM)
+    if(TARGET SVO)
+        add_dependencies(SVO material_color_cpp_check)
+    endif()
+    add_custom_target(material_color_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args}
+        COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args}
+        COMMENT "[codegen] regenerate MaterialColor.g.hpp/.glsl"
         JOB_POOL msbuild
         VERBATIM)
 

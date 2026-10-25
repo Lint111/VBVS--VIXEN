@@ -154,8 +154,10 @@ TEST_F(ShaderBundleBuilderTest, PipelineTypeValidation_Compute) {
 }
 
 TEST_F(ShaderBundleBuilderTest, BuildResult_Timings) {
+    // A cache hit skips glslang, so this timing check compiles uncached.
     auto builder = ShaderBundleBuilder()
         .SetProgramName("TestShader")
+        .DisableCaching()
         .AddStage(ShaderStage::Vertex, vertexShaderSource);
 
     auto result = builder.Build();

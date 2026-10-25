@@ -186,4 +186,20 @@ private:
     std::atomic<size_t> maxCacheSizeMB_;
 };
 
+/**
+ * @brief Config of the default SPIR-V cache: <Vixen::SharedDeviceCacheDirectory()>/spirv.
+ *
+ * SPIR-V is device-independent and its key hashes the post-preprocess source, every
+ * compile-affecting option and ShaderCompiler::CompilerIdentity(), so an entry is valid for any
+ * build tree and lives in the shared cache root. VIXEN_SHADER_CACHE_DIR overrides the directory;
+ * VIXEN_SHADER_CACHE_DISABLE=1 disables caching without deleting the directory.
+ */
+ShaderCacheConfig DefaultShaderCacheConfig();
+
+/**
+ * @brief The process-wide SPIR-V cache every ShaderBundleBuilder uses unless the builder names
+ * another one (EnableCaching) or opts out (DisableCaching). Created on first use.
+ */
+ShaderCacheManager& DefaultShaderCacheManager();
+
 } // namespace ShaderManagement

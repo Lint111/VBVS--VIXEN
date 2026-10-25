@@ -174,9 +174,16 @@ public:
     ShaderBundleBuilder& AddIncludePath(const std::filesystem::path& path);
 
     /**
-     * @brief Enable caching with custom cache manager
+     * @brief Use this cache manager instead of DefaultShaderCacheManager()
+     *
+     * Every build is cached by default; this only redirects it.
      */
     ShaderBundleBuilder& EnableCaching(ShaderCacheManager* cacheManager);
+
+    /**
+     * @brief Always compile; neither read nor write any SPIR-V cache
+     */
+    ShaderBundleBuilder& DisableCaching();
 
     /**
      * @brief Set custom compiler (otherwise uses default)
@@ -274,7 +281,8 @@ private:
     // Optional components
     ShaderPreprocessor* preprocessor_ = nullptr;
     bool ownsPreprocessor_ = false;
-    ShaderCacheManager* cacheManager_ = nullptr;
+    ShaderCacheManager* cacheManager_ = nullptr;  // nullptr: DefaultShaderCacheManager()
+    bool cachingDisabled_ = false;
     ShaderCompiler* compiler_ = nullptr;
     bool ownsCompiler_ = false;
     SdiGeneratorConfig sdiConfig_;

@@ -108,10 +108,16 @@ public:
     // The compute pipeline cache (created lazily or loaded from the persisted blob)
     VkPipelineCache GetPipelineCache() const { return m_globalCache.load(std::memory_order_acquire); }
 
+    // The device-wide VkPipelineCache every compute pipeline uses, created on first use and seeded
+    // from the device/driver-keyed shared store. Compute pipelines built outside this cacher pass it
+    // too, so PersistWarmState() carries them across runs and build trees.
+    VkPipelineCache SharedPipelineCache();
+
     // Serialization
     bool SerializePayloadToFile(const std::filesystem::path& path) const override;
     bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "ComputePipelineCacher"; }
+    void PersistWarmState() const override;
 
 protected:
     // TypedCacher implementation

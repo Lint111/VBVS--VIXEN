@@ -19,10 +19,8 @@ PhotonCellFoldNode::PhotonCellFoldNode(const std::string& instanceName, NodeType
     Detail::ConfigurePhotonProducer(*this, PhotonCellTableNode::kCapacity / 64u);
 }
 
-void PhotonCellFoldNode::RegisterShader(
-    ShaderLibraryNode& shaderLibrary,
-    ShaderManagement::ShaderCacheManager* cache) const {
-    Detail::RegisterPhotonShader(shaderLibrary, cache,
+void PhotonCellFoldNode::RegisterShader(ShaderLibraryNode& shaderLibrary) const {
+    Detail::RegisterPhotonShader(shaderLibrary,
                                  "PhotonCellFold.comp", Metadata::PROGRAM_NAME);
 }
 

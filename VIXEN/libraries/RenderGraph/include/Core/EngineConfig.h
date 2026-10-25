@@ -26,8 +26,10 @@ struct EngineConfig {
     /// multiple EngineContexts never share process-wide cache state (AR#8 — no singleton fallback).
     CashSystem::MainCacher* mainCacher = nullptr;
 
-    /// Directory where the CalibrationStore persists task profiles.
-    std::filesystem::path calibrationDir = "calibration";
+    /// Directory where the CalibrationStore persists task profiles. Empty => EngineContext uses
+    /// RuntimeCacheDirectory()/"calibration" (absolute); a working-directory-relative default let
+    /// concurrent processes from one directory share and re-tune a single file.
+    std::filesystem::path calibrationDir;
 
     /// Stand up the autonomous (event-driven) CalibrationStore. BenchmarkRunner sets this false.
     bool enableCalibration = true;

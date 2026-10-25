@@ -3,6 +3,7 @@
 #include "RuntimeCachePaths.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -67,6 +68,23 @@ static std::optional<std::vector<uint32_t>> ReadShaderCacheFile(
         return std::nullopt;
     }
     return spirv;
+}
+
+ShaderCacheConfig DefaultShaderCacheConfig() {
+    ShaderCacheConfig config;
+    config.cacheDirectory = Vixen::SharedDeviceCacheDirectory() / "spirv";
+    if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR"); dirEnv && *dirEnv) {
+        config.cacheDirectory = dirEnv;
+    }
+    if (const char* disableEnv = std::getenv("VIXEN_SHADER_CACHE_DISABLE")) {
+        config.enabled = (std::atoi(disableEnv) == 0);
+    }
+    return config;
+}
+
+ShaderCacheManager& DefaultShaderCacheManager() {
+    static ShaderCacheManager manager{ DefaultShaderCacheConfig() };
+    return manager;
 }
 
 ShaderCacheManager::ShaderCacheManager(const ShaderCacheConfig& cfg)

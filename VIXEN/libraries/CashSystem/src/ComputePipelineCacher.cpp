@@ -5,6 +5,7 @@
 #include "VulkanDevice.h"
 #include "PipelineCacher.h"
 #include "CacheCodec.h"
+#include "SharedPipelineCacheStore.h"
 #include <stdexcept>
 #include <atomic>
 #include <chrono>
@@ -14,6 +15,10 @@
 #include <iostream>  // std::cout for VIXEN_PIPELINE_STATS -- see LogPipelineExecutableStatistics
 
 namespace CashSystem {
+
+namespace {
+constexpr std::string_view kSharedCacheKind = "compute";
+} // namespace
 
 // E3-T1 probe (temporary, log-only). Guarded by the same lock-free single-writer assumption the
 // rest of boot-time pipeline creation already makes; the counter is atomic so a threaded builder
@@ -83,7 +88,14 @@ std::uint64_t ComputePipelineCacher::ComputeKey(const ComputePipelineCreateParam
           .Add(ci.layoutKey)
           .Add(ci.workgroupSizeX)
           .Add(ci.workgroupSizeY)
-          .Add(ci.workgroupSizeZ);
+          .Add(ci.workgroupSizeZ)
+          .Add(std::string_view(ci.entryPoint ? ci.entryPoint : ""));
+    // Specialization constants change the compiled pipeline, so they are part of its identity.
+    hasher.Add(static_cast<uint32_t>(ci.specMapEntries.size()));
+    for (const VkSpecializationMapEntry& entry : ci.specMapEntries) {
+        hasher.Add(entry.constantID).Add(entry.offset).Add(static_cast<uint64_t>(entry.size));
+    }
+    hasher.Add(static_cast<uint32_t>(ci.specData.size())).AddBytes(ci.specData.data(), ci.specData.size());
     return hasher.Finalize();
 }
 
@@ -205,22 +217,7 @@ void ComputePipelineCacher::CreateComputePipeline(
         pipelineInfo.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     }
 
-    // Use global cache if available (shared with graphics). Atomic read: m_globalCache can be
-    // cleared concurrently by Cleanup() (audit V-M9).
-    VkPipelineCache cacheToUse = m_globalCache.load(std::memory_order_acquire);
-    if (cacheToUse == VK_NULL_HANDLE) {
-        VkPipelineCacheCreateInfo cacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-        VkPipelineCache created = VK_NULL_HANDLE;
-        if (vkCreatePipelineCache(m_device->device, &cacheInfo, nullptr, &created) == VK_SUCCESS) {
-            VkPipelineCache expected = VK_NULL_HANDLE;
-            if (m_globalCache.compare_exchange_strong(expected, created, std::memory_order_acq_rel)) {
-                cacheToUse = created;
-            } else {
-                vkDestroyPipelineCache(m_device->device, created, nullptr);
-                cacheToUse = expected;
-            }
-        }
-    }
+    const VkPipelineCache cacheToUse = SharedPipelineCache();
 
     const bool timePipeline = std::getenv("VIXEN_PHASE_TIMING") != nullptr;
     const auto createStart = std::chrono::steady_clock::now();
@@ -250,6 +247,38 @@ void ComputePipelineCacher::CreateComputePipeline(
     if (m_device->IsPipelineStatsEnabled()) {
         LogPipelineExecutableStatistics(ci.shaderKey, wrapper.pipeline);
     }
+}
+
+VkPipelineCache ComputePipelineCacher::SharedPipelineCache() {
+    // Atomic read: m_globalCache can be cleared concurrently by Cleanup() (audit V-M9).
+    if (const VkPipelineCache cache = m_globalCache.load(std::memory_order_acquire); cache != VK_NULL_HANDLE) {
+        return cache;
+    }
+    if (!m_device) {
+        return VK_NULL_HANDLE;
+    }
+    // Seed from the device/driver-keyed shared store before falling back to an empty cache.
+    std::string seedReason;
+    VkPipelineCache created = CreatePipelineCacheFromSharedStore(
+        m_device->device, m_device->gpuProperties, kSharedCacheKind, &seedReason);
+    const bool seeded = created != VK_NULL_HANDLE;
+    if (!seeded) {
+        LOG_INFO("[ComputePipelineCacher] Shared pipeline cache not used: " + seedReason);
+        VkPipelineCacheCreateInfo cacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        if (vkCreatePipelineCache(m_device->device, &cacheInfo, nullptr, &created) != VK_SUCCESS) {
+            return VK_NULL_HANDLE;
+        }
+    }
+    VkPipelineCache expected = VK_NULL_HANDLE;
+    if (m_globalCache.compare_exchange_strong(expected, created, std::memory_order_acq_rel)) {
+        if (seeded) {
+            m_warmCacheLoaded.store(true, std::memory_order_release);
+            LOG_INFO("[ComputePipelineCacher] Seeded pipeline cache from the shared store");
+        }
+        return created;
+    }
+    vkDestroyPipelineCache(m_device->device, created, nullptr);
+    return expected;
 }
 
 // VIXEN_PIPELINE_STATS: log the driver-reported register/spill/instruction stats for one pipeline
@@ -369,7 +398,19 @@ bool ComputePipelineCacher::SerializePayloadToFile(const std::filesystem::path& 
     }
     LOG_INFO("[ComputePipelineCacher] Serialized compute pipeline cache (" + std::to_string(cacheSize) +
              " bytes) to " + path.string());
+    PersistWarmState();
     return true;
+}
+
+void ComputePipelineCacher::PersistWarmState() const {
+    const VkPipelineCache cache = m_globalCache.load(std::memory_order_acquire);
+    if (!m_device || cache == VK_NULL_HANDLE) return;
+    std::string reason;
+    if (PersistPipelineCacheToSharedStore(m_device->device, cache, m_device->gpuProperties, kSharedCacheKind, &reason)) {
+        LOG_INFO("[ComputePipelineCacher] Persisted pipeline cache to the shared store");
+    } else {
+        LOG_INFO("[ComputePipelineCacher] Shared pipeline cache not persisted: " + reason);
+    }
 }
 
 bool ComputePipelineCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* /*device*/) {

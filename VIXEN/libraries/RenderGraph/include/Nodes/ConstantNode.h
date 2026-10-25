@@ -167,16 +167,13 @@ protected:
         // No execution needed - this is a data node
     }
 
-    void TypedCleanupImpl(TypedCleanupContext& ctx) override {
+    void TypedShutdownImpl(TypedCleanupContext& ctx) override {
         // The constant's value is CPU config that must SURVIVE a rebuild (recompile / device-loss recovery)
-        // so the node can re-publish it -- keep the factory and the externally-managed-resource callback
-        // across non-final cleanups; release them only on final teardown. (Mirrors WindowNode keeping the
-        // window across recompiles: non-device state outlives a device loss.)
-        if (ctx.reason != CleanupReason::FinalTeardown) {
-            return;
-        }
+        // so the node can re-publish it -- the factory and the externally-managed-resource callback are
+        // released only on shutdown. (Mirrors WindowNode keeping the window: non-device state outlives a
+        // device loss.)
 
-        // Final teardown: destroy the externally-managed resource (if any) and drop the retained value.
+        // Shutdown: destroy the externally-managed resource (if any) and drop the retained value.
         if (cleanupCallback) {
             cleanupCallback();
             cleanupCallback = nullptr;

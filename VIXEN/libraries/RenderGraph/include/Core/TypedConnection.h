@@ -3,7 +3,6 @@
 #include "Core/RenderGraph.h"
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
-#include "Core/GraphLifecycleHooks.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ConnectionConcepts.h"  // ConnectionOrder
 #include "Core/GraphTopology.h"

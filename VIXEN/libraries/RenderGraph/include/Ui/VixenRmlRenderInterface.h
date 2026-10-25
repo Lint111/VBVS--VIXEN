@@ -33,11 +33,22 @@ public:
     // One-time setup once the device, command pool, and (UI-owned, color-only) render pass exist.
     // R715: the texture-upload one-shot rides the owning node's submission stream through
     // `submitOneShot` (RenderGraph::SubmitOneShot), so this interface never takes VK2 nor waits.
+    // pipelineCache (not owned) is the device's shared persistent graphics cache.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
               const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
-              OneShotSubmit submitOneShot);
+              OneShotSubmit submitOneShot, VkPipelineCache pipelineCache = VK_NULL_HANDLE);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
+
+    // Cumulative time RmlUi spent inside the two compile entry points (geometry buffers, texture
+    // uploads). Read by the startup measurement; compile happens on relayout, not per frame.
+    struct CompileStats {
+        double compileGeometryMs = 0.0;
+        double generateTextureMs = 0.0;
+        uint32_t geometries = 0;
+        uint32_t textures = 0;
+    };
+    [[nodiscard]] const CompileStats& Stats() const noexcept { return stats_; }
 
     // Per-frame: bind the active command buffer + context dimensions before context->Render().
     void BeginFrame(VkCommandBuffer cmd, VkExtent2D extent);
@@ -112,6 +123,8 @@ private:
     std::vector<std::pair<uint64_t, TextDrawResources*>> pendingTextDrawDeletes_;
 
     VkDevice device_ = VK_NULL_HANDLE;
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // borrowed shared cache or owned standalone fallback
+    bool ownsPipelineCache_ = false;  // standalone startup witness owns its local fallback
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     OneShotSubmit submitOneShot_;  // R715: the owning node's graph submission point
@@ -123,6 +136,7 @@ private:
     VkDescriptorSetLayout descriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+    CompileStats stats_{};
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout textDescriptorLayout_ = VK_NULL_HANDLE;

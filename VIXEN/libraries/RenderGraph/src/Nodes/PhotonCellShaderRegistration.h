@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Nodes/ShaderLibraryNode.h"
-#include "ShaderCacheManager.h"
 
 #include <filesystem>
 #include <fstream>
@@ -37,11 +36,10 @@ inline std::string ReadPhotonShader(const std::filesystem::path& path) {
 }
 
 inline void RegisterPhotonShader(ShaderLibraryNode& shaderLibrary,
-                                 ShaderManagement::ShaderCacheManager* cache,
                                  const char* shaderName,
                                  const char* programName) {
     shaderLibrary.RegisterShaderBuilder(
-        [cache, shaderName, programName](int vulkanVersion, int spirvVersion) {
+        [shaderName, programName](int vulkanVersion, int spirvVersion) {
             const auto shaderPath = FindPhotonShader(shaderName);
             ShaderManagement::ShaderBundleBuilder builder;
             builder.SetProgramName(programName)
@@ -53,7 +51,6 @@ inline void RegisterPhotonShader(ShaderLibraryNode& shaderLibrary,
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .EnableCaching(cache)
                    .AddStage(ShaderManagement::ShaderStage::Compute,
                              ReadPhotonShader(shaderPath), "main");
             return builder;

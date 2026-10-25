@@ -48,6 +48,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 // ordering rule, preserved verbatim).
 layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 
+#include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 

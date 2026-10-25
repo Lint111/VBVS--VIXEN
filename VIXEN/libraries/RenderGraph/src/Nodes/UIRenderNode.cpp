@@ -8,6 +8,7 @@
 #include "Core/NodeLogging.h"
 
 #include "VulkanDevice.h"
+#include "NodeHelpers/SharedPipelineCaches.h"
 #include "VulkanSwapChain.h"
 #include "Core/GPUQueryManager.h"
 
@@ -269,7 +270,8 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
                               device->gpuMemoryProperties, commandPool_, renderPass_,
                               [this](VkCommandPool pool, VkCommandBuffer cmd, std::function<void()> release) {
                                   return GetOwningGraph()->SubmitOneShot(this, pool, cmd, std::move(release)) == VK_SUCCESS;
-                              });
+                              },
+                              ::RenderGraph::NodeHelpers::SharedGraphicsPipelineCache(GetOwningGraph(), device));
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());
@@ -732,11 +734,12 @@ bool UIRenderNode::IsMounted(MountHandle handle) const {
     return it != mounts_.end() && it->second.doc != nullptr;
 }
 
-void UIRenderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
+void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
     if (device_ == VK_NULL_HANDLE) return;
 
-    // The per-image command buffers AND the composite present semaphores are PERSISTENT across a
-    // recompile and are torn down only on FINAL teardown. Rationale:
+    // Everything this node owns is device-scoped, so it all lives in this event (device loss and
+    // shutdown) and nothing in TypedCleanupImpl: a recompile releases nothing here. The per-image
+    // command buffers AND the composite present semaphores are PERSISTENT across a recompile:
     //   * The recompile path runs WITHOUT vkDeviceWaitIdle by design (a wait on a submit still blocked
     //     on an un-signalled acquire semaphore would deadlock — the documented resize freeze).
     //   * In composite mode this node is a per-frame recompile target (the host marks the voxel scene
@@ -748,21 +751,11 @@ void UIRenderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     //     happens under the swapchain-recreation render pause where prior frames have already drained).
     //
     // We likewise do NOT tear RmlUi (context/document/pipeline) down on recompile: a resize triggers a
-    // recompile (Cleanup → Compile), and distinguishing that from a true shutdown via NeedsRecompile()
-    // is unreliable under the cascading recompiles a resize produces. RmlUi is torn down only on FINAL
-    // teardown, in the strict order required by RmlUi (see below).
-    // KI-004 root cause lived here: this early-return previously covered EVERY non-final reason,
-    // INCLUDING CleanupReason::DeviceLost — so the per-image command buffers (allocated from the
-    // now-destroyed device's pool) and RmlUi's GPU objects survived a device-loss teardown, and
-    // CompileImpl's image-count guard (count unchanged post-recovery) reused them: the first
-    // post-recovery frame hit vkBeginCommandBuffer on a freed handle (loader-level
-    // invalid-commandBuffer abort). Persistence is only valid while the DEVICE survives, i.e.
-    // across a Recompile. On DeviceLost the full teardown below is safe: RecoverFromDeviceLoss
-    // calls WaitForGraphDevicesIdle() before the teardown pass, and vkDestroy*/vkFree* on a lost
-    // device are spec-required to remain safe.
-    if (ctx.reason == CleanupReason::Recompile) {
-        return;  // recompile: keep all persistent resources (command buffers + present semaphores + RmlUi)
-    }
+    // recompile, and the graph runs only TypedCleanupImpl for it (FR-7: this node used to tell the two
+    // apart from inside one cleanup method, which was unreliable under cascading resize recompiles).
+    // Persistence is only valid while the DEVICE survives (KI-004: command buffers from a destroyed
+    // pool reused after recovery), so device loss runs this full teardown too: RecoverFromDeviceLoss
+    // calls WaitForGraphDevicesIdle() first, and vkDestroy*/vkFree* on a lost device stay safe.
 
     // Final teardown or device loss: the device was drained (RenderGraph DeInitialize's
     // vkDeviceWaitIdle, or RecoverFromDeviceLoss's WaitForGraphDevicesIdle), so freeing is safe.

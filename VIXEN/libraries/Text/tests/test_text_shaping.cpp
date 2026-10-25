@@ -117,7 +117,7 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     EXPECT_EQ(round.FillRule, 0U);
     ASSERT_GE(round.SegmentCount, 8U);
     EXPECT_LE(round.SegmentCount,
-              static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
+              static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
     EXPECT_GE(std::count_if(std::begin(round.Segments), std::begin(round.Segments) + round.SegmentCount,
                             [](const Vixen::Text::PathSegment& segment) {
                                 return segment.ContourStart != 0U;
@@ -132,8 +132,8 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     const float midX = (round.BoundsMin.X + round.BoundsMax.X) * 0.5f;
     const float midY = (round.BoundsMin.Y + round.BoundsMax.Y) * 0.5f;
     const float lowerRingY = round.BoundsMin.Y + (round.BoundsMax.Y - round.BoundsMin.Y) * 0.1f;
-    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, midY, 0.0f), round), 0.0f);
-    EXPECT_LT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(glm::vec3(midX, lowerRingY, 0.0f), round), 0.0f);
+    EXPECT_GT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(glm::vec3(midX, midY, 0.0f), round), 0.0f);
+    EXPECT_LT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(glm::vec3(midX, lowerRingY, 0.0f), round), 0.0f);
 
     Vixen::Text::GlyphOutlineInstance eight{};
     ASSERT_TRUE(Vixen::Text::LoadGlyphOutline(
@@ -144,7 +144,7 @@ TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
                             }), 3);
     const float eightMidX = (eight.BoundsMin.X + eight.BoundsMax.X) * 0.5f;
     const float eightLowerHoleY = eight.BoundsMin.Y + (eight.BoundsMax.Y - eight.BoundsMin.Y) * 0.25f;
-    EXPECT_GT(Yeroket::Sdf::Generated::SdfCore_GlyphOutline(
+    EXPECT_GT(Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(
                   glm::vec3(eightMidX, eightLowerHoleY, 0.0f), eight), 0.0f);
 }
 
@@ -190,6 +190,8 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     ASSERT_EQ(repeated.glyphs.size(), 2U);
     EXPECT_EQ(repeated.glyphs[0].instance.get(), repeated.glyphs[1].instance.get());
     EXPECT_EQ(repeated.glyphs[0].instance.get(), latin.glyphs.front().instance.get());
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, repeated.glyphs[1].outlineIndex);
+    EXPECT_EQ(repeated.glyphs[0].outlineIndex, latin.glyphs.front().outlineIndex);
 
     const auto rightToLeft = MakePreset(Vixen::Text::TextDirection::RightToLeft,
                                         Vixen::Text::ShapingClass::Default,
@@ -202,6 +204,9 @@ TEST_F(TextShapingFixture, WorldTextPositionsShapedGlyphsAndCarriesRtlMirror) {
     EXPECT_TRUE(rtl.mirrorX);
     ASSERT_EQ(rtl.glyphs.size(), 4U);
     EXPECT_TRUE(rtl.requiredScriptTableMatchesPreset);
+    ASSERT_EQ(glyphAtlas.OutlineBlob().size(), 4U);
+    EXPECT_EQ(glyphAtlas.OutlineBlobBytes(),
+              glyphAtlas.OutlineBlob().size() * sizeof(Vixen::Text::GlyphOutlineInstance));
 }
 
 TEST_F(TextShapingFixture, MsdfAtlasIsTheFinalSmallScreenTextBand) {

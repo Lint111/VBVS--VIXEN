@@ -5,6 +5,7 @@
 #include "VulkanDevice.h"
 #include "VixenHash.h"
 #include "CacheCodec.h"
+#include "SharedPipelineCacheStore.h"
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
@@ -14,6 +15,10 @@
 #include <shared_mutex>
 
 namespace CashSystem {
+
+namespace {
+constexpr std::string_view kSharedCacheKind = "graphics";
+} // namespace
 
 // Vulkan spec: a pipeline-cache blob must be validated against VkPipelineCacheHeaderVersionOne
 // (size, header version, vendor/device ID, pipelineCacheUUID) before being trusted — a blob from
@@ -352,44 +357,48 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
     LOG_DEBUG("Using shared VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(wrapper.pipelineLayoutWrapper->layout)));
 }
 
-void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
-    if (!GetDevice()) {
-        return;
-    }
-
-    // If we have a global cache, merge it with the new cache
-    // This allows new pipelines to benefit from cached data. Atomic read: m_globalCache can be
-    // set concurrently by DeserializeFromFile() via the blocking lane (audit V-M9).
-    if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
-        globalCache != VK_NULL_HANDLE) {
-        // Just use the global cache directly instead of creating individual caches
-        wrapper.cache = globalCache;
-        return;
-    }
-
-    // Create pipeline cache for performance (fallback if no global cache)
-    VkPipelineCacheCreateInfo cacheInfo{};
-    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-
-    VkResult result = vkCreatePipelineCache(
-        GetDevice()->device,
-        &cacheInfo,
-        nullptr,
-        &wrapper.cache
-    );
-
-    if (result != VK_SUCCESS) {
-        // Non-fatal - can still create pipelines without cache
-        wrapper.cache = VK_NULL_HANDLE;
-    }
+void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& /*ci*/, PipelineWrapper& wrapper) {
+    wrapper.cache = SharedPipelineCache();
 }
 
-bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
+VkPipelineCache PipelineCacher::SharedPipelineCache() {
     if (!GetDevice()) {
-        LOG_ERROR("Cannot serialize: no device available");
-        return false;
+        return VK_NULL_HANDLE;
     }
 
+    // Atomic read: m_globalCache can be set concurrently by DeserializeFromFile() via the
+    // blocking lane (audit V-M9).
+    if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
+        globalCache != VK_NULL_HANDLE) {
+        return globalCache;
+    }
+
+    // One shared cache for every graphics pipeline, seeded from the device/driver-keyed store so
+    // pipelines compiled by an earlier build or run are reused by this one.
+    std::string seedReason;
+    VkPipelineCache created = CreatePipelineCacheFromSharedStore(
+        GetDevice()->device, GetDevice()->gpuProperties, kSharedCacheKind, &seedReason);
+    const bool seeded = created != VK_NULL_HANDLE;
+    if (!seeded) {
+        LOG_INFO("[PipelineCacher] Shared pipeline cache not used: " + seedReason);
+        VkPipelineCacheCreateInfo cacheInfo{};
+        cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        if (vkCreatePipelineCache(GetDevice()->device, &cacheInfo, nullptr, &created) != VK_SUCCESS) {
+            // Non-fatal - can still create pipelines without cache
+            return VK_NULL_HANDLE;
+        }
+    }
+
+    VkPipelineCache expected = VK_NULL_HANDLE;
+    if (m_globalCache.compare_exchange_strong(expected, created, std::memory_order_acq_rel)) {
+        if (seeded) LOG_INFO("[PipelineCacher] Seeded graphics pipeline cache from the shared store");
+        return created;
+    }
+    vkDestroyPipelineCache(GetDevice()->device, created, nullptr);
+    return expected;
+}
+
+bool PipelineCacher::MergeCachesToBlob(std::vector<uint8_t>& cacheData, size_t& mergedCacheCount) const {
     // Collect all valid pipeline caches from the published entries (lock-free generation walk).
     std::vector<VkPipelineCache> caches;
     ForEachEntry([&](const CacheEntry& entry) {
@@ -398,9 +407,9 @@ bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) c
         }
     });
 
+    mergedCacheCount = caches.size();
     if (caches.empty()) {
-        LOG_INFO("No pipeline caches to serialize");
-        return true;
+        return false;
     }
 
     // Merge all caches into a single cache for serialization
@@ -411,7 +420,7 @@ bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) c
     VkResult result = vkCreatePipelineCache(GetDevice()->device, &mergedCacheInfo, nullptr, &mergedCache);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create merged cache: " + std::to_string(result));
-        return false;
+        throw std::runtime_error("pipeline cache merge failed");
     }
 
     // Merge all individual caches into the merged cache
@@ -420,29 +429,77 @@ bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) c
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to merge pipeline caches: " + std::to_string(result));
         vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
-        return false;
+        throw std::runtime_error("pipeline cache merge failed");
     }
 
-    // Get size of cache data
     size_t cacheSize = 0;
     result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, nullptr);
     if (result != VK_SUCCESS || cacheSize == 0) {
         LOG_ERROR("Failed to get cache size: " + std::to_string(result));
         vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
-        return false;
+        throw std::runtime_error("pipeline cache merge failed");
     }
 
-    // Get cache data
-    std::vector<uint8_t> cacheData(cacheSize);
+    cacheData.assign(cacheSize, 0);
     result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, cacheData.data());
+    vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to get cache data: " + std::to_string(result));
-        vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+        throw std::runtime_error("pipeline cache merge failed");
+    }
+    cacheData.resize(cacheSize);
+    return true;
+}
+
+void PipelineCacher::PersistWarmState() const {
+    if (!GetDevice()) return;
+    // The shared cache also holds the pipelines created outside this cacher's entries
+    // (SharedPipelineCache() callers), so it is persisted whole.
+    if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
+        globalCache != VK_NULL_HANDLE) {
+        std::string reason;
+        if (PersistPipelineCacheToSharedStore(GetDevice()->device, globalCache, GetDevice()->gpuProperties,
+                                              kSharedCacheKind, &reason)) {
+            LOG_INFO("[PipelineCacher] Persisted graphics pipeline cache to the shared store");
+        } else {
+            LOG_INFO("[PipelineCacher] Shared pipeline cache not persisted: " + reason);
+        }
+        return;
+    }
+    std::vector<uint8_t> blob;
+    size_t count = 0;
+    try {
+        if (!MergeCachesToBlob(blob, count)) return;
+    } catch (const std::exception&) {
+        return;
+    }
+    std::string reason;
+    if (SaveSharedPipelineCacheBlob(
+            SharedPipelineCachePath(GetDevice()->gpuProperties, kSharedCacheKind),
+            GetDevice()->gpuProperties, kSharedCacheKind, blob, &reason)) {
+        LOG_INFO("[PipelineCacher] Persisted graphics pipeline cache to the shared store");
+    } else {
+        LOG_INFO("[PipelineCacher] Shared pipeline cache not persisted: " + reason);
+    }
+}
+
+bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
+    if (!GetDevice()) {
+        LOG_ERROR("Cannot serialize: no device available");
         return false;
     }
 
-    // Destroy merged cache (no longer needed)
-    vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+    std::vector<uint8_t> cacheData;
+    size_t mergedCount = 0;
+    try {
+        if (!MergeCachesToBlob(cacheData, mergedCount)) {
+            LOG_INFO("No pipeline caches to serialize");
+            return true;
+        }
+    } catch (const std::exception&) {
+        return false;
+    }
+    const size_t cacheSize = cacheData.size();
 
     // Write cache data to file
     std::ofstream file(path, std::ios::binary);
@@ -466,7 +523,8 @@ bool PipelineCacher::SerializePayloadToFile(const std::filesystem::path& path) c
         return false;
     }
 
-    LOG_INFO("Serialized " + std::to_string(caches.size()) + " pipeline caches (" + std::to_string(cacheSize) + " bytes) to " + path.string());
+    LOG_INFO("Serialized " + std::to_string(mergedCount) + " pipeline caches (" + std::to_string(cacheSize) + " bytes) to " + path.string());
+    PersistWarmState();
     return true;
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
@@ -95,6 +96,8 @@ protected:
     void TypedCompileImpl(TypedCompileContext& ctx) override;
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedDeviceReleaseImpl(TypedCleanupContext& ctx) override;
+    void TypedShutdownImpl(TypedCleanupContext& ctx) override;
 
 private:
     // === Compile phase helper methods ===
@@ -145,6 +148,24 @@ private:
     // subscriptions don't accumulate (each accumulated sub fires an extra MarkNeedsRecompile,
     // turning one resize into a storm of recompiles).
     bool resizeSubscribed_ = false;
+
+    // Invariant guard: the swapchain extent must follow the surface's currentExtent. Drivers differ in
+    // whether they report OUT_OF_DATE/SUBOPTIMAL for an OS-driven size change; where they do not, the
+    // window shows the old-size image in its top-left corner and black elsewhere. A mismatch that
+    // persists for kExtentDriftSeconds (long enough to ride out a live drag, which the window node
+    // debounces) schedules a recreation.
+    static constexpr double kExtentDriftSeconds = 0.3;
+    std::chrono::steady_clock::time_point extentDriftSince_{};
+    bool extentDrifting_ = false;
+    void CheckSurfaceExtentDrift();
+
+    // VIXEN_RESIZE_TRACE=1: one stderr line whenever the window framebuffer size or the swapchain
+    // extent changes ("[RESIZE_TRACE] where=... framebuffer=WxH swapchain=WxH"), so a resize run can
+    // be checked offline (tools/check-resize-fill.py) without a debugger or screenshots.
+    GLFWwindow* traceWindow_ = nullptr;
+    uint32_t lastTraceFramebuffer_[2] = {0, 0};
+    uint32_t lastTraceSwapchain_[2] = {0, 0};
+    void TraceExtents(const char* where);
 
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
     uint32_t compileCount_ = 0;

@@ -629,6 +629,14 @@ protected:
      * sampleCount_ so the count stays exact; they cannot contribute to last/peak.
      */
     void ProcessSamplesImpl() {
+        // One folder at a time: SimpleTaskProfile folds from every recording thread, and the fold
+        // updates the sample counters without atomics. A caller that finds a fold in progress returns
+        // at once (never waits); the samples it would have folded stay in the ring for the next fold.
+        if (folding_.test_and_set(std::memory_order_acquire)) return;
+        struct FoldRelease {
+            std::atomic_flag& flag;
+            ~FoldRelease() { flag.clear(std::memory_order_release); }
+        } release{folding_};
         bool any = false;
         pendingSamples_.Drain([&](uint64_t sample) {
             lastMeasuredCostNs_ = sample;
@@ -673,6 +681,7 @@ protected:
     static constexpr size_t kMaxPendingSamples = 1024;  // Ring capacity: oldest samples are overwritten beyond this
     Vixen::OverwriteRing<uint64_t, kMaxPendingSamples> pendingSamples_;
     Vixen::OverwriteRing<PendingPrediction, kMaxPendingSamples> pendingPredictions_;  ///< Prediction samples for error tracking
+    std::atomic_flag folding_ = ATOMIC_FLAG_INIT;  ///< a ProcessSamplesImpl() fold is running
     uint64_t samplesDroppedAccounted_ = 0;  ///< pendingSamples_ overwrites already added to sampleCount_ (owner side)
 };
 

@@ -113,16 +113,10 @@ void WorldPosHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     nextWriteImageIndex_ = previousIndex;
 }
 
-void WorldPosHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Persist across recompile; release only on final application teardown. Keep persistent
-    // resources ONLY across a Recompile (the device survives) -- on DeviceLost the device and
-    // every child object are gone (KI-004 class), mirrors AccumulationHistoryNode's guard.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[WorldPosHistoryNode] Cleanup (recompile) - keeping persistent worldPos history image");
-        return;
-    }
-
-    NODE_LOG_INFO("[WorldPosHistoryNode] Cleanup (final teardown) - destroying worldPos history image pair");
+void WorldPosHistoryNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[WorldPosHistoryNode] DeviceRelease - destroying worldPos history image pair");
     DestroyImages();
 }
 

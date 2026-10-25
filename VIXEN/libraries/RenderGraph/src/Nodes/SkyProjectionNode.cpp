@@ -5,6 +5,7 @@
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
 #include "VulkanDevice.h"
+#include "NodeHelpers/SharedPipelineCaches.h"
 #include "VulkanSwapChain.h"             // Vixen::Vulkan::Resources::IRenderTarget
 
 #include "ShaderCompiler.h"             // ShaderManagement::ShaderCompiler (runtime GLSL -> SPIR-V)
@@ -359,7 +360,9 @@ void SkyProjectionNode::CreatePipeline(Vixen::Vulkan::Resources::VulkanDevice* d
     gp.layout = pipelineLayout_;
     gp.renderPass = renderPass_;  // consumed, not owned — color-only Load-op pass, no depth
     gp.subpass = 0;
-    Check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline_), "graphics pipeline");
+    const VkPipelineCache pipelineCache =
+        ::RenderGraph::NodeHelpers::SharedGraphicsPipelineCache(GetOwningGraph(), device);
+    Check(vkCreateGraphicsPipelines(device_, pipelineCache, 1, &gp, nullptr, &pipeline_), "graphics pipeline");
 
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
@@ -583,13 +586,10 @@ void SkyProjectionNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE, static_cast<VkSemaphore>(VK_NULL_HANDLE));
 }
 
-void SkyProjectionNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[SkyProjectionNode] Cleanup (recompile) - keeping persistent resources");
-        return;
-    }
-
-    NODE_LOG_INFO("[SkyProjectionNode] Cleanup (final teardown) - destroying resources");
+void SkyProjectionNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[SkyProjectionNode] DeviceRelease - destroying resources");
     if (device_ != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             vkFreeCommandBuffers(device_, commandPool_, static_cast<uint32_t>(commandBuffers_.size()),

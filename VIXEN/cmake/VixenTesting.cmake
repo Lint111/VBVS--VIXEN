@@ -16,6 +16,13 @@ function(vixen_configure_ctest_gpu_environment output_variable)
     if(VIXEN_VULKAN_LAYER_PATH)
         list(APPEND _environment "VK_LAYER_PATH=${VIXEN_VULKAN_LAYER_PATH}")
     endif()
+    # Tests and captures render and read back; none needs a window on the owner's desktop (stray
+    # windows of concurrent lane runs cover each other and the desktop). WindowNode creates its
+    # window with GLFW_VISIBLE=false when this is set. Opt back in to watch a test:
+    # -DVIXEN_TEST_VISIBLE_WINDOWS=ON.
+    if(NOT VIXEN_TEST_VISIBLE_WINDOWS)
+        list(APPEND _environment "VIXEN_HIDDEN_WINDOW=1")
+    endif()
 
     if(UNIX)
         if(VIXEN_WSL_DZN_LIBRARY_DIR AND IS_DIRECTORY "${VIXEN_WSL_DZN_LIBRARY_DIR}")

@@ -67,6 +67,10 @@ void PassGroupNode::AddRenderPass(RenderPassStep step) {
 void PassGroupNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     NODE_LOG_INFO("[PassGroupNode::CompileImpl] Baking node-local schedule + allocating command buffers");
 
+    if (passes_.empty() && passAssembler_) {
+        passAssembler_(*this);
+    }
+
     assert(!passes_.empty() &&
            "[PassGroupNode::CompileImpl] passes_ is empty — call AddComputePass/AddRenderPass before Compile");
 

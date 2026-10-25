@@ -23,10 +23,8 @@ void PhotonCellDepositNode::ConfigureForRecordCount(uint32_t recordCount) {
     Detail::ConfigurePhotonProducer(*this, dispatchX);
 }
 
-void PhotonCellDepositNode::RegisterShader(
-    ShaderLibraryNode& shaderLibrary,
-    ShaderManagement::ShaderCacheManager* cache) const {
-    Detail::RegisterPhotonShader(shaderLibrary, cache,
+void PhotonCellDepositNode::RegisterShader(ShaderLibraryNode& shaderLibrary) const {
+    Detail::RegisterPhotonShader(shaderLibrary,
                                  "PhotonDeposit.comp", Metadata::PROGRAM_NAME);
 }
 

@@ -79,6 +79,15 @@ endif()
 # ----------------------------------------------------------------------------
 add_library(VixenApp STATIC ${VIXEN_APP_SOURCES} ${HPP_FILES})
 target_compile_definitions(VixenApp PRIVATE VIXEN_WITH_FSR3=${_vixen_fsr3_configured})
+# BuildRenderGraph.cpp is ~11k lines of graph construction that runs once at startup. At -O3,
+# GCC spends 85% of its ~145 s compile optimising it, and every edit to it or to a header it
+# includes waits on that. Source options follow the config flags, so this -O1 wins. GCC refuses
+# the target's -O3 precompiled header at -O1 (-Winvalid-pch), so the file skips it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+        PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CONFIG:Debug>>:-O1>"
+                   SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 # ----------------------------------------------------------------------------
 # M3: generate the node-usage manifest by scanning the graph-builder TUs and registered module
@@ -95,6 +104,8 @@ vixen_generate_node_manifest(
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp
+        # The generated-system runner adds its own nodes (allocations, the sampled-view sampler).
+        ${VIXEN_ROOT}/libraries/RenderGraph/include/Nodes/GeneratedSystemStage.h
 )
 
 # Application include dir is PUBLIC so consumers get VulkanGraphApplication.h, Headers.h, etc.
@@ -268,7 +279,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_starfield_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_lookdev_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_planet_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_traversal_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_upscaler_selection.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_aa_selection.cmake)
 if(VIXEN_WITH_FSR3)
     include(${CMAKE_CURRENT_LIST_DIR}/tests/test_fsr3_record_status.cmake)
 endif()

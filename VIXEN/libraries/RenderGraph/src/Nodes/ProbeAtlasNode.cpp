@@ -103,17 +103,10 @@ void ProbeAtlasNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ProbeAtlasNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
-void ProbeAtlasNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
-    // Persist across recompile; release only on final application teardown.
-    // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
-    // device and every child object are gone — keeping them (KI-004 class) left stale handles
-    // that crashed the first post-recovery use/teardown. Mirrors AccumulationHistoryNode's guard.
-    if (ctx.reason == CleanupReason::Recompile) {
-        NODE_LOG_INFO("[ProbeAtlasNode] Cleanup (recompile) - keeping persistent atlas image");
-        return;
-    }
-
-    NODE_LOG_INFO("[ProbeAtlasNode] Cleanup (final teardown) - destroying atlas image");
+void ProbeAtlasNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
+    // Device-scoped: kept across recompiles (CleanupImpl does not touch it); released on device
+    // loss and shutdown.
+    NODE_LOG_INFO("[ProbeAtlasNode] DeviceRelease - destroying atlas image");
     DestroyImage();
 }
 

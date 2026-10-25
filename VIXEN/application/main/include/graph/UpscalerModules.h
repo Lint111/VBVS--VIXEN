@@ -112,7 +112,7 @@ struct UpscalerModuleBuildContext {
     // Called once a provider's real context has been initialized or has failed to initialize
     // during graph compilation, and with initialized=false when its per-frame record fails;
     // the host decides whether to fall back.
-    std::function<void(UpscalerProviderInitializationResult)> providerInitializationReported;
+    std::function<void(RenderModuleProviderInitializationResult)> providerInitializationReported;
     float cameraNearPlane = 0.1f;
     float cameraFarPlane = 5000.0f;
 };

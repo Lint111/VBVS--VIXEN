@@ -25,6 +25,7 @@
 #include "Nodes/Common/GpuDeviceClass.h"
 #include <limits>
 #include <thread>
+#include <future>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -862,15 +863,6 @@ void RenderGraph::RegisterExternalCleanup(
                   externalSystemName + "' with dependency on '" + dependencyNodeName + "'");
 }
 
-void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callback) {
-    postNodeCompileCallbacks.push_back(std::move(callback));
-}
-
-void RenderGraph::RegisterPostNodeExecuteCallback(const std::string& nodeInstanceName,
-                                                   PostNodeExecuteCallback callback) {
-    postNodeExecuteCallbacks.emplace(nodeInstanceName, std::move(callback));
-}
-
 void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> manager) {
     deviceBudgetManager_ = std::move(manager);
 
@@ -1537,11 +1529,6 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
             node->SetState(NodeState::Complete);
             if (task->state != KernelDispatch::VirtualTaskState::Completed) continue;
 
-            if (!postNodeExecuteCallbacks.empty()) {
-                auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
-                for (auto it = begin; it != end; ++it) it->second(node);
-            }
-
             if (node->HasDeferredRecompile()) {
                 node->ClearDeferredRecompile();
                 for (size_t i = 0; i < instances.size(); ++i) {
@@ -1760,18 +1747,6 @@ VkResult RenderGraph::RenderFrame() {
                 }
 
                 node->SetState(NodeState::Complete);
-
-                // Post-execute callbacks (e.g. FrameCapture reading the swapchain image between
-                // the render node writing it and PresentNode releasing it back to the swapchain --
-                // see RegisterPostNodeExecuteCallback). Fires here, not after the whole frame, so
-                // registrants see the node's output in the state IT left it in, not whatever a
-                // later node (present, most commonly) has since done to the same resource.
-                if (!postNodeExecuteCallbacks.empty()) {
-                    auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
-                    for (auto it = begin; it != end; ++it) {
-                        it->second(node);
-                    }
-                }
 
                 // Check if this node was marked for recompilation during execution
                 if (node->HasDeferredRecompile()) {
@@ -2034,9 +2009,30 @@ void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& inst
 }
 
 void RenderGraph::WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices) {
-    for (VkDevice dev : devices) {
-        if (dev != VK_NULL_HANDLE) {
-            vkDeviceWaitIdle(dev);
+    const bool pumpHere = idleWaitPump_ && idleWaitPumpThread_ == std::this_thread::get_id();
+    if (!pumpHere) {
+        for (VkDevice dev : devices) {
+            if (dev != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(dev);
+            }
+        }
+    } else {
+        // The drain can take seconds when other processes share the GPU. Block on a worker so this
+        // thread keeps pumping OS messages: a window whose thread is stuck in vkDeviceWaitIdle is
+        // "Not Responding" and shows its old image at the old size with black beyond it. This thread
+        // submits nothing while it waits, so the queues stay externally synchronized.
+        std::vector<VkDevice> toWait;
+        for (VkDevice dev : devices) {
+            if (dev != VK_NULL_HANDLE) toWait.push_back(dev);
+        }
+        if (!toWait.empty()) {
+            auto drained = std::async(std::launch::async, [toWait] {
+                for (VkDevice dev : toWait) vkDeviceWaitIdle(dev);
+            });
+            while (drained.wait_for(std::chrono::milliseconds(16)) != std::future_status::ready) {
+                idleWaitPump_();
+            }
+            drained.get();
         }
     }
     // Idle queues have reached every timeline value: run the pending one-shot releases now, before
@@ -2198,25 +2194,19 @@ void RenderGraph::GeneratePipelines() {
 
         GRAPH_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 
-        // Mark the node Compiled BEFORE running post-compile callbacks/hooks. Compile()
-        // has fully run, so its outputs are populated and it is — by contract — compiled.
-        // Post-compile callbacks fire here precisely so dependents can read a just-compiled
-        // node's results; a callback that aggregates several sources and checks each source's
-        // GetState() must see the just-finished node as Compiled, otherwise the LAST source's
-        // callback (the one that completes the set) wrongly judges that source not-ready and
-        // bails — leaving the dependent (e.g. PassGroupNode, ordered immediately after) to
-        // compile with nothing assembled. Set state first so GetState() matches reality.
+        // Compile() has fully run, so its outputs are populated: dependents compiled after it
+        // (in topological order) read them from their own compile.
         instance->SetState(NodeState::Compiled);
+    }
 
-        // Execute post-compile callbacks immediately after compilation
-        // This ensures extracted values are available before dependent nodes compile
-        for (auto& callback : postNodeCompileCallbacks) {
-            callback(instance);
+    // The pipelines for the first frame now exist; keep their driver-compiled form on disk so a
+    // run that never reaches a clean shutdown still leaves the next launch warm.
+    if (mainCacher) {
+        const auto persistStart = PhaseTiming::Clock::now();
+        mainCacher->PersistWarmState();
+        if (PhaseTiming::Enabled()) {
+            std::fprintf(stderr, "[PHASE] stage=persist-pipeline-cache ms=%.3f\n", PhaseTiming::MsSince(persistStart));
         }
-
-        // Execute lifecycle hooks for PostCompile phase
-        // This includes ConnectVariadic PostCompile hooks that populate slot resources
-        lifecycleHooks.ExecuteNodeHooks(NodeLifecyclePhase::PostCompile, instance);
     }
 }
 
@@ -2543,6 +2533,7 @@ void RenderGraph::RecompileDirtyNodes() {
     // dirty set and expanding via cleanupStack.GetAllDependents (already a transitive-closure query)
     // means every affected node is visited exactly once.
     std::unordered_set<NodeHandle> closure(dirtyNodes.begin(), dirtyNodes.end());
+    const std::unordered_set<NodeHandle> markedDirty(dirtyNodes.begin(), dirtyNodes.end());
     for (NodeHandle handle : dirtyNodes) {
         if (!handle.IsValid() || handle.index >= instances.size()) continue;
         for (NodeHandle dep : cleanupStack.GetAllDependents(handle)) {
@@ -2596,9 +2587,12 @@ void RenderGraph::RecompileDirtyNodes() {
         GRAPH_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
 
         try {
-            // Call cleanup first (destroy old resources). This is a RECOMPILE, not final teardown:
-            // nodes owning persistent-across-recompile resources (e.g. the OS window) keep them.
-            node->Cleanup(CleanupReason::Recompile);
+            // Tell the node why it recompiles, then run the recompile teardown (CleanupImpl only:
+            // persistent state such as the OS window or device-scoped pools is kept).
+            const RecompileCause cause = markedDirty.count(node->GetHandle()) > 0
+                ? node->GetPendingRecompileCause()
+                : RecompileCause::UpstreamRecompiled;
+            node->BeginRecompile(cause);
 
             // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
             // Some nodes may not have device inputs available immediately; if Setup/Compile

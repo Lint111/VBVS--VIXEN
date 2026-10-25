@@ -1085,6 +1085,157 @@ TEST_F(EventDrivenCalibrationStoreTest, ManualModeStillWorks) {
     EXPECT_TRUE(store.Exists());
 }
 
+#include "Core/ConcurrentRunRegistry.h"
+#include "Core/EngineConfig.h"
+#include <thread>
+
+// ============================================================================
+// Concurrent VIXEN processes sharing one calibration directory (sn-vixenmultiproc)
+// ============================================================================
+namespace {
+constexpr std::uint64_t kForeignPid = 4000000000ULL;  // above any real pid: never "alive"
+
+void PublishRepublishedDeviceEvent(Vixen::EventBus::MessageBus& bus) {
+    Vixen::EventBus::DeviceInfo deviceInfo{};
+    deviceInfo.deviceName = "Test_GPU_EventDriven";
+    deviceInfo.vendorID = 1234;
+    deviceInfo.deviceID = 5678;
+    std::vector<Vixen::EventBus::DeviceInfo> devices = {deviceInfo};
+    Vixen::EventBus::DeviceMetadataEvent event(0, devices, 0, nullptr);
+    bus.PublishImmediate(event);
+}
+
+// Writes the per-GPU file the way another process's shutdown would.
+void WriteForeignCalibration(const std::filesystem::path& dir, int32_t workUnits) {
+    TaskProfileRegistry other;
+    other.RegisterFactory("SimpleTaskProfile", []() { return std::make_unique<SimpleTaskProfile>(); });
+    auto profile = std::make_unique<SimpleTaskProfile>("sharedTask", "test");
+    profile->SetWorkUnits(workUnits);
+    profile->RecordMeasurement(1'000'000);
+    other.RegisterTask(std::move(profile));
+    CalibrationStore store(dir);
+    store.SetGPU({"Test_GPU_EventDriven", 1234, 5678});
+    ASSERT_TRUE(store.Save(other).success);
+}
+
+int32_t SavedWorkUnits(const std::filesystem::path& dir, bool* contended = nullptr) {
+    TaskProfileRegistry reader;
+    reader.RegisterFactory("SimpleTaskProfile", []() { return std::make_unique<SimpleTaskProfile>(); });
+    CalibrationStore store(dir);
+    store.SetGPU({"Test_GPU_EventDriven", 1234, 5678});
+    const auto result = store.Load(reader);
+    EXPECT_TRUE(result.success) << result.message;
+    if (contended) *contended = store.LoadedFromContendedRun();
+    auto* profile = reader.GetProfile("sharedTask");
+    return profile ? profile->GetWorkUnits() : -999;
+}
+}  // namespace
+
+TEST_F(EventDrivenCalibrationStoreTest, RepublishedDeviceEventDoesNotRetuneFromAnotherProcess) {
+    WriteForeignCalibration(testDir, 2);
+    CalibrationStore store(testDir, registry, messageBus.get());
+    messageBus->PublishImmediate(*MakeDeviceEvent());
+    auto* live = registry.GetProfile("sharedTask");
+    ASSERT_NE(live, nullptr);
+    EXPECT_EQ(live->GetWorkUnits(), 2);
+
+    // This process tunes its own value; another process then publishes a different one.
+    live->SetWorkUnits(4);
+    WriteForeignCalibration(testDir, -3);
+
+    // DeviceNode republishes the event on every recompile (window resize, device-loss rebuild).
+    PublishRepublishedDeviceEvent(*messageBus);
+
+    live = registry.GetProfile("sharedTask");
+    ASSERT_NE(live, nullptr);
+    EXPECT_EQ(live->GetWorkUnits(), 4) << "a recompile re-loaded another process's in-flight write";
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, ContendedRunKeepsCleanCalibration) {
+    WriteForeignCalibration(testDir, 2);  // the clean calibration
+    bool contended = true;
+    ASSERT_EQ(SavedWorkUnits(testDir, &contended), 2);
+    ASSERT_FALSE(contended);
+
+    CalibrationStore store(testDir, registry, messageBus.get());
+    messageBus->PublishImmediate(*MakeDeviceEvent());  // enters the run registry
+    {   // another VIXEN run overlapped this one
+        ConcurrentRunRegistry other(testDir / "runs", kForeignPid);
+        other.Enter();
+    }
+    registry.GetProfile("sharedTask")->SetWorkUnits(5);  // tuned under contention
+
+    Vixen::EventBus::ApplicationShuttingDownEvent shutdown(0);
+    messageBus->PublishImmediate(shutdown);
+
+    EXPECT_EQ(SavedWorkUnits(testDir, &contended), 2) << "a contended run overwrote the clean calibration";
+    EXPECT_FALSE(contended);
+    EXPECT_NE(store.GetLastResult().message.find("Skipped save"), std::string::npos)
+        << store.GetLastResult().message;
+}
+
+TEST_F(EventDrivenCalibrationStoreTest, ContendedRunSeedsMissingFileAndCleanRunReplacesIt) {
+    {
+        CalibrationStore store(testDir, registry, messageBus.get());
+        messageBus->PublishImmediate(*MakeDeviceEvent());
+        { ConcurrentRunRegistry other(testDir / "runs", kForeignPid); other.Enter(); }
+        auto profile = std::make_unique<SimpleTaskProfile>("sharedTask", "test");
+        profile->SetWorkUnits(5);
+        profile->RecordMeasurement(1'000'000);
+        registry.RegisterTask(std::move(profile));
+        Vixen::EventBus::ApplicationShuttingDownEvent shutdown(0);
+        messageBus->PublishImmediate(shutdown);
+    }
+    bool contended = false;
+    EXPECT_EQ(SavedWorkUnits(testDir, &contended), 5);
+    EXPECT_TRUE(contended);
+
+    // A later run with the machine to itself publishes a clean calibration over it.
+    std::filesystem::remove_all(testDir / "runs");
+    {
+        TaskProfileRegistry cleanRegistry;
+        cleanRegistry.RegisterFactory("SimpleTaskProfile", []() { return std::make_unique<SimpleTaskProfile>(); });
+        Vixen::EventBus::MessageBus cleanBus;
+        CalibrationStore store(testDir, cleanRegistry, &cleanBus);
+        cleanBus.PublishImmediate(*MakeDeviceEvent());
+        cleanRegistry.GetProfile("sharedTask")->SetWorkUnits(1);
+        Vixen::EventBus::ApplicationShuttingDownEvent shutdown(0);
+        cleanBus.PublishImmediate(shutdown);
+    }
+    EXPECT_EQ(SavedWorkUnits(testDir, &contended), 1);
+    EXPECT_FALSE(contended);
+}
+
+TEST(ConcurrentRunRegistryTest, OverlapRequiresSharedLifetime) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("vixen_runs_test_" + std::to_string(Vixen::CurrentProcessId()));
+    std::filesystem::remove_all(dir);
+
+    // A run that ended before this one started does not overlap.
+    { ConcurrentRunRegistry earlier(dir, kForeignPid); earlier.Enter(); earlier.Leave(); }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    ConcurrentRunRegistry mine(dir, kForeignPid + 1);
+    mine.Enter();
+    EXPECT_EQ(mine.OverlappingRuns(), 0u);
+
+    // A run that starts while this one is live does.
+    ConcurrentRunRegistry later(dir, kForeignPid + 2);
+    later.Enter();
+    EXPECT_EQ(mine.OverlappingRuns(), 1u);
+    EXPECT_EQ(later.OverlappingRuns(), 1u);
+
+    // ...and keeps counting after it left, until pruned.
+    later.Leave();
+    EXPECT_EQ(mine.OverlappingRuns(), 1u);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(CalibrationDefaults, EngineConfigDirectoryIsNotWorkingDirectoryRelative) {
+    EXPECT_TRUE(Vixen::UserCacheDirectory().is_absolute());
+    Vixen::RenderGraph::EngineConfig cfg;
+    EXPECT_TRUE(cfg.calibrationDir.empty()) << "empty means EngineContext resolves it to the absolute runtime cache";
+}
+
 // ============================================================================
 // SAMPLER EXCEPTION-SAFETY TESTS (TS-4)
 // ============================================================================

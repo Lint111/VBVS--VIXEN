@@ -762,11 +762,6 @@ TEST(EntityBasedRebuildTest, RebuildAPIStub) {
     // Test block removal API (stub)
     octree.removeBlock(glm::vec3(20, 20, 20), 3);
 
-    // Test concurrency control API
-    octree.lockForRendering();
-    // ... ray casting would happen here ...
-    octree.unlockAfterRendering();
-
     std::cout << "[RebuildAPIStub] ✓ Rebuild API compiles and can be called\n";
 }
 
@@ -1055,39 +1050,4 @@ TEST(PartialBlockUpdateTest, UpdateEmptyRegionRemovesBrick) {
     ASSERT_EQ(brick, nullptr) << "Empty region should return nullptr";
 
     std::cout << "[UpdateEmptyRegion] ✓ Empty region update removes brick\n";
-}
-
-/**
- * Test concurrency - lockForRendering blocks updates
- */
-TEST(PartialBlockUpdateTest, LockForRenderingAPI) {
-    using namespace Vixen::GaiaVoxel;
-    using namespace Vixen::SVO;
-
-    std::cout << "\n[LockForRenderingAPI] Testing lock/unlock API...\n";
-
-    GaiaVoxelWorld world;
-
-    ComponentQueryRequest components[] = {
-        Density{1.0f},
-        Color{glm::vec3(1, 0, 0)}
-    };
-    world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
-
-    glm::vec3 worldMin(0.0f);
-    glm::vec3 worldMax(8.0f);
-    LaineKarrasOctree octree(world, nullptr, 8, 3);
-    octree.rebuild(world, worldMin, worldMax);
-
-    // Lock for rendering
-    octree.lockForRendering();
-
-    // Simulate ray casting (would happen here in real code)
-    auto hit = octree.castRay(glm::vec3(-5, 2, 2), glm::vec3(1, 0, 0));
-    EXPECT_TRUE(hit.hit) << "Ray should hit during lock";
-
-    // Unlock
-    octree.unlockAfterRendering();
-
-    std::cout << "[LockForRenderingAPI] ✓ Lock/unlock API works correctly\n";
 }

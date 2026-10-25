@@ -4,7 +4,6 @@
 
 #include "CacherBase.h"
 #include "RuntimeCachePaths.h"
-#include "TypeRegistry.h"
 #include "TypedCacher.h"
 #include "DeviceIdentifier.h"
 #include "ILoggable.h"
@@ -405,6 +404,16 @@ public:
         }
 
         return success;
+    }
+
+    /**
+     * @brief Persist warm driver state (pipeline cache blobs) now, without a full SaveAll
+     */
+    void PersistWarmState() const {
+        // Registry membership is owner-phase (C3/C4): read on the graph owner thread, no lock.
+        for (const auto& [deviceId, registry] : m_deviceRegistries) {
+            registry.PersistWarmState();
+        }
     }
 
     /**

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Vixen::SVO::Recipe {
@@ -62,8 +64,10 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     uint32_t recipeId,
     bool emitDeclaredPositionOutParam = false,
     const Vixen::SVO::RecipeRegistry* registry = nullptr,
-    std::span<const Yeroket::Sdf::Generated::GlyphOutlineInstance> glyphInstances = {},
-    std::span<const Yeroket::Sdf::Generated::PathInstance> pathInstances = {})
+    std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
+    uint32_t glyphInstanceBase = 0,
+    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
+    bool readInstructionOperands = false)
 {
     std::vector<std::string> stk;
     std::string body;
@@ -74,43 +78,27 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     std::vector<std::string> posSaveStk;
     // emit-time distScale stack: 1.0f for non-scaling transforms; M4b Transform pushes data[11]
     // At RestorePos: if |scale-1|>1e-4 emit a multiply to scale the TOS distance before popping.
-    std::vector<float> distScaleSaveStk;
+    std::vector<std::pair<float, std::string>> distScaleSaveStk;
 
     // Operands obey the binary32 transport contract (integer-word literals).
     const auto f = RecipeGlslFloatLiteral;
 
-    // A GlyphOutline instruction indexes this fixed local array. Each row is the complete
-    // typed GPU struct, including its own fixed-width [GpuArray] contour bucket.
-    if (!glyphInstances.empty()) {
-        body += "  GlyphOutlineInstance glyphOutlineInstances["
-            + std::to_string(glyphInstances.size()) + "];\n";
-        for (std::size_t glyphIndex = 0; glyphIndex < glyphInstances.size(); ++glyphIndex) {
-            const auto& glyph = glyphInstances[glyphIndex];
-            const std::string row = "glyphOutlineInstances[" + std::to_string(glyphIndex) + "]";
-            const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                glyph.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::SegmentCapacity));
-            body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
-            body += "  " + row + ".BoundsMin.X = " + f(glyph.BoundsMin.X) + ";\n";
-            body += "  " + row + ".BoundsMin.Y = " + f(glyph.BoundsMin.Y) + ";\n";
-            body += "  " + row + ".BoundsMax.X = " + f(glyph.BoundsMax.X) + ";\n";
-            body += "  " + row + ".BoundsMax.Y = " + f(glyph.BoundsMax.Y) + ";\n";
-            body += "  " + row + ".FillRule = " + std::to_string(glyph.FillRule) + "u;\n";
-            for (std::uint32_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
-                const auto& segment = glyph.Segments[segmentIndex];
-                const std::string prefix = row + ".Segments[" + std::to_string(segmentIndex) + "]";
-                const auto emitPoint = [&](const char* name, const auto& point) {
-                    body += "  " + prefix + "." + name + ".X = " + f(point.X) + ";\n";
-                    body += "  " + prefix + "." + name + ".Y = " + f(point.Y) + ";\n";
-                };
-                emitPoint("P0", segment.P0);
-                emitPoint("P1", segment.P1);
-                emitPoint("P2", segment.P2);
-                emitPoint("P3", segment.P3);
-                body += "  " + prefix + ".Kind = " + std::to_string(segment.Kind) + "u;\n";
-                body += "  " + prefix + ".ContourStart = " + std::to_string(segment.ContourStart) + "u;\n";
-            }
-        }
-    }
+    // GlyphOutline data lives in the shared runtime SSBO declared by the shader source. Keep
+    // the span in the API for callers that already provide the entry payload, but never emit
+    // its rows as GLSL literals: those literals are what makes the driver unroll the SDF and
+    // grow its compiler cache. The generated opcode dispatch still emits the indexed access;
+    // the walk below rebases that local index into the flattened SSBO.
+    (void)glyphInstances;
+
+    const auto glyphBaseForProgram = [&](const SdfInstruction* wprog) {
+        // RecipeRegistry rewrites every GlyphOutline operand to the one shared blob's
+        // global index at registration. Nested recipe walks therefore must not apply the
+        // old per-entry prefix sum. Keep the legacy base parameter for standalone emitters
+        // and tests that intentionally pass local rows without a registry.
+        if (registry) return 0U;
+        (void)wprog;
+        return glyphInstanceBase;
+    };
 
     // A PathDistance instruction indexes this fixed local array, laid out like the glyph rows.
     if (!pathInstances.empty()) {
@@ -119,7 +107,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
             const auto& path = pathInstances[pathIndex];
             const std::string row = "pathInstances[" + std::to_string(pathIndex) + "]";
             const std::uint32_t segmentCount = std::min<std::uint32_t>(
-                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Generated::PathSegmentCapacity));
+                path.SegmentCount, static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::PathSegmentCapacity));
             body += "  " + row + ".SegmentCount = " + std::to_string(segmentCount) + "u;\n";
             body += "  " + row + ".Dimension = " + std::to_string(path.Dimension) + "u;\n";
             body += "  " + row + ".Closed = " + std::to_string(path.Closed) + "u;\n";
@@ -147,8 +135,24 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     // outer walk, without duplicating this whole function. Captures everything by reference;
     // `self` is how a C++ lambda recurses into itself.
     auto walk = [&](auto&& self, const SdfInstruction* wprog, uint32_t wcount) -> void {
-    for (uint32_t i = 0; i < wcount; ++i) {
-        const SdfInstruction& in = wprog[i];
+    std::vector<SdfInstruction> adjustedProgram(wprog, wprog + wcount);
+    const uint32_t base = glyphBaseForProgram(wprog);
+    for (std::uint32_t instructionIndex = 0; instructionIndex < adjustedProgram.size(); ++instructionIndex) {
+        auto& in = adjustedProgram[instructionIndex];
+        if (static_cast<SdfOpCode>(in.opCode) == SdfOpCode::GlyphOutline) {
+            const uint32_t localIndex = std::bit_cast<uint32_t>(in.data[0]);
+            in.data[0] = std::bit_cast<float>(localIndex + base);
+        }
+        // R475.3: a closed unroll can retain its uploaded tape as the operand source.
+        // InvokeRecipe must be closed before binding, exactly as for EvalRecipeTape.
+        assert((!readInstructionOperands || in.opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe)) &&
+            "buffer operands require UnrollRecipeInstructions first");
+        const auto d = [&](std::uint32_t slot) {
+            return readInstructionOperands
+                ? "recipeTape[recipeOperandBase + " + std::to_string(instructionIndex)
+                    + "u].data[" + std::to_string(slot) + "]"
+                : f(in.data[slot]);
+        };
         assert(IsValidSdfOpCode(in.opCode) && "EmitProceduralFieldFunctionGlsl: unknown opcode");
         // paramMask!=0 is now legal exactly for ReadParam/ReadParamFloat3 (Recipe-
         // Parameterization M1 Task 2's registry allow-list) — every other opcode still
@@ -171,10 +175,54 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     std::string signature = emitDeclaredPositionOutParam
         ? "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6], out vec3 declaredPos) {\n"
         : "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6]) {\n";
+    if (readInstructionOperands) {
+        const auto insertion = signature.find(", out vec3");
+        signature.insert(insertion == std::string::npos ? signature.find(") {") : insertion,
+            ", uint recipeOperandBase");
+    }
     return signature
         + body
         + "  return " + stk.back() + ";\n"
         "}\n";
+}
+
+// SdfCoreKernels.g.glsl reads the shared glyph outline blob through `glyphOutlineInstances`, so a
+// shader that inlines the kernels must declare that buffer where the kernels can see it: after the
+// GlyphOutlineInstance struct they define and before their first function. Returns the kernel text
+// with the declaration inserted at that point, or the text unchanged when it has no such struct.
+inline std::string WithGlyphOutlineBuffer(const std::string& sdfCoreKernelsGlsl, uint32_t binding,
+                                          uint32_t set = 0) {
+    constexpr std::string_view marker = "#endif // GLYPHOUTLINEINSTANCE_GLSL\n";
+    const auto at = sdfCoreKernelsGlsl.find(marker);
+    if (at == std::string::npos) return sdfCoreKernelsGlsl;
+    std::string out = sdfCoreKernelsGlsl;
+    out.insert(at + marker.size(),
+        "layout(set = " + std::to_string(set) + ", std430, binding = " + std::to_string(binding) +
+        ") readonly buffer GlyphOutlineBuffer {\n"
+        "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+        "};\n");
+    return out;
+}
+
+// The same kernels for a shader whose recipes contain no glyph outline op: drop the glyph kernel so
+// the shader never references the shared buffer, and a pipeline layout without that binding stays
+// valid. Only the field function emitted for a glyph-free recipe is inlined next to the result, so
+// nothing calls the removed function.
+inline std::string WithoutGlyphOutlineKernel(const std::string& sdfCoreKernelsGlsl) {
+    constexpr std::string_view signature = "float SdfCore_GlyphOutline(";
+    const auto begin = sdfCoreKernelsGlsl.find(signature);
+    if (begin == std::string::npos) return sdfCoreKernelsGlsl;
+    const auto open = sdfCoreKernelsGlsl.find('{', begin);
+    if (open == std::string::npos) return sdfCoreKernelsGlsl;
+    int depth = 0;
+    std::size_t end = open;
+    for (; end < sdfCoreKernelsGlsl.size(); ++end) {
+        if (sdfCoreKernelsGlsl[end] == '{') ++depth;
+        else if (sdfCoreKernelsGlsl[end] == '}' && --depth == 0) { ++end; break; }
+    }
+    std::string out = sdfCoreKernelsGlsl;
+    out.erase(begin, end - begin);
+    return out;
 }
 
 } // namespace Vixen::SVO::Recipe

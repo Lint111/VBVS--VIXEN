@@ -31,6 +31,10 @@ namespace Vixen::SVO::Recipe {
 //      DeriveOccupancyGrid declined the program) gets gridDim=0u in its switch case and
 //      contributes nothing to the blob; the shader treats gridDim==0 as "no grid available,
 //      skip the occupancy fast-path for this instance" (never a hard error).
+//   6. (R631, only when outConcatenatedGlyphInstances != nullptr) the registry's one
+//      content-deduplicated typed glyph blob is copied into the runtime SSBO payload.
+//      GlyphOutline operands already carry its global indices; no outline coordinates or
+//      contour buckets are embedded in shader source.
 //
 // The switch's default case returns a zero-radius bound-sphere miss and a zero field value —
 // unreachable in practice (a BodyInstance's recipeId is only ever set to an id the CPU side
@@ -43,9 +47,11 @@ namespace Vixen::SVO::Recipe {
 inline std::string SpliceProceduralRecipesIntoSource(
     const std::string& rawSource,
     const RecipeRegistry& registry,
-    std::vector<float>* outConcatenatedOccupancyGrid = nullptr)
+    std::vector<float>* outConcatenatedOccupancyGrid = nullptr,
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr)
 {
     if (outConcatenatedOccupancyGrid) outConcatenatedOccupancyGrid->clear();
+    if (outConcatenatedGlyphInstances) outConcatenatedGlyphInstances->clear();
     static const std::string kMarker = "// VIXEN_UBER_RECIPE_SPLICE_MARKER";
     const size_t markerPos = rawSource.find(kMarker);
     if (markerPos == std::string::npos) {
@@ -101,8 +107,14 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                                usesDeclarePosition(entry),
                                                &registry,
                                                entry->glyphInstances,
+                                               /*glyphInstanceBase=*/0,
                                                entry->pathInstances)
             << "\n";
+    }
+
+    if (outConcatenatedGlyphInstances) {
+        const auto blob = registry.GlyphOutlineBlob();
+        outConcatenatedGlyphInstances->assign(blob.begin(), blob.end());
     }
 
     // params (Recipe-Parameterization M2 Task 6): threaded through as a plain function

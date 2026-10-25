@@ -12,6 +12,11 @@
 #include <memory>
 #include "GPUTimestampQuery.h"
 
+namespace CashSystem {
+struct ComputePipelineWrapper;
+struct DescriptorSetLayoutWrapper;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -77,6 +82,10 @@ private:
     VkCommandPool  commandPool_  = VK_NULL_HANDLE;
 
     VkShaderModule        shaderModule_        = VK_NULL_HANDLE;
+    // The set layout, pipeline layout and pipeline are owned by the cachers (content-keyed, and
+    // the pipeline is built through the persistent device pipeline cache); the node holds them.
+    std::shared_ptr<CashSystem::DescriptorSetLayoutWrapper> setLayoutWrapper_;
+    std::shared_ptr<CashSystem::ComputePipelineWrapper>     pipelineWrapper_;
     VkDescriptorSetLayout descriptorSetLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout      pipelineLayout_      = VK_NULL_HANDLE;
     VkPipeline            pipeline_            = VK_NULL_HANDLE;

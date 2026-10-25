@@ -44,6 +44,16 @@ std::string ReadFile(const std::string& path) {
     return ss.str();
 }
 
+std::size_t CountOccurrences(const std::string& haystack, const std::string& needle) {
+    std::size_t count = 0;
+    std::size_t position = 0;
+    while ((position = haystack.find(needle, position)) != std::string::npos) {
+        ++count;
+        position += needle.size();
+    }
+    return count;
+}
+
 SdfInstruction sphere(glm::vec3 c, float r) {
     SdfInstruction in{};
     in.opCode = (uint8_t)SdfOpCode::Sphere;
@@ -63,6 +73,13 @@ SdfInstruction combine(SdfOpCode op, float k = 0.f) {
     SdfInstruction in{};
     in.opCode = (uint8_t)op;
     in.data[2] = k;
+    return in;
+}
+
+SdfInstruction glyph(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::GlyphOutline);
+    in.data[0] = std::bit_cast<float>(index);
     return in;
 }
 
@@ -144,6 +161,38 @@ TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {
     EXPECT_TRUE(result.success) << result.errorMessage
         << "\n--- spliced source (first 4000 chars after marker) ---\n"
         << spliced.substr(spliced.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), 4000);
+}
+
+TEST(UberShaderSplice, SharedGlyphRowsUseOneDeduplicatedRuntimeBuffer) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    for (uint32_t recipeId = 100; recipeId < 103; ++recipeId) {
+        RecipeRegistry::RecipeEntry entry{};
+        entry.bytecode = {glyph(/*localIndex=*/0)};
+        entry.glyphInstances.emplace_back();
+        if (recipeId == 102)
+            entry.glyphInstances.back().SegmentCount = 1U;
+        ASSERT_EQ(registry.Register(recipeId, entry), RecipeRegistry::RegisterResult::Ok);
+    }
+
+    std::vector<float> occupancy;
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphRows;
+    const std::string spliced = SpliceProceduralRecipesIntoSource(
+        raw, registry, &occupancy, &glyphRows);
+
+    ASSERT_EQ(glyphRows.size(), 2u);
+    EXPECT_EQ(registry.GlyphOutlineBytes(), 2u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance));
+    constexpr std::size_t legacyBytes = 3u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance);
+    EXPECT_LT(registry.GlyphOutlineBytes(), legacyBytes);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 0u)"), 2u);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 1u)"), 1u);
+    EXPECT_EQ(spliced.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
+        << "glyph outlines must not be emitted as shader-local arrays";
+
+    const auto result = CompileSource(spliced);
+    EXPECT_TRUE(result.success) << result.errorMessage;
 }
 
 // --- N=10 registered recipes: proves the switch scales + the N=3/N=10 measurement scene
