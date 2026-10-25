@@ -204,6 +204,22 @@ inline std::string WithGlyphOutlineBuffer(const std::string& sdfCoreKernelsGlsl,
     return out;
 }
 
+// SdfCoreKernels.g.glsl reads PathDistance rows through `pathInstances`, so a shader that inlines
+// the kernels and tape evaluator must declare the corresponding fixed-bucket buffer before them.
+inline std::string WithPathInstanceBuffer(const std::string& sdfCoreKernelsGlsl, uint32_t binding,
+                                          uint32_t set = 0) {
+    constexpr std::string_view marker = "#endif // PATHINSTANCE_GLSL\n";
+    const auto at = sdfCoreKernelsGlsl.find(marker);
+    if (at == std::string::npos) return sdfCoreKernelsGlsl;
+    std::string out = sdfCoreKernelsGlsl;
+    out.insert(at + marker.size(),
+        "layout(set = " + std::to_string(set) + ", std430, binding = " + std::to_string(binding) +
+        ") readonly buffer PathInstanceBuffer {\n"
+        "    PathInstance pathInstances[];\n"
+        "};\n");
+    return out;
+}
+
 // The same kernels for a shader whose recipes contain no glyph outline op: drop the glyph kernel so
 // the shader never references the shared buffer, and a pipeline layout without that binding stays
 // valid. Only the field function emitted for a glyph-free recipe is inlined next to the result, so
