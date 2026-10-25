@@ -5,6 +5,13 @@
 </head>
 <body>
     <div data-model="editor_layers" id="panel">
+        <!-- R765: the open pack's render-recipe documents, by content id. A row's button id is its
+             OpenRecipe selector ("recipe-<id>-open"); the open document is marked. Save writes it back
+             into the pack. -->
+        <div class="title" data-if="recipes.size > 0">Pack recipes</div>
+        <div class="recipe-row" data-for="recipe : recipes">
+            <div class="button" data-attr-id="recipe.elementId" data-class-open="recipe.isOpen" hit-mask="none">{{recipe.id}}</div>
+        </div>
         <div class="title">Rule layers</div>
         <!-- Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md): layer rows are now data-model-bound,
              replacing the Inc1 static markup (3 hand-authored "checkbox checked" divs). Each row's
@@ -41,7 +48,7 @@
             <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
             <span class="parameter-range">{{param.minimum}}–{{param.maximum}}</span>
         </div>
-        <div class="hint">Click a box to toggle a layer. Edits support undo/redo. S saves.</div>
+        <div class="hint">Click a box to toggle a layer. Edits support undo/redo. S saves (into the pack when a pack recipe is open).</div>
     </div>
 </body>
 </rml>

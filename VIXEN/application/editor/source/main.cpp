@@ -55,17 +55,48 @@ int main(int argc, char** argv) {
     auto mainLogger = std::make_shared<Vixen::Log::Logger>("editor_main", true);
     mainLogger->SetTerminalOutput(true);
 
+    // R765: VIXEN_EDITOR_PACK=<pack root holding manifest.utdl> with VIXEN_EDITOR_PACK_SCHEMA=<the
+    // generated pack schema, schemas.json> makes the editor browse that pack's render-recipe documents.
+    // It opens the first one by id; the OpenRecipe action opens any other, and Save writes the open
+    // document back into the pack. Without a pack the editor edits a loose document as before.
+    const char* packRoot = std::getenv("VIXEN_EDITOR_PACK");
+    const bool packMode = packRoot != nullptr && *packRoot != '\0';
     const std::string documentPath = (argc > 1) ? std::string(argv[1])
-                                                 : std::string(VIXEN_EDITOR_DEFAULT_DOCUMENT);
-    mainLogger->Info("vixen_editor: document = " + documentPath);
+                                     : packMode ? std::string()
+                                                : std::string(VIXEN_EDITOR_DEFAULT_DOCUMENT);
 
     auto app = std::make_unique<EditorApplication>(documentPath);
 
     // Editor-specific: must run before Initialize()/Prepare() (Run() only owns the lifecycle
     // from Initialize() onward).
-    if (!app->LoadDocument(documentPath)) {
-        mainLogger->Error("Failed to load document: " + app->LastEditorError());
-        return -1;
+    if (packMode) {
+        const char* schemaPath = std::getenv("VIXEN_EDITOR_PACK_SCHEMA");
+        if (schemaPath == nullptr || *schemaPath == '\0') {
+            mainLogger->Error("VIXEN_EDITOR_PACK requires VIXEN_EDITOR_PACK_SCHEMA (the pack's generated schemas.json)");
+            return -1;
+        }
+        if (!app->ConfigurePack(packRoot, schemaPath)) {
+            mainLogger->Error("Failed to open pack: " + app->LastEditorError());
+            return -1;
+        }
+    }
+    if (!documentPath.empty()) {
+        mainLogger->Info("vixen_editor: document = " + documentPath);
+        if (!app->LoadDocument(documentPath)) {
+            mainLogger->Error("Failed to load document: " + app->LastEditorError());
+            return -1;
+        }
+    } else {
+        if (app->Pack().Recipes().empty()) {
+            mainLogger->Error("Pack " + app->Pack().PackRoot() + " lists no render-recipe documents");
+            return -1;
+        }
+        const std::string& first = app->Pack().Recipes().front().id;
+        mainLogger->Info("vixen_editor: pack recipe = " + first);
+        if (!app->OpenPackRecipe(first)) {
+            mainLogger->Error("Failed to open pack recipe " + first + ": " + app->LastEditorError());
+            return -1;
+        }
     }
 
     // Inc-2b M3: VIXEN_EXIT_AFTER_FRAMES=<n> -- close cleanly after n frames, mirroring

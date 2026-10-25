@@ -128,3 +128,13 @@ body {
     border-color: #303050;
     padding-top: 6px;
 }
+
+/* R765: pack recipe list -- one button per layered document; the open one is highlighted. */
+.recipe-row {
+    display: block;
+    margin-bottom: 2dp;
+}
+
+.recipe-row .button.open {
+    background-color: #3a6ea5;
+}
