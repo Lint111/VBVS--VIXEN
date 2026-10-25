@@ -63,8 +63,16 @@ public:
     void AddElementTrigger(const Generated::AppFlowElementTrigger& trig);
 
 private:
+    // A registered action parameter. The name is owned: a runtime loaded from a parsed .appflow blob
+    // receives FlowParamSchema names that point into the blob buffer, which the caller may destroy
+    // right after Load() (AppFlowRuntime deep-owns what it retains).
+    struct ParamSchema {
+        std::string name;
+        Generated::FlowParamType type;
+    };
+
     bool ValidateParams(const std::vector<std::pair<std::string, std::string>>& params,
-                         const std::vector<FlowParamSchema>& schema, std::string& warn) const;
+                         const std::vector<ParamSchema>& schema, std::string& warn) const;
 
     struct PatternBinding {
         std::string prefix, suffix, paramName;
@@ -73,7 +81,7 @@ private:
         std::string on;
     };
 
-    std::unordered_map<uint16_t, std::vector<FlowParamSchema>> registry_;
+    std::unordered_map<uint16_t, std::vector<ParamSchema>> registry_;
     std::unordered_map<std::string, BoundAction> bindings_;
     std::vector<PatternBinding> patterns_;
 };

@@ -6,18 +6,21 @@ namespace Vixen::AppFlow {
 
 void BindingStore::RegisterActions(std::span<const AppFlowActionDecl> decls) {
     for (const auto& decl : decls) {
-        std::vector<FlowParamSchema> schema(decl.params, decl.params + decl.paramCount);
+        std::vector<ParamSchema> schema;
+        schema.reserve(decl.paramCount);
+        for (uint32_t i = 0; i < decl.paramCount; ++i)
+            schema.push_back({decl.params[i].name ? decl.params[i].name : "", decl.params[i].type});
         registry_[static_cast<uint16_t>(decl.id)] = std::move(schema);
     }
 }
 
 bool BindingStore::ValidateParams(const std::vector<std::pair<std::string, std::string>>& params,
-                                   const std::vector<FlowParamSchema>& schema,
+                                   const std::vector<ParamSchema>& schema,
                                    std::string& warn) const {
     for (const auto& [name, source] : params) {
         (void)source;
         bool known = std::any_of(schema.begin(), schema.end(),
-                                  [&](const FlowParamSchema& s) { return name == s.name; });
+                                  [&](const ParamSchema& s) { return name == s.name; });
         if (!known) {
             warn = "unknown param '" + name + "' — binding inert";
             return false;
@@ -61,7 +64,7 @@ bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& o
         const auto action = registry_.find(static_cast<uint16_t>(p.action));
         if (action == registry_.end()) continue;
         const auto param = std::find_if(action->second.begin(), action->second.end(),
-            [&](const FlowParamSchema& schema) { return p.paramName == schema.name; });
+            [&](const ParamSchema& schema) { return p.paramName == schema.name; });
         if (param == action->second.end()) continue;
         if (param->type == Generated::FlowParamType::Int) {
             int32_t value;
