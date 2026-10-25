@@ -33,17 +33,17 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief HitRecordBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x2f6fac1878b08edd (for runtime discovery)
+ * Layout VixenHash: 0xd7b761d5431b4949 (for runtime discovery)
  */
 struct HitRecordBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x2f6fac1878b08eddULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xd7b761d5431b4949ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "HitRecord";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 60;
+        static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t BINDING = 0;
     };
 

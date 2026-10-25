@@ -343,7 +343,7 @@ void main() {
     // out-of-bounds ones) falls through to AccumulateHit and passes rec BY
     // VALUE — an uninitialized struct copy is UB in GLSL/SPIR-V even though
     // the hasHit=false guard prevents any field READ (batch-3 validator).
-    HitRecord rec = HitRecord(vec3(0.0), 0.0, vec3(0.0), 0.0, vec3(0.0), 0u, uint[3](0u, 0u, 0u));
+    HitRecord rec = HitRecord(vec3(0.0), 0.0, vec3(0.0), 0.0, vec3(0.0), 0u, uint[3](0u, 0u, 0u), 0.0);
     bool hasHit = false;
     if (inBounds) {
         uint flags = hitRecords[slot].flags;

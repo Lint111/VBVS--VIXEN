@@ -1181,15 +1181,21 @@ float instanceMinimumAxisScale(uint instanceIndex) {
 // attached while the base three-pitch offset continues to suppress the 128^3
 // lattice acne.
 float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
-                                vec3 surfaceNormal, vec3 lightDirection) {
-    if (sourceInstanceIndex >= uint(bodyInstances.length())) return configuredBias;
+                                vec3 surfaceNormal, vec3 lightDirection,
+                                float primaryFootprint) {
+    // The primary SDF march certifies a hit at 0.25 * pixel footprint. Four
+    // such widths are the smallest normal offset that makes the secondary
+    // ray independent of that contact footprint. Keep the configured bias as
+    // the floor for callers without a camera-ray footprint.
+    float footprintBias = max(configuredBias, 4.0 * max(primaryFootprint, 0.0));
+    if (sourceInstanceIndex >= uint(bodyInstances.length())) return footprintBias;
     BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
     uint octreeIndex = sourceInstance.octreeIndex;
-    if (octreeIndex >= uint(configs.length())) return configuredBias;
+    if (octreeIndex >= uint(configs.length())) return footprintBias;
 
     OctreeConfig sourceConfig = configs[octreeIndex];
     if (sourceConfig.formatId != FORMAT_STORED_SDF || sourceConfig.bricksPerAxisSdf == 0u)
-        return configuredBias;
+        return footprintBias;
 
     // localToWorld maps the normalized ESVO grid into the body-local [0,10]^3
     // frame; the instance transform then maps that body frame to world space.
@@ -1207,7 +1213,7 @@ float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
     float voxelCount = float(sourceConfig.bricksPerAxisSdf) * 8.0;
     float voxelWorldPitch = max(length(gridAxisX), max(length(gridAxisY), length(gridAxisZ))) /
                             voxelCount;
-    float normalOffsetBias = max(configuredBias, 3.0 * voxelWorldPitch);
+    float normalOffsetBias = max(footprintBias, 3.0 * voxelWorldPitch);
     float normalLightCos = clamp(dot(surfaceNormal, lightDirection), 0.0, 1.0);
     float slope = sqrt(max(1.0 - normalLightCos * normalLightCos, 0.0)) /
                   max(normalLightCos, 0.2);

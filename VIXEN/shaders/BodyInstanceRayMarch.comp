@@ -412,6 +412,12 @@ void main() {
     rec.hitT        = worldHit.t;
     rec.worldPos    = rayOrigin + rayDir * worldHit.t;
     rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    // Carry the primary camera-ray footprint to the later shadow wave. The
+    // shadow pass's push-constant raySizeCoef is the independent secondary
+    // traversal cone and is not the footprint of this shaded hit.
+    rec.primaryFootprint = anyHit
+        ? max(worldHit.t * pc.raySizeCoef + pc.raySizeBias, 0.0)
+        : 0.0;
     if (g_recipeTraceExhaustedRays != 0u) rec.flags |= HITRECORD_FLAG_TRACE_EXHAUSTED;
     // Round 9: tag the FINAL winning hit as far-field iff it survived the
     // far-hit-rejection block above (anyHit would already be false if

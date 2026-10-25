@@ -30,9 +30,9 @@
 //   28 hitT         float  (fills worldNormal's trailing 4 B)
 //   32 worldPos     vec3   (12 B; offset 32 already 16-aligned)
 //   44 flags        uint   (fills worldPos's trailing 4 B)
-//   48 _pad0        uint[3]  (explicit pad -> 60 B, then struct-tail-aligned
-//                             to 64 B for the array stride, since the largest
-//                             member alignment in this struct is 16 B)
+//   48 _pad0        uint[3]  (explicit pad -> 60 B)
+//   60 primaryFootprint float (the camera-ray footprint at the winning hit,
+//                              occupying the final word of the existing 64 B stride)
 // Total: 64 bytes/element.
 //
 // flags: bit0 (0x1) = hit/miss (1 = TraceWorld found a hit; 0 = sky/miss).
@@ -42,6 +42,10 @@
 // would discard; later lean slices (transport skip / resolve fold) read the
 // SAME bit so the classification has one owner. Only ever set when the lean
 // switch is on (params camForward.w > 0).
+//
+// primaryFootprint is written by the primary march from hitT and the primary
+// camera ray coefficient. Shadow stages use it to scale their normal offset;
+// their secondary raySizeCoef is an independent traversal coefficient.
 //
 // _pad0 usage (MASTER ledger — ShadowVisibilityWave.comp carries a mirror):
 // [0] = winning instance index (M3 round 3; the Cornell diagnostics read it
@@ -84,6 +88,7 @@ struct HitRecord {
     vec3  worldPos;
     uint  flags;
     uint  _pad0[3];
+    float primaryFootprint;
 };
 
 #endif // HITRECORD_GLSL
