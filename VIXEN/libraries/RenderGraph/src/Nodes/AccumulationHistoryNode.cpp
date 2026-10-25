@@ -280,7 +280,7 @@ void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkI
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
     if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[AccumulationHistoryNode] vkQueueSubmit (transition) failed");
+        throw std::runtime_error("[AccumulationHistoryNode] queue-owner transition submit failed");
     }
 
 }

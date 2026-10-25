@@ -5,13 +5,6 @@
 # 'VK2-borrowed' = acquires VulkanDevice::SubmitMutex() without owning a lock; 'CENSUS' = the
 # LockCensus.h wrapper itself; 'UNCLASSIFIED' = declared here but not yet classified (WARN).
 # Counts may only go down; a removal commit must re-sync its row (--fix), an addition must be classified.
-VIXEN/libraries/CashSystem/include/TypeRegistry.h	1	C6
 VIXEN/libraries/Core/include/LockCensus.h	4	CENSUS
-VIXEN/libraries/ResourceManagement/include/Memory/BudgetBridge.h	1	RM13
-VIXEN/libraries/ResourceManagement/include/Memory/HostBudgetManager.h	1	RM3
 VIXEN/libraries/ResourceManagement/src/Memory/BatchedUploader.cpp	0	BOOKKEEPING-GATE
-VIXEN/libraries/ResourceManagement/src/Memory/BudgetBridge.cpp	0	RM13
-VIXEN/libraries/ResourceManagement/src/Memory/HostBudgetManager.cpp	0	RM3
 VIXEN/libraries/ResourceManagement/src/Memory/StagingBufferPool.cpp	0	BOOKKEEPING-GATE
-VIXEN/libraries/SVO/include/LaineKarrasOctree.h	1	SVO3
-VIXEN/libraries/SVO/src/SVORebuild.cpp	0	SVO3

@@ -1411,14 +1411,15 @@ void RenderGraph::DrainOffGraphSubmits() {
     }
 }
 
-GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device) {
+GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device, uint64_t boundNs) {
     if (!device || submitChannelDraining_) return {};
     const auto found = queueTimelines_.find(device->queue);
     if (found == queueTimelines_.end() || found->second.semaphore == VK_NULL_HANDLE) return {};
     QueueTimeline& timeline = found->second;
     if (const VkResult polled = timeline.Poll(); polled != VK_SUCCESS) return MakeWaitResult(polled);
     if (timeline.completed >= timeline.lastSignaled) return {};
-    const GpuWaitResult waited = BoundedWaitSemaphore(timeline.device, timeline.semaphore, timeline.lastSignaled);
+    const GpuWaitResult waited = BoundedWaitSemaphore(
+        timeline.device, timeline.semaphore, timeline.lastSignaled, boundNs);
     if (waited.Ok()) (void)timeline.Poll();
     return waited;
 }
@@ -1951,7 +1952,7 @@ bool RenderGraph::DrainGraphDevicesBounded() {
     }
     for (auto* vdev : devices) {
         BoundedQueueIdle idle;
-        const GpuWaitResult drained = idle.Wait(*vdev);
+        const GpuWaitResult drained = idle.Wait(*this, *vdev);
         // DEVICE_LOST (or any hard failure) means no work is running: teardown is safe. Only a wait
         // that outlives the bound leaves the GPU executing work that teardown would destroy.
         if (drained.fault == GpuFaultKind::WatchdogTimeout) {
@@ -1959,7 +1960,6 @@ bool RenderGraph::DrainGraphDevicesBounded() {
                             std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms — GPU wedged");
             return false;
         }
-        idle.Destroy(vdev->device);
     }
     return true;
 }

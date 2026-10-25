@@ -13,17 +13,84 @@
 #include <stb_image_write.h>
 
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Vixen::RenderGraph::Debug {
 
-// Blocking raw readback of a graph-produced image. Restores the recorded layout
-// before returning; float guides retain their original bytes and precision.
+struct PendingRenderTargetReadback {
+    struct State {
+        VkDevice device = VK_NULL_HANDLE;
+        VkCommandPool commandPool = VK_NULL_HANDLE;
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkDeviceSize size = 0;
+        std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion;
+        bool retired = false;
+        bool orphaned = false;
+
+        void Cleanup() {
+            if (buffer != VK_NULL_HANDLE) vkDestroyBuffer(device, buffer, nullptr);
+            if (memory != VK_NULL_HANDLE) vkFreeMemory(device, memory, nullptr);
+            if (commandPool != VK_NULL_HANDLE) vkDestroyCommandPool(device, commandPool, nullptr);
+            buffer = VK_NULL_HANDLE;
+            memory = VK_NULL_HANDLE;
+            commandPool = VK_NULL_HANDLE;
+            command = VK_NULL_HANDLE;
+        }
+
+        void Retire() {
+            retired = true;
+            if (orphaned) Cleanup();
+        }
+
+        ~State() {
+            orphaned = true;
+            if (retired) Cleanup();
+        }
+    };
+
+    std::shared_ptr<State> state;
+
+    [[nodiscard]] bool IsReady() const {
+        return state && state->completion && state->completion->IsRetired();
+    }
+
+    /// Consume the next-frame result. Returns false while the owner has not retired the copy.
+    bool Poll(std::vector<uint8_t>& bytes, std::string& err) {
+        if (!state || !state->completion || !state->completion->IsRetired()) return false;
+        const auto current = std::move(state);
+        if (current->completion->Result() != VK_SUCCESS) {
+            err = "RenderTargetReadback queue-owner submit failed: " +
+                  std::to_string(current->completion->Result());
+            current->Cleanup();
+            return true;
+        }
+        void* mapped = nullptr;
+        if (vkMapMemory(current->device, current->memory, 0, current->size, 0, &mapped) != VK_SUCCESS) {
+            err = "RenderTargetReadback: vkMapMemory failed";
+            current->Cleanup();
+            return true;
+        }
+        bytes.resize(static_cast<size_t>(current->size));
+        std::memcpy(bytes.data(), mapped, bytes.size());
+        vkUnmapMemory(current->device, current->memory);
+        current->Cleanup();
+        return true;
+    }
+};
+
+// Queue a raw readback of a graph-produced image. Restores the recorded layout in the submitted
+// command; the bytes become available from PendingRenderTargetReadback::Poll on a later frame.
+// Float guides retain their original bytes and precision.
 inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device,
                                  Vixen::Vulkan::Resources::IRenderTarget* target,
                                  VkQueue queue, uint32_t queueFamilyIndex,
-                                 std::vector<uint8_t>& bytes, std::string& err) {
+                                 std::vector<uint8_t>& bytes, std::string& err,
+                                 std::shared_ptr<PendingRenderTargetReadback>* pendingOut = nullptr) {
     if (!device || !target || queue == VK_NULL_HANDLE) {
         err = "ReadRenderTargetBytes: null device/target/queue";
         return false;
@@ -189,40 +256,90 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
-    // This helper is called by the render-thread capture owner after graph work has drained; it
-    // is intentionally outside the producer path. R723's normal readbacks use QueueSubmitRequest.
-    const bool submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
-    if (submitOk) vkQueueWaitIdle(queue);
 
-    bool ok = submitOk;
-    if (ok) {
-        void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
-            bytes.resize(static_cast<size_t>(bufSize));
-            std::memcpy(bytes.data(), mapped, bytes.size());
-            vkUnmapMemory(vkDevice, hostMem);
-        } else {
-            ok = false;
-            err = "ReadRenderTargetBytes: vkMapMemory failed";
-        }
-    } else {
-        err = "ReadRenderTargetBytes: vkQueueSubmit failed";
+    // R739: the helper is a producer, not a queue owner. The completion callback owns cleanup;
+    // the caller observes the result on a later frame through the explicit readback handle.
+    auto state = std::make_shared<PendingRenderTargetReadback::State>();
+    state->device = vkDevice;
+    state->commandPool = cmdPool;
+    state->command = cmd;
+    state->buffer = hostBuf;
+    state->memory = hostMem;
+    state->size = bufSize;
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        device, queue, submitInfo);
+    request.onRetired = [state] { state->Retire(); };
+    const auto completion = device->PublishSubmitRequest(std::move(request));
+    if (!completion || (completion->Result() != VK_NOT_READY &&
+                        completion->Result() != VK_SUCCESS)) {
+        err = "ReadRenderTargetBytes: queue owner rejected the readback";
+        return false;
     }
-
-    vkDestroyBuffer(vkDevice, hostBuf, nullptr);
-    vkFreeMemory(vkDevice, hostMem, nullptr);
-    vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-    return ok;
+    state->completion = completion;
+    if (pendingOut) {
+        auto pending = std::make_shared<PendingRenderTargetReadback>();
+        pending->state = std::move(state);
+        *pendingOut = std::move(pending);
+    }
+    err = "ReadRenderTargetBytes: result pending until the next frame";
+    (void)bytes;
+    return false;
 }
 
-// Existing RGBA8/BGRA8 captures keep their channel order and PNG encoding.
-inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* device,
-                                    Vixen::Vulkan::Resources::IRenderTarget* target,
-                                    VkQueue queue, uint32_t queueFamilyIndex,
-                                    const std::string& path, std::string& err) {
+inline std::shared_ptr<PendingRenderTargetReadback> BeginReadRenderTargetBytes(
+    Vixen::Vulkan::Resources::VulkanDevice* device,
+    Vixen::Vulkan::Resources::IRenderTarget* target,
+    VkQueue queue, uint32_t queueFamilyIndex,
+    std::string& err) {
+    auto pending = std::make_shared<PendingRenderTargetReadback>();
+    std::vector<uint8_t> ignored;
+    if (ReadRenderTargetBytes(device, target, queue, queueFamilyIndex, ignored, err, &pending)) return pending;
+    if (pending->state) return pending;
+    return nullptr;
+}
+
+// Existing RGBA8/BGRA8 captures keep their channel order and PNG encoding. The returned handle
+// owns the next-frame completion; callers that need a bool completion result should retain it and
+// call Poll rather than treating the legacy bool wrapper as synchronous.
+struct PendingRenderTargetPngCapture {
+    std::shared_ptr<PendingRenderTargetReadback> readback;
+    std::string path;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    bool swapRB = false;
+
+    /// Encode the next-frame bytes once the queue-owner completion is retired.
+    bool Poll(std::string& err) {
+        if (!readback) return true;
+        std::vector<uint8_t> bytes;
+        std::string readbackError;
+        if (!readback->Poll(bytes, readbackError)) return false;
+        if (!readbackError.empty()) {
+            err = std::move(readbackError);
+            return true;
+        }
+        err.clear();
+        std::vector<uint8_t> rgb(size_t(width) * height * 3);
+        for (size_t i = 0; i < size_t(width) * height; ++i) {
+            rgb[i * 3] = bytes[i * 4 + (swapRB ? 2u : 0u)];
+            rgb[i * 3 + 1] = bytes[i * 4 + 1];
+            rgb[i * 3 + 2] = bytes[i * 4 + (swapRB ? 0u : 2u)];
+        }
+        if (stbi_write_png(path.c_str(), int(width), int(height), 3, rgb.data(), int(width) * 3) == 0) {
+            err = "CaptureRenderTargetToPng: stbi_write_png failed for " + path;
+        }
+        return true;
+    }
+};
+
+inline std::shared_ptr<PendingRenderTargetPngCapture> BeginCaptureRenderTargetToPng(
+    Vixen::Vulkan::Resources::VulkanDevice* device,
+    Vixen::Vulkan::Resources::IRenderTarget* target,
+    VkQueue queue, uint32_t queueFamilyIndex,
+    const std::string& path, std::string& err) {
     if (!target) {
         err = "CaptureRenderTargetToPng: null target";
-        return false;
+        return nullptr;
     }
     const VkFormat fmt = target->GetFormat();
     const bool swapRB = fmt == VK_FORMAT_B8G8R8A8_UNORM || fmt == VK_FORMAT_B8G8R8A8_SRGB ||
@@ -233,21 +350,32 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
                       fmt == VK_FORMAT_R8G8B8A8_SINT;
     if (!rgba && !swapRB) {
         err = "CaptureRenderTargetToPng: expected an RGBA8 or BGRA8 image";
+        return nullptr;
+    }
+    auto pending = std::make_shared<PendingRenderTargetPngCapture>();
+    pending->readback = BeginReadRenderTargetBytes(device, target, queue, queueFamilyIndex, err);
+    if (!pending->readback) return nullptr;
+    const auto extent = target->GetExtent();
+    pending->path = path;
+    pending->width = extent.width;
+    pending->height = extent.height;
+    pending->swapRB = swapRB;
+    err = "CaptureRenderTargetToPng: result pending until the next frame";
+    return pending;
+}
+
+inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* device,
+                                    Vixen::Vulkan::Resources::IRenderTarget* target,
+                                    VkQueue queue, uint32_t queueFamilyIndex,
+                                    const std::string& path, std::string& err,
+                                    std::shared_ptr<PendingRenderTargetPngCapture>* pendingOut = nullptr) {
+    auto pending = BeginCaptureRenderTargetToPng(device, target, queue, queueFamilyIndex, path, err);
+    if (!pending) return false;
+    if (pendingOut) {
+        *pendingOut = std::move(pending);
         return false;
     }
-    std::vector<uint8_t> bytes;
-    if (!ReadRenderTargetBytes(device, target, queue, queueFamilyIndex, bytes, err)) return false;
-    const auto extent = target->GetExtent();
-    std::vector<uint8_t> rgb(size_t(extent.width) * extent.height * 3);
-    for (size_t i = 0; i < size_t(extent.width) * extent.height; ++i) {
-        rgb[i * 3] = bytes[i * 4 + (swapRB ? 2u : 0u)];
-        rgb[i * 3 + 1] = bytes[i * 4 + 1];
-        rgb[i * 3 + 2] = bytes[i * 4 + (swapRB ? 0u : 2u)];
-    }
-    const bool ok = stbi_write_png(path.c_str(), int(extent.width), int(extent.height),
-                                   3, rgb.data(), int(extent.width) * 3) != 0;
-    if (!ok) err = "CaptureRenderTargetToPng: stbi_write_png failed for " + path;
-    return ok;
+    return false;
 }
 
 } // namespace Vixen::RenderGraph::Debug

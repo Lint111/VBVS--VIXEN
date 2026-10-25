@@ -4,8 +4,11 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <memory>
+#include "QueueSubmitRequest.h"
 
 struct SwapChainPublicVariables;
+namespace Vixen::Vulkan::Resources { class VulkanDevice; }
 
 namespace Vixen::Profiler {
 
@@ -26,6 +29,7 @@ struct CaptureConfig {
 /// Result of a capture operation
 struct CaptureResult {
     bool success = false;
+    bool pending = false;
     std::filesystem::path savedPath;
     std::string errorMessage;
     uint32_t capturedWidth = 0;
@@ -35,8 +39,8 @@ struct CaptureResult {
 /**
  * @brief Captures rendered frames to PNG files
  *
- * Performs synchronous GPU->CPU readback of swapchain images.
- * Uses a staging buffer for the copy and stb_image_write for PNG encoding.
+ * Publishes GPU->CPU readback of swapchain images to the queue owner and polls the next-frame
+ * completion. Uses a staging buffer for the copy and stb_image_write for PNG encoding.
  *
  * Thread safety: NOT thread-safe. Call only from render thread.
  */
@@ -70,19 +74,36 @@ public:
         uint32_t maxHeight
     );
 
+    /// Initialize with the queue owner. Captures published through this overload complete on a
+    /// later graph phase; the producer never submits or waits on the physical queue.
+    bool Initialize(
+        Vixen::Vulkan::Resources::VulkanDevice* queueOwner,
+        VkDevice device,
+        VkPhysicalDevice physicalDevice,
+        VkQueue queue,
+        uint32_t queueFamilyIndex,
+        uint32_t maxWidth,
+        uint32_t maxHeight
+    );
+
     /// Cleanup Vulkan resources
     void Cleanup();
 
-    /// Capture current swapchain image to PNG
+    /// Queue the current swapchain image for a next-frame PNG result. `pending` is set when the
+    /// queue owner accepted the request; call Poll() from a later frame for the file result.
     /// @param swapchainVars Swapchain public variables (provides image access)
     /// @param imageIndex Current swapchain image index
     /// @param config Capture configuration
-    /// @return Result with success status and saved path
+    /// @return Result with pending=true when the owner accepted the request
     CaptureResult Capture(
         const SwapChainPublicVariables* swapchainVars,
         uint32_t imageIndex,
         const CaptureConfig& config
     );
+
+    /// Poll the completion published by the previous Capture call. Returns true only when the
+    /// next-frame result is available and fills `result` with the PNG outcome.
+    bool Poll(CaptureResult& result);
 
     /// Check if capture system is initialized
     bool IsInitialized() const { return initialized_; }
@@ -101,6 +122,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
+    Vixen::Vulkan::Resources::VulkanDevice* queueOwner_ = nullptr;
     uint32_t queueFamilyIndex_ = 0;
 
     // Staging buffer (reusable)
@@ -111,9 +133,12 @@ private:
     // Command pool and buffer
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
-    VkFence fence_ = VK_NULL_HANDLE;
-
     bool initialized_ = false;
+    std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion_;
+    CaptureConfig pendingConfig_;
+    uint32_t pendingWidth_ = 0;
+    uint32_t pendingHeight_ = 0;
+    bool pendingCapture_ = false;
 
     // Internal helpers
     bool CreateStagingBuffer(VkDeviceSize size);

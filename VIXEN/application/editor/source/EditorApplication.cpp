@@ -864,6 +864,16 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
 }
 
 bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& err) {
+    if (pendingCapture_) {
+        if (pendingCapturePath_ != path) {
+            err = "CaptureFrameToPng: another capture is pending";
+            return false;
+        }
+        if (!pendingCapture_->Poll(err)) return false;
+        pendingCapture_.reset();
+        pendingCapturePath_.clear();
+        return err.empty();
+    }
     // Live lookups every call -- never cache a node pointer across graph recompiles.
     auto* graph = GetRenderGraph();
     if (!graph) {
@@ -896,8 +906,12 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
         return false;
     }
     auto* device = deviceInst->GetVulkanDevice();
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    pendingCapture_ = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pendingCapture_) return false;
+    pendingCapturePath_ = path;
+    err.clear();
+    return true;
 }
 
 bool EditorApplication::SaveDocument() {
@@ -1254,11 +1268,10 @@ void EditorApplication::PostTick() {
     // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
     // contains the completed scene image for the Update tick that scheduled the capture.
     if (!pendingCapturePath_.empty()) {
-        const std::string path = std::move(pendingCapturePath_);
-        pendingCapturePath_.clear();
+        const std::string path = pendingCapturePath_;
         std::string captureErr;
         TraceEditorLatency("readback", "begin", updateTick_ - 1);
-        if (!CaptureFrameToPng(path, captureErr)) {
+        if (!CaptureFrameToPng(path, captureErr) && pendingCapture_ == nullptr) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
         TraceEditorLatency("readback", "end", updateTick_ - 1);

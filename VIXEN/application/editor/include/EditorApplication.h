@@ -40,6 +40,7 @@
 // Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
 // transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
 namespace Vixen::App { class EditorLayersView; }
+namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 
 class EditorApplication : public VulkanGraphApplication {
 public:
@@ -194,6 +195,7 @@ private:
     // knobs are unset (see BuildRenderGraph + Update). CaptureFrameToPng reads the existing
     // compute_render_target so UI overlays cannot satisfy a scene-render assertion.
     std::string pendingCapturePath_;  // one capture is scheduled by Update() for PostTick()
+    std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingCapture_;
     long updateTick_ = 0;  // editor-local Update tick counter, independent of the base app's own counters
 
     std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT

@@ -1748,6 +1748,26 @@ void VulkanGraphApplication::RunPhotonCellDiagReadback(uint64_t sampleFrame) {
 }
 
 void VulkanGraphApplication::PostTick() {
+    if (!pendingHudCapturePath_.empty()) {
+        std::string captureErr;
+        const std::string path = pendingHudCapturePath_;
+        if (!CaptureHudFrameToPng(path, captureErr) &&
+            !pendingHudCapture_ && pendingOffscreenCaptures_.empty() && mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
+        }
+    }
+    for (auto it = pendingOffscreenCaptures_.begin(); it != pendingOffscreenCaptures_.end();) {
+        std::string captureErr;
+        if (!it->request->Poll(captureErr)) {
+            ++it;
+            continue;
+        }
+        const std::string path = it->path;
+        it = pendingOffscreenCaptures_.erase(it);
+        if (!captureErr.empty() && mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication] CaptureOffscreenFrameToPng failed for " + path + ": " + captureErr);
+        }
+    }
     if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
         RunHdrMeterDebugReadback();
     }
@@ -3848,7 +3868,8 @@ void VulkanGraphApplication::Update() {
             if (captureFrame != hudUpdateTick_) continue;
             const std::string path = hudCaptureDir_ + "/hud_capture_" + std::to_string(hudUpdateTick_) + ".png";
             std::string captureErr;
-            if (!CaptureHudFrameToPng(path, captureErr)) {
+            if (!CaptureHudFrameToPng(path, captureErr) &&
+                !pendingHudCapture_ && pendingOffscreenCaptures_.empty()) {
                 if (mainLogger) mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
             }
         }
@@ -4880,9 +4901,14 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
         return false;
     }
 
-    Vixen::Profiler::FrameCapture capture;
-    if (!capture.Initialize(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
-                             swapVars->Extent.width, swapVars->Extent.height)) {
+    if (!pendingFrameCapturePath_.empty() && pendingFrameCapturePath_ != path) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] another capture is pending");
+        return false;
+    }
+    if (!frameCapture_) frameCapture_ = std::make_unique<Vixen::Profiler::FrameCapture>();
+    if (!frameCapture_->IsInitialized() && !frameCapture_->Initialize(
+            device, device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
+            swapVars->Extent.width, swapVars->Extent.height)) {
         if (mainLogger) mainLogger->Error("[CaptureFrameToPng] FrameCapture::Initialize failed");
         return false;
     }
@@ -4895,8 +4921,17 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
     cfg.outputPath = want.parent_path().empty() ? std::filesystem::path(".") : want.parent_path();
     cfg.testName = want.stem().string();
     cfg.frameNumber = 0;
-    Vixen::Profiler::CaptureResult result =
-        capture.Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+    Vixen::Profiler::CaptureResult result;
+    if (!pendingFrameCapturePath_.empty()) {
+        if (!frameCapture_->Poll(result)) return false;
+        pendingFrameCapturePath_.clear();
+    } else {
+        result = frameCapture_->Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+        if (result.pending) {
+            pendingFrameCapturePath_ = path;
+            return false;
+        }
+    }
     if (!result.success) {
         if (mainLogger) mainLogger->Error("[CaptureFrameToPng] capture failed: " + result.errorMessage);
         return false;
@@ -4928,6 +4963,16 @@ bool VulkanGraphApplication::SwapchainImageIsValid() const {
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    if (pendingHudCapture_) {
+        if (pendingHudCapturePath_ != path) {
+            err = "CaptureHudFrameToPng: another capture is pending";
+            return false;
+        }
+        if (!pendingHudCapture_->Poll(err)) return false;
+        pendingHudCapture_.reset();
+        pendingHudCapturePath_.clear();
+        return err.empty();
+    }
     if (presentationTarget_ == PresentationTarget::Offscreen) {
         return CaptureOffscreenFrameToPng(path, err);
     }
@@ -4969,11 +5014,21 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
     }
     auto* device = deviceInst->GetVulkanDevice();
 
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    pendingHudCapture_ = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pendingHudCapture_) return false;
+    pendingHudCapturePath_ = path;
+    err.clear();
+    return true;
 }
 
 bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path, std::string& err) {
+    for (const auto& pending : pendingOffscreenCaptures_) {
+        if (pending.path == path) {
+            err.clear();
+            return true;
+        }
+    }
     if (presentationTarget_ != PresentationTarget::Offscreen) {
         err = "CaptureOffscreenFrameToPng: graph presentation target is not offscreen";
         return false;
@@ -5003,8 +5058,12 @@ bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path,
         return false;
     }
     auto* device = deviceNode->GetVulkanDevice();
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    auto pending = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, target, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pending) return false;
+    pendingOffscreenCaptures_.push_back(PendingOffscreenCapture{std::move(pending), path});
+    err.clear();
+    return true;
 }
 
 void VulkanGraphApplication::NotifyReconstructionCameraCut() {

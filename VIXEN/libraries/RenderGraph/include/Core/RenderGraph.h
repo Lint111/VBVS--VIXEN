@@ -894,7 +894,9 @@ public:
     /// Opt-in synchronous retirement (PresentNode's waitForIdle, demo graphs only): a bounded wait
     /// for the newest batch the owner issued on `device`'s queue. Polls first; never takes VK2 and
     /// never submits. On the lowered executor nothing of this frame is issued yet, so it returns.
-    [[nodiscard]] GpuWaitResult WaitIssuedWork(Vixen::Vulkan::Resources::VulkanDevice* device);
+    [[nodiscard]] GpuWaitResult WaitIssuedWork(
+        Vixen::Vulkan::Resources::VulkanDevice* device,
+        uint64_t boundNs = GpuWaitBoundNs());
 
     /// Keep the host's OS message pump running while a graph recompile drains the GPU.
     /// The callback runs on the registering thread approximately every 16 ms during the wait.

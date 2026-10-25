@@ -240,7 +240,7 @@ void ProbeAtlasNode::TransitionToGeneral(VkCommandPool commandPool) {
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
     if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[ProbeAtlasNode] vkQueueSubmit (transition) failed");
+        throw std::runtime_error("[ProbeAtlasNode] queue-owner transition submit failed");
     }
 
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);

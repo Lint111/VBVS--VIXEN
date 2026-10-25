@@ -1,5 +1,6 @@
 #include "FrameCapture.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
+#include "VulkanDevice.h"
 
 #include <algorithm>
 #include <cstring>
@@ -29,23 +30,29 @@ FrameCapture::FrameCapture(FrameCapture&& other) noexcept
     : device_(other.device_)
     , physicalDevice_(other.physicalDevice_)
     , queue_(other.queue_)
+    , queueOwner_(other.queueOwner_)
     , queueFamilyIndex_(other.queueFamilyIndex_)
     , stagingBuffer_(other.stagingBuffer_)
     , stagingMemory_(other.stagingMemory_)
     , stagingBufferSize_(other.stagingBufferSize_)
     , commandPool_(other.commandPool_)
     , commandBuffer_(other.commandBuffer_)
-    , fence_(other.fence_)
     , initialized_(other.initialized_)
+    , completion_(std::move(other.completion_))
+    , pendingConfig_(std::move(other.pendingConfig_))
+    , pendingWidth_(other.pendingWidth_)
+    , pendingHeight_(other.pendingHeight_)
+    , pendingCapture_(other.pendingCapture_)
 {
     // Clear source
     other.device_ = VK_NULL_HANDLE;
+    other.queueOwner_ = nullptr;
     other.stagingBuffer_ = VK_NULL_HANDLE;
     other.stagingMemory_ = VK_NULL_HANDLE;
     other.commandPool_ = VK_NULL_HANDLE;
     other.commandBuffer_ = VK_NULL_HANDLE;
-    other.fence_ = VK_NULL_HANDLE;
     other.initialized_ = false;
+    other.pendingCapture_ = false;
 }
 
 FrameCapture& FrameCapture::operator=(FrameCapture&& other) noexcept {
@@ -55,27 +62,45 @@ FrameCapture& FrameCapture::operator=(FrameCapture&& other) noexcept {
         device_ = other.device_;
         physicalDevice_ = other.physicalDevice_;
         queue_ = other.queue_;
+        queueOwner_ = other.queueOwner_;
         queueFamilyIndex_ = other.queueFamilyIndex_;
         stagingBuffer_ = other.stagingBuffer_;
         stagingMemory_ = other.stagingMemory_;
         stagingBufferSize_ = other.stagingBufferSize_;
         commandPool_ = other.commandPool_;
         commandBuffer_ = other.commandBuffer_;
-        fence_ = other.fence_;
         initialized_ = other.initialized_;
+        completion_ = std::move(other.completion_);
+        pendingConfig_ = std::move(other.pendingConfig_);
+        pendingWidth_ = other.pendingWidth_;
+        pendingHeight_ = other.pendingHeight_;
+        pendingCapture_ = other.pendingCapture_;
 
         other.device_ = VK_NULL_HANDLE;
+        other.queueOwner_ = nullptr;
         other.stagingBuffer_ = VK_NULL_HANDLE;
         other.stagingMemory_ = VK_NULL_HANDLE;
         other.commandPool_ = VK_NULL_HANDLE;
         other.commandBuffer_ = VK_NULL_HANDLE;
-        other.fence_ = VK_NULL_HANDLE;
         other.initialized_ = false;
+        other.pendingCapture_ = false;
     }
     return *this;
 }
 
 bool FrameCapture::Initialize(
+    VkDevice device,
+    VkPhysicalDevice physicalDevice,
+    VkQueue queue,
+    uint32_t queueFamilyIndex,
+    uint32_t maxWidth,
+    uint32_t maxHeight
+) {
+    return Initialize(nullptr, device, physicalDevice, queue, queueFamilyIndex, maxWidth, maxHeight);
+}
+
+bool FrameCapture::Initialize(
+    Vixen::Vulkan::Resources::VulkanDevice* queueOwner,
     VkDevice device,
     VkPhysicalDevice physicalDevice,
     VkQueue queue,
@@ -90,6 +115,7 @@ bool FrameCapture::Initialize(
     device_ = device;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
+    queueOwner_ = queueOwner;
     queueFamilyIndex_ = queueFamilyIndex;
 
     // Validate inputs
@@ -123,23 +149,10 @@ bool FrameCapture::Initialize(
         return false;
     }
 
-    // Create fence
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = 0;  // Start unsignaled
-
-    if (vkCreateFence(device_, &fenceInfo, nullptr, &fence_) != VK_SUCCESS) {
-        vkDestroyCommandPool(device_, commandPool_, nullptr);
-        commandPool_ = VK_NULL_HANDLE;
-        return false;
-    }
-
     // Pre-allocate staging buffer for max size (RGBA, 4 bytes per pixel)
     VkDeviceSize bufferSize = static_cast<VkDeviceSize>(maxWidth) * maxHeight * 4;
     if (!CreateStagingBuffer(bufferSize)) {
-        vkDestroyFence(device_, fence_, nullptr);
         vkDestroyCommandPool(device_, commandPool_, nullptr);
-        fence_ = VK_NULL_HANDLE;
         commandPool_ = VK_NULL_HANDLE;
         return false;
     }
@@ -153,15 +166,15 @@ void FrameCapture::Cleanup() {
         return;
     }
 
-    // Note: We do not wait on the fence here because Capture() is synchronous
-    // and waiting on an unsignaled fence (e.g. if Capture was never called) causes a hang.
+    // A pending capture owns the staging resources until the queue owner retires it. Never
+    // destroy those resources from the publishing thread while the GPU may still reference them.
+    if (pendingCapture_ && completion_ && !completion_->IsRetired()) return;
+    if (pendingCapture_) {
+        CaptureResult ignored;
+        (void)Poll(ignored);
+    }
 
     DestroyStagingBuffer();
-
-    if (fence_ != VK_NULL_HANDLE) {
-        vkDestroyFence(device_, fence_, nullptr);
-        fence_ = VK_NULL_HANDLE;
-    }
 
     if (commandPool_ != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device_, commandPool_, nullptr);
@@ -170,6 +183,7 @@ void FrameCapture::Cleanup() {
     }
 
     device_ = VK_NULL_HANDLE;
+    queueOwner_ = nullptr;
     initialized_ = false;
 }
 
@@ -258,8 +272,19 @@ CaptureResult FrameCapture::Capture(
 ) {
     CaptureResult result;
 
+    if (pendingCapture_) {
+        result.pending = true;
+        result.errorMessage = "FrameCapture result is pending queue-owner retirement";
+        return result;
+    }
+
     if (!initialized_) {
         result.errorMessage = "FrameCapture not initialized";
+        return result;
+    }
+
+    if (!queueOwner_) {
+        result.errorMessage = "FrameCapture requires a queue owner for asynchronous submission";
         return result;
     }
 
@@ -299,42 +324,54 @@ CaptureResult FrameCapture::Capture(
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer_;
 
-    vkResetFences(device_, 1, &fence_);
-    if (vkQueueSubmit(queue_, 1, &submitInfo, fence_) != VK_SUCCESS) {
-        result.errorMessage = "Failed to submit copy commands";
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        queueOwner_, queue_, submitInfo);
+    completion_ = queueOwner_->PublishSubmitRequest(std::move(request));
+    if (!completion_ || (completion_->Result() != VK_NOT_READY &&
+                         completion_->Result() != VK_SUCCESS)) {
+        completion_.reset();
+        result.errorMessage = "Failed to publish copy commands to the queue owner";
         return result;
     }
-
-    // Wait for copy to complete
-    VkResult waitResult = vkWaitForFences(device_, 1, &fence_, VK_TRUE, 5000000000ULL);  // 5 second timeout
-    if (waitResult != VK_SUCCESS) {
-        result.errorMessage = "Fence wait failed or timed out";
-        return result;
-    }
-
-    // Create output directory
-    std::filesystem::path outputDir = config.outputPath / "debug_images";
-    std::error_code ec;
-    std::filesystem::create_directories(outputDir, ec);
-    if (ec) {
-        result.errorMessage = "Failed to create output directory: " + ec.message();
-        return result;
-    }
-
-    // Generate filename and save
-    std::string filename = GenerateFilename(config.testName, config.frameNumber);
-    std::filesystem::path fullPath = outputDir / filename;
-
-    if (!SaveToPNG(fullPath, width, height, config.resolution)) {
-        result.errorMessage = "Failed to write PNG file";
-        return result;
-    }
-
-    result.success = true;
-    result.savedPath = fullPath;
-    result.capturedWidth = (config.resolution == CaptureResolution::Quarter) ? width / 2 : width;
-    result.capturedHeight = (config.resolution == CaptureResolution::Quarter) ? height / 2 : height;
+    pendingConfig_ = config;
+    pendingWidth_ = width;
+    pendingHeight_ = height;
+    pendingCapture_ = true;
+    result.pending = true;
     return result;
+}
+
+bool FrameCapture::Poll(CaptureResult& result) {
+    result = {};
+    if (!pendingCapture_) return false;
+    if (!completion_ || !completion_->IsRetired()) {
+        result.pending = true;
+        return false;
+    }
+    const VkResult status = completion_->Result();
+    if (status != VK_SUCCESS) {
+        result.errorMessage = "FrameCapture queue-owner submit failed: " + std::to_string(status);
+    } else {
+        const std::filesystem::path outputDir = pendingConfig_.outputPath / "debug_images";
+        std::error_code ec;
+        std::filesystem::create_directories(outputDir, ec);
+        const std::filesystem::path fullPath = outputDir /
+            GenerateFilename(pendingConfig_.testName, pendingConfig_.frameNumber);
+        if (ec || !SaveToPNG(fullPath, pendingWidth_, pendingHeight_, pendingConfig_.resolution)) {
+            result.errorMessage = ec ? "Failed to create output directory: " + ec.message()
+                                     : "Failed to write PNG file";
+        } else {
+            result.success = true;
+            result.savedPath = fullPath;
+            result.capturedWidth = pendingConfig_.resolution == CaptureResolution::Quarter
+                ? pendingWidth_ / 2 : pendingWidth_;
+            result.capturedHeight = pendingConfig_.resolution == CaptureResolution::Quarter
+                ? pendingHeight_ / 2 : pendingHeight_;
+        }
+    }
+    completion_.reset();
+    pendingCapture_ = false;
+    return true;
 }
 
 void FrameCapture::RecordCopyCommands(VkImage srcImage, uint32_t width, uint32_t height, VkFormat /*format*/) {

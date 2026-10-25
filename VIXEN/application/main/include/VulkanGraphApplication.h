@@ -20,6 +20,7 @@
 #include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -41,6 +42,7 @@ namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse s
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::RenderGraph { class PhotonCellTableNode; }
 namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
+namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
@@ -65,6 +67,7 @@ namespace Vixen::App { class HudView; }
 // Building-inspector view (step-6 M-ui) — same forward-decl/opaque-factory pattern as HudView for the
 // same robin_hood ODR reason; constructed via MakeBuildingInspectorView() (BuildingInspectorBridge.h).
 namespace Vixen::App { class BuildingInspectorView; struct BuildingInspectorIn; }
+namespace Vixen::Profiler { class FrameCapture; }
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -285,6 +288,8 @@ private:
     // CalibrationStore). The app keeps non-owning views named as before so the existing call
     // sites are unchanged; they point into engine_ and are valid for its lifetime.
     std::unique_ptr<Vixen::RenderGraph::EngineContext> engine_;
+    std::unique_ptr<Vixen::Profiler::FrameCapture> frameCapture_;
+    std::string pendingFrameCapturePath_;
     NodeTypeRegistry* nodeRegistry = nullptr;             // view: &engine_->Registry()
     RenderGraph* renderGraph = nullptr;                   // view: &engine_->Graph()
     Vixen::EventBus::MessageBus* messageBus = nullptr;    // view: &engine_->Bus()
@@ -577,6 +582,13 @@ private:
 
     // Captures main_swapchain including the HUD composite for the base app's Update() harness.
     bool CaptureHudFrameToPng(const std::string& path, std::string& err);
+    std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingHudCapture_;
+    std::string pendingHudCapturePath_;
+    struct PendingOffscreenCapture {
+        std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> request;
+        std::string path;
+    };
+    std::vector<PendingOffscreenCapture> pendingOffscreenCaptures_;
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -660,11 +672,12 @@ public:
     // returns nullptr if unset (e.g. a graph without the selection provider).
     Vixen::RenderGraph::UISelectionProviderNode* GetUiSelectionProviderNode() const;
 
-    // M4b: read back the swapchain image just presented and write it as a PNG. Call AFTER a
-    // Render() call (so a real presented frame exists). One-shot, synchronous (waits on the
-    // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
-    // (and logs) if the swapchain/device node isn't found or the write fails.
+    // M4b: queue the swapchain image just presented for a next-frame PNG result. Call AFTER a
+    // Render() call (so a real presented frame exists). The request is retired and encoded from
+    // PostTick; a true return means the owner accepted the request, not that the file is complete.
     bool CaptureFrameToPng(const std::string& path);
+    // Offscreen captures use the same next-frame contract and may queue more than one path from
+    // a single rendered frame; completion is drained from PostTick.
     bool CaptureOffscreenFrameToPng(const std::string& path, std::string& err);
 
     // M4b-fix (capture-on-aborted-frame): true only when main_swapchain currently holds a VALID
