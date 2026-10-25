@@ -2705,21 +2705,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseShaderLib, makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"),
         std::move(srsShaderFeatures));
 
-    auto exposureFamily = exposureReference
-        ? makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference")
-        : makeLightingFamily("Generated/ExposureTonemapSystem.comp", "ExposureTonemapSystem");
-    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
-        ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
-            auto builder = exposureFamily->MakeBuilder({});
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders");
+    const auto registerComputeFamily = [graph = renderGraph](
+        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle))
+            ->RegisterShaderBuilder([family](int vulkanVer, int spirvVer) {
+                auto builder = family->MakeBuilder({});
+                builder.SetTargetVulkanVersion(vulkanVer)
+                       .SetTargetSpirvVersion(spirvVer)
+                       .AddIncludePath("shaders")
+                       .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+                builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
 #endif
-            return builder;
-        });
+                return builder;
+            });
+    };
+    if (hdrExposureEnabled && exposureReference) {
+        registerComputeFamily(exposureShaderLib,
+            makeLightingFamily("Reference/ExposureTonemapReference.comp", "ExposureTonemapReference"));
+    }
+    // The runner compiles each generated system's GLSL through the same family path.
+    generatedSystems_.RegisterShaders([&](NodeHandle libHandle, const std::string& glsl, const std::string& program) {
+        registerComputeFamily(libHandle, makeLightingFamily("Generated/" + glsl, program));
+    });
     auto exposureMeterFamily = makeLightingFamily("ExposureMeter.comp", "ExposureMeter");
     if (hdrExposureEnabled && !hdrExposureFixed) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureMeterShaderLib))
         ->RegisterShaderBuilder([this, exposureMeterFamily](int vulkanVer, int spirvVer) {
@@ -3303,7 +3311,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled && !reconstructionInputsEnabled) {
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseSceneRadianceWriteGatherer))->PreRegisterImageSlots(1);
     }
-    if (hdrExposureEnabled) {
+    if (hdrExposureEnabled && exposureReference) {
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(exposureSceneRadianceReadGatherer))->PreRegisterImageSlots(1);
     }
 
@@ -9593,7 +9601,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                            ReconstructionMotionPorts::MOTION_VIEW.index,
                                            ReconstructionMotionPorts::MOTION.index, SlotRole::Execute);
         }
-        frameResources.Provide({"PrevCameraConfig", "*"}, prevCameraConfigNode,
+        frameResources.Provide({"Vixen.Gpu.PrevCameraConfig", "*"}, prevCameraConfigNode,
                                PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
         frameResources.Provide(outputImage, renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
         frameResources.ProvideImage(outputImage, renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
@@ -9601,7 +9609,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                SlotRole::Execute);
         // With `taa` the exposure chain itself waits on the resolve, so the tone map waits on the chain.
         frameResources.ProvideProducer(exposureMeter, exposureReduceNode, taaSelected);
-        frameResources.Provide({"LightingConfig", "*"}, lightingConfigNode,
+        frameResources.Provide({"Vixen.Gpu.LightingConfig", "*"}, lightingConfigNode,
                                LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
         frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                                      renderExtent.width);
@@ -10147,8 +10155,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
     if (hdrExposureEnabled) {
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+        // The generated tone map's image hazards are wired by its runner from the manifest.
+        if (exposureReference) {
+            batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                          exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+        }
         if (!reconstructionInputsEnabled) {
             batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
                           spatialReuseSceneRadianceWriteGatherer, 0,
@@ -10157,12 +10168,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY,
                           SlotRoleModifier(SlotRole::Execute));
         }
-        batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
-                      exposureSceneRadianceReadGatherer, 0,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
-             .Connect(exposureSceneRadianceReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                      exposureNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
-                      SlotRoleModifier(SlotRole::Execute));
+        if (exposureReference) {
+            batch.Connect(sceneRadianceNode, SceneRadianceNodeConfig::CURRENT_HISTORY_TARGET,
+                          exposureSceneRadianceReadGatherer, 0,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 .Connect(exposureSceneRadianceReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                          exposureNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY,
+                          SlotRoleModifier(SlotRole::Execute));
+        }
     }
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
     // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
@@ -10804,8 +10817,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                  .Connect(exposureMeterNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                           exposureReduceNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         }
-        batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        if (exposureReference) {
+            batch.Connect(exposureReduceNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        }
     }
     if (!upscalerModule.has_value() && hdrExposureEnabled) {
         batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
