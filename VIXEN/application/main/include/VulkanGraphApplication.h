@@ -594,6 +594,7 @@ private:
 
     // Captures main_swapchain including the HUD composite for the base app's Update() harness.
     bool CaptureHudFrameToPng(const std::string& path, std::string& err);
+    void PollPendingCaptures();
     std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingHudCapture_;
     std::string pendingHudCapturePath_;
     struct PendingOffscreenCapture {

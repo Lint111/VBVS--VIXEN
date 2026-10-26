@@ -1423,6 +1423,35 @@ private:
                                                       Vixen::App::Lookdev::CelSpillPurposeScales(preset));
     }
 
+    bool ReadTargetBytesNow(Vixen::Vulkan::Resources::VulkanDevice* device,
+                            Vixen::Vulkan::Resources::IRenderTarget* target,
+                            VkQueue queue, uint32_t queueFamilyIndex,
+                            std::vector<uint8_t>& bytes, std::string& error) {
+        auto* graph = GetRenderGraph();
+        if (!graph || !device) {
+            error = "readback requires the render graph and device";
+            return false;
+        }
+        auto pending = Debug::BeginReadRenderTargetBytes(
+            device, target, queue, queueFamilyIndex, error);
+        if (!pending) return false;
+
+        // Debug readbacks publish through the graph owner. This diagnostic path is deliberately
+        // synchronous at the capture boundary so the byte-level oracle can run in this frame;
+        // production captures retain the pending handle and poll from PostTick instead.
+        const auto waited = graph->FlushSubmittedWork(device);
+        if (!waited.Ok()) {
+            error = "readback queue wait failed: " + std::to_string(waited.result);
+            return false;
+        }
+        error.clear();
+        if (!pending->Poll(bytes, error)) {
+            error = "readback was not retired after the graph flush";
+            return false;
+        }
+        return error.empty();
+    }
+
     // Per frame: the raw centre texel of the pick image (a single jittered read) next to the voted crosshair pick.
     bool TracePick() {
         using namespace Vixen::RenderGraph;
@@ -1445,7 +1474,7 @@ private:
         pickTarget.imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         pickTarget.extent = sourceOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>()->GetExtent();
         std::vector<uint8_t> bytes;
-        if (!Debug::ReadRenderTargetBytes(device, &pickTarget, device->queue, device->graphicsQueueIndex, bytes, captureError_) ||
+        if (!ReadTargetBytesNow(device, &pickTarget, device->queue, device->graphicsQueueIndex, bytes, captureError_) ||
             bytes.size() != size_t(pickTarget.extent.width) * pickTarget.extent.height * 8u) return false;
         uint32_t centre[2];
         std::memcpy(centre, bytes.data() +
@@ -1481,9 +1510,9 @@ private:
             return false;
         }
         std::vector<uint8_t> viewBytes, normalizedBytes;
-        if (!Debug::ReadRenderTargetBytes(device, view, device->queue, device->graphicsQueueIndex,
+        if (!ReadTargetBytesNow(device, view, device->queue, device->graphicsQueueIndex,
                                          viewBytes, captureError_) ||
-            !Debug::ReadRenderTargetBytes(device, normalized, device->queue, device->graphicsQueueIndex,
+            !ReadTargetBytesNow(device, normalized, device->queue, device->graphicsQueueIndex,
                                          normalizedBytes, captureError_)) return false;
         void* mapped = nullptr;
         if (!snapshotMemory_ || vkMapMemory(device->device, snapshotMemory_, 0, snapshotSize_, 0, &mapped) != VK_SUCCESS) {
@@ -1556,8 +1585,8 @@ private:
         std::vector<uint8_t> motionBytes, validityBytes;
         if (!motion || !validity || motion->GetFormat() != VK_FORMAT_R32G32_SFLOAT ||
             validity->GetFormat() != VK_FORMAT_R32_SFLOAT ||
-            !Debug::ReadRenderTargetBytes(device, motion, device->queue, device->graphicsQueueIndex, motionBytes, captureError_) ||
-            !Debug::ReadRenderTargetBytes(device, validity, device->queue, device->graphicsQueueIndex, validityBytes, captureError_)) return false;
+            !ReadTargetBytesNow(device, motion, device->queue, device->graphicsQueueIndex, motionBytes, captureError_) ||
+            !ReadTargetBytesNow(device, validity, device->queue, device->graphicsQueueIndex, validityBytes, captureError_)) return false;
         if (motionBytes.size() != size_t(extent.width) * extent.height * 8u ||
             validityBytes.size() != size_t(extent.width) * extent.height * 4u) return false;
         if (vkMapMemory(device->device, snapshotMemory_, 0, snapshotSize_, 0, &mapped) != VK_SUCCESS) return false;
@@ -1653,7 +1682,7 @@ private:
         auto* radiance = radianceNode->GetOutput(SceneRadianceNodeConfig::HISTORY_TARGET.index)
             ->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
         std::vector<uint8_t> radianceBytes;
-        if (!Debug::ReadRenderTargetBytes(device, radiance, device->queue, device->graphicsQueueIndex,
+        if (!ReadTargetBytesNow(device, radiance, device->queue, device->graphicsQueueIndex,
                                          radianceBytes, captureError_)) return false;
         std::ofstream sourceRaw(stem.string() + ".history-source.f16", std::ios::binary);
         sourceRaw.write(reinterpret_cast<const char*>(radianceBytes.data()), radianceBytes.size());
@@ -1666,7 +1695,7 @@ private:
         for (uint32_t imageIndex = 0; imageIndex < 2; ++imageIndex) {
             auto* target = imageIndex == 0 ? historyA : historyB;
             std::vector<uint8_t> bytes;
-            if (!Debug::ReadRenderTargetBytes(device, target, device->queue, device->graphicsQueueIndex,
+            if (!ReadTargetBytesNow(device, target, device->queue, device->graphicsQueueIndex,
                                              bytes, captureError_)) return false;
             const auto outputExtent = target->GetExtent();
             std::vector<uint8_t> preview(size_t(outputExtent.width) * outputExtent.height * 3u);
@@ -1711,7 +1740,7 @@ private:
         pickTarget.imageUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         pickTarget.extent = extent;
         std::vector<uint8_t> pickingBytes;
-        if (!Debug::ReadRenderTargetBytes(device, &pickTarget, device->queue, device->graphicsQueueIndex,
+        if (!ReadTargetBytesNow(device, &pickTarget, device->queue, device->graphicsQueueIndex,
                                          pickingBytes, captureError_)) return false;
         std::ofstream pickRaw(stem.string() + ".picking.rg32ui", std::ios::binary);
         pickRaw.write(reinterpret_cast<const char*>(pickingBytes.data()), pickingBytes.size());
@@ -1755,7 +1784,7 @@ private:
         auto* meter = dynamic_cast<StorageBufferNode*>(graph->GetInstanceByName("exposure_meter_buffer"));
         if (!exposure || exposure->GetExtent().width != 1 || exposure->GetExtent().height != 1 ||
             exposure->GetFormat() != VK_FORMAT_R32_SFLOAT || !meter ||
-            !Debug::ReadRenderTargetBytes(device, exposure, device->queue, device->graphicsQueueIndex,
+            !ReadTargetBytesNow(device, exposure, device->queue, device->graphicsQueueIndex,
                                          exposureBytes, captureError_) || exposureBytes.size() != 4) {
             captureError_ = "reconstruction exposure must be a 1x1 R32F image";
             return false;

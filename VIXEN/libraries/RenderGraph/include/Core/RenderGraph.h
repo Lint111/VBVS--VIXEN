@@ -898,6 +898,12 @@ public:
         Vixen::Vulkan::Resources::VulkanDevice* device,
         uint64_t boundNs = GpuWaitBoundNs());
 
+    /// Drain producer-published one-shot work and retire it before graph teardown. This is used
+    /// by host-side asynchronous captures that may be requested on the terminal render tick.
+    [[nodiscard]] GpuWaitResult FlushSubmittedWork(
+        Vixen::Vulkan::Resources::VulkanDevice* device,
+        uint64_t boundNs = GpuWaitBoundNs());
+
     /// Keep the host's OS message pump running while a graph recompile drains the GPU.
     /// The callback runs on the registering thread approximately every 16 ms during the wait.
     /// Pass an empty function to clear it.

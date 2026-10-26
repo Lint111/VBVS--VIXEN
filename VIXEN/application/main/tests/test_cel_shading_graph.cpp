@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,46 @@ using Vixen::RenderGraph::LightingConfigNodeConfig;
 std::vector<char> ReadBytes(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+struct CelCaptureStats {
+    int width = 0;
+    int height = 0;
+    size_t nonBackgroundPixels = 0;
+    size_t quantizedColors = 0;
+    uint8_t minLuma = 255;
+    uint8_t maxLuma = 0;
+
+    [[nodiscard]] bool HasRenderedScene(uint32_t requestedBands) const {
+        const size_t pixels = size_t(width) * size_t(height);
+        return width > 0 && height > 0 && nonBackgroundPixels > pixels / 100u &&
+            maxLuma > minLuma + 16u && quantizedColors >= std::min<size_t>(requestedBands, 3u);
+    }
+};
+
+CelCaptureStats InspectCapture(const std::filesystem::path& path) {
+    CelCaptureStats stats;
+    int channels = 0;
+    stbi_uc* pixels = stbi_load(path.string().c_str(), &stats.width, &stats.height, &channels, 4);
+    if (!pixels) return stats;
+    const size_t count = size_t(stats.width) * size_t(stats.height);
+    const uint32_t background = uint32_t(pixels[0]) << 16u | uint32_t(pixels[1]) << 8u | pixels[2];
+    std::unordered_set<uint32_t> colors;
+    colors.reserve(std::min<size_t>(count, 256u));
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t r = pixels[i * 4u];
+        const uint8_t g = pixels[i * 4u + 1u];
+        const uint8_t b = pixels[i * 4u + 2u];
+        const uint32_t rgb = uint32_t(r) << 16u | uint32_t(g) << 8u | b;
+        if (rgb != background) ++stats.nonBackgroundPixels;
+        const uint8_t luma = static_cast<uint8_t>((54u * r + 183u * g + 19u * b) / 256u);
+        stats.minLuma = std::min(stats.minLuma, luma);
+        stats.maxLuma = std::max(stats.maxLuma, luma);
+        colors.insert(uint32_t(r >> 4u) << 8u | uint32_t(g >> 4u) << 4u | (b >> 4u));
+    }
+    stats.quantizedColors = colors.size();
+    stbi_image_free(pixels);
+    return stats;
 }
 
 uint32_t CaptureBandCount() {
@@ -178,7 +219,14 @@ TEST(CelShading, CaptureBandCount) {
     CelShadingApplication app(CaptureAction::BandCount);
     ASSERT_EQ(app.Run(RunOptions{.exitAfterFrames = 5}), 0) << app.CaptureError();
     ASSERT_TRUE(app.CapturedBandCount()) << app.CaptureError();
-    EXPECT_FALSE(ReadBytes(capture).empty()) << "cel band capture was empty";
+    ASSERT_FALSE(ReadBytes(capture).empty()) << "cel band capture was empty";
+    const auto stats = InspectCapture(capture);
+    EXPECT_TRUE(stats.HasRenderedScene(CaptureBandCount()))
+        << "cel capture must contain a spatially varying scene: "
+        << stats.width << 'x' << stats.height
+        << ", non_background=" << stats.nonBackgroundPixels
+        << ", quantized_colors=" << stats.quantizedColors
+        << ", luma_range=" << int(stats.minLuma) << "-" << int(stats.maxLuma);
 }
 
 TEST(CelShading, ModeSwitchTakesEffectOnTheLiveNode) {
@@ -197,6 +245,8 @@ TEST(CelShading, ModeSwitchTakesEffectOnTheLiveNode) {
     const auto celBytes = ReadBytes(cel);
     ASSERT_FALSE(legacyBytes.empty());
     ASSERT_FALSE(celBytes.empty());
+    EXPECT_TRUE(InspectCapture(legacy).HasRenderedScene(2u)) << "Lambert capture is not a rendered scene";
+    EXPECT_TRUE(InspectCapture(cel).HasRenderedScene(3u)) << "cel capture is not a rendered scene";
     EXPECT_NE(legacyBytes, celBytes)
         << "the node parameter must switch the live renderer from Lambert+GGX to cel";
 }

@@ -1747,7 +1747,7 @@ void VulkanGraphApplication::RunPhotonCellDiagReadback(uint64_t sampleFrame) {
                              sampleFrame);
 }
 
-void VulkanGraphApplication::PostTick() {
+void VulkanGraphApplication::PollPendingCaptures() {
     if (!pendingHudCapturePath_.empty()) {
         std::string captureErr;
         const std::string path = pendingHudCapturePath_;
@@ -1768,6 +1768,10 @@ void VulkanGraphApplication::PostTick() {
             mainLogger->Error("[VulkanGraphApplication] CaptureOffscreenFrameToPng failed for " + path + ": " + captureErr);
         }
     }
+}
+
+void VulkanGraphApplication::PostTick() {
+    PollPendingCaptures();
     if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
         RunHdrMeterDebugReadback();
     }
@@ -3896,6 +3900,23 @@ void VulkanGraphApplication::DeInitialize() {
         return;
     }
     deinitialized = true;
+
+    // A terminal render tick has no following frame to process asynchronous off-graph readbacks.
+    // Flush the graph-owned submission queue while the device and render target are still alive,
+    // then poll the completed capture handles before teardown can discard their staging buffers.
+    if (renderGraph && (!pendingHudCapturePath_.empty() || pendingHudCapture_ ||
+                        !pendingOffscreenCaptures_.empty())) {
+        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+            if (auto* device = deviceInst->GetVulkanDevice()) {
+                const auto waited = renderGraph->FlushSubmittedWork(device);
+                PollPendingCaptures();
+                if (!waited.Ok() && mainLogger) {
+                    mainLogger->Error("[DeInitialize] pending capture queue did not retire: " +
+                                      std::to_string(waited.result));
+                }
+            }
+        }
+    }
 
     // Inc1 M4 Task 6b: flush the perf CSV before any teardown — RecordFrame already copied
     // every value it needs out of the nodes each tick, so this has no ordering dependency on

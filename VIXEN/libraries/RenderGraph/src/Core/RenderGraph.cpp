@@ -1424,6 +1424,17 @@ GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device, uint64_t boundNs
     return waited;
 }
 
+GpuWaitResult RenderGraph::FlushSubmittedWork(VulkanDevice* device, uint64_t boundNs) {
+    // A producer may publish a one-shot readback after the terminal Render() call. The normal
+    // frame prologue processes these messages and drains them before the next frame; shutdown has
+    // no next frame, so perform the same owner phases explicitly before waiting and retiring.
+    ProcessEvents();
+    DrainOffGraphSubmits();
+    const GpuWaitResult waited = WaitIssuedWork(device, boundNs);
+    RetireCompletedSubmissions();
+    return waited;
+}
+
 void RenderGraph::RetireCompletedSubmissions() {
     for (auto& [queue, timeline] : queueTimelines_) {
         (void)queue;
