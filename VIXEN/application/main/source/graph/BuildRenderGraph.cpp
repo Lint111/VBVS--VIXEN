@@ -9576,6 +9576,46 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
 
+    const auto registerModuleShaderFamily = [this, graph = renderGraph](
+        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
+        libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
+            auto builder = family->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders");
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+#endif
+            return builder;
+        });
+    };
+
+    const auto registerPassMetric = [this](std::string name, NodeHandle node) {
+        upscalerPerfPasses_.push_back({std::move(name), node});
+    };
+    // The reconstruction depth guide is created ahead of the frame registry: the TAA reads it
+    // as FrameTargets.ViewDepth (nearest-surface motion at silhouettes).
+    if (reconstructionInputsEnabled) {
+        ReconstructionDepthParams params;
+        params.batch = &batch;
+        params.common = lightingCommon;
+        params.sourceTarget = renderTargetNode;
+        params.camera = cameraNode;
+        params.hitRecords = hitRecordBufferNode;
+        params.hitProducer = computeDispatch;
+        params.makeShaderFamily = makeLightingFamily;
+        params.registerShaderFamily = registerModuleShaderFamily;
+        params.registerPassMetric = registerPassMetric;
+        reconstructionDepthModule = renderGraph->Instantiate<ReconstructionDepthModule>(
+            "render_path/reconstruction_inputs", params);
+        sceneProviders.ProvideSubGraphOutput("viewDepthImage", *reconstructionDepthModule,
+            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", *reconstructionDepthModule,
+            ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
+    }
+
     if (hdrExposureEnabled) {
     // Hand passes register the resources the generated systems read under their schema
     // identity (R680.4); the runner allocates the rest from the manifest's allocations, then
@@ -9603,6 +9643,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
             frameResources.ProvideSubGraph({"frame_targets", "MotionVectors"}, *reconstructionMotionModule,
                                            ReconstructionMotionPorts::MOTION_VIEW.index,
                                            ReconstructionMotionPorts::MOTION.index, SlotRole::Execute);
+        }
+        if (reconstructionDepthModule) {
+            frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index,
+                                           ReconstructionDepthPorts::VIEW_DEPTH.index, SlotRole::Execute);
         }
         frameResources.Provide({"Vixen.Gpu.PrevCameraConfig", "*"}, prevCameraConfigNode,
                                PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
@@ -9669,41 +9714,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     }
 
-    const auto registerModuleShaderFamily = [this, graph = renderGraph](
-        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
-        auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
-        libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
-            auto builder = family->MakeBuilder({});
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders");
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
-#endif
-            return builder;
-        });
-    };
 
     if (reconstructionInputsEnabled) {
-        ReconstructionDepthParams params;
-        params.batch = &batch;
-        params.common = lightingCommon;
-        params.sourceTarget = renderTargetNode;
-        params.camera = cameraNode;
-        params.hitRecords = hitRecordBufferNode;
-        params.hitProducer = computeDispatch;
-        params.makeShaderFamily = makeLightingFamily;
-        params.registerShaderFamily = registerModuleShaderFamily;
-        params.registerPassMetric = [this](std::string name, NodeHandle node) {
-            upscalerPerfPasses_.push_back({std::move(name), node});
-        };
-        reconstructionDepthModule = renderGraph->Instantiate<ReconstructionDepthModule>(
-            "render_path/reconstruction_inputs", params);
-        sceneProviders.ProvideSubGraphOutput("viewDepthImage", *reconstructionDepthModule,
-            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", *reconstructionDepthModule,
-            ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
         ReconstructionHistoryParams historyParams;
         historyParams.batch = &batch;
         historyParams.common = lightingCommon;
@@ -9715,7 +9727,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             historyParams.sceneProducer = spatialReuseNode;
             historyParams.makeShaderFamily = makeLightingFamily;
             historyParams.registerShaderFamily = registerModuleShaderFamily;
-            historyParams.registerPassMetric = params.registerPassMetric;
+            historyParams.registerPassMetric = registerPassMetric;
         }
         reconstructionHistoryModule = renderGraph->Instantiate<ReconstructionHistoryModule>(
             "render_path/reconstruction_history", historyParams);
@@ -9753,7 +9765,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             exposure.meterProducer = exposureReduceNode;
             exposure.makeShaderFamily = makeLightingFamily;
             exposure.registerShaderFamily = registerModuleShaderFamily;
-            exposure.registerPassMetric = params.registerPassMetric;
+            exposure.registerPassMetric = registerPassMetric;
             reconstructionExposureModule = renderGraph->Instantiate<ReconstructionExposureModule>(
                 "render_path/reconstruction_exposure", exposure);
             sceneProviders.ProvideSubGraphOutput("exposureImage", *reconstructionExposureModule,

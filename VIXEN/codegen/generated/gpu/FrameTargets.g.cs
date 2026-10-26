@@ -5263,6 +5263,7 @@ namespace Vixen.Codegen.Gpu
         public static implicit operator FrameTargetsRef(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> SceneRadianceHistoryOutput => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rg32f> MotionVectors => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
+        public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.R32f> ViewDepth => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba16f> ResolvedRadiance => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public global::Undertow.Modding.Schema.Texture2D<global::Undertow.Modding.Schema.Rgba8> OutputImage => throw new System.InvalidOperationException("Texture members are compile-time syntax only.");
         public uint PresentationMode
