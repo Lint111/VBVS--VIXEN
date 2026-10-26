@@ -1,0 +1,30 @@
+<rml>
+<head>
+    <title>VIXEN Dock</title>
+    <link type="text/rcss" href="dock.rcss"/>
+</head>
+<body>
+    <!-- R766: the dock chrome. Geometry comes from the PanelLayout View (PanelDock::Compute); this
+         document only draws stack frames, tab strips and the layout buttons. Panel content is each
+         panel's own document, placed by the dock under its stack header. Every button id is an AppFlow
+         selector: panel-<id>-tab (FocusPanel), panel-<id>-close (ClosePanel),
+         panel-<id>-to-<region> (MovePanel). -->
+    <div data-model="panel_layout" id="dock">
+        <div class="stack" data-for="s : stacks"
+             data-style-left="s.left + 'px'" data-style-top="s.top + 'px'"
+             data-style-width="s.width + 'px'" data-style-height="s.height + 'px'">
+            <div class="header" data-if="s.headerHeight > 0" data-style-height="s.headerHeight + 'px'"></div>
+        </div>
+        <div class="tab" data-for="p : panels" data-if="p.hasTab" data-attr-id="p.tabId"
+             data-class-active="p.active" hit-mask="none"
+             data-style-left="p.tabLeft + 'px'" data-style-top="p.tabTop + 'px'"
+             data-style-width="p.tabWidth + 'px'" data-style-height="p.tabHeight + 'px'">
+            <span class="title">{{p.title}}</span>
+            <div class="tool" data-if="p.active &amp;&amp; p.region != 'left'" data-attr-id="p.toLeftId" hit-mask="none">‹</div>
+            <div class="tool" data-if="p.active &amp;&amp; p.region != 'bottom'" data-attr-id="p.toBottomId" hit-mask="none">ˇ</div>
+            <div class="tool" data-if="p.active &amp;&amp; p.region != 'right'" data-attr-id="p.toRightId" hit-mask="none">›</div>
+            <div class="tool close" data-if="p.closable" data-attr-id="p.closeId" hit-mask="none">×</div>
+        </div>
+    </div>
+</body>
+</rml>

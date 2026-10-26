@@ -24,6 +24,9 @@ namespace Vixen.AppFlow.Reference
         EditProgramFieldUp = 11, EditProgramFieldDown = 12,
         AdjustParameterUp = 13, AdjustParameterDown = 14,
         OpenRecipe = 15,
+        // R766: panel layout verbs on the app's channel (PanelDock). Not undoable document edits.
+        OpenPanel = 16, ClosePanel = 17, FocusPanel = 18, MovePanel = 19, SplitPanel = 20,
+        FloatPanel = 21, ResizeRegion = 22, ResetLayout = 23,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -110,6 +113,73 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Param0Name = "recipeId";
         public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
+    [FlowActionParams(nameof(FlowAction.OpenPanel))]
+    public static class OpenPanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.ClosePanel))]
+    public static class ClosePanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.FocusPanel))]
+    public static class FocusPanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // Dock as a tab of the region's last stack.
+    [FlowActionParams(nameof(FlowAction.MovePanel))]
+    public static class MovePanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+        public const string Param1Name = "region";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // Dock into a new split stack of the region.
+    [FlowActionParams(nameof(FlowAction.SplitPanel))]
+    public static class SplitPanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+        public const string Param1Name = "region";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.FloatPanel))]
+    public static class FloatPanelParams
+    {
+        public const string Param0Name = "panelId";
+        public const int Param0Type = (int)FlowParamType.String;
+        public const string Param1Name = "x";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "y";
+        public const int Param2Type = (int)FlowParamType.Int;
+        public const string Param3Name = "width";
+        public const int Param3Type = (int)FlowParamType.Int;
+        public const string Param4Name = "height";
+        public const int Param4Type = (int)FlowParamType.Int;
+    }
+
+    // Width of a left/right region, height of the bottom region, in pixels.
+    [FlowActionParams(nameof(FlowAction.ResizeRegion))]
+    public static class ResizeRegionParams
+    {
+        public const string Param0Name = "region";
+        public const int Param0Type = (int)FlowParamType.String;
+        public const string Param1Name = "size";
+        public const int Param1Type = (int)FlowParamType.Int;
     }
 
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
@@ -232,6 +302,35 @@ namespace Vixen.AppFlow.Reference
         public const string ParamName = "";
         public const string On = "click";
     }
+
+    // R766: the dock chrome's buttons. Each tab, close and dock-to button carries its panel id in the element id.
+    [FlowElementTrigger(nameof(FlowAction.FocusPanel))]
+    public static class FocusPanelTrigger
+    {
+        public const string Element = "panel-{panelId}-tab";
+        public const string ParamName = "panelId";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ClosePanel))]
+    public static class ClosePanelTrigger
+    {
+        public const string Element = "panel-{panelId}-close";
+        public const string ParamName = "panelId";
+        public const string On = "click";
+    }
+
+    // Two placeholders: the panel and the target region ("panel-inspector-to-left").
+    [FlowElementTrigger(nameof(FlowAction.MovePanel))]
+    public static class MovePanelTrigger
+    {
+        public const string Element = "panel-{panelId}-to-{region}";
+        public const string ParamName = "panelId";
+        public const string On = "click";
+    }
+
+    [FlowKeyDefault(nameof(FlowAction.ResetLayout), FlowScope.Global)]
+    public static class ResetLayoutKey { public const KeyId Key = KeyId.R; public const KeyMod Mods = KeyMod.Ctrl; }
 
     // Scoped key defaults — tightest-wins resolution (global -> flow-state -> context).
     [FlowKeyDefault(nameof(FlowAction.Undo), FlowScope.Global)]

@@ -3,7 +3,7 @@
 // the shared body-octree/recipe and virtual-provider paths, and supports rule editing
 // (UI selector -> headless document operation -> preview refresh) plus save/reopen. Reuses VulkanGraphApplication's
 // whole graph (window, body-octree scene, UI composite HUD) unmodified; BuildRenderGraph
-// calls the base implementation and then re-points the UI node at editor.rml, and the one
+// calls the base implementation (which mounts the editor's declared panels, R766), and the one
 // default body instance is replaced by a procedural instance using the document's registered
 // bytecode and the same six-value snapshot consumed by the CPU bake.
 //
@@ -111,9 +111,11 @@ public:
     // grants residency unconditionally instead).
     bool SkipResidencyHeuristic() const override { return true; }
 
-    // The game's building inspector is not the editor's panel: leave it unmounted so it cannot
-    // draw over the rule-layer panel (see VulkanGraphApplication::MountsBuildingInspector).
-    bool MountsBuildingInspector() const override { return false; }
+    // R766/R765: the editor's own panels in the three-region layout — outliner and layers (left),
+    // inspector (right), status line (bottom) — all bound to the EditorLayers View. No game HUD or
+    // building inspector is declared, so neither is mounted. The layout persists as "editor".
+    void DeclarePanels(Vixen::RenderGraph::PanelDock& dock) override;
+    std::string PanelLayoutName() const override { return "editor"; }
 
     // Reads the current completed compute_render_target image to PNG. Call after Render() so it
     // contains the scene output before the HUD covers part of the viewport. Scripted captures
@@ -149,6 +151,11 @@ private:
     void ReconcileLayersView();
     void SyncAfterDocumentMutation();
     void RefreshRecipesView();
+    // R766: the status-line panel (document, flow state, undo depth, last message).
+    void RefreshStatusView();
+    // R766: applies one panel verb's result: persists the layout and records a channel event.
+    void AfterPanelVerb(const char* verb, Vixen::RenderGraph::DockResult result);
+    std::string statusMessage_;
     // Replaces doc_ with an accepted candidate: AppFlow runtime reload (fresh undo history), handlers,
     // view and render resync. Shared by the reopen witness and OpenPackRecipe.
     bool AdoptDocument(Vixen::Editor::EditorDocumentModel candidate);
@@ -194,7 +201,7 @@ private:
     // Inc-A2: the editor layer view's data-model host (design View-Model-Binding-Inc-A2-Plan-
     // 2026-07.md). Owned here (mirrors HudView's hudView_ ownership in VulkanGraphApplication --
     // same raw-pointer-via-bridge-factory pattern, same rationale: forward-declared-only type),
-    // wired onto the UI node via WireEditorLayersView in BuildRenderGraph, and populated from
+    // bound by the editor's panel declarations (DeclarePanels, R766), and populated from
     // doc_ at LoadDocument time -- the first model->view path anywhere in the editor.
     Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
@@ -211,6 +218,7 @@ private:
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
     bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
+    bool ctrlRWasDown_ = false;  // edge-detect for the ResetLayout keybinding (R766)
     std::string appFlowPath_;
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;

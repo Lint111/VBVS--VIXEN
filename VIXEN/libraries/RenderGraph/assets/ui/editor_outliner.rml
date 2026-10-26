@@ -1,0 +1,17 @@
+<rml>
+<head>
+    <title>Recipes</title>
+    <link type="text/rcss" href="editor.rcss"/>
+</head>
+<body>
+    <!-- R766 "outliner" panel (left region, first split): the open pack's render-recipe documents by
+         content id (R765). A row's button id is its OpenRecipe selector ("recipe-<id>-open"); the open
+         document is marked. -->
+    <div data-model="editor_layers" class="panel">
+        <div class="recipe-row" data-for="recipe : recipes">
+            <div class="button" data-attr-id="recipe.elementId" data-class-open="recipe.isOpen" hit-mask="none">{{recipe.id}}</div>
+        </div>
+        <div class="hint" data-if="recipes.size == 0">No pack open: editing {{statusDocument}}.</div>
+    </div>
+</body>
+</rml>

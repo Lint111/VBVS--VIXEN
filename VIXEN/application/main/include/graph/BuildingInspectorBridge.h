@@ -8,7 +8,7 @@
 #include <cstdint>
 
 namespace Vixen::App { class BuildingInspectorView; }
-namespace Vixen::RenderGraph { class UIRenderNode; }
+namespace Vixen::RenderGraph { class IView; }
 
 namespace Vixen::App {
 
@@ -39,9 +39,9 @@ struct BuildingInspectorIn {
 BuildingInspectorView* MakeBuildingInspectorView();
 void DestroyBuildingInspectorView(BuildingInspectorView* view);
 
-// Mount `view` onto `node` via UIRenderNode::Mount (the IUiCompositionHost seam). Returns the mount
-// handle (0 on failure — namespace collision / degenerate layout / load failure, all logged by the host).
-uint32_t MountBuildingInspector(Vixen::RenderGraph::UIRenderNode& node, BuildingInspectorView& view);
+// R766: the inspector as the IView its panel declaration binds (the dock mounts it through the
+// IUiCompositionHost seam). The upcast lives here because the view is complete only in this TU.
+Vixen::RenderGraph::IView& BuildingInspectorAsView(BuildingInspectorView& view);
 
 // Forwards to BuildingInspectorView::SetBuilding (which dirties its own bound model, so the pushed
 // values re-render — no host round-trip needed).

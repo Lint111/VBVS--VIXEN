@@ -442,6 +442,9 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/ViewWireReader.h
     include/Ui/ViewWireReaderSoa.h
     include/Ui/BlobView.h
+    include/Ui/PanelDock.h
+    include/Ui/PanelDockHost.h
+    include/Ui/PanelLayoutView.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
@@ -454,6 +457,8 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/ViewWireReader.cpp
     src/Ui/ViewWireReaderSoa.cpp
     src/Ui/BlobView.cpp
+    src/Ui/PanelDock.cpp
+    src/Ui/PanelDockHost.cpp
     # UIRenderNode.cpp moved to RENDERGRAPH_NODE_SOURCES (Inc-1 M4) -- it's a node, and needs its
     # own RenderGraphNode_UIRenderNode OBJECT lib for scoped linkage to work correctly.
 )
@@ -548,6 +553,7 @@ target_link_libraries(RenderGraphUiSupport
         Text
     PRIVATE
         stb                    # header-only; only UiHitMask.cpp uses it (stbi_load for image hit-masks)
+        nlohmann_json::nlohmann_json   # PanelDock layout rows (R766)
 )
 target_compile_definitions(RenderGraphUiSupport PUBLIC RMLUI_STATIC_LIB)
 target_compile_features(RenderGraphUiSupport PUBLIC cxx_std_23)

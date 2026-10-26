@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x5B0F2FD4
+shape 0xCE7796BC
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -23,6 +23,14 @@ action EditProgramFieldDown 12
 action AdjustParameterUp 13
 action AdjustParameterDown 14
 action OpenRecipe 15
+action OpenPanel 16
+action ClosePanel 17
+action FocusPanel 18
+action MovePanel 19
+action SplitPanel 20
+action FloatPanel 21
+action ResizeRegion 22
+action ResetLayout 23
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -76,6 +84,14 @@ decl 12 sizeof(LayerState) 1
 decl 13 sizeof(LayerState) 1
 decl 14 sizeof(LayerState) 1
 decl 15 sizeof(LayerState) 1
+decl 16 sizeof(LayerState) 1
+decl 17 sizeof(LayerState) 1
+decl 18 sizeof(LayerState) 1
+decl 19 sizeof(LayerState) 1
+decl 20 sizeof(LayerState) 1
+decl 21 sizeof(LayerState) 1
+decl 22 sizeof(LayerState) 1
+decl 23 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -85,6 +101,20 @@ param 12 layerIndex 1
 param 13 parameterIndex 1
 param 14 parameterIndex 1
 param 15 recipeId 0
+param 16 panelId 0
+param 17 panelId 0
+param 18 panelId 0
+param 19 panelId 0
+param 19 region 0
+param 20 panelId 0
+param 20 region 0
+param 21 panelId 0
+param 21 x 1
+param 21 y 1
+param 21 width 1
+param 21 height 1
+param 22 region 0
+param 22 size 1
 transition Transitions 0 1 0
 transition ToSettings 0 3 0
 transition SettingsEditingEdge 3 0 0
@@ -101,7 +131,11 @@ trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click
 trigger SaveButtonTrigger save-button 3 - click
+trigger FocusPanelTrigger panel-{panelId}-tab 18 panelId click
+trigger ClosePanelTrigger panel-{panelId}-close 17 panelId click
+trigger MovePanelTrigger panel-{panelId}-to-{region} 19 panelId click
 trigger BackButtonTrigger back-button 5 - click
+keydefault ResetLayoutKey 23 18 1 0 0
 keydefault UndoKey 1 26 1 0 0
 keydefault RedoKey 2 25 1 0 0
 keydefault SaveKey 3 19 0 0 0

@@ -6,7 +6,6 @@
 // guard).
 #include "EditorLayersViewBridge.h"
 #include "EditorLayersView.h"
-#include "Nodes/UIRenderNode.h"
 
 namespace Vixen::App {
 
@@ -18,12 +17,8 @@ void DestroyEditorLayersView(EditorLayersView* view) {
     delete view;  // EditorLayersView is complete in this TU, so the real destructor runs here.
 }
 
-void WireEditorLayersView(Vixen::RenderGraph::UIRenderNode& node, EditorLayersView& view) {
-    // Non-owning aliased shared_ptr -- view is owned by the caller (EditorApplication's
-    // layersView_ member), which already outlives the graph/node it is wired into, so there is no
-    // real ownership to transfer; the no-op deleter documents that SetView's shared_ptr contract
-    // is satisfied without a second owner. Mirrors HudViewBridge.cpp's WireHudView.
-    node.SetView(std::shared_ptr<Vixen::RenderGraph::IView>(&view, [](Vixen::RenderGraph::IView*) {}));
+Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view) {
+    return view;
 }
 
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
@@ -34,6 +29,10 @@ void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes) {
     view.PopulateRecipes(recipes);
+}
+
+void RefreshEditorStatusView(EditorLayersView& view, const EditorStatusData& status) {
+    view.PopulateStatus(status);
 }
 
 }  // namespace Vixen::App
