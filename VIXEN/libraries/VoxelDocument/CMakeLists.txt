@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.15...4.2 FATAL_ERROR)
 
 add_library(VoxelDocument STATIC
     include/EditorDocumentModel.h
+    include/PackRecipeSource.h
     src/EditorDocumentModel.cpp
+    src/PackRecipeSource.cpp
 )
 
 target_compile_features(VoxelDocument PUBLIC cxx_std_23)
@@ -11,7 +13,7 @@ target_include_directories(VoxelDocument
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(VoxelDocument PUBLIC SVO)
+target_link_libraries(VoxelDocument PUBLIC SVO PRIVATE nlohmann_json::nlohmann_json)
 set_target_properties(VoxelDocument PROPERTIES FOLDER "Libraries")
 
 if(MSVC)

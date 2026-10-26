@@ -587,6 +587,22 @@ void EditorApplication::RegisterAppFlowHandlers() {
     registerParameterEdit(FlowActionId::AdjustParameterUp, true);
     registerParameterEdit(FlowActionId::AdjustParameterDown, false);
 
+    // R765: open a pack recipe by content id. Opening replaces the document and reloads the AppFlow
+    // runtime (fresh undo history), which must not happen inside the runtime's own dispatch, so the
+    // request is validated here and applied by Update().
+    rt_.RegisterHandler(FlowActionId::OpenRecipe, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string recipeId;
+        for (const auto& [name, value] : p) if (name == "recipeId") recipeId = value;
+        pack_.Refresh();
+        std::string path;
+        if (!pack_.TryResolve(recipeId, path)) {
+            lastEditorError_ = "OpenRecipe: the open pack has no recipe '" + recipeId + "'";
+            logger_->Warning("[EditorApplication] " + lastEditorError_);
+            return;
+        }
+        pendingOpenRecipe_ = recipeId;
+    });
+
     rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         rt_.Stack().Undo();
     });
@@ -915,10 +931,6 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
 }
 
 bool EditorApplication::SaveDocument() {
-    const size_t dot = documentPath_.find_last_of('.');
-    const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
-    const std::string outPath = base + ".edited.vxd";
-
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
@@ -926,9 +938,33 @@ bool EditorApplication::SaveDocument() {
         lastEditorError_ = diagnostic.message;
         return false;
     }
-    if (!doc_.Save(outPath, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
-        return false;
+
+    std::string outPath;
+    if (!openRecipeId_.empty()) {
+        // R765: a pack recipe saves its layered document back into the pack's authored form; the pack
+        // build flattens it. No side file and no flattened .vrc is written.
+        if (!pack_.TryResolve(openRecipeId_, outPath)) {
+            lastEditorError_ = "the open pack no longer lists recipe '" + openRecipeId_ + "'";
+            return false;
+        }
+        std::vector<uint8_t> bytes;
+        if (!doc_.Serialize(bytes, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
+        std::string writeError;
+        if (!Vixen::Editor::PackRecipeSource::WriteAtomically(outPath, bytes, writeError)) {
+            lastEditorError_ = writeError;
+            return false;
+        }
+    } else {
+        const size_t dot = documentPath_.find_last_of('.');
+        const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
+        outPath = base + ".edited.vxd";
+        if (!doc_.Save(outPath, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
     }
     lastSavedPath_ = outPath;
     lastSavedProgram_ = std::move(canonical.bytecode);
@@ -939,6 +975,7 @@ bool EditorApplication::SaveDocument() {
     std::ostringstream state;
     state << "[EDITOR/state] save revision=" << snapshot.revision << " mask=" << lastSavedMask_
           << " parameterCount=" << doc_.ParameterCount();
+    if (!openRecipeId_.empty()) state << " recipe=" << openRecipeId_ << " path=" << outPath;
     logger_->Info(state.str());
     return true;
 }
@@ -971,10 +1008,17 @@ bool EditorApplication::ReopenSavedDocument() {
         return false;
     }
 
+    if (!AdoptDocument(std::move(candidate))) return false;
+    logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
+                  " programMatch=1 parametersMatch=1 maskMatch=1");
+    return true;
+}
+
+bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candidate) {
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     const Vixen::AppFlow::Generated::AppFlowContainerView* view = blob ? &blob->View() : nullptr;
     if (rt_.Load(view, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
-        lastEditorError_ = "AppFlowRuntime reload failed while reopening the saved document";
+        lastEditorError_ = "AppFlowRuntime reload failed while adopting a document";
         return false;
     }
     doc_ = std::move(candidate);
@@ -983,8 +1027,65 @@ bool EditorApplication::ReopenSavedDocument() {
     RegisterAppFlowHandlers();
     SyncAfterDocumentMutation();
     lastEditorError_.clear();
-    logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
-                  " programMatch=1 parametersMatch=1 maskMatch=1");
+    return true;
+}
+
+void EditorApplication::RefreshRecipesView() {
+    std::vector<Vixen::App::EditorRecipeData> recipes;
+    recipes.reserve(pack_.Recipes().size());
+    for (const auto& recipe : pack_.Recipes()) recipes.push_back({recipe.id, recipe.id == openRecipeId_});
+    Vixen::App::RefreshEditorRecipesView(*layersView_, recipes);
+}
+
+bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::string& schemaPath) {
+    std::string error;
+    if (!pack_.Configure(packRoot, schemaPath, error)) {
+        lastEditorError_ = error;
+        return false;
+    }
+    logger_->Info("[EDITOR/state] pack root=" + pack_.PackRoot() + " id=" + pack_.PackId() +
+                  " assets=" + pack_.AssetDirectory() + "/*" + pack_.AssetExtension() +
+                  " recipes=" + std::to_string(pack_.Recipes().size()));
+    RefreshRecipesView();
+    return true;
+}
+
+bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
+    std::string path;
+    if (!pack_.TryResolve(recipeId, path)) {
+        lastEditorError_ = "the open pack has no recipe '" + recipeId + "'";
+        return false;
+    }
+    if (GetRenderGraph() == nullptr) {
+        // First document, before Prepare(): the ordinary initial load.
+        if (!LoadDocument(path)) return false;
+    } else {
+        Vixen::Editor::EditorDocumentModel candidate;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!candidate.Load(path, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
+        if (!AdoptDocument(std::move(candidate))) return false;
+        documentPath_ = path;
+        reframePending_ = true;
+    }
+    openRecipeId_ = recipeId;
+    RefreshRecipesView();
+    std::ostringstream state;
+    state << "[EDITOR/state] open recipe=" << recipeId << " path=" << path
+          << " layers=" << doc_.LayerCount() << " mask=" << doc_.EnabledMask() << " parameters=[";
+    for (uint32_t i = 0; i < doc_.ParameterCount(); ++i) {
+        if (i) state << ',';
+        state << doc_.ParameterName(i) << '=' << doc_.ParameterValue(i);
+    }
+    state << "] names=[";
+    for (uint32_t i = 0; i < doc_.LayerCount(); ++i) {
+        if (i) state << ',';
+        state << doc_.LayerName(i);
+    }
+    state << ']';
+    logger_->Info(state.str());
     return true;
 }
 
@@ -1212,6 +1313,14 @@ void EditorApplication::Update() {
     // the same dirty_ re-flatten tail below as an input-driven toggle would. The input path's own
     // same-frame echo (inside the ToggleLayer handler) already covers the self case; this call is
     // what makes a non-input Gaia write reach the view at all.
+    if (pendingOpenRecipe_.has_value()) {
+        const std::string recipeId = std::move(*pendingOpenRecipe_);
+        pendingOpenRecipe_.reset();
+        if (!OpenPackRecipe(recipeId)) {
+            logger_->Error("[EditorApplication] OpenRecipe failed: " + lastEditorError_);
+        }
+    }
+
     ReconcileLayersView();
     if (doc_.EnabledMask() != channelObservedMask_) {
         channelObservedMask_ = doc_.EnabledMask();
@@ -1226,7 +1335,9 @@ void EditorApplication::Update() {
         dirty_ = false;
         logger_->Debug("[EDITOR/diag] re-flatten tick=" + std::to_string(updateTick_) +
                        " mask=" + std::to_string(rt_.Layers().Mask()));
-        if (!ApplyDocumentToScene()) {
+        const bool reframe = reframePending_;
+        reframePending_ = false;
+        if (!ApplyDocumentToScene(reframe)) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
         }
     }
@@ -1748,11 +1859,17 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                 views.push_back({{"noun", EnumRecord(target.viewNoun)}, {"value", value}});
             }
         }
+        nlohmann::json recipes = nlohmann::json::array();
+        for (const auto& recipe : pack_.Recipes()) {
+            recipes.push_back({{"id", recipe.id}, {"open", recipe.id == openRecipeId_}});
+        }
         return nlohmann::json{
             {"flowState", EnumRecord(rt_.Current())},
             {"undoDepth", rt_.Stack().UndoDepth()},
             {"redoDepth", rt_.Stack().RedoDepth()},
             {"views", std::move(views)},
+            {"pack", {{"root", pack_.PackRoot()}, {"id", pack_.PackId()}, {"recipes", std::move(recipes)},
+                      {"open", openRecipeId_}, {"lastSaved", lastSavedPath_}}},
             {"frame", channelPresentedFrame_}
         }.dump();
     }

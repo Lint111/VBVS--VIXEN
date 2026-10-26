@@ -23,6 +23,7 @@ namespace Vixen.AppFlow.Reference
         CreateLayer = 7, DeleteLayer = 8, MoveLayerUp = 9, MoveLayerDown = 10,
         EditProgramFieldUp = 11, EditProgramFieldDown = 12,
         AdjustParameterUp = 13, AdjustParameterDown = 14,
+        OpenRecipe = 15,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -99,6 +100,16 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Param0Name = "parameterIndex";
         public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // R765: open a pack render recipe by its content id (`<pack id>:<document stem>`, the id a render_recipe
+    // row's `blob:` names). The editor lists the pack's layered documents; Save writes the open one back
+    // into the pack.
+    [FlowActionParams(nameof(FlowAction.OpenRecipe))]
+    public static class OpenRecipeParams
+    {
+        public const string Param0Name = "recipeId";
+        public const int Param0Type = (int)FlowParamType.String;
     }
 
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
@@ -186,6 +197,15 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "parameter-{index}-down";
         public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    // A listed recipe row's button carries its content id in the element id ("recipe-core:asteroid-open").
+    [FlowElementTrigger(nameof(FlowAction.OpenRecipe))]
+    public static class OpenRecipeTrigger
+    {
+        public const string Element = "recipe-{recipeId}-open";
+        public const string ParamName = "recipeId";
         public const string On = "click";
     }
 

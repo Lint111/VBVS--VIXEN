@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xC6F3E476
+shape 0x5B0F2FD4
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -22,6 +22,7 @@ action EditProgramFieldUp 11
 action EditProgramFieldDown 12
 action AdjustParameterUp 13
 action AdjustParameterDown 14
+action OpenRecipe 15
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -74,6 +75,7 @@ decl 11 sizeof(LayerState) 1
 decl 12 sizeof(LayerState) 1
 decl 13 sizeof(LayerState) 1
 decl 14 sizeof(LayerState) 1
+decl 15 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -82,6 +84,7 @@ param 11 layerIndex 1
 param 12 layerIndex 1
 param 13 parameterIndex 1
 param 14 parameterIndex 1
+param 15 recipeId 0
 transition Transitions 0 1 0
 transition ToSettings 0 3 0
 transition SettingsEditingEdge 3 0 0
@@ -94,6 +97,7 @@ trigger EditProgramFieldUpTrigger layer-{index}-program-up 11 layerIndex click
 trigger EditProgramFieldDownTrigger layer-{index}-program-down 12 layerIndex click
 trigger AdjustParameterUpTrigger parameter-{index}-up 13 parameterIndex click
 trigger AdjustParameterDownTrigger parameter-{index}-down 14 parameterIndex click
+trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click
 trigger SaveButtonTrigger save-button 3 - click

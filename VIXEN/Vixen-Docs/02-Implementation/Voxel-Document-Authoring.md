@@ -95,6 +95,27 @@ a face so the cut is visible in silhouette).
 On startup the app reads the document, flattens it, registers the resulting VRC1 blob as the editor's
 procedural recipe (`kEditorProceduralRecipeId`), and renders one body instance through it.
 
+### Pack mode (R765)
+
+```
+VIXEN_EDITOR_PACK=<pack root> VIXEN_EDITOR_PACK_SCHEMA=<the pack's generated schemas.json> vixen_editor
+```
+
+A pack stores each arbitrary render recipe as its layered document (`.vxd`), in the directory and extension
+that the pack schema declares for the `render_recipe` kind. For Undertow that is `recipes/*.vxd`, from
+`AssetFilesAt` projected into `schemas.json` as `assetFiles`. The pack build (`undertow-author bake`)
+flattens each document into the runtime VRC1 blob; no flattened `.vrc` is ever written into the pack.
+
+- `PackRecipeSource` (`libraries/VoxelDocument`) lists the documents by content id, `<pack id>:<file stem>`.
+  This is the id a `render_recipe` row's `blob:` names. The pack id comes from `manifest.utdl`.
+- The editor opens the first document. The panel's **Pack recipes** list shows every document, with the open
+  one highlighted.
+- The AppFlow action `OpenRecipe` (`String recipeId`, element trigger `recipe-{recipeId}-open`) opens another
+  one by id. It works from a click, from `appflow.dispatch` with `actionId: "OpenRecipe"`, or by selector.
+  Opening resets the undo history and reframes the camera.
+- `appflow.read` reports `pack {root, id, recipes[{id, open}], open, lastSaved}`.
+- A new recipe starts from Undertow's template: `undertow-author new render_recipe <mod> <dir>`.
+
 The panel is `VIXEN/libraries/RenderGraph/assets/ui/editor.rml` / `editor.rcss`, a fixed 420 px column bound
 to the generated `EditorLayers` View (`EditorLayersView.h`). It has, top to bottom:
 
@@ -133,9 +154,14 @@ actually changes. Agent (channel) dispatches are not grouped, so N agent actions
 ## 4. Save
 
 A UI button/hotkey writes the current state back out via the generated `WriteVoxelDocument`, with the
-`enabled` byte of each layer replaced by the live `enabledOverride` values — every other field (name, op,
-blendRadius, instructions) is preserved unchanged. It never overwrites the input file: the output path is
-always `<input>.edited.vxd`. The written path is logged.
+`enabled` byte of each layer replaced by the live `enabledOverride` values and the parameters' current values.
+Every other field (name, op, blendRadius, instructions) is preserved unchanged, so reopening keeps the layers.
+
+- **Pack recipe:** the layered document is written back to its file in the pack, replaced atomically (written
+  to `<file>.saving`, then renamed). The pack build then flattens it.
+- **Loose document (argv):** the input file is never overwritten; the output path is `<input>.edited.vxd`.
+
+The written path is logged (`[EDITOR/state] save … recipe=<id> path=<file>`).
 
 ## 5. Regenerating the vendored artifacts
 

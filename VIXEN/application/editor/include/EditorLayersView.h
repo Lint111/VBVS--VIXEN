@@ -48,7 +48,7 @@ public:
     const char* DocumentPath() const override { return "assets/ui/editor.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindEditorLayersModel(c,
-            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_ });
+            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_, &recipes_ });
         model_ = c.GetModelHandle();
     }
 
@@ -106,6 +106,20 @@ public:
         }
     }
 
+    // R765: the open pack's render-recipe documents; each row carries its OpenRecipe selector.
+    void PopulateRecipes(const std::vector<EditorRecipeData>& recipeData) {
+        recipes_.clear();
+        recipes_.reserve(recipeData.size());
+        for (const auto& recipe : recipeData) {
+            Vixen::Views::EditorRecipeRow row;
+            row.id = Rml::String(recipe.id);
+            row.elementId = "recipe-" + recipe.id + "-open";
+            row.isOpen = recipe.isOpen;
+            recipes_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("recipes");
+    }
+
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
@@ -119,6 +133,7 @@ private:
     std::vector<Vixen::Views::EditorLayerRow> layers_;
     std::vector<Vixen::Views::EditorParameterRow> parameters_;
     int activeLayerCountRaw_ = 0;
+    std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     Rml::DataModelHandle model_;
 };
 

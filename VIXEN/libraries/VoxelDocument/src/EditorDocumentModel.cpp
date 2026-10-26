@@ -581,8 +581,8 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     return true;
 }
 
-bool EditorDocumentModel::Save(const std::string& outPath,
-                               DocumentDiagnostic& diagnostic) const {
+bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
+                                    DocumentDiagnostic& diagnostic) const {
     using namespace Yeroket::Sdf::Generated;
 
     diagnostic.Clear();
@@ -600,7 +600,7 @@ bool EditorDocumentModel::Save(const std::string& outPath,
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
                        parameters.data(), static_cast<uint32_t>(parameters.size()),
                        writes.data(), LayerCount(), nullptr, 0, required);
-    std::vector<uint8_t> bytes(required);
+    bytes.assign(required, 0u);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
                             parameters.data(), static_cast<uint32_t>(parameters.size()),
@@ -610,6 +610,13 @@ bool EditorDocumentModel::Save(const std::string& outPath,
         return false;
     }
     bytes.resize(written);
+    return true;
+}
+
+bool EditorDocumentModel::Save(const std::string& outPath,
+                               DocumentDiagnostic& diagnostic) const {
+    std::vector<uint8_t> bytes;
+    if (!Serialize(bytes, diagnostic)) return false;
 
     std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
     if (!file) {

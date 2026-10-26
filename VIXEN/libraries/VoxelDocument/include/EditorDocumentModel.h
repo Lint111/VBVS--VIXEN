@@ -112,6 +112,9 @@ public:
                               const DocumentBakeSnapshot& snapshot,
                               DocumentDiagnostic& diagnostic) const;
 
+    // Encodes the accepted document (layers, enabled state, parameter values) as VDC1 bytes.
+    bool Serialize(std::vector<uint8_t>& bytes, DocumentDiagnostic& diagnostic) const;
+
     // Writes the accepted document with its current enabled-layer state.
     bool Save(const std::string& outPath, DocumentDiagnostic& diagnostic) const;
 

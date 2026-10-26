@@ -32,4 +32,8 @@ void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
     view.PopulateFromDocument(mask, layers, parameters);
 }
 
+void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes) {
+    view.PopulateRecipes(recipes);
+}
+
 }  // namespace Vixen::App

@@ -43,6 +43,12 @@ struct EditorParameterData {
 // EditorLayersView only, so a unique_ptr's implicit destructor (instantiated at EditorApplication's
 // own dtor, in this gaia-touching TU) would need the complete type there. A raw pointer + explicit
 // DestroyEditorLayersView() sidesteps that.
+// R765: one listed pack render-recipe document.
+struct EditorRecipeData {
+    std::string id;
+    bool isOpen = false;
+};
+
 EditorLayersView* MakeEditorLayersView();
 
 // Destroys through a complete-type call site (EditorLayersViewBridge.cpp).
@@ -56,5 +62,7 @@ void WireEditorLayersView(Vixen::RenderGraph::UIRenderNode& node, EditorLayersVi
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
                              const std::vector<EditorParameterData>& parameters);
+
+void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 
 }  // namespace Vixen::App

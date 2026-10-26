@@ -19,6 +19,7 @@
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
+#include "PackRecipeSource.h"
 #include "AppFlowChannel.h"
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
@@ -74,9 +75,20 @@ public:
     // for the initial load; safe to no-op-check via LastError() on failure.
     bool LoadDocument(const std::string& path);
 
-    // Reconstructs the document from the headless model's current enabled state and writes it to
-    // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError())
-    // on failure.
+    // R765: browse a pack's render-recipe documents. packRoot holds manifest.utdl; schemaPath is the
+    // generated pack schema (schemas.json) that declares the render_recipe asset directory/extension.
+    bool ConfigurePack(const std::string& packRoot, const std::string& schemaPath);
+    const Vixen::Editor::PackRecipeSource& Pack() const { return pack_; }
+    // The id of the open pack recipe, empty when the editor edits a loose file.
+    const std::string& OpenRecipeId() const { return openRecipeId_; }
+    // Opens a listed pack recipe: loads its layered document, resets undo history, refreshes the view
+    // and reframes the camera. Called before Prepare() for the first document, and from Update() for an
+    // OpenRecipe action (deferred out of the AppFlow dispatch that requested it).
+    bool OpenPackRecipe(const std::string& recipeId);
+
+    // Reconstructs the document from the headless model's current state. A pack recipe is written back
+    // into the pack (its layered document, replaced atomically); a loose file is written to
+    // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError()) on failure.
     bool SaveDocument();
     bool ReopenSavedDocument();
 
@@ -136,10 +148,18 @@ private:
     // writes are applied through EditorDocumentModel, then mirrored to the runtime projection.
     void ReconcileLayersView();
     void SyncAfterDocumentMutation();
+    void RefreshRecipesView();
+    // Replaces doc_ with an accepted candidate: AppFlow runtime reload (fresh undo history), handlers,
+    // view and render resync. Shared by the reopen witness and OpenPackRecipe.
+    bool AdoptDocument(Vixen::Editor::EditorDocumentModel candidate);
 
 
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
+    Vixen::Editor::PackRecipeSource pack_;
+    std::string openRecipeId_;
+    std::optional<std::string> pendingOpenRecipe_;  // OpenRecipe request, applied in Update()
+    bool reframePending_ = false;                    // next re-apply reframes the camera (new document)
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
     // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The
     // runtime's LayerController is a projection for AppFlow snapshots; EditorDocumentModel owns
