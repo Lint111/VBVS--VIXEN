@@ -9,6 +9,7 @@ project(EventBus VERSION 1.0.0 LANGUAGES CXX)
 set(EVENTBUS_HEADERS
     include/Message.h
     include/MessageBus.h
+    include/QueueSubmitRequest.h
     include/InputEvents.h
     include/SelectionId.h        # SEL-P1: low-level selection identity (kept here so SelectionChangedEvent can carry it without a RenderGraph dep)
     include/SelectionEvents.h    # SEL-P1: SelectionChangedEvent

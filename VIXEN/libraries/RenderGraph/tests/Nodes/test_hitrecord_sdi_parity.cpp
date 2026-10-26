@@ -38,17 +38,7 @@ namespace {
 // generated type (no engine code includes this) — local to this test, whose entire job is
 // to catch the two copies (this one and the GLSL one) drifting apart.
 //
-// Sized 60 B (the DECLARED struct size — albedo..flags, ending right after _pad0's 3 named
-// uints), matching what SPIRV-Reflect actually reports for hitRecords[]'s element type below.
-// The shader's REAL per-element buffer stride is 64 B (std430's array-stride rule pads a
-// runtime array's element to its largest member's alignment — 16 B here — so consecutive
-// elements land 64 B apart, not 60), but empirically or SPIRV-Reflect does not surface that
-// stride for a runtime-length array the way it does for a fixed-size one like LightingConfig's
-// `lights[4]` (see test_lightingconfig_sdi_parity.cpp, whose arrayStride assertion DOES work —
-// confirmed by running both tests against the live SPIR-V: hitRecords reports
-// arrayStride=0/size=60 where lights reports a real nonzero arrayStride). The 64 B real stride
-// is instead proven by test_hitrecord_readback.cpp's live GPU dispatch, which sizes/indexes the
-// buffer using the shader's actual generated offsets end-to-end.
+// Sized 64 B, including the primary camera-footprint word in the existing std430 tail.
 struct HitRecordCpu {
     float albedo[3];
     float roughness;
@@ -57,8 +47,9 @@ struct HitRecordCpu {
     float worldPos[3];
     uint32_t flags;
     uint32_t _pad0[3];
+    float primaryFootprint;
 };
-static_assert(sizeof(HitRecordCpu) == 60, "HitRecordCpu std430 mirror size (declared, pre-array-stride)");
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
 static_assert(offsetof(HitRecordCpu, albedo)      == 0,  "albedo@0");
 static_assert(offsetof(HitRecordCpu, roughness)   == 12, "roughness@12");
 static_assert(offsetof(HitRecordCpu, worldNormal) == 16, "worldNormal@16");
@@ -66,6 +57,7 @@ static_assert(offsetof(HitRecordCpu, hitT)        == 28, "hitT@28");
 static_assert(offsetof(HitRecordCpu, worldPos)    == 32, "worldPos@32");
 static_assert(offsetof(HitRecordCpu, flags)       == 44, "flags@44");
 static_assert(offsetof(HitRecordCpu, _pad0)       == 48, "_pad0@48");
+static_assert(offsetof(HitRecordCpu, primaryFootprint) == 60, "primaryFootprint@60");
 
 // The REAL per-element buffer stride (see comment above) — what C++ code allocating/indexing
 // a HitRecordBuffer-shaped SSBO must actually use (test_hitrecord_readback.cpp does).
@@ -121,13 +113,11 @@ TEST(HitRecordSdiParity, ReflectedLayoutMatchesCppMirror) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Reflected declared element size == C++ mirror size (see HitRecordCpu's comment for
-    // why this is 60, not the real 64 B buffer stride — SPIRV-Reflect doesn't surface array
-    // stride for a runtime-length array member).
+    // (a) Reflected declared element size == C++ mirror size.
     EXPECT_EQ(static_cast<std::size_t>(hitRecords->type.sizeInBytes), sizeof(HitRecordCpu))
         << "HitRecord declared size (" << hitRecords->type.sizeInBytes
         << ") != sizeof(HitRecordCpu) (" << sizeof(HitRecordCpu) << ") — std430 drift";
-    EXPECT_EQ(hitRecords->type.sizeInBytes, 60u) << "HitRecord declared size must be 60 (Inc1 M3 contract)";
+    EXPECT_EQ(hitRecords->type.sizeInBytes, 64u) << "HitRecord declared size must be 64";
     (void)kHitRecordBufferStride;  // documented, exercised by test_hitrecord_readback.cpp
 
     // (b) Per-field offsets.
@@ -142,6 +132,7 @@ TEST(HitRecordSdiParity, ReflectedLayoutMatchesCppMirror) {
         {"hitT",        offsetof(HitRecordCpu, hitT)},
         {"worldPos",    offsetof(HitRecordCpu, worldPos)},
         {"flags",       offsetof(HitRecordCpu, flags)},
+        {"primaryFootprint", offsetof(HitRecordCpu, primaryFootprint)},
     };
     for (const auto& f : fields) {
         const SpirvStructMember* sm = FindSubMember(*hitRecords, f.name);

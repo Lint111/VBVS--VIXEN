@@ -10,10 +10,17 @@ namespace Vixen::Views {
 
 struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; Rml::String programUpId; Rml::String programDownId; float programFieldValue; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; };
+struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
     std::vector<EditorParameterRow>* parameters;
     int* activeLayerCount;
+    std::vector<EditorRecipeRow>* recipes;
+    Rml::String* statusDocument;
+    Rml::String* statusMessage;
+    Rml::String* flowState;
+    int* undoDepth;
+    int* redoDepth;
 };
 
 int BindEditorLayersModel_activeLayerCountOverride(int* activeLayerCount);
@@ -40,11 +47,23 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("minimum", &EditorParameterRow::minimum);
         sh.RegisterMember("maximum", &EditorParameterRow::maximum);
     }
+    if (auto sh = c.RegisterStruct<EditorRecipeRow>()) {
+        sh.RegisterMember("id", &EditorRecipeRow::id);
+        sh.RegisterMember("elementId", &EditorRecipeRow::elementId);
+        sh.RegisterMember("isOpen", &EditorRecipeRow::isOpen);
+    }
     c.RegisterArray<std::vector<EditorLayerRow>>();
     c.RegisterArray<std::vector<EditorParameterRow>>();
+    c.RegisterArray<std::vector<EditorRecipeRow>>();
     c.Bind("layers", b.layers);
     c.Bind("parameters", b.parameters);
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
+    c.Bind("recipes", b.recipes);
+    c.Bind("statusDocument", b.statusDocument);
+    c.Bind("statusMessage", b.statusMessage);
+    c.Bind("flowState", b.flowState);
+    c.Bind("undoDepth", b.undoDepth);
+    c.Bind("redoDepth", b.redoDepth);
 }
 
 // Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Reference::bitAt(source, index).

@@ -210,7 +210,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
     if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[DepthTargetNode] vkQueueSubmit (clear) failed");
+        throw std::runtime_error("[DepthTargetNode] queue-owner clear submit failed");
     }
 
     NODE_LOG_INFO("[DepthTargetNode] Created R32_SFLOAT ping-pong pair at " +

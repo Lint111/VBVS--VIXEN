@@ -19,7 +19,7 @@
 #include <span>
 
 namespace Vixen::App { class HudView; }
-namespace Vixen::RenderGraph { class UIRenderNode; }
+namespace Vixen::RenderGraph { class IView; }
 
 namespace Vixen::App {
 
@@ -34,9 +34,9 @@ HudView* MakeHudView();
 // Destroys a HudView through a complete-type call site (HudViewBridge.cpp).
 void DestroyHudView(HudView* view);
 
-// Wires view onto node via UIRenderNode::SetView (non-owning aliased shared_ptr -- view is
-// owned by the caller, e.g. VulkanGraphApplication::hudView_, which outlives the graph).
-void WireHudView(Vixen::RenderGraph::UIRenderNode& node, HudView& view);
+// R766: the HUD as the IView its panel declaration binds (the dock binds it as the UI node's primary
+// document). The upcast lives here because HudView is complete only in this bridge's TU.
+Vixen::RenderGraph::IView& HudAsView(HudView& view);
 
 // Forwards to HudView::SetHudView (the relocated tick/bodyCount/lens/factions/events projection).
 void PushHudView(HudView& view, int tick, int bodyCount, int activeLens, int activeLensCount,

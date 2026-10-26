@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include "AppFlowBlobFile.h"
 #include "AppFlowRuntime.h"
@@ -129,7 +130,8 @@ TEST(AppFlowBlob, InteriorEditPreservesShapeHash) {
 
     ASSERT_TRUE(blob.has_value());
     EXPECT_EQ(blob->ShapeHash(), kAppFlowShapeHash);
-    ASSERT_EQ(blob->View().elementTriggerTable().size(), 2u);
+    // The edit renames one pattern in place: the table keeps the compiled container's size and order.
+    ASSERT_EQ(blob->View().elementTriggerTable().size(), AppFlowContainerView::elementTriggers().size());
     EXPECT_STREQ(blob->View().elementTriggerTable()[0].elementPattern, "layer-{index}-other");
 }
 
@@ -154,6 +156,25 @@ TEST(AppFlowBlob, ReloadedRuntimeOwnsParsedBlobStorage) {
     blob.reset();
     EXPECT_EQ(runtime.DispatchBySelector("layer-3-other"), DispatchResult::Ok);
     EXPECT_EQ(runtime.DispatchBySelector("layer-3-toggle"), DispatchResult::RejectedByState);
+}
+
+// A parametric selector resolves its parameter by name through the registered action schema. After a
+// reload from a parsed blob that the caller then destroys, that name must still be the runtime's own
+// (a String-parameter pattern, as the editor's "recipe-{recipeId}-open").
+TEST(AppFlowBlob, ReloadedRuntimeResolvesStringPatternAfterBlobIsFreed) {
+    auto blob = AppFlowBlobFile::Parse(ReadGeneratedBlob());
+    ASSERT_TRUE(blob.has_value());
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(&blob->View()), LoadResult::Ok);
+    std::string opened;
+    runtime.RegisterHandler(FlowActionId::OpenRecipe, [&](const AppFlowRuntime::Params& params) {
+        for (const auto& [name, value] : params) if (name == "recipeId") opened = value;
+    });
+
+    blob.reset();
+    std::vector<std::string> scribble(4096, std::string(64, '#'));   // reuse the freed blob storage
+    EXPECT_EQ(runtime.DispatchBySelector("recipe-core:asteroid-open"), DispatchResult::Ok);
+    EXPECT_EQ(opened, "core:asteroid");
 }
 
 TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {

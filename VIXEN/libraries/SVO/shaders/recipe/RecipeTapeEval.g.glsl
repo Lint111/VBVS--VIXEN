@@ -2236,7 +2236,7 @@ bool EvalRecipeTapeOutputsWithParams(uint tapeOffset, uint tapeCount, precise ve
             } break;
             case 182u: { // GlyphOutline
                 if (valueBase + 1u > uint(RECIPE_TAPE_VALUE_COUNT)) { valid = false; break; }
-                precise float result = SdfCore_GlyphOutline(p, glyphOutlineInstances[floatBitsToUint(YK_TAPE_DATA(instructionIndex, 0))]);
+                precise float result = SdfCore_GlyphOutline(p, floatBitsToUint(YK_TAPE_DATA(instructionIndex, 0)));
                 RecipeTapeValuesSet(values, valueBase + 0u, result);
                 ++executedClauses;
             } break;

@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cstring>
 #include <limits>
-#include <mutex>
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -32,7 +31,7 @@ struct AppFlowReadbackRing::Slot {
     VkDeviceSize capacity = 0;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer command = VK_NULL_HANDLE;
-    VkFence fence = VK_NULL_HANDLE;
+    std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion;
     bool inFlight = false;
 
     std::string key;
@@ -53,11 +52,14 @@ AppFlowReadbackRing::~AppFlowReadbackRing() {
 
 void AppFlowReadbackRing::DestroySlot(Slot& slot) {
     if (slot.logicalDevice == VK_NULL_HANDLE) return;
-    if (slot.inFlight && slot.fence != VK_NULL_HANDLE) {
-        // Shutdown only: the frame loop never waits for a readback fence.
-        vkWaitForFences(slot.logicalDevice, 1, &slot.fence, VK_TRUE, UINT64_MAX);
+    if (slot.inFlight && (!slot.completion || !slot.completion->IsRetired())) {
+        // The graph owns queue quiescence. Do not turn shutdown into a producer-side wait; the
+        // device teardown path owns any still-in-flight Vulkan objects.
+        return;
     }
-    if (slot.fence != VK_NULL_HANDLE) vkDestroyFence(slot.logicalDevice, slot.fence, nullptr);
+    if (slot.command != VK_NULL_HANDLE && slot.commandPool != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(slot.logicalDevice, slot.commandPool, 1, &slot.command);
+    }
     if (slot.commandPool != VK_NULL_HANDLE) vkDestroyCommandPool(slot.logicalDevice, slot.commandPool, nullptr);
     if (slot.buffer != VK_NULL_HANDLE) vkDestroyBuffer(slot.logicalDevice, slot.buffer, nullptr);
     if (slot.memory != VK_NULL_HANDLE) vkFreeMemory(slot.logicalDevice, slot.memory, nullptr);
@@ -128,12 +130,6 @@ bool AppFlowReadbackRing::EnsureSlot(Slot& slot, VkDevice logicalDevice, uint32_
         DestroySlot(slot);
         return false;
     }
-    VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    if (vkCreateFence(logicalDevice, &fenceInfo, nullptr, &slot.fence) != VK_SUCCESS) {
-        error = "vkCreateFence failed for AppFlow staging slot";
-        DestroySlot(slot);
-        return false;
-    }
     return true;
 }
 
@@ -197,8 +193,7 @@ bool AppFlowReadbackRing::Enqueue(std::string key, uint64_t frame,
     }
     const VkDeviceSize byteCount = static_cast<VkDeviceSize>(copyWidth) * copyHeight * 4;
     if (!EnsureSlot(*selected, device->device, queueFamily, device, byteCount, error)) return false;
-    if (vkResetCommandPool(device->device, selected->commandPool, 0) != VK_SUCCESS ||
-        vkResetFences(device->device, 1, &selected->fence) != VK_SUCCESS) {
+    if (vkResetCommandPool(device->device, selected->commandPool, 0) != VK_SUCCESS) {
         error = "could not reset AppFlow staging slot";
         return false;
     }
@@ -263,14 +258,12 @@ bool AppFlowReadbackRing::Enqueue(std::string key, uint64_t frame,
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &selected->command;
-    VkResult submitted;
-    {
-        // Borrow VulkanDevice's per-queue host-synchronization lock only around vkQueueSubmit.
-        std::lock_guard submitLock(device->SubmitMutex(queue));
-        submitted = vkQueueSubmit(queue, 1, &submit, selected->fence);
-    }
-    if (submitted != VK_SUCCESS) {
-        error = "vkQueueSubmit failed for AppFlow staging copy: " + std::to_string(submitted);
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        device, queue, submit);
+    selected->completion = device->PublishSubmitRequest(std::move(request));
+    if (!selected->completion || selected->completion->Result() != VK_NOT_READY &&
+        selected->completion->Result() != VK_SUCCESS) {
+        error = "AppFlow staging copy was rejected by the queue owner";
         return false;
     }
 
@@ -292,8 +285,8 @@ std::vector<AppFlowReadbackRing::Result> AppFlowReadbackRing::Poll() {
     for (auto& slot : slots_) {
         if (!slot.inFlight) continue;
         const auto completionStarted = Clock::now();
-        const VkResult status = vkGetFenceStatus(slot.logicalDevice, slot.fence);
-        if (status == VK_NOT_READY) continue;
+        if (!slot.completion || !slot.completion->IsRetired()) continue;
+        const VkResult status = slot.completion->Result();
         Result result;
         result.key = slot.key;
         result.frame = slot.frame;
@@ -303,8 +296,9 @@ std::vector<AppFlowReadbackRing::Result> AppFlowReadbackRing::Poll() {
         result.transferBytes = slot.transferBytes;
         result.fullImageTransferFallback = slot.fullImageTransferFallback;
         if (status != VK_SUCCESS) {
-            result.error = "vkGetFenceStatus failed for AppFlow staging copy: " + std::to_string(status);
+            result.error = "AppFlow staging copy failed in the queue owner: " + std::to_string(status);
             result.completionCpuUs = ElapsedUs(completionStarted);
+            slot.completion.reset();
             slot.inFlight = false;
             complete.push_back(std::move(result));
             continue;
@@ -327,6 +321,7 @@ std::vector<AppFlowReadbackRing::Result> AppFlowReadbackRing::Poll() {
             vkUnmapMemory(slot.logicalDevice, slot.memory);
         }
         result.completionCpuUs = ElapsedUs(completionStarted);
+        slot.completion.reset();
         slot.inFlight = false;
         complete.push_back(std::move(result));
     }

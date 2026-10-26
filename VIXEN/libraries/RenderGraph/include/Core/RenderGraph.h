@@ -32,6 +32,7 @@
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include "LockCensus.h"                         // Lock-free phase 0: per-frame mutex/wave census (no-op unless VIXEN_LOCK_CENSUS)
 #include "Core/SubmitChannel.h"                 // Lock-free phase 1: queue-owner submit channel (design §2.5)
+#include "QueueSubmitRequest.h"                  // R723: off-graph submit messages
 #include "Core/GpuFault.h"                       // R516: typed GPU faults + bounded waits
 #include <atomic>
 #include <any>
@@ -893,7 +894,9 @@ public:
     /// Opt-in synchronous retirement (PresentNode's waitForIdle, demo graphs only): a bounded wait
     /// for the newest batch the owner issued on `device`'s queue. Polls first; never takes VK2 and
     /// never submits. On the lowered executor nothing of this frame is issued yet, so it returns.
-    [[nodiscard]] GpuWaitResult WaitIssuedWork(Vixen::Vulkan::Resources::VulkanDevice* device);
+    [[nodiscard]] GpuWaitResult WaitIssuedWork(
+        Vixen::Vulkan::Resources::VulkanDevice* device,
+        uint64_t boundNs = GpuWaitBoundNs());
 
     /// Keep the host's OS message pump running while a graph recompile drains the GPU.
     /// The callback runs on the registering thread approximately every 16 ms during the wait.
@@ -908,6 +911,8 @@ private:
     /// Queue owner: issue the submits published by the nodes in `wave`, in canonical ordinal order,
     /// on the graph caller thread after the wave barrier (design §2.5). Called from ExecuteLoweredFrame.
     void DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave);
+    /// Fixed owner phase after EventBus processing: drain off-graph requests before graph work.
+    void DrainOffGraphSubmits();
 
 public:
 
@@ -978,6 +983,7 @@ private:
     // (so a node outside the lowered path submits directly). See SubmitChannel.h.
     SubmitChannel submitChannel_;
     bool submitChannelDraining_ = false;
+    std::vector<SubmitRecord> offGraphSubmits_;
     // R715/R503: the retirement timeline of each queue the owner submits to (graph thread only).
     std::unordered_map<VkQueue, QueueTimeline> queueTimelines_;
     /// The owner's issue of one record (submit or present) on the graph thread.

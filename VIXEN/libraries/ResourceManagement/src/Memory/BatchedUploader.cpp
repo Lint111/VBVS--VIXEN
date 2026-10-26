@@ -16,11 +16,11 @@ BatchedUploader::BatchedUploader(
     uint32_t queueFamilyIndex,
     DeviceBudgetManager* budgetManager,
     const Config& config,
-    Vixen::LockCensus::QueueSubmitMutex* submitMutex)
+    SubmitRequestFn submitRequest)
     : config_(config)
     , device_(device)
     , queue_(queue)
-    , submitMutex_(submitMutex)
+    , submitRequest_(std::move(submitRequest))
     , budgetManager_(budgetManager)
 {
     assert(device_ != VK_NULL_HANDLE && "BatchedUploader requires valid VkDevice");
@@ -43,24 +43,17 @@ BatchedUploader::BatchedUploader(
     // Create command pool
     CreateCommandPool(queueFamilyIndex);
 
-    // Try to create timeline semaphore if requested
-    if (config_.useTimelineSemaphores) {
-        CreateTimelineSemaphore();
-    }
-
     oldestPendingTime_ = std::chrono::steady_clock::now();
 }
 
 BatchedUploader::~BatchedUploader() {
-    // Wait for all pending work
-    WaitIdle();
+    // The graph owns queue quiescence. Poll once so already-retired work is released, but never
+    // wait on the queue from this producer destructor.
+    Flush();
+    ProcessCompletions();
 
-    // Destroy timeline semaphore
-    if (timelineSemaphore_ != VK_NULL_HANDLE) {
-        vkDestroySemaphore(device_, timelineSemaphore_, nullptr);
-    }
-
-    // Destroy command pool (implicitly frees command buffers)
+    // Destruction is valid after the graph has retired this uploader's requests. No queue idle
+    // call is permitted here; device teardown is the owner's quiescence boundary.
     if (commandPool_ != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device_, commandPool_, nullptr);
     }
@@ -247,22 +240,17 @@ uint32_t BatchedUploader::ProcessCompletions() {
         auto& batch = submittedBatches_.front();
         bool batchComplete = false;
 
-        if (useTimelineSemaphores_ && timelineSemaphore_ != VK_NULL_HANDLE) {
-            // Check timeline semaphore value
-            uint64_t currentValue = 0;
-            vkGetSemaphoreCounterValue(device_, timelineSemaphore_, &currentValue);
-            batchComplete = (currentValue >= batch.timelineValue);
-        } else if (batch.fence != VK_NULL_HANDLE) {
-            // Check fence status
-            VkResult result = vkGetFenceStatus(device_, batch.fence);
-            batchComplete = (result == VK_SUCCESS);
-        } else {
-            // No sync primitive - assume complete (shouldn't happen)
-            batchComplete = true;
-        }
+        batchComplete = !batch.completion || batch.completion->IsRetired();
 
         if (!batchComplete) {
             break;  // FIFO - if this batch isn't done, neither are later ones
+        }
+
+        if (batch.completion && batch.completion->Result() != VK_SUCCESS) {
+            FailBatch(batch.uploads);
+            ReleaseCommandBuffer(batch.cmdBuffer);
+            submittedBatches_.pop();
+            continue;
         }
 
         // Batch complete - release resources
@@ -283,11 +271,6 @@ uint32_t BatchedUploader::ProcessCompletions() {
         // Return command buffer to pool
         ReleaseCommandBuffer(batch.cmdBuffer);
 
-        // Destroy fence if used
-        if (batch.fence != VK_NULL_HANDLE) {
-            vkDestroyFence(device_, batch.fence, nullptr);
-        }
-
         submittedBatches_.pop();
     }
 
@@ -296,18 +279,7 @@ uint32_t BatchedUploader::ProcessCompletions() {
 
 void BatchedUploader::WaitIdle() {
     Flush();
-
-    // Wait for all submitted batches
-    while (true) {
-        {
-            std::lock_guard lock(submittedMutex_);
-            if (submittedBatches_.empty()) {
-                break;
-            }
-        }
-        ProcessCompletions();
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
-    }
+    ProcessCompletions();
 }
 
 // ============================================================================
@@ -356,6 +328,7 @@ void BatchedUploader::CreateCommandPool(uint32_t queueFamilyIndex) {
 
     VkResult result = vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_);
     assert(result == VK_SUCCESS && "Failed to create command pool");
+    (void)result;
 
     // Pre-allocate command buffers
     VkCommandBufferAllocateInfo allocInfo{};
@@ -367,30 +340,11 @@ void BatchedUploader::CreateCommandPool(uint32_t queueFamilyIndex) {
     commandBuffers_.resize(config_.maxBatchCommandBuffers);
     result = vkAllocateCommandBuffers(device_, &allocInfo, commandBuffers_.data());
     assert(result == VK_SUCCESS && "Failed to allocate command buffers");
+    (void)result;
 
     // All start as available
     for (auto cmdBuffer : commandBuffers_) {
         availableCommandBuffers_.push(cmdBuffer);
-    }
-}
-
-void BatchedUploader::CreateTimelineSemaphore() {
-    VkSemaphoreTypeCreateInfo typeInfo{};
-    typeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-    typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    typeInfo.initialValue = 0;
-
-    VkSemaphoreCreateInfo semInfo{};
-    semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semInfo.pNext = &typeInfo;
-
-    VkResult result = vkCreateSemaphore(device_, &semInfo, nullptr, &timelineSemaphore_);
-    if (result == VK_SUCCESS) {
-        useTimelineSemaphores_ = true;
-    } else {
-        // Fallback to fences
-        useTimelineSemaphores_ = false;
-        timelineSemaphore_ = VK_NULL_HANDLE;
     }
 }
 
@@ -431,14 +385,9 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         ProcessCompletions();
         cmdBuffer = AcquireCommandBuffer();
         if (cmdBuffer == VK_NULL_HANDLE) {
-            // Still none - wait for GPU. Externally synchronized per Vulkan spec (audit V-M11).
-            {
-                std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
-                if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
-                vkQueueWaitIdle(queue_);
-            }
-            ProcessCompletions();
-            cmdBuffer = AcquireCommandBuffer();
+            // The queue owner will retire the oldest request at its fixed frame phase. A producer
+            // cannot wait here without recreating the old off-graph stall; fail admission for this
+            // flush and let the next frame retry the pending upload.
         }
     }
 
@@ -469,7 +418,8 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
 
     vkEndCommandBuffer(cmdBuffer);
 
-    // Submit with appropriate sync
+    // Publish the deep-copied request. RenderGraph adds its queue timeline signal and issues it at
+    // the fixed frame phase; this producer never touches VkQueue directly.
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -480,58 +430,19 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     batch.uploads = std::move(uploads);
     batch.submitTime = std::chrono::steady_clock::now();
 
-    // Externally synchronized per Vulkan spec (audit V-M11). submitMutex_ is optional: when the
-    // uploader owns the only path to this queue (no cross-node contention), it's null and submitLock
-    // owns no mutex — every submitLock.unlock() below must be owns_lock()-guarded, or unlocking a
-    // lock that holds no mutex throws std::system_error(operation_not_permitted).
-    std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> submitLock;
-    if (submitMutex_) submitLock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
-
-    if (useTimelineSemaphores_ && timelineSemaphore_ != VK_NULL_HANDLE) {
-        // Use timeline semaphore
-        batch.timelineValue = nextTimelineValue_.fetch_add(1, std::memory_order_relaxed);
-
-        VkTimelineSemaphoreSubmitInfo timelineInfo{};
-        timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-        timelineInfo.signalSemaphoreValueCount = 1;
-        timelineInfo.pSignalSemaphoreValues = &batch.timelineValue;
-
-        submitInfo.pNext = &timelineInfo;
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &timelineSemaphore_;
-
-        VkResult submitResult = vkQueueSubmit(queue_, 1, &submitInfo, VK_NULL_HANDLE);
-        if (submitLock.owns_lock()) submitLock.unlock();
-        if (submitResult != VK_SUCCESS) {
-            // Submit failed - the timeline value we reserved will never be signalled. ReleaseCommandBuffer
-            // returns cmdBuffer to the pool immediately since nothing GPU-side will ever touch it now.
-            ReleaseCommandBuffer(cmdBuffer);
-            FailBatch(batch.uploads);
-            return;
-        }
-    } else {
-        // Use fence
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        VkResult fenceResult = vkCreateFence(device_, &fenceInfo, nullptr, &batch.fence);
-        VkResult submitResult = VK_SUCCESS;
-        if (fenceResult == VK_SUCCESS) {
-            submitResult = vkQueueSubmit(queue_, 1, &submitInfo, batch.fence);
-        }
-        if (submitLock.owns_lock()) submitLock.unlock();
-
-        SubmitOutcome outcome = DecideSubmitOutcome(fenceResult, submitResult);
-        if (outcome != SubmitOutcome::Ok) {
-            // Neither branch leaves a fence that will ever signal: FenceCreateFailed never made one;
-            // SubmitFailed made one but the GPU will never touch it. Either way ProcessCompletions'
-            // FIFO wait-for-fence would block forever if we enqueued this batch (audit V-M16).
-            if (outcome == SubmitOutcome::SubmitFailed && batch.fence != VK_NULL_HANDLE) {
-                vkDestroyFence(device_, batch.fence, nullptr);
-            }
-            ReleaseCommandBuffer(cmdBuffer);
-            FailBatch(batch.uploads);
-            return;
-        }
+    if (!submitRequest_) {
+        ReleaseCommandBuffer(cmdBuffer);
+        FailBatch(batch.uploads);
+        return;
+    }
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        nullptr, queue_, submitInfo);
+    batch.completion = submitRequest_(std::move(request));
+    if (!batch.completion || (batch.completion->Result() != VK_NOT_READY &&
+                              batch.completion->Result() != VK_SUCCESS)) {
+        ReleaseCommandBuffer(cmdBuffer);
+        FailBatch(batch.uploads);
+        return;
     }
 
     {

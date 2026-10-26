@@ -55,7 +55,7 @@ if(MSVC)
     target_compile_options(vixen_editor PRIVATE /FS)
 endif()
 
-# Stage the shared RmlUi UI assets (fonts + editor.rml/editor.rcss live beside hud.rml/demo.rml
+# Stage the shared RmlUi UI assets (fonts + the editor panel documents, editor.rcss and dock.rml live beside hud.rml/demo.rml
 # in libraries/RenderGraph/assets/ui) next to the executable, same helper + same source dir as
 # application/main so VIXEN_UI_ASSET_SOURCE_DIR's compiled-in fallback and the staged copy agree.
 vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)

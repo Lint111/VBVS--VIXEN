@@ -52,3 +52,32 @@ TEST(BindingPattern, InvalidIntegerExtractionIsInert) {
     EXPECT_FALSE(store.TryGetForSelector("layer-999999999999999999999-up", resolved));
     EXPECT_FALSE(store.TryGetForSelector("layer-2.5-up", resolved));
 }
+
+// R766: the dock chrome's dock-to buttons carry two placeholders ("panel-{panelId}-to-{region}"); the
+// first binds the trigger's ParamName, the second the action parameter it names.
+TEST(BindingPattern, TwoPlaceholdersBindBothParams) {
+    BindingStore store;
+    store.RegisterActions(AppFlowContainerView::actions());
+    for (const auto& trigger : kElementTriggers) store.AddElementTrigger(trigger);
+
+    BoundAction move;
+    ASSERT_TRUE(store.TryGetForSelector("panel-inspector-to-left", move));
+    EXPECT_EQ(move.action, FlowActionId::MovePanel);
+    ASSERT_EQ(move.params.size(), 2u);
+    EXPECT_EQ(move.params[0], (std::pair<std::string, std::string>{"panelId", "inspector"}));
+    EXPECT_EQ(move.params[1], (std::pair<std::string, std::string>{"region", "left"}));
+
+    BoundAction close;
+    ASSERT_TRUE(store.TryGetForSelector("panel-inspector-close", close));
+    EXPECT_EQ(close.action, FlowActionId::ClosePanel);
+    ASSERT_EQ(close.params.size(), 1u);
+    EXPECT_EQ(close.params[0].second, "inspector");
+
+    BoundAction tab;
+    ASSERT_TRUE(store.TryGetForSelector("panel-layers-tab", tab));
+    EXPECT_EQ(tab.action, FlowActionId::FocusPanel);
+
+    BoundAction none;
+    EXPECT_FALSE(store.TryGetForSelector("panel--to-left", none));      // empty panel id
+    EXPECT_FALSE(store.TryGetForSelector("panel-inspector-to-", none)); // empty region
+}

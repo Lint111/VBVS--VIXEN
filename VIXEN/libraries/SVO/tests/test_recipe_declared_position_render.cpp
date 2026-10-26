@@ -912,14 +912,16 @@ protected:
         VkShaderModule shaderModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &shaderInfo, nullptr, &shaderModule), VK_SUCCESS);
 
-        VkDescriptorSetLayoutBinding bindings[4]{};
+        VkDescriptorSetLayoutBinding bindings[6]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         for (std::uint32_t binding = 1; binding < 4; ++binding)
             bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
                 VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[4] = {31, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[5] = {32, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo setLayoutInfo{};
         setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        setLayoutInfo.bindingCount = 4;
+        setLayoutInfo.bindingCount = 6;
         setLayoutInfo.pBindings = bindings;
         VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &setLayoutInfo, nullptr, &setLayout), VK_SUCCESS);
@@ -951,7 +953,7 @@ protected:
 
         VkDescriptorPoolSize poolSizes[2] = {
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5},
         };
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -969,25 +971,34 @@ protected:
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &setAllocateInfo, &descriptorSet), VK_SUCCESS);
 
         VkDescriptorImageInfo imageInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo bufferInfos[3] = {
+        VkBuffer glyphBuffer = VK_NULL_HANDLE, pathBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory glyphMemory = VK_NULL_HANDLE, pathMemory = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            glyphBuffer, glyphMemory));
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            pathBuffer, pathMemory));
+        VkDescriptorBufferInfo bufferInfos[5] = {
             {tapeBuffer, 0, VK_WHOLE_SIZE},
             {rangeBuffer, 0, VK_WHOLE_SIZE},
             {clauseBuffer, 0, VK_WHOLE_SIZE},
+            {glyphBuffer, 0, VK_WHOLE_SIZE},
+            {pathBuffer, 0, VK_WHOLE_SIZE},
         };
-        VkWriteDescriptorSet writes[4]{};
+        constexpr std::uint32_t bufferBindings[] = {1, 2, 3, 31, 32};
+        VkWriteDescriptorSet writes[6]{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = descriptorSet; writes[0].dstBinding = 0;
         writes[0].descriptorCount = 1; writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writes[0].pImageInfo = &imageInfo;
-        for (std::uint32_t index = 0; index < 3; ++index) {
+        for (std::uint32_t index = 0; index < 5; ++index) {
             writes[index + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[index + 1].dstSet = descriptorSet;
-            writes[index + 1].dstBinding = index + 1;
+            writes[index + 1].dstBinding = bufferBindings[index];
             writes[index + 1].descriptorCount = 1;
             writes[index + 1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             writes[index + 1].pBufferInfo = &bufferInfos[index];
         }
-        vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
+        vkUpdateDescriptorSets(logicalDevice_, 6, writes, 0, nullptr);
 
         VkCommandBufferAllocateInfo commandAllocateInfo{};
         commandAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1099,6 +1110,8 @@ protected:
         vkDestroyBuffer(logicalDevice_, clauseBuffer, nullptr); vkFreeMemory(logicalDevice_, clauseMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, rangeBuffer, nullptr); vkFreeMemory(logicalDevice_, rangeMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, tapeBuffer, nullptr); vkFreeMemory(logicalDevice_, tapeMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, pathBuffer, nullptr); vkFreeMemory(logicalDevice_, pathMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, glyphBuffer, nullptr); vkFreeMemory(logicalDevice_, glyphMemory, nullptr);
     }
 };
 
@@ -1420,7 +1433,10 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
     const std::array<TileTapeFixtureInput, 2> fixtures{
         MakeRun2DeadTermsFixture(),
         MakeVisibleEditHeavyFixture()};
-    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31);
+    const std::string sdfCoreGlsl = WithoutGlyphOutlineKernel(
+        ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH));
+    const std::string tapeSdfCoreGlsl = WithPathInstanceBuffer(
+        WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31), 32);
     const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
     ASSERT_FALSE(sdfCoreGlsl.empty()) << "Cannot read generated SDF kernels: " << SDF_CORE_KERNELS_GLSL_PATH;
     ASSERT_FALSE(tapeGlsl.empty()) << "Cannot read generated tape evaluator: " << SDF_RECIPE_TAPE_GLSL_PATH;
@@ -1538,7 +1554,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
     }
     )GLSL";
         const std::string tapeShaderSource = ComposeTileTapeRaymarchShader(
-            sdfCoreGlsl, TapeStorageDefines(tapeCounts) + tapeGlsl + "\n" + unrolledField, tapeAdapter);
+            tapeSdfCoreGlsl, TapeStorageDefines(tapeCounts) + tapeGlsl + "\n" + unrolledField, tapeAdapter);
 
         ShaderManagement::ShaderCompiler compiler;
         ShaderManagement::CompilationOptions options;
@@ -1939,7 +1955,8 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     for (const auto& entry : corpus)
         for (const auto& operation : entry.program) covered.insert(operation.opCode);
 
-    const std::string sdfCoreGlsl = WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31);
+    const std::string sdfCoreGlsl = WithPathInstanceBuffer(
+        WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31), 32);
     const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
     ASSERT_FALSE(sdfCoreGlsl.empty());
     ASSERT_FALSE(tapeGlsl.empty());

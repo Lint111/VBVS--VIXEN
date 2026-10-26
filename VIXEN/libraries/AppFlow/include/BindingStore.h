@@ -55,25 +55,36 @@ public:
     size_t BindingCount() const { return bindings_.size(); }
 
     // Registers a generated element-trigger. A pattern with a {placeholder} ("layer-{index}-toggle")
-    // splits into a literal prefix/suffix; a selector matches if it starts with prefix, ends
-    // with suffix, and the middle is non-empty — the middle becomes the extracted, typed param
-    // value. A pattern with no placeholder ("back-button") is a literal — it goes into the
+    // splits into literals and placeholders; a selector matches if its literals line up and every
+    // placeholder captures a non-empty run — each run becomes an extracted, typed param value. The
+    // first placeholder binds the trigger's ParamName; a further placeholder binds the action
+    // parameter it names ("panel-{panelId}-to-{region}" -> panelId, region). A pattern with no placeholder ("back-button") is a literal — it goes into the
     // exact-match table with no params (design §4.3: a button reaches its action identically
     // to a key binding).
     void AddElementTrigger(const Generated::AppFlowElementTrigger& trig);
 
 private:
+    // A registered action parameter. The name is owned: a runtime loaded from a parsed .appflow blob
+    // receives FlowParamSchema names that point into the blob buffer, which the caller may destroy
+    // right after Load() (AppFlowRuntime deep-owns what it retains).
+    struct ParamSchema {
+        std::string name;
+        Generated::FlowParamType type;
+    };
+
     bool ValidateParams(const std::vector<std::pair<std::string, std::string>>& params,
-                         const std::vector<FlowParamSchema>& schema, std::string& warn) const;
+                         const std::vector<ParamSchema>& schema, std::string& warn) const;
 
     struct PatternBinding {
-        std::string prefix, suffix, paramName;
+        // literals.size() == paramNames.size() + 1: literal0 {param0} literal1 {param1} ... literalN
+        std::vector<std::string> literals;
+        std::vector<std::string> paramNames;
         std::string triggerId;
         FlowActionId action;
         std::string on;
     };
 
-    std::unordered_map<uint16_t, std::vector<FlowParamSchema>> registry_;
+    std::unordered_map<uint16_t, std::vector<ParamSchema>> registry_;
     std::unordered_map<std::string, BoundAction> bindings_;
     std::vector<PatternBinding> patterns_;
 };

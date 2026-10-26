@@ -31,8 +31,26 @@ void writeReconstructionMotion(ivec2 pixel, bool hit, WorldHit surface, vec3 wor
             }
         }
     }
-    // Sky is composed after reconstruction at native resolution: zero/invalid
-    // here, including on first use, deletion/reuse, deformation and bad projection.
+    if (!hit) {
+        // A miss is the background at infinity: it moves with the camera's rotation only, so
+        // its previous position is the unjittered pixel-centre direction through the previous
+        // view-projection with w = 0 (translation drops out). A temporal resolve that holds the
+        // background in its colour (the TAA reads the scene radiance, sky included) otherwise
+        // reads stale history beside every object-to-sky silhouette while the camera turns.
+        vec2 currentUV = (vec2(pixel) + 0.5) / vec2(imageSize(motionVectorImage));
+        vec4 previousClip = prevCameraConfig.prevViewProj * vec4(getRayDir(currentUV), 0.0);
+        if (previousClip.w > 0.0) {
+            vec2 previousUV = previousClip.xy / previousClip.w * 0.5 + 0.5;
+            vec2 candidate = previousUV - currentUV;
+            if (!any(isnan(candidate)) && !any(isinf(candidate))) {
+                motion = candidate;
+                valid = all(greaterThanEqual(previousUV, vec2(0.0))) &&
+                    all(lessThan(previousUV, vec2(1.0))) ? 1.0 : 0.0;
+            }
+        }
+    }
+    // Zero/invalid otherwise, including on first use, deletion/reuse, deformation and bad
+    // projection.
     imageStore(motionVectorImage, pixel, vec4(motion, 0.0, 0.0));
     imageStore(motionValidityImage, pixel, vec4(valid));
 }

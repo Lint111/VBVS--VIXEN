@@ -1748,6 +1748,26 @@ void VulkanGraphApplication::RunPhotonCellDiagReadback(uint64_t sampleFrame) {
 }
 
 void VulkanGraphApplication::PostTick() {
+    if (!pendingHudCapturePath_.empty()) {
+        std::string captureErr;
+        const std::string path = pendingHudCapturePath_;
+        if (!CaptureHudFrameToPng(path, captureErr) &&
+            !pendingHudCapture_ && pendingOffscreenCaptures_.empty() && mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
+        }
+    }
+    for (auto it = pendingOffscreenCaptures_.begin(); it != pendingOffscreenCaptures_.end();) {
+        std::string captureErr;
+        if (!it->request->Poll(captureErr)) {
+            ++it;
+            continue;
+        }
+        const std::string path = it->path;
+        it = pendingOffscreenCaptures_.erase(it);
+        if (!captureErr.empty() && mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication] CaptureOffscreenFrameToPng failed for " + path + ": " + captureErr);
+        }
+    }
     if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
         RunHdrMeterDebugReadback();
     }
@@ -2005,6 +2025,9 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             if (auto* ui = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_))) {
                 ui->PollHudHotReload();
+                // R766: re-place the declared panels when the layout or the window size changed
+                // (a revision/extent compare otherwise; nothing is touched on a steady frame).
+                panelDock_->Update();
             }
         }
 
@@ -3848,7 +3871,8 @@ void VulkanGraphApplication::Update() {
             if (captureFrame != hudUpdateTick_) continue;
             const std::string path = hudCaptureDir_ + "/hud_capture_" + std::to_string(hudUpdateTick_) + ".png";
             std::string captureErr;
-            if (!CaptureHudFrameToPng(path, captureErr)) {
+            if (!CaptureHudFrameToPng(path, captureErr) &&
+                !pendingHudCapture_ && pendingOffscreenCaptures_.empty()) {
                 if (mainLogger) mainLogger->Error("[VulkanGraphApplication] CaptureHudFrameToPng failed for " + path + ": " + captureErr);
             }
         }
@@ -4620,10 +4644,38 @@ void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, con
                                maxGrievance, strength, topRelName, topRelSig);
 }
 
+void VulkanGraphApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
+    using Vixen::RenderGraph::DockRegion;
+    using Vixen::RenderGraph::PanelDecl;
+    using Vixen::RenderGraph::PanelMount;
+    // The game's panels draw over the viewport (Overlay) exactly as before R766: the HUD positions its
+    // own widgets inside the full viewport (hud.rcss), and the building inspector anchors bottom-left
+    // inside its document. Both can be moved, docked or closed through the dock like any panel.
+    PanelDecl hud;
+    hud.id = "hud";
+    hud.title = "HUD";
+    hud.view = &Vixen::App::HudAsView(*hudView_);
+    hud.document = "assets/ui/hud.rml";
+    hud.region = DockRegion::Overlay;
+    hud.header = false;
+    hud.mount = PanelMount::Primary;
+    dock.Declare(std::move(hud));
+
+    PanelDecl building;
+    building.id = "building";
+    building.title = "Building";
+    building.view = &Vixen::App::BuildingInspectorAsView(*buildingInspectorView_);
+    building.document = "assets/ui/building_inspector.rml";
+    building.region = DockRegion::Overlay;
+    building.header = false;
+    building.size = 264.0f;
+    dock.Declare(std::move(building));
+}
+
 void VulkanGraphApplication::PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in) {
     // Forwards through the gaia-free bridge (never BuildingInspectorView.h directly — this TU sees
     // gaia.h). The view dirties its own bound model, so no host round-trip is needed. Safe any time
-    // after construction; a no-op visually when nothing is mounted (buildingMount_ == 0).
+    // after construction; a no-op visually when the app declares no "building" panel.
     if (!buildingInspectorView_) return;
     Vixen::App::PushBuildingInspector(*buildingInspectorView_, in);
 }
@@ -4880,9 +4932,14 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
         return false;
     }
 
-    Vixen::Profiler::FrameCapture capture;
-    if (!capture.Initialize(device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
-                             swapVars->Extent.width, swapVars->Extent.height)) {
+    if (!pendingFrameCapturePath_.empty() && pendingFrameCapturePath_ != path) {
+        if (mainLogger) mainLogger->Error("[CaptureFrameToPng] another capture is pending");
+        return false;
+    }
+    if (!frameCapture_) frameCapture_ = std::make_unique<Vixen::Profiler::FrameCapture>();
+    if (!frameCapture_->IsInitialized() && !frameCapture_->Initialize(
+            device, device->device, *device->gpu, device->queue, device->graphicsQueueIndex,
+            swapVars->Extent.width, swapVars->Extent.height)) {
         if (mainLogger) mainLogger->Error("[CaptureFrameToPng] FrameCapture::Initialize failed");
         return false;
     }
@@ -4895,8 +4952,17 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
     cfg.outputPath = want.parent_path().empty() ? std::filesystem::path(".") : want.parent_path();
     cfg.testName = want.stem().string();
     cfg.frameNumber = 0;
-    Vixen::Profiler::CaptureResult result =
-        capture.Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+    Vixen::Profiler::CaptureResult result;
+    if (!pendingFrameCapturePath_.empty()) {
+        if (!frameCapture_->Poll(result)) return false;
+        pendingFrameCapturePath_.clear();
+    } else {
+        result = frameCapture_->Capture(swapVars, swapChainNode->GetCurrentImageIndex(), cfg);
+        if (result.pending) {
+            pendingFrameCapturePath_ = path;
+            return false;
+        }
+    }
     if (!result.success) {
         if (mainLogger) mainLogger->Error("[CaptureFrameToPng] capture failed: " + result.errorMessage);
         return false;
@@ -4928,6 +4994,16 @@ bool VulkanGraphApplication::SwapchainImageIsValid() const {
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    if (pendingHudCapture_) {
+        if (pendingHudCapturePath_ != path) {
+            err = "CaptureHudFrameToPng: another capture is pending";
+            return false;
+        }
+        if (!pendingHudCapture_->Poll(err)) return false;
+        pendingHudCapture_.reset();
+        pendingHudCapturePath_.clear();
+        return err.empty();
+    }
     if (presentationTarget_ == PresentationTarget::Offscreen) {
         return CaptureOffscreenFrameToPng(path, err);
     }
@@ -4969,11 +5045,21 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
     }
     auto* device = deviceInst->GetVulkanDevice();
 
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    pendingHudCapture_ = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pendingHudCapture_) return false;
+    pendingHudCapturePath_ = path;
+    err.clear();
+    return true;
 }
 
 bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path, std::string& err) {
+    for (const auto& pending : pendingOffscreenCaptures_) {
+        if (pending.path == path) {
+            err.clear();
+            return true;
+        }
+    }
     if (presentationTarget_ != PresentationTarget::Offscreen) {
         err = "CaptureOffscreenFrameToPng: graph presentation target is not offscreen";
         return false;
@@ -5003,8 +5089,12 @@ bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path,
         return false;
     }
     auto* device = deviceNode->GetVulkanDevice();
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    auto pending = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, target, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pending) return false;
+    pendingOffscreenCaptures_.push_back(PendingOffscreenCapture{std::move(pending), path});
+    err.clear();
+    return true;
 }
 
 void VulkanGraphApplication::NotifyReconstructionCameraCut() {

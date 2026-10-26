@@ -35,6 +35,14 @@ namespace Vixen.ViewSchemas
         public float maximum;
     }
 
+    // R765: one render-recipe document of the open pack, listed by content id. elementId is the row's
+    // OpenRecipe click target ("recipe-<id>-open"); isOpen marks the document the editor is editing.
+    public struct EditorRecipeRow {
+        public string id;
+        public string elementId;
+        public bool isOpen;
+    }
+
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
     // data-model: the layer bitmask the LayerControllerViewDataProvider reads/writes through
     // IViewDataProvider. Kept as its own struct (not a field on EditorLayers) so EditorLayers.g.h's
@@ -57,5 +65,15 @@ namespace Vixen.ViewSchemas
         // isChecked Projection proof above, so the two proofs don't collide on the same binding.
         [Overridden]
         public int activeLayerCount;
+
+        // R765: the open pack's render-recipe documents (empty when the editor runs on a loose file).
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorRecipeRow[] recipes;
+
+        // R766: the status-line panel (bottom region) binds these.
+        public string statusDocument;
+        public string statusMessage;
+        public string flowState;
+        public int undoDepth;
+        public int redoDepth;
     }
 }

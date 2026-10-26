@@ -243,7 +243,7 @@ void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
     if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkQueueSubmit (transition) failed");
+        throw std::runtime_error("[WorldPosHistoryNode] queue-owner transition submit failed");
     }
 
 }

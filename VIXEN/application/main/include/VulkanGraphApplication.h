@@ -13,13 +13,15 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
-#include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Mount/PushBuildingInspector seam (gaia-free)
+#include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Push/BuildingInspectorAsView seam (gaia-free)
+#include "Ui/PanelDockHost.h"  // R766: the app's docked panels (RmlUi-free header)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -41,6 +43,7 @@ namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse s
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::RenderGraph { class PhotonCellTableNode; }
 namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
+namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
@@ -65,6 +68,7 @@ namespace Vixen::App { class HudView; }
 // Building-inspector view (step-6 M-ui) — same forward-decl/opaque-factory pattern as HudView for the
 // same robin_hood ODR reason; constructed via MakeBuildingInspectorView() (BuildingInspectorBridge.h).
 namespace Vixen::App { class BuildingInspectorView; struct BuildingInspectorIn; }
+namespace Vixen::Profiler { class FrameCapture; }
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -245,6 +249,15 @@ protected:
     // orbit-tuned heuristic, silently stomping the grant back to false every tick.
     virtual bool SkipResidencyHeuristic() const { return false; }
 
+    // R766: the app's panels. BuildRenderGraph mounts exactly what an app declares here through the
+    // panel dock (PanelDockHost), so per-app mounting is the declarations: the game declares its HUD
+    // (the UI node's primary document) and the building inspector as overlay panels; EditorApplication
+    // declares its own panels and no HUD. The layout persists per app under PanelLayoutName().
+    virtual void DeclarePanels(Vixen::RenderGraph::PanelDock& dock);
+    virtual std::string PanelLayoutName() const { return "game"; }
+    Vixen::RenderGraph::PanelDockHost& Panels() { return *panelDock_; }
+    const Vixen::RenderGraph::PanelDockHost& Panels() const { return *panelDock_; }
+
     /**
      * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
      *        the live camera state and re-sort instances front-to-back for the GPU per-ray
@@ -285,6 +298,8 @@ private:
     // CalibrationStore). The app keeps non-owning views named as before so the existing call
     // sites are unchanged; they point into engine_ and are valid for its lifetime.
     std::unique_ptr<Vixen::RenderGraph::EngineContext> engine_;
+    std::unique_ptr<Vixen::Profiler::FrameCapture> frameCapture_;
+    std::string pendingFrameCapturePath_;
     NodeTypeRegistry* nodeRegistry = nullptr;             // view: &engine_->Registry()
     RenderGraph* renderGraph = nullptr;                   // view: &engine_->Graph()
     Vixen::EventBus::MessageBus* messageBus = nullptr;    // view: &engine_->Bus()
@@ -544,11 +559,13 @@ private:
     Vixen::App::HudView* hudView_ = nullptr;
 
     // Step-6 M-ui: the building-inspector view, mounted as a SECOND document on the composite UI node
-    // via IUiCompositionHost (BuildRenderGraph → MountBuildingInspector). Owned here (raw pointer, same
-    // incomplete-type/ODR reason as hudView_); the mount stores a borrowed pointer. buildingMount_ is
-    // the handle returned by Mount (0 if there's no composite UI node / the mount was rejected).
+    // through its panel declaration (R766, DeclarePanels). Owned here (raw pointer, same
+    // incomplete-type/ODR reason as hudView_); the mount stores a borrowed pointer.
     Vixen::App::BuildingInspectorView* buildingInspectorView_ = nullptr;
-    uint32_t buildingMount_ = 0;
+
+    // R766: the panel dock. Declared panels are mounted on the composite UI node in BuildRenderGraph;
+    // Update() re-places them when the layout or window size changes.
+    std::unique_ptr<Vixen::RenderGraph::PanelDockHost> panelDock_ = std::make_unique<Vixen::RenderGraph::PanelDockHost>();
 
     // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
     // PostTick call (for measuring this tick's CPU frame time). No-op object when
@@ -577,6 +594,13 @@ private:
 
     // Captures main_swapchain including the HUD composite for the base app's Update() harness.
     bool CaptureHudFrameToPng(const std::string& path, std::string& err);
+    std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingHudCapture_;
+    std::string pendingHudCapturePath_;
+    struct PendingOffscreenCapture {
+        std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> request;
+        std::string path;
+    };
+    std::vector<PendingOffscreenCapture> pendingOffscreenCaptures_;
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
@@ -626,8 +650,8 @@ public:
     // resident (e.g. vixen_editor's single always-in-view document body) calls this instead of
     // relying on UpdateBodySceneResidency's camera-driven heuristic.
     void RequestBodyBrickResidency(bool resident);
-    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, wired onto the composite
-    // UI node in BuildRenderGraph via WireHudView). Replaces the pre-Inc-2 host call
+    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, bound as the composite UI
+    // node's primary document through the "hud" panel declaration). Replaces the pre-Inc-2 host call
     // UIRenderNode::SetHudView — the projection now lives on HudView, which this app owns, so hosts
     // push through the app instead of the node. No-op before Prepare() (hudView_ wired but the UI
     // node absent on no-composite-UI graphs is fine — the view just holds the latest push).
@@ -660,11 +684,12 @@ public:
     // returns nullptr if unset (e.g. a graph without the selection provider).
     Vixen::RenderGraph::UISelectionProviderNode* GetUiSelectionProviderNode() const;
 
-    // M4b: read back the swapchain image just presented and write it as a PNG. Call AFTER a
-    // Render() call (so a real presented frame exists). One-shot, synchronous (waits on the
-    // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
-    // (and logs) if the swapchain/device node isn't found or the write fails.
+    // M4b: queue the swapchain image just presented for a next-frame PNG result. Call AFTER a
+    // Render() call (so a real presented frame exists). The request is retired and encoded from
+    // PostTick; a true return means the owner accepted the request, not that the file is complete.
     bool CaptureFrameToPng(const std::string& path);
+    // Offscreen captures use the same next-frame contract and may queue more than one path from
+    // a single rendered frame; completion is drained from PostTick.
     bool CaptureOffscreenFrameToPng(const std::string& path, std::string& err);
 
     // M4b-fix (capture-on-aborted-frame): true only when main_swapchain currently holds a VALID

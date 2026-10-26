@@ -3,7 +3,7 @@
 // the shared body-octree/recipe and virtual-provider paths, and supports rule editing
 // (UI selector -> headless document operation -> preview refresh) plus save/reopen. Reuses VulkanGraphApplication's
 // whole graph (window, body-octree scene, UI composite HUD) unmodified; BuildRenderGraph
-// calls the base implementation and then re-points the UI node at editor.rml, and the one
+// calls the base implementation (which mounts the editor's declared panels, R766), and the one
 // default body instance is replaced by a procedural instance using the document's registered
 // bytecode and the same six-value snapshot consumed by the CPU bake.
 //
@@ -19,6 +19,7 @@
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
+#include "PackRecipeSource.h"
 #include "AppFlowChannel.h"
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
@@ -40,6 +41,7 @@
 // Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
 // transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
 namespace Vixen::App { class EditorLayersView; }
+namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 
 class EditorApplication : public VulkanGraphApplication {
 public:
@@ -73,9 +75,20 @@ public:
     // for the initial load; safe to no-op-check via LastError() on failure.
     bool LoadDocument(const std::string& path);
 
-    // Reconstructs the document from the headless model's current enabled state and writes it to
-    // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError())
-    // on failure.
+    // R765: browse a pack's render-recipe documents. packRoot holds manifest.utdl; schemaPath is the
+    // generated pack schema (schemas.json) that declares the render_recipe asset directory/extension.
+    bool ConfigurePack(const std::string& packRoot, const std::string& schemaPath);
+    const Vixen::Editor::PackRecipeSource& Pack() const { return pack_; }
+    // The id of the open pack recipe, empty when the editor edits a loose file.
+    const std::string& OpenRecipeId() const { return openRecipeId_; }
+    // Opens a listed pack recipe: loads its layered document, resets undo history, refreshes the view
+    // and reframes the camera. Called before Prepare() for the first document, and from Update() for an
+    // OpenRecipe action (deferred out of the AppFlow dispatch that requested it).
+    bool OpenPackRecipe(const std::string& recipeId);
+
+    // Reconstructs the document from the headless model's current state. A pack recipe is written back
+    // into the pack (its layered document, replaced atomically); a loose file is written to
+    // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError()) on failure.
     bool SaveDocument();
     bool ReopenSavedDocument();
 
@@ -97,6 +110,12 @@ public:
     // VulkanGraphApplication::UpdateBodySceneResidency entirely (see ApplyDocumentToScene, which
     // grants residency unconditionally instead).
     bool SkipResidencyHeuristic() const override { return true; }
+
+    // R766/R765: the editor's own panels in the three-region layout — outliner and layers (left),
+    // inspector (right), status line (bottom) — all bound to the EditorLayers View. No game HUD or
+    // building inspector is declared, so neither is mounted. The layout persists as "editor".
+    void DeclarePanels(Vixen::RenderGraph::PanelDock& dock) override;
+    std::string PanelLayoutName() const override { return "editor"; }
 
     // Reads the current completed compute_render_target image to PNG. Call after Render() so it
     // contains the scene output before the HUD covers part of the viewport. Scripted captures
@@ -131,10 +150,23 @@ private:
     // writes are applied through EditorDocumentModel, then mirrored to the runtime projection.
     void ReconcileLayersView();
     void SyncAfterDocumentMutation();
+    void RefreshRecipesView();
+    // R766: the status-line panel (document, flow state, undo depth, last message).
+    void RefreshStatusView();
+    // R766: applies one panel verb's result: persists the layout and records a channel event.
+    void AfterPanelVerb(const char* verb, Vixen::RenderGraph::DockResult result);
+    std::string statusMessage_;
+    // Replaces doc_ with an accepted candidate: AppFlow runtime reload (fresh undo history), handlers,
+    // view and render resync. Shared by the reopen witness and OpenPackRecipe.
+    bool AdoptDocument(Vixen::Editor::EditorDocumentModel candidate);
 
 
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
+    Vixen::Editor::PackRecipeSource pack_;
+    std::string openRecipeId_;
+    std::optional<std::string> pendingOpenRecipe_;  // OpenRecipe request, applied in Update()
+    bool reframePending_ = false;                    // next re-apply reframes the camera (new document)
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
     // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The
     // runtime's LayerController is a projection for AppFlow snapshots; EditorDocumentModel owns
@@ -169,7 +201,7 @@ private:
     // Inc-A2: the editor layer view's data-model host (design View-Model-Binding-Inc-A2-Plan-
     // 2026-07.md). Owned here (mirrors HudView's hudView_ ownership in VulkanGraphApplication --
     // same raw-pointer-via-bridge-factory pattern, same rationale: forward-declared-only type),
-    // wired onto the UI node via WireEditorLayersView in BuildRenderGraph, and populated from
+    // bound by the editor's panel declarations (DeclarePanels, R766), and populated from
     // doc_ at LoadDocument time -- the first model->view path anywhere in the editor.
     Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
@@ -186,6 +218,7 @@ private:
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
     bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
+    bool ctrlRWasDown_ = false;  // edge-detect for the ResetLayout keybinding (R766)
     std::string appFlowPath_;
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;
@@ -194,6 +227,7 @@ private:
     // knobs are unset (see BuildRenderGraph + Update). CaptureFrameToPng reads the existing
     // compute_render_target so UI overlays cannot satisfy a scene-render assertion.
     std::string pendingCapturePath_;  // one capture is scheduled by Update() for PostTick()
+    std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingCapture_;
     long updateTick_ = 0;  // editor-local Update tick counter, independent of the base app's own counters
 
     std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT

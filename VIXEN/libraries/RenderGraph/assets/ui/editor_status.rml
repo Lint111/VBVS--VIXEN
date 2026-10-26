@@ -1,0 +1,19 @@
+<rml>
+<head>
+    <title>Status</title>
+    <link type="text/rcss" href="editor.rcss"/>
+</head>
+<body>
+    <!-- R766 "status" panel (bottom region, no tab strip): the open document, the AppFlow state, the undo
+         depth and the last message. -->
+    <div data-model="editor_layers" class="panel status">
+        <span class="status-doc">{{statusDocument}}</span>
+        <span class="status-sep">·</span>
+        <span>{{flowState}}</span>
+        <span class="status-sep">·</span>
+        <span>undo {{undoDepth}} / redo {{redoDepth}}</span>
+        <span class="status-sep" data-if="statusMessage != ''">·</span>
+        <span class="status-message" data-if="statusMessage != ''">{{statusMessage}}</span>
+    </div>
+</body>
+</rml>

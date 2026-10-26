@@ -713,17 +713,17 @@ struct LightingConfigSSBO {
  * @brief HitRecordBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x55fface242208434 (for runtime discovery)
+ * Layout VixenHash: 0x2e3d9974734e988 (for runtime discovery)
  */
 struct HitRecordBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x55fface242208434ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x2e3d9974734e988ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "HitRecord";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 60;
+        static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t BINDING = 0;
     };
 

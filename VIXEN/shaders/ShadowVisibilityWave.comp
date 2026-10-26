@@ -164,7 +164,8 @@ void main() {
     bool visible = true;
     if (shadowConfig.enabled != 0u) {
         float originBias = storedSdfShadowOriginBias(
-            hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir);
+            hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir,
+            hitRecords[slot].primaryFootprint);
         vec3 shadowOrigin = worldPos + worldNormal * originBias;
         float lightDist = sqrt(dist2);
         bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
@@ -284,7 +285,8 @@ void main() {
             if (NdotL <= 0.0 || attenuation <= 0.0) continue;
 
             float originBias = storedSdfShadowOriginBias(
-                hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir);
+                hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir,
+                hitRecords[slot].primaryFootprint);
             vec3 shadowOrigin = worldPos + worldNormal * originBias;
             float maxShadowDistance = shadowConfig.maxShadowDistance;
             if (light.kind == 1u) maxShadowDistance = min(maxShadowDistance, distanceToLight);

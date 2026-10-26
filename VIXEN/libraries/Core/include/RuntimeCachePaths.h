@@ -34,6 +34,11 @@ std::filesystem::path SharedDeviceCacheDirectory();
 /// Always absolute; never relative to the working directory.
 std::filesystem::path UserCacheDirectory();
 
+/// Per-user settings root (user-chosen state that must survive a cache wipe, e.g. panel layouts):
+/// VIXEN_SETTINGS_DIR when set; else %APPDATA%\\vixen, $XDG_CONFIG_HOME/vixen or ~/.config/vixen.
+/// Always absolute; never relative to the working directory.
+std::filesystem::path UserSettingsDirectory();
+
 /// True while a process with this identifier exists (a recycled identifier counts as alive).
 bool IsProcessAlive(std::uint64_t processId) noexcept;
 

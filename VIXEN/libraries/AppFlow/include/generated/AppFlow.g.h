@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0xC6F3E476u;
+inline constexpr uint32_t kAppFlowShapeHash = 0xCE7796BCu;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -60,12 +60,17 @@ namespace FlowElementTriggerId {
     inline constexpr const char* EditProgramFieldDownTrigger = "EditProgramFieldDownTrigger";
     inline constexpr const char* AdjustParameterUpTrigger = "AdjustParameterUpTrigger";
     inline constexpr const char* AdjustParameterDownTrigger = "AdjustParameterDownTrigger";
+    inline constexpr const char* OpenRecipeTrigger = "OpenRecipeTrigger";
     inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
     inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
     inline constexpr const char* SaveButtonTrigger = "SaveButtonTrigger";
+    inline constexpr const char* FocusPanelTrigger = "FocusPanelTrigger";
+    inline constexpr const char* ClosePanelTrigger = "ClosePanelTrigger";
+    inline constexpr const char* MovePanelTrigger = "MovePanelTrigger";
     inline constexpr const char* BackButtonTrigger = "BackButtonTrigger";
 }
 namespace FlowKeyDefaultId {
+    inline constexpr const char* ResetLayoutKey = "ResetLayoutKey";
     inline constexpr const char* UndoKey = "UndoKey";
     inline constexpr const char* RedoKey = "RedoKey";
     inline constexpr const char* SaveKey = "SaveKey";
@@ -94,6 +99,14 @@ inline constexpr FlowParamSchema kEditProgramFieldUpParams[] = { {"layerIndex", 
 inline constexpr FlowParamSchema kEditProgramFieldDownParams[] = { {"layerIndex", FlowParamType::Int} };
 inline constexpr FlowParamSchema kAdjustParameterUpParams[] = { {"parameterIndex", FlowParamType::Int} };
 inline constexpr FlowParamSchema kAdjustParameterDownParams[] = { {"parameterIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kOpenRecipeParams[] = { {"recipeId", FlowParamType::String} };
+inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
+inline constexpr FlowParamSchema kClosePanelParams[] = { {"panelId", FlowParamType::String} };
+inline constexpr FlowParamSchema kFocusPanelParams[] = { {"panelId", FlowParamType::String} };
+inline constexpr FlowParamSchema kMovePanelParams[] = { {"panelId", FlowParamType::String}, {"region", FlowParamType::String} };
+inline constexpr FlowParamSchema kSplitPanelParams[] = { {"panelId", FlowParamType::String}, {"region", FlowParamType::String} };
+inline constexpr FlowParamSchema kFloatPanelParams[] = { {"panelId", FlowParamType::String}, {"x", FlowParamType::Int}, {"y", FlowParamType::Int}, {"width", FlowParamType::Int}, {"height", FlowParamType::Int} };
+inline constexpr FlowParamSchema kResizeRegionParams[] = { {"region", FlowParamType::String}, {"size", FlowParamType::Int} };
 
 inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::ToggleLayer, sizeof(LayerState), true, kToggleLayerParams, 1 },
@@ -110,7 +123,16 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::EditProgramFieldUp, sizeof(LayerState), true, kEditProgramFieldUpParams, 1 },
     { FlowActionId::EditProgramFieldDown, sizeof(LayerState), true, kEditProgramFieldDownParams, 1 },
     { FlowActionId::AdjustParameterUp, sizeof(LayerState), true, kAdjustParameterUpParams, 1 },
-    { FlowActionId::AdjustParameterDown, sizeof(LayerState), true, kAdjustParameterDownParams, 1 }
+    { FlowActionId::AdjustParameterDown, sizeof(LayerState), true, kAdjustParameterDownParams, 1 },
+    { FlowActionId::OpenRecipe, sizeof(LayerState), true, kOpenRecipeParams, 1 },
+    { FlowActionId::OpenPanel, sizeof(LayerState), true, kOpenPanelParams, 1 },
+    { FlowActionId::ClosePanel, sizeof(LayerState), true, kClosePanelParams, 1 },
+    { FlowActionId::FocusPanel, sizeof(LayerState), true, kFocusPanelParams, 1 },
+    { FlowActionId::MovePanel, sizeof(LayerState), true, kMovePanelParams, 2 },
+    { FlowActionId::SplitPanel, sizeof(LayerState), true, kSplitPanelParams, 2 },
+    { FlowActionId::FloatPanel, sizeof(LayerState), true, kFloatPanelParams, 5 },
+    { FlowActionId::ResizeRegion, sizeof(LayerState), true, kResizeRegionParams, 2 },
+    { FlowActionId::ResetLayout, sizeof(LayerState), true, nullptr, 0 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -129,13 +151,18 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::EditProgramFieldDownTrigger, "layer-{index}-program-down", FlowActionId::EditProgramFieldDown, "layerIndex", "click" },
     { FlowElementTriggerId::AdjustParameterUpTrigger, "parameter-{index}-up", FlowActionId::AdjustParameterUp, "parameterIndex", "click" },
     { FlowElementTriggerId::AdjustParameterDownTrigger, "parameter-{index}-down", FlowActionId::AdjustParameterDown, "parameterIndex", "click" },
+    { FlowElementTriggerId::OpenRecipeTrigger, "recipe-{recipeId}-open", FlowActionId::OpenRecipe, "recipeId", "click" },
     { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
     { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },
     { FlowElementTriggerId::SaveButtonTrigger, "save-button", FlowActionId::Save, "", "click" },
+    { FlowElementTriggerId::FocusPanelTrigger, "panel-{panelId}-tab", FlowActionId::FocusPanel, "panelId", "click" },
+    { FlowElementTriggerId::ClosePanelTrigger, "panel-{panelId}-close", FlowActionId::ClosePanel, "panelId", "click" },
+    { FlowElementTriggerId::MovePanelTrigger, "panel-{panelId}-to-{region}", FlowActionId::MovePanel, "panelId", "click" },
     { FlowElementTriggerId::BackButtonTrigger, "back-button", FlowActionId::Return, "", "click" }
 };
 
 inline constexpr AppFlowKeyDefault kKeyDefaults[] = {
+    { FlowKeyDefaultId::ResetLayoutKey, FlowActionId::ResetLayout, { KeyId::R, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::UndoKey, FlowActionId::Undo, { KeyId::Z, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::RedoKey, FlowActionId::Redo, { KeyId::Y, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::SaveKey, FlowActionId::Save, { KeyId::S, KeyMod::None }, FlowScope::Global, FlowStateId{} },

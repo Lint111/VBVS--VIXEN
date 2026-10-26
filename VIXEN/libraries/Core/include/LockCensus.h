@@ -39,6 +39,47 @@
 
 namespace Vixen::LockCensus {
 
+/// Small atomic gate for data structures that need a short critical section but must not add a
+/// census mutex family. Queue submission never uses this gate; it is only for local bookkeeping
+/// (staging records and uploader FIFOs). C++20 wait/notify avoids an unbounded busy-spin when a
+/// producer briefly overlaps another producer.
+class AtomicGate {
+public:
+    AtomicGate() = default;
+    AtomicGate(const AtomicGate&) = delete;
+    AtomicGate& operator=(const AtomicGate&) = delete;
+
+    void lock() noexcept {
+        for (;;) {
+            if (!flag_.test_and_set(std::memory_order_acquire)) return;
+            flag_.wait(true, std::memory_order_relaxed);
+        }
+    }
+
+    bool try_lock() noexcept {
+        return !flag_.test_and_set(std::memory_order_acquire);
+    }
+
+    void unlock() noexcept {
+        flag_.clear(std::memory_order_release);
+        flag_.notify_one();
+    }
+
+private:
+    std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
+};
+
+class AtomicGateGuard {
+public:
+    explicit AtomicGateGuard(AtomicGate& gate) noexcept : gate_(gate) { gate_.lock(); }
+    ~AtomicGateGuard() { gate_.unlock(); }
+    AtomicGateGuard(const AtomicGateGuard&) = delete;
+    AtomicGateGuard& operator=(const AtomicGateGuard&) = delete;
+
+private:
+    AtomicGate& gate_;
+};
+
 /// Inventory families instrumented on the steady frame path. The IDs and the objects they name
 /// are the inventory's rows verbatim; the dormant/cold families (SH*, SVO*, GA1, RM2-6, RM13, C2,
 /// C5, C6, RG5-7, KD1, APP1) are census-listed in scripts/no-new-mutex.allowlist but not timed.

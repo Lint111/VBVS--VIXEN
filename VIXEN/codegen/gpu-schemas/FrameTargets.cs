@@ -27,6 +27,10 @@ public static class FrameKinds
         // Engine motion vectors (previous UV minus current UV, unjittered cameras), written by
         // the march from camera and instance transforms (ReconstructionMotion.glsl).
         F<Texture2D<Rg32f>>("MotionVectors").Dynamic(),
+        // Camera-axis view depth of each pixel's primary hit (a miss is far), written from the
+        // hit records by the reconstruction depth pass (ReconstructionDepth.comp). The sign
+        // follows the depth convention, so readers compare magnitudes.
+        F<Texture2D<R32f>>("ViewDepth").Dynamic(),
         // The anti-aliasing module's linear-HDR resolve: the exposure meter and the tone map read
         // it. With the `none` provider it is the scene radiance itself.
         F<Texture2D<Rgba16f>>("ResolvedRadiance").Dynamic(),

@@ -18,6 +18,7 @@ inline KeyId GlfwToKeyId(int glfwKey) {
         case 90:  return KeyId::Z;       // GLFW_KEY_Z
         case 89:  return KeyId::Y;       // GLFW_KEY_Y
         case 83:  return KeyId::S;       // GLFW_KEY_S
+        case 82:  return KeyId::R;       // GLFW_KEY_R (R766 ResetLayout)
         case 256: return KeyId::Escape;  // GLFW_KEY_ESCAPE
         default:  return KeyId::None;
     }

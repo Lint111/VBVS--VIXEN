@@ -1,8 +1,6 @@
 #pragma once
 
-#include "LockCensus.h"
 #include "Headers.h"
-#include <mutex>
 
 // Forward declare TextureData from texture loading namespace
 namespace Vixen::TextureHandling {
@@ -32,15 +30,5 @@ public:
 
     //Add commands to the command buffer
     static void AddCommandBuffer(VkCommandBuffer cmdBuf);
-
-    // Submit the command buffer for execution. vkQueueSubmit/vkQueueWaitIdle require external
-    // synchronization on `queue` (audit V-M11) — pass the device's SubmitMutex(queue) as
-    // submitMutex when the queue may be shared with other submitters (the RenderGraph parallel
-    // executor, other cachers, etc). nullptr is only safe for a queue known to be single-owner.
-    static void SubmitCommandBuffer(const VkQueue& queue,
-                                    const VkCommandBuffer* pCmdBufList,
-                                    const VkSubmitInfo* pSubmitInfo = nullptr,
-                                    const VkFence& fence = VK_NULL_HANDLE,
-                                    Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr);
 
 };

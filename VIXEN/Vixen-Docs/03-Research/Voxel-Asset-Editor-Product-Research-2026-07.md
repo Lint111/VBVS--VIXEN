@@ -51,7 +51,7 @@ ownership boundary.
 | Live procedural preview | ✅ | The loaded document is flattened, registered, uploaded, and rendered through the normal recipe-pool path. |
 | Layer visibility UI | ✅ | RmlUi rows are data-model-bound; selection dispatches AppFlow actions rather than editor-specific input verbs. |
 | Undo, redo, save action infrastructure | ✅ | The editor uses the shared AppFlow runtime and action stack. |
-| General-purpose editor panel shell | 🟠 | RmlUi/AppFlow/view binding exist, but the current UI is one fixed 240 px layer panel rather than a dockable workspace. |
+| General-purpose editor panel shell | 🟠 | RmlUi/AppFlow/view binding exist, but the current UI is one fixed 420 px layer panel rather than a dockable workspace. |
 | Incremental document evaluation | 🟠 | Dirty/reconcile flow exists, but a layer edit currently flattens and rebakes the whole document. |
 | Layer selection scale | 🟠 | The current enabled-state bridge is a 32-bit mask, limiting the present view/controller path to 32 layers. |
 | Drawn voxel layers and brushes | 📐 | `type=1` is reserved by the design; the VDC1 reader intentionally rejects it. |

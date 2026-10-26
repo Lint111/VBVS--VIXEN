@@ -5,6 +5,9 @@
 #include "Core/NodeType.h"
 #include "Core/RenderGraph.h"
 #include "KernelDispatch/TaskExecutor.h"
+#include "Core/QueueOwnerTestFixture.h"
+#include "QueueSubmitRequest.h"
+#include "VulkanDevice.h"
 
 #include <array>
 #include <atomic>
@@ -737,4 +740,22 @@ TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {
     EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
     EXPECT_EQ(cost.Edge(2'000'000, 5, 7), 5u);
     EXPECT_GE(cost.Estimate(49), 55'000'000u);
+}
+
+TEST(QueueOwnerFixture, DrainsPublishedRequestIntoOwnerRecord) {
+    Vixen::Vulkan::Resources::VulkanDevice device(nullptr);
+    Vixen::RenderGraph::Test::QueueOwnerTestFixture owner;
+    owner.Attach(device);
+
+    auto request = Vixen::Vulkan::Resources::QueueSubmitRequest::FromSubmitInfo(
+        &device, VK_NULL_HANDLE, VkSubmitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO});
+    const auto completion = device.PublishSubmitRequest(std::move(request));
+    ASSERT_NE(completion, nullptr);
+    EXPECT_EQ(completion->Result(), VK_NOT_READY);
+
+    owner.Drain();
+    ASSERT_EQ(owner.Records().size(), 1u);
+    EXPECT_EQ(owner.Records().front().device, &device);
+    EXPECT_EQ(owner.Records().front().completion, completion);
+    EXPECT_EQ(owner.Records().front().commandBuffers.size(), 0u);
 }

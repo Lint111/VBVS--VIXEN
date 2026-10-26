@@ -7845,24 +7845,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
     uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, usesWsi);
-    uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
-
-    // View Contract Inc-2 Task 5: wire the app's native HudView onto the now-generic UI node.
-    // Routed through WireHudView (HudViewBridge) rather than a direct SetView call here -- this TU
-    // transitively includes BodyOctreeSceneNode.h's gaia.h (via the M-wire body-octree includes
-    // above), and gaia vendors a DIFFERENT VERSION of RmlUi's bundled robin_hood.h under the SAME
-    // include guard; the bridge is the one place HudView.h's RmlUi-touching inline code actually
-    // instantiates, in a TU that never sees gaia.h (see HudViewBridge.h's file header).
-    Vixen::App::WireHudView(*uiComposite, *hudView_);
-
-    // Step-6 M-ui: mount the relational building-inspector fragment as a SECOND document on the same
-    // composite UI node, via the IUiCompositionHost seam (routed through the gaia-free bridge for the
-    // same robin_hood/ODR reason as WireHudView). The context doesn't exist until the node's first
-    // compile, so Mount PARKS the request and realizes it on the first frame (RealizePendingMounts);
-    // buildingMount_ is the returned handle (used by the M-ui gate's alive check). The HUD document is
-    // byte-untouched by this — it's an additive second mount.
-    buildingMount_ = Vixen::App::MountBuildingInspector(*uiComposite, *buildingInspectorView_);
-    mainLogger->Info("Mounted building-inspector fragment (M-ui), handle " + std::to_string(buildingMount_));
+    // R766: no hard-wired document. The app's declared panels (DeclarePanels) are mounted by the panel
+    // dock: the game's HUD binds as the node's primary document (HudView, through the gaia-free
+    // HudViewBridge for the robin_hood/ODR reason), the building inspector as a second document, and
+    // an app that declares no primary panel (the editor) leaves the primary document empty.
+    uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string());
+    {
+        auto& dock = panelDock_->Dock();
+        DeclarePanels(dock);
+        if (const char* layoutPath = std::getenv("VIXEN_PANEL_LAYOUT"); layoutPath && *layoutPath) {
+            panelDock_->SetLayoutPath(layoutPath);
+        } else {
+            panelDock_->SetLayoutPath(Vixen::UserSettingsDirectory() / "layouts" / (PanelLayoutName() + ".json"));
+        }
+        std::string layoutError;
+        if (!panelDock_->LoadLayout(layoutError)) {
+            mainLogger->Warning("[panels] ignoring saved layout '" + panelDock_->LayoutPath().string() + "': " + layoutError);
+            dock.ResetToDefaults();
+        }
+        panelDock_->Attach(*uiComposite);
+        std::string declared;
+        for (const auto& decl : dock.Declarations()) declared += (declared.empty() ? "" : ",") + decl.id;
+        mainLogger->Info("[panels] " + PanelLayoutName() + " mounted [" + declared + "] layout=" +
+                         panelDock_->LayoutPath().string());
+    }
 
     mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
@@ -9573,6 +9579,46 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
 
+    const auto registerModuleShaderFamily = [this, graph = renderGraph](
+        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
+        libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
+            auto builder = family->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders");
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+#endif
+            return builder;
+        });
+    };
+
+    const auto registerPassMetric = [this](std::string name, NodeHandle node) {
+        upscalerPerfPasses_.push_back({std::move(name), node});
+    };
+    // The reconstruction depth guide is created ahead of the frame registry: the TAA reads it
+    // as FrameTargets.ViewDepth (nearest-surface motion at silhouettes).
+    if (reconstructionInputsEnabled) {
+        ReconstructionDepthParams params;
+        params.batch = &batch;
+        params.common = lightingCommon;
+        params.sourceTarget = renderTargetNode;
+        params.camera = cameraNode;
+        params.hitRecords = hitRecordBufferNode;
+        params.hitProducer = computeDispatch;
+        params.makeShaderFamily = makeLightingFamily;
+        params.registerShaderFamily = registerModuleShaderFamily;
+        params.registerPassMetric = registerPassMetric;
+        reconstructionDepthModule = renderGraph->Instantiate<ReconstructionDepthModule>(
+            "render_path/reconstruction_inputs", params);
+        sceneProviders.ProvideSubGraphOutput("viewDepthImage", *reconstructionDepthModule,
+            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
+        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", *reconstructionDepthModule,
+            ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
+    }
+
     if (hdrExposureEnabled) {
     // Hand passes register the resources the generated systems read under their schema
     // identity (R680.4); the runner allocates the rest from the manifest's allocations, then
@@ -9600,6 +9646,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
             frameResources.ProvideSubGraph({"frame_targets", "MotionVectors"}, *reconstructionMotionModule,
                                            ReconstructionMotionPorts::MOTION_VIEW.index,
                                            ReconstructionMotionPorts::MOTION.index, SlotRole::Execute);
+        }
+        if (reconstructionDepthModule) {
+            frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index,
+                                           ReconstructionDepthPorts::VIEW_DEPTH.index, SlotRole::Execute);
         }
         frameResources.Provide({"Vixen.Gpu.PrevCameraConfig", "*"}, prevCameraConfigNode,
                                PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
@@ -9666,41 +9717,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     }
 
-    const auto registerModuleShaderFamily = [this, graph = renderGraph](
-        NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
-        auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
-        libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
-            auto builder = family->MakeBuilder({});
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders");
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
-#endif
-            return builder;
-        });
-    };
 
     if (reconstructionInputsEnabled) {
-        ReconstructionDepthParams params;
-        params.batch = &batch;
-        params.common = lightingCommon;
-        params.sourceTarget = renderTargetNode;
-        params.camera = cameraNode;
-        params.hitRecords = hitRecordBufferNode;
-        params.hitProducer = computeDispatch;
-        params.makeShaderFamily = makeLightingFamily;
-        params.registerShaderFamily = registerModuleShaderFamily;
-        params.registerPassMetric = [this](std::string name, NodeHandle node) {
-            upscalerPerfPasses_.push_back({std::move(name), node});
-        };
-        reconstructionDepthModule = renderGraph->Instantiate<ReconstructionDepthModule>(
-            "render_path/reconstruction_inputs", params);
-        sceneProviders.ProvideSubGraphOutput("viewDepthImage", *reconstructionDepthModule,
-            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index, SlotRole::Execute);
-        sceneProviders.ProvideSubGraphOutput("normalizedDepthImage", *reconstructionDepthModule,
-            ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
         ReconstructionHistoryParams historyParams;
         historyParams.batch = &batch;
         historyParams.common = lightingCommon;
@@ -9712,7 +9730,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             historyParams.sceneProducer = spatialReuseNode;
             historyParams.makeShaderFamily = makeLightingFamily;
             historyParams.registerShaderFamily = registerModuleShaderFamily;
-            historyParams.registerPassMetric = params.registerPassMetric;
+            historyParams.registerPassMetric = registerPassMetric;
         }
         reconstructionHistoryModule = renderGraph->Instantiate<ReconstructionHistoryModule>(
             "render_path/reconstruction_history", historyParams);
@@ -9750,7 +9768,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             exposure.meterProducer = exposureReduceNode;
             exposure.makeShaderFamily = makeLightingFamily;
             exposure.registerShaderFamily = registerModuleShaderFamily;
-            exposure.registerPassMetric = params.registerPassMetric;
+            exposure.registerPassMetric = registerPassMetric;
             reconstructionExposureModule = renderGraph->Instantiate<ReconstructionExposureModule>(
                 "render_path/reconstruction_exposure", exposure);
             sceneProviders.ProvideSubGraphOutput("exposureImage", *reconstructionExposureModule,

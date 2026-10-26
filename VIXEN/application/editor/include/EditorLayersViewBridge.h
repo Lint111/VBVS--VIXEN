@@ -19,7 +19,7 @@
 #include <vector>
 
 namespace Vixen::App { class EditorLayersView; }
-namespace Vixen::RenderGraph { class UIRenderNode; }
+namespace Vixen::RenderGraph { class IView; }
 
 namespace Vixen::App {
 
@@ -43,18 +43,37 @@ struct EditorParameterData {
 // EditorLayersView only, so a unique_ptr's implicit destructor (instantiated at EditorApplication's
 // own dtor, in this gaia-touching TU) would need the complete type there. A raw pointer + explicit
 // DestroyEditorLayersView() sidesteps that.
+// R765: one listed pack render-recipe document.
+struct EditorRecipeData {
+    std::string id;
+    bool isOpen = false;
+};
+
+// R766: the status-line panel's content.
+struct EditorStatusData {
+    std::string document;
+    std::string message;
+    std::string flowState;
+    uint32_t undoDepth = 0;
+    uint32_t redoDepth = 0;
+};
+
 EditorLayersView* MakeEditorLayersView();
 
 // Destroys through a complete-type call site (EditorLayersViewBridge.cpp).
 void DestroyEditorLayersView(EditorLayersView* view);
 
-// Wires view onto node via UIRenderNode::SetView (non-owning aliased shared_ptr -- view is owned
-// by the caller, e.g. EditorApplication::layersView_, which outlives the graph/node it's wired into).
-void WireEditorLayersView(Vixen::RenderGraph::UIRenderNode& node, EditorLayersView& view);
+// R766: the view as the IView the editor's panel declarations bind (EditorLayersView is an IView;
+// this TU-local upcast keeps EditorApplication.cpp from needing its complete type).
+Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view);
 
 // Forwards the headless document's layer and parameter projection into the generated view model.
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
                              const std::vector<EditorParameterData>& parameters);
+
+void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
+
+void RefreshEditorStatusView(EditorLayersView& view, const EditorStatusData& status);
 
 }  // namespace Vixen::App

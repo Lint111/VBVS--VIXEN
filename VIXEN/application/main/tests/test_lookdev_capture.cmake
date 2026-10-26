@@ -41,6 +41,29 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_lookdev_state_tests})
 
+    # R676.2: the look-review set is the presentation frame (jittered samples resolved by the
+    # anti-aliasing module, `taa` by default), not the canonical one-sample frame above. Same
+    # states, angles and first/repeat byte-identity witness; its own output directory.
+    set(_lookdev_presentation_tests)
+    foreach(_state IN LISTS _lookdev_states)
+        set(_test Application.LookdevCapture.Presentation.${_state})
+        add_test(NAME ${_test}
+            COMMAND ${CMAKE_COMMAND}
+                "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
+                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev-presentation"
+                "-DLOOKDEV_CAPTURE_STATES=${_state}"
+                -DLOOKDEV_CAPTURE_BUDGET_S=900
+                -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
+        set_tests_properties(${_test}
+            PROPERTIES
+                LABELS "Application"
+                TIMEOUT 1200
+                ENVIRONMENT "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_SAMPLING=presentation"
+                ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
+        list(APPEND _lookdev_presentation_tests ${_test})
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_lookdev_presentation_tests})
+
     # The four-state aggregate keeps its name for the capture tooling that selects it. It carries only
     # the `native` label, which the split runner excludes by default (`ctest -L native` selects it).
     list(LENGTH _lookdev_states _lookdev_state_count)

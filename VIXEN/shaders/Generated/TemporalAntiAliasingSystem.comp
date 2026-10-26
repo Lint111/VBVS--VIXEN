@@ -16,21 +16,38 @@ struct PrevCameraConfig {
 };
 #endif // PREVCAMERACONFIG_GLSL
 
-layout(std430, binding = 6) readonly buffer reconstructionBlock
+layout(std430, binding = 10) readonly buffer reconstructionBlock
 {
     PrevCameraConfig values[];
 } reconstruction;
 layout(rgba16f, set = 0, binding = 0) uniform readonly image2D sceneRadianceHistoryOutput_current;
 layout(set = 0, binding = 1) uniform texture2D sceneRadianceHistoryOutput_current_sampled;
 layout(set = 0, binding = 2) uniform sampler sceneRadianceHistoryOutput_current_sampled_sampler;
-layout(rg32f, set = 0, binding = 3) uniform readonly image2D motionVectors_current;
-layout(rgba16f, set = 0, binding = 4) uniform writeonly image2D resolvedRadiance_current;
-layout(rgba16f, set = 0, binding = 5) uniform readonly image2D resolvedRadiance_previous;
+layout(set = 0, binding = 3) uniform texture2D motionVectors_current_sampled;
+layout(set = 0, binding = 4) uniform sampler motionVectors_current_sampled_sampler;
+layout(r32f, set = 0, binding = 5) uniform readonly image2D viewDepth_current;
+layout(set = 0, binding = 6) uniform texture2D viewDepth_current_sampled;
+layout(set = 0, binding = 7) uniform sampler viewDepth_current_sampled_sampler;
+layout(rgba16f, set = 0, binding = 8) uniform writeonly image2D resolvedRadiance_current;
+layout(rgba16f, set = 0, binding = 9) uniform readonly image2D resolvedRadiance_previous;
 layout(push_constant, std430) uniform TemporalAntiAliasingSystemPushConstants
 {
     uint _ExtentX;
     uint _ExtentY;
 } pc;
+
+float ResampleBlur(float offsetX, float offsetY) {
+    float blurX = 4.0 * offsetX * (1.0 - offsetX);
+    float blurY = 4.0 * offsetY * (1.0 - offsetY);
+    return (blurX > blurY ? blurX : blurY);
+}
+
+float HistoryFeedback(float historyWeight, float count, float offsetX, float offsetY) {
+    float ramp = count / (count + 1.0);
+    float ceiling = (historyWeight < ramp ? historyWeight : ramp);
+    return ceiling * (1.0 - 0.3 * ResampleBlur(offsetX, offsetY));
+}
+
 
 void TemporalAntiAliasingSystem_Body(in PrevCameraConfig reconstruction, int i) {
     int width = int(reconstruction.inputWidth);
@@ -105,7 +122,25 @@ void TemporalAntiAliasingSystem_Body(in PrevCameraConfig reconstruction, int i) 
     maxG = max(maxG, tap.y);
     minB = min(minB, tap.z);
     maxB = max(maxB, tap.z);
-    vec4 motion = imageLoad(motionVectors_current, ivec2(int(i) % imageSize(motionVectors_current).x, int(i) / imageSize(motionVectors_current).x));
+    float nearestU = u;
+    float nearestV = v;
+    float nearestDepth = abs(imageLoad(viewDepth_current, ivec2(int(i) % imageSize(viewDepth_current).x, int(i) / imageSize(viewDepth_current).x)).x);
+    for (int oy = -1; oy <= 1; oy++)
+    {
+        for (int ox = -1; ox <= 1; ox++)
+        {
+            float su = u + float(ox) * du;
+            float sv = v + float(oy) * dv;
+            float depth = abs(textureLod(sampler2D(viewDepth_current_sampled, viewDepth_current_sampled_sampler), vec2(su, sv), 0.0).x);
+            if (depth < nearestDepth)
+            {
+                nearestU = su;
+                nearestV = sv;
+                nearestDepth = depth;
+            }
+        }
+    }
+    vec4 motion = textureLod(sampler2D(motionVectors_current_sampled, motionVectors_current_sampled_sampler), vec2(nearestU, nearestV), 0.0);
     float previousU = u + motion.x;
     float previousV = v + motion.y;
     bool onScreen = previousU >= 0.0 && previousU <= 1.0 && previousV >= 0.0 && previousV <= 1.0;
@@ -113,29 +148,35 @@ void TemporalAntiAliasingSystem_Body(in PrevCameraConfig reconstruction, int i) 
     float py = clamp(previousV * float(height) - 0.5, 0.0, float((height - 1)));
     float ax = fract(px);
     float ay = fract(py);
-    float fx = px - ax;
-    float fy = py - ay;
-    int x0 = int(fx);
-    int y0 = int(fy);
-    int x1 = int(min(fx + 1.0, float((width - 1))));
-    int y1 = int(min(fy + 1.0, float((height - 1))));
-    vec4 h00 = imageLoad(resolvedRadiance_previous, ivec2(int(x0 + y0 * width) % imageSize(resolvedRadiance_previous).x, int(x0 + y0 * width) / imageSize(resolvedRadiance_previous).x));
-    vec4 h10 = imageLoad(resolvedRadiance_previous, ivec2(int(x1 + y0 * width) % imageSize(resolvedRadiance_previous).x, int(x1 + y0 * width) / imageSize(resolvedRadiance_previous).x));
-    vec4 h01 = imageLoad(resolvedRadiance_previous, ivec2(int(x0 + y1 * width) % imageSize(resolvedRadiance_previous).x, int(x0 + y1 * width) / imageSize(resolvedRadiance_previous).x));
-    vec4 h11 = imageLoad(resolvedRadiance_previous, ivec2(int(x1 + y1 * width) % imageSize(resolvedRadiance_previous).x, int(x1 + y1 * width) / imageSize(resolvedRadiance_previous).x));
-    float w00 = (1.0 - ax) * (1.0 - ay);
-    float w10 = ax * (1.0 - ay);
-    float w01 = (1.0 - ax) * ay;
-    float w11 = ax * ay;
-    float historyR = h00.x * w00 + h10.x * w10 + h01.x * w01 + h11.x * w11;
-    float historyG = h00.y * w00 + h10.y * w10 + h01.y * w01 + h11.y * w11;
-    float historyB = h00.z * w00 + h10.z * w10 + h01.z * w01 + h11.z * w11;
-    float count = (ay > 0.5 ? (ax > 0.5 ? h11.w : h01.w) : (ax > 0.5 ? h10.w : h00.w));
+    int x0 = int((px - ax));
+    int y0 = int((py - ay));
+    float historyR = 0.0;
+    float historyG = 0.0;
+    float historyB = 0.0;
+    for (int ky = 0; ky < 4; ky++)
+    {
+        float dy = abs(float((ky - 1)) - ay);
+        float wy = (dy < 1.0 ? (1.5 * dy - 2.5) * dy * dy + 1.0 : ((-0.5 * dy + 2.5) * dy - 4.0) * dy + 2.0);
+        int sy = int(clamp(float((y0 - 1 + ky)), 0.0, float((height - 1))));
+        for (int kx = 0; kx < 4; kx++)
+        {
+            float dx = abs(float((kx - 1)) - ax);
+            float wx = (dx < 1.0 ? (1.5 * dx - 2.5) * dx * dx + 1.0 : ((-0.5 * dx + 2.5) * dx - 4.0) * dx + 2.0);
+            int sx = int(clamp(float((x0 - 1 + kx)), 0.0, float((width - 1))));
+            vec4 h = imageLoad(resolvedRadiance_previous, ivec2(int(sx + sy * width) % imageSize(resolvedRadiance_previous).x, int(sx + sy * width) / imageSize(resolvedRadiance_previous).x));
+            historyR += h.x * wx * wy;
+            historyG += h.y * wx * wy;
+            historyB += h.z * wx * wy;
+        }
+    }
+    int cx = int(min(float(x0) + (ax > 0.5 ? 1.0 : 0.0), float((width - 1))));
+    int cy = int(min(float(y0) + (ay > 0.5 ? 1.0 : 0.0), float((height - 1))));
+    float count = imageLoad(resolvedRadiance_previous, ivec2(int(cx + cy * width) % imageSize(resolvedRadiance_previous).x, int(cx + cy * width) / imageSize(resolvedRadiance_previous).x)).w;
     bool historyValid = onScreen && historyWeight > 0.0 && count >= 1.0 && count <= 1024.0;
     historyR = clamp(historyR, minR, maxR);
     historyG = clamp(historyG, minG, maxG);
     historyB = clamp(historyB, minB, maxB);
-    float alpha = (historyValid ? min(historyWeight, count / (count + 1.0)) : 0.0);
+    float alpha = (historyValid ? HistoryFeedback(historyWeight, count, ax, ay) : 0.0);
     float centreWeight = (1.0 - alpha) / (1.0 + 0.2126 * centre.x + 0.7152 * centre.y + 0.0722 * centre.z);
     float historyLumaWeight = alpha / (1.0 + 0.2126 * historyR + 0.7152 * historyG + 0.0722 * historyB);
     float norm = 1.0 / (centreWeight + historyLumaWeight);

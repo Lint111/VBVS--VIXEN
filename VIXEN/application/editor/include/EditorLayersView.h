@@ -32,7 +32,7 @@ namespace Vixen::App {
 
 // The editor's layer-list view. Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md): gives the
 // editor layer view a real RmlUi data-model — the first model->view path anywhere in the editor
-// — so editor.rml's checkboxes reflect the document's enabled mask via a data binding instead of
+// — so editor_layers.rml's checkboxes reflect the document's enabled mask via a data binding instead of
 // static "checked" markup. Mirrors Vixen::App::HudView (graph/HudView.h): owns its storage,
 // registers the model via the generated BindEditorLayersModel, and projects the mask into it.
 //
@@ -45,10 +45,14 @@ namespace Vixen::App {
 class EditorLayersView final : public Vixen::RenderGraph::IView {
 public:
     const char* ModelName() const override { return "editor_layers"; }
-    const char* DocumentPath() const override { return "assets/ui/editor.rml"; }
+    // R766: the editor's panels (outliner, layers, inspector, status) each mount their own document over
+    // this one model; this is the layers panel's document.
+    const char* DocumentPath() const override { return "assets/ui/editor_layers.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindEditorLayersModel(c,
-            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_ });
+            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_, &recipes_,
+                                            &statusDocument_, &statusMessage_, &flowState_,
+                                            &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
     }
 
@@ -106,6 +110,36 @@ public:
         }
     }
 
+    // R765: the open pack's render-recipe documents; each row carries its OpenRecipe selector.
+    void PopulateRecipes(const std::vector<EditorRecipeData>& recipeData) {
+        recipes_.clear();
+        recipes_.reserve(recipeData.size());
+        for (const auto& recipe : recipeData) {
+            Vixen::Views::EditorRecipeRow row;
+            row.id = Rml::String(recipe.id);
+            row.elementId = "recipe-" + recipe.id + "-open";
+            row.isOpen = recipe.isOpen;
+            recipes_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("recipes");
+    }
+
+    // R766: the status-line panel's fields.
+    void PopulateStatus(const EditorStatusData& status) {
+        statusDocument_ = Rml::String(status.document);
+        statusMessage_ = Rml::String(status.message);
+        flowState_ = Rml::String(status.flowState);
+        undoDepth_ = static_cast<int>(status.undoDepth);
+        redoDepth_ = static_cast<int>(status.redoDepth);
+        if (model_) {
+            model_.DirtyVariable("statusDocument");
+            model_.DirtyVariable("statusMessage");
+            model_.DirtyVariable("flowState");
+            model_.DirtyVariable("undoDepth");
+            model_.DirtyVariable("redoDepth");
+        }
+    }
+
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
@@ -119,6 +153,12 @@ private:
     std::vector<Vixen::Views::EditorLayerRow> layers_;
     std::vector<Vixen::Views::EditorParameterRow> parameters_;
     int activeLayerCountRaw_ = 0;
+    std::vector<Vixen::Views::EditorRecipeRow> recipes_;
+    Rml::String statusDocument_;
+    Rml::String statusMessage_;
+    Rml::String flowState_;
+    int undoDepth_ = 0;
+    int redoDepth_ = 0;
     Rml::DataModelHandle model_;
 };
 

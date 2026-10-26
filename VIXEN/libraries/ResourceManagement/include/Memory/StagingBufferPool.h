@@ -241,7 +241,7 @@ private:
         VkDeviceSize minSize = 0;
         VkDeviceSize maxSize = 0;
         std::deque<StagingBufferHandle> available;  // FIFO for reuse
-        mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM7> mutex;
+        mutable Vixen::LockCensus::AtomicGate mutex;
     };
 
     // Configuration
@@ -252,7 +252,7 @@ private:
     std::atomic<StagingBufferHandle> nextHandle_{1};
 
     // Buffer tracking (handle → record)
-    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM8> recordsMutex_;
+    mutable Vixen::LockCensus::AtomicGate recordsMutex_;
     std::unordered_map<StagingBufferHandle, BufferRecord> records_;
 
     // Size-class buckets

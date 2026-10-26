@@ -110,6 +110,15 @@ RenderGraph::RenderGraph(
     if (messageBus) {
         subscriptions_.SetBus(messageBus);
 
+        subscriptions_.SubscribeWithResult<EventBus::QueueSubmitRequestMessage>(
+            [this](const EventBus::QueueSubmitRequestMessage& msg) {
+                // MessageBus is the MPSC publication boundary. This handler runs on the graph
+                // thread; ownership of the immutable request then moves into the fixed drain phase.
+                offGraphSubmits_.push_back(SubmitRecord::FromQueueSubmitRequest(msg.request));
+                return true;
+            }
+        );
+
         subscriptions_.SubscribeWithResult<EventTypes::CleanupRequestedMessage>(
             [this](const EventTypes::CleanupRequestedMessage& msg) {
                 this->HandleCleanupRequest(msg);
@@ -1300,7 +1309,14 @@ VkResult RenderGraph::ReleaseAfterIssued(NodeInstance* producer, std::function<v
 
 VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
     VulkanDevice* const device = rec.device;
-    if (!device) return VK_ERROR_INITIALIZATION_FAILED;
+    if (!device) {
+        if (rec.completion) rec.completion->PublishFailed(VK_ERROR_INITIALIZATION_FAILED);
+        if (rec.onRetired) {
+            auto retire = std::move(rec.onRetired);
+            retire();
+        }
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
     QueueTimeline& timeline = queueTimelines_[device->queue];
     if (timeline.semaphore == VK_NULL_HANDLE) {
         VkSemaphoreTypeCreateInfo typeInfo{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
@@ -1310,6 +1326,7 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
         const VkResult created = vkCreateSemaphore(device->device, &info, nullptr, &timeline.semaphore);
         if (created != VK_SUCCESS) {
             timeline.semaphore = VK_NULL_HANDLE;
+            if (rec.completion) rec.completion->PublishFailed(created);
             if (rec.onRetired) rec.onRetired();
             ReportGpuFault("RenderGraph::IssueRecord vkCreateSemaphore (queue timeline)", created);
             return created;
@@ -1317,10 +1334,6 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
         timeline.device = device->device;
     }
 
-    // Residual VK2, held only around the queue calls themselves (never across the timeline cap
-    // wait): the off-graph submitters (BatchedUploader, AS builds, readbacks) still submit to this
-    // queue from other threads.
-    auto& queueLock = device->SubmitMutex(device->queue);
     VkResult result = VK_SUCCESS;
     {
         if (rec.present) {
@@ -1339,7 +1352,6 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
             presentInfo.pImageIndices = &rec.imageIndex;
             const auto started = std::chrono::steady_clock::now();
             if (rec.presentFn) {
-                std::lock_guard submitLock(queueLock);
                 result = rec.presentFn(device->queue, &presentInfo);
             } else {
                 result = VK_ERROR_INITIALIZATION_FAILED;
@@ -1355,29 +1367,59 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
             const PFN_vkQueueSubmit2 submit2 = device->fpQueueSubmit2;
             const VkQueue queue = device->queue;
             result = submit2
-                ? rec.Submit([&queueLock, submit2, queue](const VkSubmitInfo2& info, VkFence fence) {
-                      std::lock_guard submitLock(queueLock);
+                ? rec.Submit([submit2, queue](const VkSubmitInfo2& info, VkFence fence) {
                       return submit2(queue, 1, &info, fence);
                   }, timeline)
                 : VK_ERROR_INITIALIZATION_FAILED;
         }
     }
-    if (rec.onRetired) {
-        if (result == VK_SUCCESS && !rec.present) timeline.Defer(timeline.lastSignaled, std::move(rec.onRetired));
-        else rec.onRetired();
+    if (rec.completion) {
+        if (result == VK_SUCCESS && !rec.present) rec.completion->PublishSubmitted(timeline.lastSignaled);
+        else if (result != VK_SUCCESS) rec.completion->PublishFailed(result);
+    }
+    if (rec.completion) {
+        auto completion = rec.completion;
+        auto retire = std::move(rec.onRetired);
+        auto wrapped = [completion, retire = std::move(retire)]() mutable {
+            if (retire) retire();
+            completion->PublishRetired();
+        };
+        if (result == VK_SUCCESS && !rec.present) {
+            timeline.Defer(timeline.lastSignaled, std::move(wrapped));
+        } else {
+            wrapped();
+        }
+        rec.onRetired = nullptr;
+    } else if (rec.onRetired) {
+        auto retire = std::move(rec.onRetired);
+        if (result == VK_SUCCESS && !rec.present) timeline.Defer(timeline.lastSignaled, std::move(retire));
+        else retire();
         rec.onRetired = nullptr;
     }
     return result;
 }
 
-GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device) {
+void RenderGraph::DrainOffGraphSubmits() {
+    if (offGraphSubmits_.empty()) return;
+    std::vector<SubmitRecord> pending;
+    pending.swap(offGraphSubmits_);
+    for (SubmitRecord& record : pending) {
+        const VkResult result = IssueRecord(record);
+        if (result == VK_SUCCESS) continue;
+        if (record.completion) record.completion->PublishFailed(result);
+        ReportGpuFault("RenderGraph::DrainOffGraphSubmits", result);
+    }
+}
+
+GpuWaitResult RenderGraph::WaitIssuedWork(VulkanDevice* device, uint64_t boundNs) {
     if (!device || submitChannelDraining_) return {};
     const auto found = queueTimelines_.find(device->queue);
     if (found == queueTimelines_.end() || found->second.semaphore == VK_NULL_HANDLE) return {};
     QueueTimeline& timeline = found->second;
     if (const VkResult polled = timeline.Poll(); polled != VK_SUCCESS) return MakeWaitResult(polled);
     if (timeline.completed >= timeline.lastSignaled) return {};
-    const GpuWaitResult waited = BoundedWaitSemaphore(timeline.device, timeline.semaphore, timeline.lastSignaled);
+    const GpuWaitResult waited = BoundedWaitSemaphore(
+        timeline.device, timeline.semaphore, timeline.lastSignaled, boundNs);
     if (waited.Ok()) (void)timeline.Poll();
     return waited;
 }
@@ -1623,6 +1665,10 @@ VkResult RenderGraph::RenderFrame() {
         messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process immediately so listeners capture state
     }
+    // R723 fixed queue-owner phase: requests published by workers or caches are issued before this
+    // frame's graph work. Queue order therefore preserves producer-before-consumer semantics while
+    // no producer needs a queue mutex or a host wait.
+    DrainOffGraphSubmits();
 
     // The render graph orchestrates the frame by calling specialized nodes:
     //
@@ -1906,7 +1952,7 @@ bool RenderGraph::DrainGraphDevicesBounded() {
     }
     for (auto* vdev : devices) {
         BoundedQueueIdle idle;
-        const GpuWaitResult drained = idle.Wait(*vdev);
+        const GpuWaitResult drained = idle.Wait(*this, *vdev);
         // DEVICE_LOST (or any hard failure) means no work is running: teardown is safe. Only a wait
         // that outlives the bound leaves the GPU executing work that teardown would destroy.
         if (drained.fault == GpuFaultKind::WatchdogTimeout) {
@@ -1914,7 +1960,6 @@ bool RenderGraph::DrainGraphDevicesBounded() {
                             std::to_string(GpuWaitBoundNs() / 1'000'000ull) + " ms — GPU wedged");
             return false;
         }
-        idle.Destroy(vdev->device);
     }
     return true;
 }

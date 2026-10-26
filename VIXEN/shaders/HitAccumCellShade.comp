@@ -167,7 +167,7 @@ void main() {
         float NdotL = max(dot(normal, lightDir), 0.0);
         if (NdotL <= 0.0 || attenuation <= 0.0) continue;
         float originBias = max(
-            storedSdfShadowOriginBias(rep, shadowConfig.biasEpsilon, normal, lightDir),
+            storedSdfShadowOriginBias(rep, shadowConfig.biasEpsilon, normal, lightDir, 0.0),
             0.5 * cellSize);
         vec3 shadowOrigin = rc.avgPos + normal * originBias;
         float vis = 1.0;

@@ -63,6 +63,10 @@ public:
     // A second-document mount lifecycle over this node's one shared Rml::Context, beside the primary
     // (HUD) document_. Mounts are stored in mounts_ keyed by handle. See IView.h for the contract.
     MountHandle Mount(IView& view) override;
+    MountHandle Mount(IView& view, const char* documentPath) override;
+    void BindPrimary(IView& view) override;
+    void Place(MountHandle handle, const PanelRect& rect, bool visible, int z) override;
+    bool Extent(float& width, float& height) const override;
     void Unmount(MountHandle handle) override;
     void MarkMountedDirty(MountHandle handle, const char* field) override;
     [[nodiscard]] bool IsMounted(MountHandle handle) const override;
@@ -159,11 +163,29 @@ private:
     MountHandle nextMountHandle_ = 1;   // 0 is the invalid sentinel
     // Mount() can be called before the first CompileImpl (context_ still null); such requests park
     // here and are realized on the first frame the context exists (RealizePendingMounts in RecordFrame).
-    std::vector<std::pair<MountHandle, IView*>> pendingMounts_;
+    struct PendingMount_ {
+        MountHandle handle = 0;
+        IView* view = nullptr;
+        std::string documentPath;
+    };
+    std::vector<PendingMount_> pendingMounts_;
     // Do the actual RmlUi CreateDataModel + LoadDocument + validation for one view; returns false
     // (leaving no partial state) on a namespace/degenerate-layout failure. Requires context_ != null.
-    bool MountNow(MountHandle handle, IView& view);
+    // A view already mounted by another panel shares that panel's model (R766).
+    bool MountNow(MountHandle handle, IView& view, const std::string& documentPath);
     void RealizePendingMounts();   // drain pendingMounts_ once context_ exists
+
+    // R766 dock placements, keyed by mount handle (kPrimaryDocument for the primary document). Applied
+    // to the document body before Context::Update() whenever a placement changed or its document appeared.
+    struct Placement_ {
+        PanelRect rect;
+        bool visible = true;
+        int z = 0;
+        bool dirty = true;
+        Rml::ElementDocument* appliedTo = nullptr;  // re-apply when the document is (re)loaded
+    };
+    std::map<MountHandle, Placement_> placements_;
+    void ApplyPlacements();
 
     // GPU timing (M5.1, mirrors ComputeDispatchNode's gpuPerfLogger_): times the render-pass
     // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass

@@ -6,11 +6,13 @@
 #include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
 #include "Selection/PickVote.h"
 #include "VulkanDeviceFwd.h"
+#include "QueueSubmitRequest.h"
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace Vixen::RenderGraph {
 
@@ -92,9 +94,8 @@ private:
     // (Was VoxelSelectionProvider::EnsureStagingBuffer, now size-parameterized for KI-012.)
     bool EnsureStagingBuffer(VkDeviceSize bytesNeeded);
 
-    // Record the one-shot readback copy on commandPool_, submit on GetDevice()->queue with
-    // a fresh fence, wait it, then map the staged pixel(s) and extract the pixel at
-    // (targetX, targetY) into pixelOut. Returns true on success. Branches on
+    // Record the one-shot readback copy on commandPool_ and publish it to the graph owner. The
+    // result is consumed by PollPixelReadback on the next frame. Branches on
     // requiresFullImageTransfers_ (KI-012): when the graphics queue family's
     // minImageTransferGranularity is (0,0,0), a sub-region copy (the single target texel at an
     // arbitrary offset) is a spec violation on that queue — some drivers (Dozen) tolerate it
@@ -104,6 +105,7 @@ private:
     // actual cursor position instead of always the viewport center.)
     bool ReadPixelAt(VkImage image, uint32_t width, uint32_t height, uint32_t targetX, uint32_t targetY,
                      PickTargetPixel& pixelOut);
+    bool PollPixelReadback(PickTargetPixel& pixelOut, uint32_t& targetX, uint32_t& targetY);
 
     // ----- Per-frame vote tracking (sub-pixel jitter only) -----
     // Texels whose hit ID is read every frame: the crosshair (render-extent centre) and the cursor.
@@ -117,7 +119,7 @@ private:
 
     struct ReadbackSlot {
         VkCommandBuffer cmd = VK_NULL_HANDLE;
-        VkFence fence = VK_NULL_HANDLE;
+        std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion;
         VkBuffer buffer = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
         void* mapped = nullptr;
@@ -167,6 +169,15 @@ private:
     VkDeviceMemory stagingMemory_ = VK_NULL_HANDLE;
     VkDeviceSize   stagingCapacity_ = 0;  // bytes actually allocated; EnsureStagingBuffer grows-only
     static constexpr VkDeviceSize kSingleTexelSize = sizeof(PickTargetPixel);  // one RG32_UINT texel
+
+    struct PendingPixelReadback {
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion;
+        VkDeviceSize bytes = 0;
+        uint32_t width = 0, height = 0;
+        uint32_t targetX = 0, targetY = 0;
+    };
+    std::optional<PendingPixelReadback> pendingPixelReadback_;
 
     // ----- Vote state -----
     std::array<PickVoteHistory, kTrackedTexels> history_{};

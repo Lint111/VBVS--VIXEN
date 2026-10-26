@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <vulkan/vulkan.h>
+#include "QueueSubmitRequest.h"
 
 namespace Vixen::Vulkan::Resources { class VulkanDevice; }
 
@@ -99,6 +100,7 @@ struct SubmitRecord {
     std::vector<VkSemaphoreSubmitInfo> signals;
     VkFence fence = VK_NULL_HANDLE;   ///< Binary in-flight fence for the designated fence-owning submit, else VK_NULL_HANDLE.
     bool present = false;             ///< True for the present record (issued via presentFn, not vkQueueSubmit2).
+    std::shared_ptr<Vixen::Vulkan::Resources::QueueSubmitCompletion> completion; ///< Off-graph completion published by the owner.
 
     /// The producing node's device (set by RenderGraph::SubmitNodeWork). The owner drains through this
     /// device's queue + fpQueueSubmit2 — so a multi-device graph stays correct without the owner
@@ -179,6 +181,21 @@ struct SubmitRecord {
         if (si.signalSemaphoreInfoCount) r.signals.assign(si.pSignalSemaphoreInfos,
                          si.pSignalSemaphoreInfos + si.signalSemaphoreInfoCount);
         return r;
+    }
+
+    static SubmitRecord FromQueueSubmitRequest(
+        const Vixen::Vulkan::Resources::QueueSubmitRequest& request) {
+        SubmitRecord record;
+        record.device = request.device;
+        record.waits = request.waits;
+        record.commandBuffers = request.commandBuffers;
+        record.signals = request.signals;
+        record.commandCostUpperBoundsNs = request.commandCostUpperBoundsNs;
+        record.submissionBudgetNs = request.submissionBudgetNs;
+        record.fence = request.fence;
+        record.completion = request.completion;
+        record.onRetired = request.onRetired;
+        return record;
     }
 };
 

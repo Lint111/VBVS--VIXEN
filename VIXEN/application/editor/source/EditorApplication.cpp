@@ -30,6 +30,7 @@
 #include <stb_image_write.h>
 
 #include <cstdlib>
+#include <charconv>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -424,7 +425,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
     // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
-    // hand-authored rows; see editor.rml). A reload re-populates from scratch, same as the
+    // hand-authored rows; see editor_layers.rml). A reload re-populates from scratch, same as the
     // SetLayerCount resync above.
     RefreshLayersView();
 
@@ -587,6 +588,22 @@ void EditorApplication::RegisterAppFlowHandlers() {
     registerParameterEdit(FlowActionId::AdjustParameterUp, true);
     registerParameterEdit(FlowActionId::AdjustParameterDown, false);
 
+    // R765: open a pack recipe by content id. Opening replaces the document and reloads the AppFlow
+    // runtime (fresh undo history), which must not happen inside the runtime's own dispatch, so the
+    // request is validated here and applied by Update().
+    rt_.RegisterHandler(FlowActionId::OpenRecipe, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string recipeId;
+        for (const auto& [name, value] : p) if (name == "recipeId") recipeId = value;
+        pack_.Refresh();
+        std::string path;
+        if (!pack_.TryResolve(recipeId, path)) {
+            lastEditorError_ = "OpenRecipe: the open pack has no recipe '" + recipeId + "'";
+            logger_->Warning("[EditorApplication] " + lastEditorError_);
+            return;
+        }
+        pendingOpenRecipe_ = recipeId;
+    });
+
     rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         rt_.Stack().Undo();
     });
@@ -600,6 +617,58 @@ void EditorApplication::RegisterAppFlowHandlers() {
     });
     rt_.RegisterHandler(FlowActionId::Return, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         rt_.NavPop();
+    });
+
+    // R766: panel layout verbs. They change the dock, not the document: no ActionStack entry.
+    using Params = Vixen::AppFlow::AppFlowRuntime::Params;
+    using Vixen::RenderGraph::DockResult;
+    const auto param = [](const Params& p, std::string_view name) {
+        for (const auto& [key, value] : p) if (key == name) return value;
+        return std::string{};
+    };
+    const auto intParam = [param](const Params& p, std::string_view name, int& out) {
+        const std::string text = param(p, name);
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), out);
+        return !text.empty() && parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+    };
+    rt_.RegisterHandler(FlowActionId::OpenPanel, [this, param](const Params& p) {
+        AfterPanelVerb("open", Panels().Dock().Open(param(p, "panelId")));
+    });
+    rt_.RegisterHandler(FlowActionId::ClosePanel, [this, param](const Params& p) {
+        AfterPanelVerb("close", Panels().Dock().Close(param(p, "panelId")));
+    });
+    rt_.RegisterHandler(FlowActionId::FocusPanel, [this, param](const Params& p) {
+        AfterPanelVerb("focus", Panels().Dock().Focus(param(p, "panelId")));
+    });
+    rt_.RegisterHandler(FlowActionId::MovePanel, [this, param](const Params& p) {
+        const auto region = Vixen::RenderGraph::ParseDockRegion(param(p, "region"));
+        AfterPanelVerb("move", region ? Panels().Dock().Move(param(p, "panelId"), *region) : DockResult::UnknownRegion);
+    });
+    rt_.RegisterHandler(FlowActionId::SplitPanel, [this, param](const Params& p) {
+        const auto region = Vixen::RenderGraph::ParseDockRegion(param(p, "region"));
+        AfterPanelVerb("split", region ? Panels().Dock().Split(param(p, "panelId"), *region) : DockResult::UnknownRegion);
+    });
+    rt_.RegisterHandler(FlowActionId::FloatPanel, [this, param, intParam](const Params& p) {
+        int x = 0, y = 0, w = 0, h = 0;
+        if (!intParam(p, "x", x) || !intParam(p, "y", y) || !intParam(p, "width", w) || !intParam(p, "height", h)) {
+            AfterPanelVerb("float", DockResult::InvalidSize);
+            return;
+        }
+        AfterPanelVerb("float", Panels().Dock().Float(param(p, "panelId"),
+            {static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h)}));
+    });
+    rt_.RegisterHandler(FlowActionId::ResizeRegion, [this, param, intParam](const Params& p) {
+        const auto region = Vixen::RenderGraph::ParseDockRegion(param(p, "region"));
+        int size = 0;
+        if (!region || !intParam(p, "size", size)) {
+            AfterPanelVerb("resize", region ? DockResult::InvalidSize : DockResult::UnknownRegion);
+            return;
+        }
+        AfterPanelVerb("resize", Panels().Dock().Resize(*region, static_cast<float>(size)));
+    });
+    rt_.RegisterHandler(FlowActionId::ResetLayout, [this](const Params&) {
+        Panels().Dock().ResetToDefaults();
+        AfterPanelVerb("reset", DockResult::Ok);
     });
 }
 
@@ -689,28 +758,17 @@ void EditorApplication::BuildRenderGraph() {
         }
     }
 
-    // Build the full standard graph unmodified (window, body-octree scene, UI composite HUD),
-    // then re-point the UI node at the editor's own document and replace the 3 default demo
-    // bodies with the loaded VoxelDocument's single flattened recipe.
+    // Build the full standard graph (window, body-octree scene, UI composite node with this app's
+    // declared panels), then replace the 3 default demo bodies with the loaded VoxelDocument's single
+    // flattened recipe.
     //
     // No capture-specific node is needed. The script harness reads the existing compute target
     // after Render(), before the HUD composite overlays the viewport. The readback only runs on
     // requested capture ticks.
     VulkanGraphApplication::BuildRenderGraph();
 
-    if (auto* ui = GetUiRenderNode()) {
-        // Inc-A2: wire the editor's IView instead of the raw RML_DOCUMENT_PATH param -- SetView
-        // gives editor.rml a real data-model (CompileImpl calls CreateDataModel(ModelName()) +
-        // Register() before LoadDocument), and view_->DocumentPath() ("assets/ui/editor.rml") now
-        // supplies the doc path, same convention BuildRenderGraph.cpp uses for hud.rml/HudView.
-        // Through the bridge (WireEditorLayersView), not a direct ui->SetView(layersView_) call --
-        // this TU never sees UIRenderNode's real definition/IView, only the forward declaration
-        // (see EditorLayersViewBridge.h). ResolveUiAsset (UIRenderNode.cpp) strips the "assets/"
-        // prefix when resolving against VIXEN_UI_SOURCE_DIR/VIXEN_UI_ASSET_SOURCE_DIR, and checks
-        // the literal path relative to CWD otherwise; a bare "editor.rml" (no prefix) fails both
-        // and RmlUi logs "Unable to open file editor.rml" (found via the windowed smoke test).
-        Vixen::App::WireEditorLayersView(*ui, *layersView_);
-    }
+    // R766: the editor's panels (DeclarePanels) were mounted on the UI node by the base graph build's
+    // panel dock; there is no hard-wired editor document to re-point any more.
 
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
@@ -864,6 +922,16 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
 }
 
 bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& err) {
+    if (pendingCapture_) {
+        if (pendingCapturePath_ != path) {
+            err = "CaptureFrameToPng: another capture is pending";
+            return false;
+        }
+        if (!pendingCapture_->Poll(err)) return false;
+        pendingCapture_.reset();
+        pendingCapturePath_.clear();
+        return err.empty();
+    }
     // Live lookups every call -- never cache a node pointer across graph recompiles.
     auto* graph = GetRenderGraph();
     if (!graph) {
@@ -896,15 +964,15 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
         return false;
     }
     auto* device = deviceInst->GetVulkanDevice();
-    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+    pendingCapture_ = Vixen::RenderGraph::Debug::BeginCaptureRenderTargetToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+    if (!pendingCapture_) return false;
+    pendingCapturePath_ = path;
+    err.clear();
+    return true;
 }
 
 bool EditorApplication::SaveDocument() {
-    const size_t dot = documentPath_.find_last_of('.');
-    const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
-    const std::string outPath = base + ".edited.vxd";
-
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
@@ -912,9 +980,33 @@ bool EditorApplication::SaveDocument() {
         lastEditorError_ = diagnostic.message;
         return false;
     }
-    if (!doc_.Save(outPath, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
-        return false;
+
+    std::string outPath;
+    if (!openRecipeId_.empty()) {
+        // R765: a pack recipe saves its layered document back into the pack's authored form; the pack
+        // build flattens it. No side file and no flattened .vrc is written.
+        if (!pack_.TryResolve(openRecipeId_, outPath)) {
+            lastEditorError_ = "the open pack no longer lists recipe '" + openRecipeId_ + "'";
+            return false;
+        }
+        std::vector<uint8_t> bytes;
+        if (!doc_.Serialize(bytes, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
+        std::string writeError;
+        if (!Vixen::Editor::PackRecipeSource::WriteAtomically(outPath, bytes, writeError)) {
+            lastEditorError_ = writeError;
+            return false;
+        }
+    } else {
+        const size_t dot = documentPath_.find_last_of('.');
+        const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
+        outPath = base + ".edited.vxd";
+        if (!doc_.Save(outPath, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
     }
     lastSavedPath_ = outPath;
     lastSavedProgram_ = std::move(canonical.bytecode);
@@ -925,6 +1017,7 @@ bool EditorApplication::SaveDocument() {
     std::ostringstream state;
     state << "[EDITOR/state] save revision=" << snapshot.revision << " mask=" << lastSavedMask_
           << " parameterCount=" << doc_.ParameterCount();
+    if (!openRecipeId_.empty()) state << " recipe=" << openRecipeId_ << " path=" << outPath;
     logger_->Info(state.str());
     return true;
 }
@@ -957,10 +1050,17 @@ bool EditorApplication::ReopenSavedDocument() {
         return false;
     }
 
+    if (!AdoptDocument(std::move(candidate))) return false;
+    logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
+                  " programMatch=1 parametersMatch=1 maskMatch=1");
+    return true;
+}
+
+bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candidate) {
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     const Vixen::AppFlow::Generated::AppFlowContainerView* view = blob ? &blob->View() : nullptr;
     if (rt_.Load(view, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
-        lastEditorError_ = "AppFlowRuntime reload failed while reopening the saved document";
+        lastEditorError_ = "AppFlowRuntime reload failed while adopting a document";
         return false;
     }
     doc_ = std::move(candidate);
@@ -969,8 +1069,121 @@ bool EditorApplication::ReopenSavedDocument() {
     RegisterAppFlowHandlers();
     SyncAfterDocumentMutation();
     lastEditorError_.clear();
-    logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
-                  " programMatch=1 parametersMatch=1 maskMatch=1");
+    return true;
+}
+
+void EditorApplication::RefreshRecipesView() {
+    std::vector<Vixen::App::EditorRecipeData> recipes;
+    recipes.reserve(pack_.Recipes().size());
+    for (const auto& recipe : pack_.Recipes()) recipes.push_back({recipe.id, recipe.id == openRecipeId_});
+    Vixen::App::RefreshEditorRecipesView(*layersView_, recipes);
+}
+
+void EditorApplication::RefreshStatusView() {
+    Vixen::App::EditorStatusData status;
+    status.document = !openRecipeId_.empty() ? openRecipeId_
+        : std::filesystem::path(documentPath_).filename().string();
+    status.message = !lastEditorError_.empty() ? lastEditorError_ : statusMessage_;
+    status.flowState = std::string(magic_enum::enum_name(rt_.Current()));
+    status.undoDepth = static_cast<uint32_t>(rt_.Stack().UndoDepth());
+    status.redoDepth = static_cast<uint32_t>(rt_.Stack().RedoDepth());
+    Vixen::App::RefreshEditorStatusView(*layersView_, status);
+}
+
+void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
+    using Vixen::RenderGraph::DockRegion;
+    using Vixen::RenderGraph::PanelDecl;
+    Vixen::RenderGraph::IView& view = Vixen::App::EditorLayersAsView(*layersView_);
+    const auto declare = [&](std::string id, std::string title, std::string document, DockRegion region,
+                             uint32_t stack, float size, float minSize, bool closable, bool header) {
+        PanelDecl decl;
+        decl.id = std::move(id);
+        decl.title = std::move(title);
+        decl.view = &view;
+        decl.document = std::move(document);
+        decl.region = region;
+        decl.stack = stack;
+        decl.size = size;
+        decl.minSize = minSize;
+        decl.closable = closable;
+        decl.header = header;
+        dock.Declare(std::move(decl));
+    };
+    // R765 three regions: layers | viewport | inspector, plus the status line. The viewport is what
+    // the dock leaves uncovered.
+    declare("outliner", "Recipes", "assets/ui/editor_outliner.rml", DockRegion::Left, 0, 340.0f, 220.0f, true, true);
+    declare("layers", "Layers", "assets/ui/editor_layers.rml", DockRegion::Left, 1, 340.0f, 220.0f, true, true);
+    declare("inspector", "Inspector", "assets/ui/editor_inspector.rml", DockRegion::Right, 0, 320.0f, 220.0f, true, true);
+    declare("status", "Status", "assets/ui/editor_status.rml", DockRegion::Bottom, 0, 28.0f, 24.0f, false, false);
+}
+
+void EditorApplication::AfterPanelVerb(const char* verb, Vixen::RenderGraph::DockResult result) {
+    const std::string resultName(Vixen::RenderGraph::DockResultName(result));
+    if (result == Vixen::RenderGraph::DockResult::Ok) {
+        std::string error;
+        if (!Panels().SaveLayout(error)) {
+            logger_->Warning("[EDITOR/panels] layout save failed: " + error);
+        }
+        statusMessage_ = std::string("layout: ") + verb;
+    } else {
+        statusMessage_ = std::string("layout ") + verb + " refused: " + resultName;
+    }
+    logger_->Info(std::string("[EDITOR/panels] verb=") + verb + " result=" + resultName +
+                  " revision=" + std::to_string(Panels().Dock().Revision()));
+    // A refused verb still dispatches Ok (the handler ran); the event names the refusal for agents.
+    RecordAppFlowEvent(std::string("panel.") + verb +
+                       (result == Vixen::RenderGraph::DockResult::Ok ? "" : "." + resultName));
+}
+
+bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::string& schemaPath) {
+    std::string error;
+    if (!pack_.Configure(packRoot, schemaPath, error)) {
+        lastEditorError_ = error;
+        return false;
+    }
+    logger_->Info("[EDITOR/state] pack root=" + pack_.PackRoot() + " id=" + pack_.PackId() +
+                  " assets=" + pack_.AssetDirectory() + "/*" + pack_.AssetExtension() +
+                  " recipes=" + std::to_string(pack_.Recipes().size()));
+    RefreshRecipesView();
+    return true;
+}
+
+bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
+    std::string path;
+    if (!pack_.TryResolve(recipeId, path)) {
+        lastEditorError_ = "the open pack has no recipe '" + recipeId + "'";
+        return false;
+    }
+    if (GetRenderGraph() == nullptr) {
+        // First document, before Prepare(): the ordinary initial load.
+        if (!LoadDocument(path)) return false;
+    } else {
+        Vixen::Editor::EditorDocumentModel candidate;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!candidate.Load(path, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            return false;
+        }
+        if (!AdoptDocument(std::move(candidate))) return false;
+        documentPath_ = path;
+        reframePending_ = true;
+    }
+    openRecipeId_ = recipeId;
+    RefreshRecipesView();
+    std::ostringstream state;
+    state << "[EDITOR/state] open recipe=" << recipeId << " path=" << path
+          << " layers=" << doc_.LayerCount() << " mask=" << doc_.EnabledMask() << " parameters=[";
+    for (uint32_t i = 0; i < doc_.ParameterCount(); ++i) {
+        if (i) state << ',';
+        state << doc_.ParameterName(i) << '=' << doc_.ParameterValue(i);
+    }
+    state << "] names=[";
+    for (uint32_t i = 0; i < doc_.LayerCount(); ++i) {
+        if (i) state << ',';
+        state << doc_.LayerName(i);
+    }
+    state << ']';
+    logger_->Info(state.str());
     return true;
 }
 
@@ -1191,6 +1404,11 @@ void EditorApplication::Update() {
         const bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
         if (escDown && !escWasDown_) rt_.DispatchByKey({KeyId::Escape, KeyMod::None});
         escWasDown_ = escDown;
+
+        // R766: Ctrl+R resolves to ResetLayout through the generated key default.
+        const bool rDown = ctrl && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        if (rDown && !ctrlRWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_R), ctrlMods});
+        ctrlRWasDown_ = rDown;
     }
 
     // Inc-B (design §4a): the per-frame .changed<LayerMask>() reconcile, placed AFTER all input
@@ -1198,7 +1416,16 @@ void EditorApplication::Update() {
     // the same dirty_ re-flatten tail below as an input-driven toggle would. The input path's own
     // same-frame echo (inside the ToggleLayer handler) already covers the self case; this call is
     // what makes a non-input Gaia write reach the view at all.
+    if (pendingOpenRecipe_.has_value()) {
+        const std::string recipeId = std::move(*pendingOpenRecipe_);
+        pendingOpenRecipe_.reset();
+        if (!OpenPackRecipe(recipeId)) {
+            logger_->Error("[EditorApplication] OpenRecipe failed: " + lastEditorError_);
+        }
+    }
+
     ReconcileLayersView();
+    RefreshStatusView();
     if (doc_.EnabledMask() != channelObservedMask_) {
         channelObservedMask_ = doc_.EnabledMask();
         RecordAppFlowEvent("view.reconcile");
@@ -1212,7 +1439,9 @@ void EditorApplication::Update() {
         dirty_ = false;
         logger_->Debug("[EDITOR/diag] re-flatten tick=" + std::to_string(updateTick_) +
                        " mask=" + std::to_string(rt_.Layers().Mask()));
-        if (!ApplyDocumentToScene()) {
+        const bool reframe = reframePending_;
+        reframePending_ = false;
+        if (!ApplyDocumentToScene(reframe)) {
             logger_->Error("[EditorApplication] toggle re-apply failed: " + lastEditorError_);
         }
     }
@@ -1254,11 +1483,10 @@ void EditorApplication::PostTick() {
     // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
     // contains the completed scene image for the Update tick that scheduled the capture.
     if (!pendingCapturePath_.empty()) {
-        const std::string path = std::move(pendingCapturePath_);
-        pendingCapturePath_.clear();
+        const std::string path = pendingCapturePath_;
         std::string captureErr;
         TraceEditorLatency("readback", "begin", updateTick_ - 1);
-        if (!CaptureFrameToPng(path, captureErr)) {
+        if (!CaptureFrameToPng(path, captureErr) && pendingCapture_ == nullptr) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
         TraceEditorLatency("readback", "end", updateTick_ - 1);
@@ -1719,6 +1947,20 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             } else {
                 throw std::runtime_error("noun must be a generated name or integer id");
             }
+            // R766: the PanelLayout View's nouns read straight from the dock's layout rows.
+            if (const std::string_view nounName = magic_enum::enum_name(noun); nounName.starts_with("PanelLayout_")) {
+                const nlohmann::json layout = nlohmann::json::parse(Panels().LayoutJson());
+                const std::string field(nounName.substr(std::string_view("PanelLayout_").size()));
+                nlohmann::json value;
+                if (field == "stacks" || field == "panels") value = layout.at(field);
+                else if (field == "viewportLeft") value = layout.at("viewport").at("left");
+                else if (field == "viewportTop") value = layout.at("viewport").at("top");
+                else if (field == "viewportWidth") value = layout.at("viewport").at("width");
+                else if (field == "viewportHeight") value = layout.at("viewport").at("height");
+                else throw std::runtime_error("PanelLayout noun has no layout field");
+                return nlohmann::json{{"noun", EnumRecord(noun)}, {"value", std::move(value)},
+                                      {"frame", channelPresentedFrame_}}.dump();
+            }
             for (const auto& target : kDataTargets) {
                 if (target.viewNoun != noun) continue;
                 uint32_t value = 0;
@@ -1735,11 +1977,18 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                 views.push_back({{"noun", EnumRecord(target.viewNoun)}, {"value", value}});
             }
         }
+        nlohmann::json recipes = nlohmann::json::array();
+        for (const auto& recipe : pack_.Recipes()) {
+            recipes.push_back({{"id", recipe.id}, {"open", recipe.id == openRecipeId_}});
+        }
         return nlohmann::json{
             {"flowState", EnumRecord(rt_.Current())},
             {"undoDepth", rt_.Stack().UndoDepth()},
             {"redoDepth", rt_.Stack().RedoDepth()},
             {"views", std::move(views)},
+            {"pack", {{"root", pack_.PackRoot()}, {"id", pack_.PackId()}, {"recipes", std::move(recipes)},
+                      {"open", openRecipeId_}, {"lastSaved", lastSavedPath_}}},
+            {"panelLayout", nlohmann::json::parse(Panels().LayoutJson())},
             {"frame", channelPresentedFrame_}
         }.dump();
     }
