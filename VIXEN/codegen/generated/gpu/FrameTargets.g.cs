@@ -5066,7 +5066,6 @@ namespace Vixen.Codegen.Gpu
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public DepletionLayerRowRef[] Layers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for depletion_layer_row; lowered before native dispatch.</summary>
@@ -5074,12 +5073,18 @@ namespace Vixen.Codegen.Gpu
     {
         public const string SchemaKind = "depletion_layer_row";
         public static implicit operator DepletionLayerRowRef(global::Undertow.Modding.KindRef<DepletionLayerRowRef> _) => default;
+        public int Layer
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
         public double MassKg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
-        public DepletionMaterialRowRef[] Materials => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public const string BodyRelation = "BodyOfDepletionLayerRowRel";
+        public DepletionBodyRowRef Body => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for depletion_material_row; lowered before native dispatch.</summary>
@@ -5087,16 +5092,15 @@ namespace Vixen.Codegen.Gpu
     {
         public const string SchemaKind = "depletion_material_row";
         public static implicit operator DepletionMaterialRowRef(global::Undertow.Modding.KindRef<DepletionMaterialRowRef> _) => default;
-        public string Material
-        {
-            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        }
         public double MassKg
         {
             get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
             set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         }
+        public const string LayerRelation = "LayerOfDepletionMaterialRowRel";
+        public DepletionLayerRowRef Layer => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public const string MaterialRelation = "MaterialOfDepletionMaterialRowRel";
+        public ResourceRef Material => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for eviction_kick_envelope_row; lowered before native dispatch.</summary>
@@ -6257,6 +6261,8 @@ namespace Vixen.Codegen.Gpu
         public const string SchemaKind = "state:depletion";
         public static implicit operator StateDepletionRef(global::Undertow.Modding.KindRef<StateDepletionRef> _) => default;
         public DepletionBodyRowRef[] Bodies => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public DepletionLayerRowRef[] Layers => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public DepletionMaterialRowRef[] Materials => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
     }
 
     /// <summary>Schema path for state:extraction; lowered before native dispatch.</summary>
@@ -6616,9 +6622,9 @@ namespace Vixen.Codegen.Gpu
         public static DealSettlement DealSettlement(ulong dealId = default, int partyOrdinal = default, int effectOrdinal = default, int paramOrdinal = default, string effect = "", string param = "", string value = "", byte binding = default, int bindingPartyOrdinal = default, double scale = default) => new DealSettlement { dealId = dealId, partyOrdinal = partyOrdinal, effectOrdinal = effectOrdinal, paramOrdinal = paramOrdinal, effect = effect, param = param, value = value, binding = binding, bindingPartyOrdinal = bindingPartyOrdinal, scale = scale };
         public static DealStep DealStep(int stepOrdinal = default, ulong dealId = default, ulong parentDealId = default, ulong rootProposer = default, ulong proposer = default, byte stepKind = default, byte status = default, long proposedAtTick = default, long earliestReplyTick = default, long expiresAtTick = default, ulong templatePriceId = default, ulong templateRevision = default, byte subjectKind = default, ulong subjectEntity = default, string subjectRef = "", byte scopeKind = default, ulong scopeA = default, ulong scopeB = default, double unit = default, double quantity = default, byte executionKind = default, long recurrenceTicks = default, DealSessionRef session = default) => new DealStep { stepOrdinal = stepOrdinal, dealId = dealId, parentDealId = parentDealId, rootProposer = rootProposer, proposer = proposer, stepKind = stepKind, status = status, proposedAtTick = proposedAtTick, earliestReplyTick = earliestReplyTick, expiresAtTick = expiresAtTick, templatePriceId = templatePriceId, templateRevision = templateRevision, subjectKind = subjectKind, subjectEntity = subjectEntity, subjectRef = subjectRef, scopeKind = scopeKind, scopeA = scopeA, scopeB = scopeB, unit = unit, quantity = quantity, executionKind = executionKind, recurrenceTicks = recurrenceTicks };
         public static DeepFieldCell DeepFieldCell(int cellX = default, int cellY = default, string recipe = "", float presence = default, float wM = default, float wK = default, float wG = default, float wF = default, float wA = default, float wB = default, float wO = default, float wWhiteDwarf = default, float wNeutronStar = default, string address = "", byte esvoAddrDepth = default, uint esvoAddrHop0 = default, uint esvoAddrHop1 = default, uint esvoAddrHop2 = default, uint esvoAddrHop3 = default, uint esvoAddrHop4 = default, uint esvoAddrHop5 = default, uint esvoAddrHop6 = default, uint esvoAddrHop7 = default) => new DeepFieldCell { cellX = cellX, cellY = cellY, recipe = recipe, presence = presence, wM = wM, wK = wK, wG = wG, wF = wF, wA = wA, wB = wB, wO = wO, wWhiteDwarf = wWhiteDwarf, wNeutronStar = wNeutronStar, address = address, esvoAddrDepth = esvoAddrDepth, esvoAddrHop0 = esvoAddrHop0, esvoAddrHop1 = esvoAddrHop1, esvoAddrHop2 = esvoAddrHop2, esvoAddrHop3 = esvoAddrHop3, esvoAddrHop4 = esvoAddrHop4, esvoAddrHop5 = esvoAddrHop5, esvoAddrHop6 = esvoAddrHop6, esvoAddrHop7 = esvoAddrHop7 };
-        public static DepletionBodyRow DepletionBodyRow(int index = default, double massKg = default) => new DepletionBodyRow { index = index, massKg = massKg };
-        public static DepletionLayerRow DepletionLayerRow(double massKg = default) => new DepletionLayerRow { massKg = massKg };
-        public static DepletionMaterialRow DepletionMaterialRow(string material = "", double massKg = default) => new DepletionMaterialRow { material = material, massKg = massKg };
+        public static DepletionBodyRow DepletionBodyRow(ulong id = default, int index = default, double massKg = default) => new DepletionBodyRow { id = id, index = index, massKg = massKg };
+        public static DepletionLayerRow DepletionLayerRow(ulong id = default, int layer = default, double massKg = default, DepletionBodyRowRef body = default) => new DepletionLayerRow { id = id, layer = layer, massKg = massKg };
+        public static DepletionMaterialRow DepletionMaterialRow(double massKg = default, DepletionLayerRowRef layer = default, ResourceRef material = default) => new DepletionMaterialRow { massKg = massKg };
         public static EvictionKickEnvelopeRow EvictionKickEnvelopeRow(long epoch = default, int publisherOrdinal = default, ulong stableWorkKey = default, ulong localSequence = default, int processIndex = default, int bodyIndex = default, long spawnTick = default, double rateKgPerTick = default, bool resisted = default, long resolveTick = default, byte outcome = default, FactionRef owner = default, FactionRef offender = default) => new EvictionKickEnvelopeRow { epoch = epoch, publisherOrdinal = publisherOrdinal, stableWorkKey = stableWorkKey, localSequence = localSequence, processIndex = processIndex, bodyIndex = bodyIndex, spawnTick = spawnTick, rateKgPerTick = rateKgPerTick, resisted = resisted, resolveTick = resolveTick, outcome = outcome };
         public static ExtractionProcess ExtractionProcess(int planetIndex = default, int layer = default, string material = "", double rateKgPerTick = default, int accessibleDepth = default, long enforceTick = default, bool evictionSpawned = default, long evictStopTick = default, FactionRef faction = default, FactionRef enforcer = default) => new ExtractionProcess { planetIndex = planetIndex, layer = layer, material = material, rateKgPerTick = rateKgPerTick, accessibleDepth = accessibleDepth, enforceTick = enforceTick, evictionSpawned = evictionSpawned, evictStopTick = evictStopTick };
         public static FactionAmountRow FactionAmountRow(double amount = default, FactionRef faction = default) => new FactionAmountRow { amount = amount };
@@ -8084,21 +8090,32 @@ namespace Vixen.Codegen.Gpu
 
     public struct DepletionBodyRow
     {
+        public ulong id;
         public int index;
         public double massKg;
-        public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.DepletionLayerRow> layers;
     }
 
     public struct DepletionLayerRow
     {
+        public ulong id;
+        public int layer;
         public double massKg;
-        public global::System.Collections.Generic.List<global::Undertow.Content.Gaia.DepletionMaterialRow> materials;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.DepletionBodyRowRef> body;
     }
 
     public struct DepletionMaterialRow
     {
-        public string material;
         public double massKg;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.DepletionLayerRowRef> layer;
+        public global::Undertow.Modding.KindRef<global::Undertow.Content.Gaia.ResourceRef> material;
+    }
+
+    public struct DepletionMassDelta
+    {
+        public ulong body;
+        public int layer;
+        public ulong material;
+        public double removedKg;
     }
 
     public struct ExtractionProcess
