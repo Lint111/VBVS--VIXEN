@@ -454,6 +454,11 @@ void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     // keeps the runtime payload synchronized without rebuilding unrelated octree data.
     if (GetDevice() != nullptr) {
         RefreshGlyphOutlineBuffer();
+        glyphOutlineBufferDirty_ = false;
+    } else {
+        // The shader builder can run before this node's CompileImpl has received the device.
+        // Keep the staged payload marked until Execute reaches the first safe device-owned point.
+        glyphOutlineBufferDirty_ = true;
     }
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetGlyphOutlineInstances: " +
                   std::to_string(glyphOutlineInstances_.size()) + " rows staged");
@@ -842,6 +847,10 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // SetGlyphOutlineInstances runs from the shader builder after CompileImpl, so publish its
     // freshly-created handle through the Execute-role output before descriptor consumers run.
+    if (glyphOutlineBufferDirty_ && GetDevice() != nullptr) {
+        RefreshGlyphOutlineBuffer();
+        glyphOutlineBufferDirty_ = false;
+    }
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
 
     // Re-emit the octree slots with the freshly-created handles after a re-materialize,

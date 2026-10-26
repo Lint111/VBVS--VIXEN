@@ -561,6 +561,7 @@ private:
     // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
     VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;
+    bool           glyphOutlineBufferDirty_ = false;
 
     // OOC R1: a MONOTONIC per-node Execute counter — the retire/reclaim clock. It is NOT
     // CURRENT_FRAME_INDEX: FrameSyncNode's index is already reduced mod MAX_FRAMES_IN_FLIGHT

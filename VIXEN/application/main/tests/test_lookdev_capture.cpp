@@ -651,6 +651,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
 
     const float kGridUnitsPerPixel = rtlProof ? 0.22f : 0.30f;
     const float kOutlineScale = kGridUnitsPerPixel / 64.0f;
+    const float kWorldToOutlineUnits = 1.0f / kOutlineScale;
     // GlyphAtlas owns the immutable content-hash-deduplicated blob. Recipe transforms carry
     // placement and scale; no scene-local normalized copy of the outline is uploaded.
     const std::span<const GlyphOutlineInstance> glyphRows = glyphAtlas.OutlineBlob();
@@ -817,6 +818,8 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             if (rtlProofPair) {
                 for (const GlyphGroup& group : glyphGroups[placement.layoutIndex]) {
                     SdfInstruction transform = instruction(SdfOpCode::Transform);
+                    // Merged rows are recentered around their own bounds before upload; restore
+                    // each chunk's original layout offset in the outer world-to-row transform.
                     transform.data[0] = placement.offsetX + group.centerX * kOutlineScale;
                     transform.data[1] = group.centerY * kOutlineScale;
                     transform.data[2] = textDepth;
@@ -826,7 +829,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                     transform.data[7] = 1.0f;
                     transform.data[8] = 1.0f / kOutlineScale;
                     transform.data[9] = 1.0f / kOutlineScale;
-                    transform.data[10] = 1.0f;
+                    transform.data[10] = kWorldToOutlineUnits;
                     transform.data[11] = kOutlineScale;
                     result.instructions.push_back(transform);
 
@@ -835,14 +838,14 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                     result.instructions.push_back(glyphOp);
 
                     SdfInstruction extrusion = instruction(SdfOpCode::Box);
-                    extrusion.data[0] = group.width * kOutlineScale * 0.5f + bevel;
-                    extrusion.data[1] = group.height * kOutlineScale * 0.5f + bevel;
-                    extrusion.data[2] = halfDepth;
+                    extrusion.data[0] = group.width * 0.5f + bevel * kWorldToOutlineUnits;
+                    extrusion.data[1] = group.height * 0.5f + bevel * kWorldToOutlineUnits;
+                    extrusion.data[2] = halfDepth * kWorldToOutlineUnits;
                     result.instructions.push_back(extrusion);
                     result.instructions.push_back(instruction(SdfOpCode::Intersect));
 
                     SdfInstruction round = instruction(SdfOpCode::Round);
-                    round.data[0] = 0.035f;
+                    round.data[0] = 0.035f * kWorldToOutlineUnits;
                     result.instructions.push_back(round);
                     result.instructions.push_back(instruction(SdfOpCode::RestorePos));
                     result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
@@ -872,9 +875,12 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
                 const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
                 SdfInstruction transform = instruction(SdfOpCode::Transform);
+                // The first transform maps the world sample into the immutable row's original
+                // FreeType coordinates. A second domain transform below recenters only the
+                // following extrusion Box, preserving the old normalized-row composition.
                 transform.data[0] = placement.offsetX +
-                    (layout.mirrorX ? -rawX : rawX) * kOutlineScale;
-                transform.data[1] = rawY * kOutlineScale;
+                    ((layout.mirrorX ? -rawX : rawX) - glyphCenterX) * kOutlineScale;
+                transform.data[1] = (rawY - glyphCenterY) * kOutlineScale;
                 transform.data[2] = textDepth;
                 transform.data[4] = 0.0f;
                 transform.data[5] = 0.0f;
@@ -884,7 +890,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 // Its distance scale restores world-space SDF units after that inverse scale.
                 transform.data[8] = 1.0f / kOutlineScale;
                 transform.data[9] = 1.0f / kOutlineScale;
-                transform.data[10] = 1.0f;
+                transform.data[10] = kWorldToOutlineUnits;
                 transform.data[11] = kOutlineScale;
                 result.instructions.push_back(transform);
 
@@ -892,18 +898,29 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 glyphOp.data[0] = std::bit_cast<float>(layoutRows[placement.layoutIndex][glyphIndex]);
                 result.instructions.push_back(glyphOp);
 
+                SdfInstruction boxCenter = instruction(SdfOpCode::Transform);
+                boxCenter.data[0] = glyphCenterX;
+                boxCenter.data[1] = glyphCenterY;
+                boxCenter.data[7] = 1.0f;
+                boxCenter.data[8] = 1.0f;
+                boxCenter.data[9] = 1.0f;
+                boxCenter.data[10] = 1.0f;
+                boxCenter.data[11] = 1.0f;
+                result.instructions.push_back(boxCenter);
+
                 SdfInstruction extrusion = instruction(SdfOpCode::Box);
                 extrusion.data[0] = (glyph.instance->BoundsMax.X - glyph.instance->BoundsMin.X) *
-                    kOutlineScale * 0.5f + bevel;
+                    0.5f + bevel * kWorldToOutlineUnits;
                 extrusion.data[1] = (glyph.instance->BoundsMax.Y - glyph.instance->BoundsMin.Y) *
-                    kOutlineScale * 0.5f + bevel;
-                extrusion.data[2] = halfDepth;
+                    0.5f + bevel * kWorldToOutlineUnits;
+                extrusion.data[2] = halfDepth * kWorldToOutlineUnits;
                 result.instructions.push_back(extrusion);
                 result.instructions.push_back(instruction(SdfOpCode::Intersect));
 
                 SdfInstruction round = instruction(SdfOpCode::Round);
-                round.data[0] = 0.035f;
+                round.data[0] = 0.035f * kWorldToOutlineUnits;
                 result.instructions.push_back(round);
+                result.instructions.push_back(instruction(SdfOpCode::RestorePos));
                 result.instructions.push_back(instruction(SdfOpCode::RestorePos));
                 result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
             }

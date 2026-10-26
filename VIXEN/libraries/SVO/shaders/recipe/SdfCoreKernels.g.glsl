@@ -218,7 +218,7 @@ float SdfCore_GlyphOutline(vec3 p, uint glyphIndex) {
     int winding = 0;
     int segmentCount = int(min(glyphOutlineInstances[glyphIndex].SegmentCount, uint(SegmentCapacity)));
     bool checkWinding = p.x >= glyphOutlineInstances[glyphIndex].BoundsMin.X && p.x <= glyphOutlineInstances[glyphIndex].BoundsMax.X && p.y >= glyphOutlineInstances[glyphIndex].BoundsMin.Y && p.y <= glyphOutlineInstances[glyphIndex].BoundsMax.Y;
-    [[dont_unroll]] for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex)
+    [[dont_unroll]] for (int segmentIndex = 0; segmentIndex < SegmentCapacity; ++segmentIndex)
     {
         if (segmentIndex < segmentCount)
         {
