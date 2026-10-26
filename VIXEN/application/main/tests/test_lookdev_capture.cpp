@@ -159,6 +159,7 @@ constexpr uint32_t kDefaultFramesPerScenario = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 constexpr float kPitchRadians = 0.45f;
 constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
+constexpr uint32_t kGlyphSdfRtlPairRecipeId = kGlyphSdfRecipeId + 1U;
 constexpr uint32_t kSdfFilterNonTextRecipeId = 0x5344464eu; // SDFN
 constexpr uint32_t kExposureRoomRecipeId = 0x524f4f4du; // ROOM
 constexpr uint32_t kExposureRoomPadRecipeId = 0x524f4f50u; // ROOP
@@ -488,6 +489,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
     using Vixen::Text::GlyphOutlineInstance;
+    using Vixen::Text::PathSegment;
     using Vixen::Text::PositionedGlyphOutline;
     using Vixen::Text::WorldTextLayout;
 
@@ -637,6 +639,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             for (const PositionedGlyphOutline& glyph : layout.glyphs) {
                 shaping << "  glyph_id=" << glyph.glyphId
                         << " cluster=" << glyph.cluster
+                        << " outline_segments=" << glyph.instance->SegmentCount
                         << " x=" << glyph.x
                         << " y=" << glyph.y
                         << " advance_x=" << glyph.xAdvance
@@ -648,6 +651,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
 
     const float kGridUnitsPerPixel = rtlProof ? 0.22f : 0.30f;
     const float kOutlineScale = kGridUnitsPerPixel / 64.0f;
+    const float kWorldToOutlineUnits = 1.0f / kOutlineScale;
     // GlyphAtlas owns the immutable content-hash-deduplicated blob. Recipe transforms carry
     // placement and scale; no scene-local normalized copy of the outline is uploaded.
     const std::span<const GlyphOutlineInstance> glyphRows = glyphAtlas.OutlineBlob();
@@ -670,6 +674,96 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 return false;
             }
             layoutRows[layoutIndex].push_back(row);
+        }
+    }
+
+    struct GlyphGroup {
+        std::uint32_t row = 0;
+        float centerX = 0.0f;
+        float centerY = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+    };
+    std::vector<GlyphOutlineInstance> recipeGlyphRows(glyphRows.begin(), glyphRows.end());
+    std::array<std::vector<GlyphGroup>, 2> glyphGroups;
+    if (rtlProofPair) {
+        for (std::size_t layoutIndex = 0; layoutIndex < layouts.size(); ++layoutIndex) {
+            const WorldTextLayout& layout = layouts[layoutIndex];
+            float layoutMinX = std::numeric_limits<float>::max();
+            float layoutMinY = std::numeric_limits<float>::max();
+            float layoutMaxX = std::numeric_limits<float>::lowest();
+            float layoutMaxY = std::numeric_limits<float>::lowest();
+            for (const PositionedGlyphOutline& glyph : layout.glyphs) {
+                layoutMinX = std::min(layoutMinX, static_cast<float>(glyph.x) + glyph.instance->BoundsMin.X);
+                layoutMinY = std::min(layoutMinY, static_cast<float>(glyph.y) + glyph.instance->BoundsMin.Y);
+                layoutMaxX = std::max(layoutMaxX, static_cast<float>(glyph.x) + glyph.instance->BoundsMax.X);
+                layoutMaxY = std::max(layoutMaxY, static_cast<float>(glyph.y) + glyph.instance->BoundsMax.Y);
+            }
+            const float textCenterX = (layoutMinX + layoutMaxX) * 0.5f;
+            const float textCenterY = (layoutMinY + layoutMaxY) * 0.5f;
+            GlyphOutlineInstance merged{};
+            float minX = std::numeric_limits<float>::max();
+            float minY = std::numeric_limits<float>::max();
+            float maxX = std::numeric_limits<float>::lowest();
+            float maxY = std::numeric_limits<float>::lowest();
+            auto flushGroup = [&]() {
+                if (merged.SegmentCount == 0) return;
+                const float centerX = (minX + maxX) * 0.5f;
+                const float centerY = (minY + maxY) * 0.5f;
+                for (std::uint32_t segmentIndex = 0; segmentIndex < merged.SegmentCount; ++segmentIndex) {
+                    PathSegment& segment = merged.Segments[segmentIndex];
+                    const auto recenter = [centerX, centerY](auto& point) {
+                        point.X -= centerX;
+                        point.Y -= centerY;
+                    };
+                    recenter(segment.P0);
+                    recenter(segment.P1);
+                    recenter(segment.P2);
+                    recenter(segment.P3);
+                }
+                merged.BoundsMin = {minX - centerX, minY - centerY, 0.0f};
+                merged.BoundsMax = {maxX - centerX, maxY - centerY, 0.0f};
+                glyphGroups[layoutIndex].push_back({
+                    static_cast<std::uint32_t>(recipeGlyphRows.size()), centerX, centerY,
+                    maxX - minX, maxY - minY});
+                recipeGlyphRows.push_back(merged);
+                merged = {};
+                minX = minY = std::numeric_limits<float>::max();
+                maxX = maxY = std::numeric_limits<float>::lowest();
+            };
+            for (const PositionedGlyphOutline& glyph : layout.glyphs) {
+                const GlyphOutlineInstance& outline = *glyph.instance;
+                if (merged.SegmentCount != 0 &&
+                    merged.SegmentCount + outline.SegmentCount >
+                        static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity)) {
+                    flushGroup();
+                }
+                if (merged.SegmentCount == 0) merged.FillRule = outline.FillRule;
+                const float glyphCenterX =
+                    (outline.BoundsMin.X + outline.BoundsMax.X) * 0.5f;
+                const float glyphCenterY =
+                    (outline.BoundsMin.Y + outline.BoundsMax.Y) * 0.5f;
+                const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
+                const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
+                const float translatedX = layout.mirrorX ? -rawX : rawX;
+                for (std::uint32_t segmentIndex = 0; segmentIndex < outline.SegmentCount; ++segmentIndex) {
+                    PathSegment segment = outline.Segments[segmentIndex];
+                    const auto translate = [translatedX, rawY](auto& point) {
+                        point.X += translatedX;
+                        point.Y += rawY;
+                    };
+                    translate(segment.P0);
+                    translate(segment.P1);
+                    translate(segment.P2);
+                    translate(segment.P3);
+                    merged.Segments[merged.SegmentCount++] = segment;
+                }
+                minX = std::min(minX, translatedX + outline.BoundsMin.X);
+                minY = std::min(minY, rawY + outline.BoundsMin.Y);
+                maxX = std::max(maxX, translatedX + outline.BoundsMax.X);
+                maxY = std::max(maxY, rawY + outline.BoundsMax.Y);
+            }
+            flushGroup();
         }
     }
 
@@ -721,6 +815,44 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                     result.instructions.push_back(instruction(SdfOpCode::Union));
             }
 
+            if (rtlProofPair) {
+                for (const GlyphGroup& group : glyphGroups[placement.layoutIndex]) {
+                    SdfInstruction transform = instruction(SdfOpCode::Transform);
+                    // Merged rows are recentered around their own bounds before upload; restore
+                    // each chunk's original layout offset in the outer world-to-row transform.
+                    transform.data[0] = placement.offsetX + group.centerX * kOutlineScale;
+                    transform.data[1] = group.centerY * kOutlineScale;
+                    transform.data[2] = textDepth;
+                    transform.data[4] = 0.0f;
+                    transform.data[5] = 0.0f;
+                    transform.data[6] = 0.0f;
+                    transform.data[7] = 1.0f;
+                    transform.data[8] = 1.0f / kOutlineScale;
+                    transform.data[9] = 1.0f / kOutlineScale;
+                    transform.data[10] = kWorldToOutlineUnits;
+                    transform.data[11] = kOutlineScale;
+                    result.instructions.push_back(transform);
+
+                    SdfInstruction glyphOp = instruction(SdfOpCode::GlyphOutline);
+                    glyphOp.data[0] = std::bit_cast<float>(group.row);
+                    result.instructions.push_back(glyphOp);
+
+                    SdfInstruction extrusion = instruction(SdfOpCode::Box);
+                    extrusion.data[0] = group.width * 0.5f + bevel * kWorldToOutlineUnits;
+                    extrusion.data[1] = group.height * 0.5f + bevel * kWorldToOutlineUnits;
+                    extrusion.data[2] = halfDepth * kWorldToOutlineUnits;
+                    result.instructions.push_back(extrusion);
+                    result.instructions.push_back(instruction(SdfOpCode::Intersect));
+
+                    SdfInstruction round = instruction(SdfOpCode::Round);
+                    round.data[0] = 0.035f * kWorldToOutlineUnits;
+                    result.instructions.push_back(round);
+                    result.instructions.push_back(instruction(SdfOpCode::RestorePos));
+                    result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
+                }
+                continue;
+            }
+
             float minX = std::numeric_limits<float>::max();
             float minY = std::numeric_limits<float>::max();
             float maxX = std::numeric_limits<float>::lowest();
@@ -743,9 +875,12 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
                 const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
                 SdfInstruction transform = instruction(SdfOpCode::Transform);
+                // The first transform maps the world sample into the immutable row's original
+                // FreeType coordinates. A second domain transform below recenters only the
+                // following extrusion Box, preserving the old normalized-row composition.
                 transform.data[0] = placement.offsetX +
-                    (layout.mirrorX ? -rawX : rawX) * kOutlineScale;
-                transform.data[1] = rawY * kOutlineScale;
+                    ((layout.mirrorX ? -rawX : rawX) - glyphCenterX) * kOutlineScale;
+                transform.data[1] = (rawY - glyphCenterY) * kOutlineScale;
                 transform.data[2] = textDepth;
                 transform.data[4] = 0.0f;
                 transform.data[5] = 0.0f;
@@ -755,7 +890,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 // Its distance scale restores world-space SDF units after that inverse scale.
                 transform.data[8] = 1.0f / kOutlineScale;
                 transform.data[9] = 1.0f / kOutlineScale;
-                transform.data[10] = 1.0f;
+                transform.data[10] = kWorldToOutlineUnits;
                 transform.data[11] = kOutlineScale;
                 result.instructions.push_back(transform);
 
@@ -763,18 +898,29 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 glyphOp.data[0] = std::bit_cast<float>(layoutRows[placement.layoutIndex][glyphIndex]);
                 result.instructions.push_back(glyphOp);
 
+                SdfInstruction boxCenter = instruction(SdfOpCode::Transform);
+                boxCenter.data[0] = glyphCenterX;
+                boxCenter.data[1] = glyphCenterY;
+                boxCenter.data[7] = 1.0f;
+                boxCenter.data[8] = 1.0f;
+                boxCenter.data[9] = 1.0f;
+                boxCenter.data[10] = 1.0f;
+                boxCenter.data[11] = 1.0f;
+                result.instructions.push_back(boxCenter);
+
                 SdfInstruction extrusion = instruction(SdfOpCode::Box);
                 extrusion.data[0] = (glyph.instance->BoundsMax.X - glyph.instance->BoundsMin.X) *
-                    kOutlineScale * 0.5f + bevel;
+                    0.5f + bevel * kWorldToOutlineUnits;
                 extrusion.data[1] = (glyph.instance->BoundsMax.Y - glyph.instance->BoundsMin.Y) *
-                    kOutlineScale * 0.5f + bevel;
-                extrusion.data[2] = halfDepth;
+                    0.5f + bevel * kWorldToOutlineUnits;
+                extrusion.data[2] = halfDepth * kWorldToOutlineUnits;
                 result.instructions.push_back(extrusion);
                 result.instructions.push_back(instruction(SdfOpCode::Intersect));
 
                 SdfInstruction round = instruction(SdfOpCode::Round);
-                round.data[0] = 0.035f;
+                round.data[0] = 0.035f * kWorldToOutlineUnits;
                 result.instructions.push_back(round);
+                result.instructions.push_back(instruction(SdfOpCode::RestorePos));
                 result.instructions.push_back(instruction(SdfOpCode::RestorePos));
                 result.instructions.push_back(instruction(carved ? SdfOpCode::Subtract : SdfOpCode::Union));
             }
@@ -787,10 +933,16 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     std::vector<std::pair<uint32_t, GlyphSdfRecipe>> recipes;
     if (rtlProofPair) {
         constexpr float sideBySideOffset = 14.5f;
-        constexpr std::array<LayoutPlacement, 2> proofLayouts{{
-            {0, -sideBySideOffset}, {1, sideBySideOffset}}};
+        constexpr std::array<LayoutPlacement, 1> ltrLayout{{{0, 0.0f}}};
+        constexpr std::array<LayoutPlacement, 1> rtlLayout{{{1, 0.0f}}};
         recipes.emplace_back(kGlyphSdfRecipeId,
-            makeRecipe(proofLayouts, true, {0.0f, 0.0f, 5.0f}, hullColor, "rtl-proof-pair"));
+            makeRecipe(ltrLayout, true,
+                       {-sideBySideOffset * kAnalyticInstanceScale, 0.0f, kSceneCenterZ},
+                       hullColor, "rtl-proof-pair-ltr"));
+        recipes.emplace_back(kGlyphSdfRtlPairRecipeId,
+            makeRecipe(rtlLayout, true,
+                       {sideBySideOffset * kAnalyticInstanceScale, 0.0f, kSceneCenterZ},
+                       hullColor, "rtl-proof-pair-rtl"));
     } else {
         const std::array<LayoutPlacement, 1> selectedLayout{{
             {selected->layoutIndex, 0.0f}}};
@@ -805,7 +957,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     for (const auto& [recipeId, recipe] : recipes) {
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         entry.bytecode = recipe.instructions;
-        entry.glyphInstances.assign(glyphRows.begin(), glyphRows.end());
+        entry.glyphInstances = recipeGlyphRows;
         entry.boundCenter = glm::vec3(0.0f);
         entry.boundRadius = 18.0f;
         entry.stepRelaxation = 0.9f;
@@ -2060,6 +2212,65 @@ DecodedPng DecodePng(const std::filesystem::path& path) {
     return image;
 }
 
+struct GlyphTextEdgeStats {
+    std::size_t edgePixels = 0;
+    int maxDelta = 0;
+};
+
+GlyphTextEdgeStats MeasureGlyphTextEdges(const DecodedPng& image, bool rtlProofPair) {
+    GlyphTextEdgeStats stats;
+    if (image.width < 3 || image.height < 3 || image.rgba.empty()) return stats;
+
+    const int yBegin = image.height * 38 / 100;
+    const int yEnd = image.height * 70 / 100;
+    const std::array<std::pair<int, int>, 2> bands = rtlProofPair
+        ? std::array<std::pair<int, int>, 2>{
+            std::pair{image.width * 12 / 100, image.width * 45 / 100},
+            std::pair{image.width * 55 / 100, image.width * 88 / 100}}
+        : std::array<std::pair<int, int>, 2>{
+            std::pair{image.width * 25 / 100, image.width * 75 / 100},
+            std::pair{0, 0}};
+    const auto luma = [&](int x, int y) {
+        const std::size_t offset = (static_cast<std::size_t>(y) * image.width + x) * 4u;
+        return 0.2126f * image.rgba[offset] + 0.7152f * image.rgba[offset + 1] +
+               0.0722f * image.rgba[offset + 2];
+    };
+
+    for (const auto [xBegin, xEnd] : bands) {
+        if (xEnd <= xBegin) continue;
+        for (int y = yBegin; y < yEnd; ++y) {
+            for (int x = std::max(1, xBegin); x < std::min(image.width - 1, xEnd); ++x) {
+                const int horizontal = static_cast<int>(std::abs(luma(x + 1, y) - luma(x - 1, y)));
+                const int vertical = static_cast<int>(std::abs(luma(x, y + 1) - luma(x, y - 1)));
+                const int delta = std::max(horizontal, vertical);
+                stats.maxDelta = std::max(stats.maxDelta, delta);
+                if (delta >= 12) ++stats.edgePixels;
+            }
+        }
+    }
+    return stats;
+}
+
+bool ValidateGlyphTextInvariant(const std::filesystem::path& path, bool rtlProofPair,
+                                std::string& error) {
+    const DecodedPng image = DecodePng(path);
+    if (image.width == 0 || image.height == 0 || image.rgba.empty()) {
+        error = "could not decode GlyphSdf capture: " + path.string();
+        return false;
+    }
+    const GlyphTextEdgeStats stats = MeasureGlyphTextEdges(image, rtlProofPair);
+    // The plaque's lighting gradient is smooth in this band. A rendered glyph outline
+    // contributes hundreds of local high-contrast edge samples; this deliberately checks
+    // scene semantics rather than comparing against a captured golden image.
+    constexpr std::size_t kMinimumTextEdgePixels = 200;
+    if (stats.edgePixels < kMinimumTextEdgePixels || stats.maxDelta < 24) {
+        error = "GlyphSdf text invariant failed: edgePixels=" + std::to_string(stats.edgePixels) +
+            ", maxDelta=" + std::to_string(stats.maxDelta) + ", capture=" + path.string();
+        return false;
+    }
+    return true;
+}
+
 float SrgbToLinear(uint8_t code) {
     const float c = static_cast<float>(code) / 255.0f;
     return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
@@ -2163,6 +2374,11 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT")) {
+        ASSERT_TRUE(ValidateGlyphTextInvariant(
+            outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
+            << error;
+    }
 }
 
 TEST(LookdevCapture, RendersGlyphSdfAnalyticVsVoxel) {
