@@ -219,9 +219,8 @@ TEST(CelShading, CaptureBandCount) {
     CelShadingApplication app(CaptureAction::BandCount);
     ASSERT_EQ(app.Run(RunOptions{.exitAfterFrames = 5}), 0) << app.CaptureError();
     ASSERT_TRUE(app.CapturedBandCount()) << app.CaptureError();
-    ASSERT_FALSE(ReadBytes(capture).empty()) << "cel band capture was empty";
     const auto stats = InspectCapture(capture);
-    EXPECT_TRUE(stats.HasRenderedScene(CaptureBandCount()))
+    ASSERT_TRUE(stats.HasRenderedScene(CaptureBandCount()))
         << "cel capture must contain a spatially varying scene: "
         << stats.width << 'x' << stats.height
         << ", non_background=" << stats.nonBackgroundPixels
@@ -243,10 +242,8 @@ TEST(CelShading, ModeSwitchTakesEffectOnTheLiveNode) {
     ASSERT_TRUE(app.CapturedModeSwitch()) << app.CaptureError();
     const auto legacyBytes = ReadBytes(legacy);
     const auto celBytes = ReadBytes(cel);
-    ASSERT_FALSE(legacyBytes.empty());
-    ASSERT_FALSE(celBytes.empty());
-    EXPECT_TRUE(InspectCapture(legacy).HasRenderedScene(2u)) << "Lambert capture is not a rendered scene";
-    EXPECT_TRUE(InspectCapture(cel).HasRenderedScene(3u)) << "cel capture is not a rendered scene";
+    ASSERT_TRUE(InspectCapture(legacy).HasRenderedScene(2u)) << "Lambert capture is not a rendered scene";
+    ASSERT_TRUE(InspectCapture(cel).HasRenderedScene(3u)) << "cel capture is not a rendered scene";
     EXPECT_NE(legacyBytes, celBytes)
         << "the node parameter must switch the live renderer from Lambert+GGX to cel";
 }
