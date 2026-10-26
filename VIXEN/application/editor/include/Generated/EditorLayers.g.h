@@ -16,6 +16,11 @@ struct EditorLayersBind {
     std::vector<EditorParameterRow>* parameters;
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
+    Rml::String* statusDocument;
+    Rml::String* statusMessage;
+    Rml::String* flowState;
+    int* undoDepth;
+    int* redoDepth;
 };
 
 int BindEditorLayersModel_activeLayerCountOverride(int* activeLayerCount);
@@ -54,6 +59,11 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.Bind("parameters", b.parameters);
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
+    c.Bind("statusDocument", b.statusDocument);
+    c.Bind("statusMessage", b.statusMessage);
+    c.Bind("flowState", b.flowState);
+    c.Bind("undoDepth", b.undoDepth);
+    c.Bind("redoDepth", b.redoDepth);
 }
 
 // Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Reference::bitAt(source, index).

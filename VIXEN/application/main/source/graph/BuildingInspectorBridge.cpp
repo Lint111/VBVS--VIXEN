@@ -3,7 +3,6 @@
 // / HudViewBridge.h for the robin_hood ODR-collision this isolation prevents.
 #include "graph/BuildingInspectorBridge.h"
 #include "graph/BuildingInspectorView.h"
-#include "Nodes/UIRenderNode.h"
 
 namespace Vixen::App {
 
@@ -15,11 +14,8 @@ void DestroyBuildingInspectorView(BuildingInspectorView* view) {
     delete view;  // complete type in this TU
 }
 
-uint32_t MountBuildingInspector(Vixen::RenderGraph::UIRenderNode& node, BuildingInspectorView& view) {
-    // Mount as a second document via the IUiCompositionHost seam. The view is owned by the caller
-    // (VulkanGraphApplication's buildingInspectorView_), which outlives the graph — same non-owning
-    // contract as WireHudView; Mount stores a borrowed pointer.
-    return node.Mount(view);
+Vixen::RenderGraph::IView& BuildingInspectorAsView(BuildingInspectorView& view) {
+    return view;
 }
 
 void PushBuildingInspector(BuildingInspectorView& view, const BuildingInspectorIn& in) {

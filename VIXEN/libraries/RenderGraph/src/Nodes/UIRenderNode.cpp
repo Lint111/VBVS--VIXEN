@@ -277,9 +277,11 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         Rml::SetFontEngineInterface(fontEngine_.get());
         Rml::Initialise();
         const std::string fontPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::FONT_PATH, "assets/ui/LatoLatin-Regular.ttf"));
-        const std::string docPath = ResolveUiAsset(
-            view_ ? std::string(view_->DocumentPath())
-                  : GetParameterValue<std::string>(UIRenderNodeConfig::RML_DOCUMENT_PATH, "assets/ui/demo.rml"));
+        // R766: an app whose panels are all mounted documents (the editor) has no primary document —
+        // no view and an empty RML_DOCUMENT_PATH load nothing here.
+        const std::string requestedDocPath = view_ ? std::string(view_->DocumentPath())
+            : GetParameterValue<std::string>(UIRenderNodeConfig::RML_DOCUMENT_PATH, "assets/ui/demo.rml");
+        const std::string docPath = requestedDocPath.empty() ? std::string{} : ResolveUiAsset(requestedDocPath);
         Rml::LoadFontFace(fontPath);
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
@@ -291,12 +293,14 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
                     viewModel_ = c.GetModelHandle();
                 }
             }
-            document_ = context_->LoadDocument(docPath);
-            if (document_) document_->Show();
-            // Cache the resolved path + initial mtime so the recompile branch can detect on-disk edits
-            // (live hot-reload; dormant unless VIXEN_UI_LIVE is set).
-            resolvedDocPath_ = docPath;
-            lastUiWriteTime_ = LatestUiMtime(docPath);
+            if (!docPath.empty()) {
+                document_ = context_->LoadDocument(docPath);
+                if (document_) document_->Show();
+                // Cache the resolved path + initial mtime so the recompile branch can detect on-disk edits
+                // (live hot-reload; dormant unless VIXEN_UI_LIVE is set).
+                resolvedDocPath_ = docPath;
+                lastUiWriteTime_ = LatestUiMtime(docPath);
+            }
         }
         initialized_ = true;
 
@@ -491,6 +495,7 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
         // M-ui: realize any mount requested before the context existed (the first frame it's alive).
         // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
         RealizePendingMounts();
+        ApplyPlacements();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
         context_->Render();
@@ -625,7 +630,7 @@ void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) v
 // document + its own isolated data model in the one shared context_, validated at mount, torn down at
 // unmount, and drained/realized once the context exists (Mount may be called before the first compile).
 
-bool UIRenderNode::MountNow(MountHandle handle, IView& view) {
+bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& documentPath) {
     // Precondition: context_ exists (caller-checked). Validate BEFORE mutating any state so a failed
     // mount leaves nothing partial (spike §4: RmlUi silently renders nothing on these — we catch them).
     const char* modelName = view.ModelName();
@@ -635,20 +640,26 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view) {
     }
     // Namespace-collision check: the primary HUD model ("hud" via view_) and every already-mounted
     // model own their names; a second CreateDataModel(name) with a live name would fail inside RmlUi
-    // and leave a half-mounted document. Reject up front.
+    // and leave a half-mounted document. Reject up front — unless it is the SAME view mounting another
+    // panel document (R766: several panels bind one View), which shares the live model.
     if (view_ && view_->ModelName() && std::string(modelName) == view_->ModelName()) {
         std::fprintf(stderr, "[ui-host] mount rejected: model '%s' collides with the primary document\n", modelName);
         return false;
     }
+    const Mount_* shared = nullptr;
     for (const auto& [h, m] : mounts_) {
-        if (m.view && m.view->ModelName() && std::string(modelName) == m.view->ModelName()) {
+        if (!m.view || !m.view->ModelName() || std::string(modelName) != m.view->ModelName()) continue;
+        if (m.view != &view) {
             std::fprintf(stderr, "[ui-host] mount rejected: model '%s' already mounted (handle %u)\n", modelName, h);
             return false;
         }
+        shared = &m;
     }
 
     Rml::DataModelHandle model;
-    if (Rml::DataModelConstructor c = context_->CreateDataModel(modelName)) {
+    if (shared) {
+        model = shared->model;
+    } else if (Rml::DataModelConstructor c = context_->CreateDataModel(modelName)) {
         view.Register(c);
         model = c.GetModelHandle();
     } else {
@@ -656,11 +667,11 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view) {
         return false;
     }
 
-    const std::string docPath = ResolveUiAsset(view.DocumentPath());
+    const std::string docPath = ResolveUiAsset(documentPath);
     Rml::ElementDocument* doc = context_->LoadDocument(docPath);
     if (!doc) {
         std::fprintf(stderr, "[ui-host] mount failed: LoadDocument('%s') returned null\n", docPath.c_str());
-        context_->RemoveDataModel(modelName);   // undo the half-mount
+        if (!shared) context_->RemoveDataModel(modelName);   // undo the half-mount
         return false;
     }
     doc->Show();
@@ -678,50 +689,107 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view) {
             "(stretch its body top/left/right/bottom:0 like hud.rcss)\n",
             docPath.c_str(), w, h);
         context_->UnloadDocument(doc);
-        context_->RemoveDataModel(modelName);
+        if (!shared) context_->RemoveDataModel(modelName);
         return false;
     }
 
     mounts_[handle] = Mount_{ &view, doc, model };
-    std::fprintf(stderr, "[ui-host] mounted '%s' (handle %u, %gx%g)\n", modelName, handle, w, h);
+    std::fprintf(stderr, "[ui-host] mounted '%s' as '%s' (handle %u, %gx%g%s)\n", modelName, docPath.c_str(),
+                 handle, w, h, shared ? ", shared model" : "");
     return true;
 }
 
 void UIRenderNode::RealizePendingMounts() {
     if (pendingMounts_.empty() || !context_) return;
-    for (auto& [handle, view] : pendingMounts_) {
-        if (view) MountNow(handle, *view);   // a rejected mount just doesn't appear in mounts_
+    for (auto& pending : pendingMounts_) {
+        // A rejected mount just doesn't appear in mounts_.
+        if (pending.view) MountNow(pending.handle, *pending.view, pending.documentPath);
     }
     pendingMounts_.clear();
 }
 
 UIRenderNode::MountHandle UIRenderNode::Mount(IView& view) {
+    return Mount(view, view.DocumentPath());
+}
+
+UIRenderNode::MountHandle UIRenderNode::Mount(IView& view, const char* documentPath) {
     const MountHandle handle = nextMountHandle_++;
+    const std::string path = documentPath ? documentPath : "";
     if (context_) {
-        if (!MountNow(handle, view)) return 0;
+        if (!MountNow(handle, view, path)) return 0;
     } else {
         // Context not built yet (Mount called before the first CompileImpl) — park it; RealizePendingMounts
         // in RecordFrame does the actual mount once the context exists. Report the handle optimistically
         // (mirrors the HUD's SetView-before-compile deferral); IsMounted() reflects the real state later.
-        pendingMounts_.emplace_back(handle, &view);
+        pendingMounts_.push_back({handle, &view, path});
     }
     return handle;
+}
+
+void UIRenderNode::BindPrimary(IView& view) {
+    // Non-owning: the app owns the view and outlives the node (same contract as WireHudView).
+    SetView(std::shared_ptr<IView>(&view, [](IView*) {}));
+}
+
+void UIRenderNode::Place(MountHandle handle, const PanelRect& rect, bool visible, int z) {
+    if (handle == 0) return;
+    Placement_& placement = placements_[handle];
+    if (placement.appliedTo && placement.rect == rect && placement.visible == visible && placement.z == z) return;
+    placement.rect = rect;
+    placement.visible = visible;
+    placement.z = z;
+    placement.dirty = true;
+}
+
+bool UIRenderNode::Extent(float& width, float& height) const {
+    if (!context_ || extent_.width == 0 || extent_.height == 0) return false;
+    width = static_cast<float>(extent_.width);
+    height = static_cast<float>(extent_.height);
+    return true;
+}
+
+void UIRenderNode::ApplyPlacements() {
+    for (auto& [handle, placement] : placements_) {
+        Rml::ElementDocument* doc = nullptr;
+        if (handle == kPrimaryDocument) {
+            doc = document_;
+        } else if (const auto it = mounts_.find(handle); it != mounts_.end()) {
+            doc = it->second.doc;
+        }
+        if (!doc || (!placement.dirty && placement.appliedTo == doc)) continue;
+        const auto px = [](float value) { return std::to_string(value) + "px"; };
+        // The dock owns the body box: explicit left/top/width/height, right/bottom released.
+        doc->SetProperty("left", px(placement.rect.x));
+        doc->SetProperty("top", px(placement.rect.y));
+        doc->SetProperty("width", px(placement.rect.width));
+        doc->SetProperty("height", px(placement.rect.height));
+        doc->SetProperty("right", "auto");
+        doc->SetProperty("bottom", "auto");
+        doc->SetProperty("z-index", std::to_string(placement.z));
+        if (placement.visible) doc->Show(); else doc->Hide();
+        placement.dirty = false;
+        placement.appliedTo = doc;
+    }
 }
 
 void UIRenderNode::Unmount(MountHandle handle) {
     if (handle == 0) return;
     auto it = mounts_.find(handle);
     if (it != mounts_.end()) {
+        IView* view = it->second.view;
         if (context_) {
             if (it->second.doc) context_->UnloadDocument(it->second.doc);
-            if (it->second.view && it->second.view->ModelName())
-                context_->RemoveDataModel(it->second.view->ModelName());
         }
         mounts_.erase(it);
+        // The model goes with its last document (R766 panels may share one view's model).
+        const bool stillShared = std::any_of(mounts_.begin(), mounts_.end(),
+                                             [view](const auto& entry) { return entry.second.view == view; });
+        if (context_ && view && view->ModelName() && !stillShared) context_->RemoveDataModel(view->ModelName());
     }
+    placements_.erase(handle);
     // Also drop any still-pending (never-realized) request with this handle.
     pendingMounts_.erase(std::remove_if(pendingMounts_.begin(), pendingMounts_.end(),
-        [handle](const auto& p) { return p.first == handle; }), pendingMounts_.end());
+        [handle](const auto& p) { return p.handle == handle; }), pendingMounts_.end());
 }
 
 void UIRenderNode::MarkMountedDirty(MountHandle handle, const char* field) {
@@ -783,6 +851,10 @@ void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
         // dangling bookkeeping so a defensive second teardown / reuse sees no stale handles.
         mounts_.clear();
         pendingMounts_.clear();
+        for (auto& [handle, placement] : placements_) {
+            placement.appliedTo = nullptr;
+            placement.dirty = true;
+        }
         Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
         renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
         initialized_ = false;

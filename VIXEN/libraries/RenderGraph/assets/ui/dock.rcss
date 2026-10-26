@@ -1,0 +1,78 @@
+/* R766 dock chrome: frames and tab strips only. Transparent everywhere else so the panels (drawn below
+   this document) and the viewport show through; only the tab buttons take clicks. */
+body {
+    font-family: LatoLatin;
+    font-size: 13px;
+    color: #c8d0e0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+#dock {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.stack {
+    position: absolute;
+    border-width: 1px;
+    border-color: #34405a;
+    pointer-events: none;
+}
+
+.header {
+    display: block;
+    background-color: #141a28;
+    border-bottom-width: 1px;
+    border-color: #34405a;
+}
+
+.tab {
+    position: absolute;
+    padding: 4px 6px 0px 8px;
+    background-color: #1c2334;
+    border-right-width: 1px;
+    border-color: #34405a;
+    overflow: hidden;
+    white-space: nowrap;
+    pointer-events: auto;
+}
+
+.tab.active {
+    background-color: #26324c;
+    color: #e8eeff;
+    border-top-width: 2px;
+    border-top-color: #5a8ae0;
+}
+
+.tab .title {
+    display: inline-block;
+    pointer-events: none;
+}
+
+.tool {
+    display: inline-block;
+    min-width: 12px;
+    margin-left: 3px;
+    padding: 0px 2px;
+    color: #9fb0d0;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.tool:hover {
+    color: #ffffff;
+    background-color: #3a4a6c;
+}
+
+.tool.close {
+    color: #c09090;
+}

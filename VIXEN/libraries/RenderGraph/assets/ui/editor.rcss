@@ -1,29 +1,62 @@
+/* R766: content and style of the editor's panel documents (layers, outliner, inspector, status). The
+   dock owns where each document's body sits (left/top/width/height); nothing here positions a panel on
+   the page. */
 body {
     font-family: LatoLatin;
-    font-size: 16px;
+    font-size: 15px;
     color: #d0d0d0;
-    /* Stretch the document to fill the whole context (viewport) — same full-window idiom as
-       hud.rcss. Without this the body has only out-of-flow (position:absolute) children and
-       collapses to 0x0, so #panel's top/left anchors resolve against a zero-sized block and
-       land off-screen. */
+    /* Default stretch so a document mounted before the dock places it has a non-degenerate layout. */
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
+    background-color: #161b29;
+    overflow: auto;
+    pointer-events: none;  /* panel background is read-only; interactive controls opt back in */
+}
+
+.panel {
+    display: block;
+    padding: 8px 10px;
     pointer-events: none;
 }
 
-#panel {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    width: 420px;
-    padding: 8px 12px;
-    background-color: #1a1a2ecc;
-    border-width: 1px;
-    border-color: #4060a0;
-    pointer-events: none;  /* panel background is read-only; interactive controls opt back in */
+.subtitle {
+    display: block;
+    color: #90c0ff;
+    font-size: 13px;
+    margin-top: 6px;
+    margin-bottom: 4px;
+    border-bottom-width: 1px;
+    border-color: #303050;
+    padding-bottom: 3px;
+}
+
+.kv {
+    display: block;
+    color: #a0b0d0;
+    font-size: 13px;
+}
+
+.panel.status {
+    padding: 3px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.status-doc {
+    color: #e0d0b0;
+}
+
+.status-sep {
+    color: #505878;
+    margin-left: 6px;
+    margin-right: 6px;
+}
+
+.status-message {
+    color: #a0b0d0;
 }
 
 .title {
@@ -100,10 +133,6 @@ body {
     margin-top: 8px;
 }
 
-.parameters-title {
-    margin-top: 10px;
-}
-
 .parameter-row {
     display: block;
     margin-top: 5px;
@@ -116,7 +145,9 @@ body {
 }
 
 .parameter-range {
-    margin-left: 4px;
+    display: block;
+    margin-left: 110px;
+    color: #707090;
 }
 
 .hint {

@@ -68,5 +68,12 @@ namespace Vixen.ViewSchemas
 
         // R765: the open pack's render-recipe documents (empty when the editor runs on a loose file).
         [ViewSection(Layout = ViewLayout.Aos)] public EditorRecipeRow[] recipes;
+
+        // R766: the status-line panel (bottom region) binds these.
+        public string statusDocument;
+        public string statusMessage;
+        public string flowState;
+        public int undoDepth;
+        public int redoDepth;
     }
 }

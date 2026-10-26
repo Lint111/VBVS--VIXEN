@@ -116,18 +116,24 @@ flattens each document into the runtime VRC1 blob; no flattened `.vrc` is ever w
 - `appflow.read` reports `pack {root, id, recipes[{id, open}], open, lastSaved}`.
 - A new recipe starts from Undertow's template: `undertow-author new render_recipe <mod> <dir>`.
 
-The panel is `VIXEN/libraries/RenderGraph/assets/ui/editor.rml` / `editor.rcss`, a fixed 420 px column bound
-to the generated `EditorLayers` View (`EditorLayersView.h`). It has, top to bottom:
+The editor's UI is four declared panels mounted by the panel dock (R766, see
+[[Panel-Dock-Framework]]), all bound to the generated `EditorLayers` View (`EditorLayersView.h`), each with
+its own document under `VIXEN/libraries/RenderGraph/assets/ui/` and the shared `editor.rcss` (content style
+only; the dock places every document). The default layout follows R765's three regions:
 
-- one row per layer: an enabled checkbox, the name, the op label, move-up (`ˆ`) and move-down (`ˇ`) buttons,
-  delete (`×`), and an `instruction 0 · data 0` value with `−` / `+`;
-- a **Recipe parameters** section: one `−` / `+` row per parameter (name, value, unit);
-- a toolbar: *Add rule layer*, *Undo*, *Redo*, *Save*.
+- **Recipes** (`outliner`, left, first split, `editor_outliner.rml`): the pack's documents.
+- **Layers** (`layers`, left, second split, `editor_layers.rml`): one row per layer — an enabled checkbox,
+  the name, the op label, move-up (`ˆ`) and move-down (`ˇ`), delete (`×`), and an `instruction 0 · data 0`
+  value with `−` / `+` — and the toolbar *Add rule layer*, *Undo*, *Redo*, *Save*.
+- **Inspector** (`inspector`, right, `editor_inspector.rml`): one `−` / `+` row per recipe parameter.
+- **Status** (`status`, bottom, no tab strip, not closable, `editor_status.rml`): the open document, the
+  AppFlow state, undo/redo depth and the last message.
 
-The arrow buttons use `ˆ` and `ˇ` because the bundled font (`LatoLatin-Regular.ttf`) has no U+2191/U+2193
-arrows; they rendered as empty boxes before. Any new glyph in `editor.rml` must be in that font, or the button
-renders as a box. The game's building-inspector HUD is not mounted in the editor: `EditorApplication` overrides
-`VulkanGraphApplication::MountsBuildingInspector()` to `false`, so only the owning app mounts that panel.
+The viewport is what the dock leaves uncovered. Panels move, split, float, close and resize through the
+AppFlow panel actions (also from the tab buttons), and the layout persists as `editor.json` under the user
+settings directory. The arrow buttons use `ˆ` and `ˇ` because the bundled font (`LatoLatin-Regular.ttf`) has
+no U+2191/U+2193 arrows; any new glyph in a panel document must be in that font, or it renders as a box. The
+game's HUD and building inspector are not mounted in the editor because the editor does not declare them.
 
 ## 3. Edits and the live loop
 

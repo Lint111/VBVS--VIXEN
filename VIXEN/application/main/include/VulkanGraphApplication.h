@@ -13,7 +13,8 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
-#include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Mount/PushBuildingInspector seam (gaia-free)
+#include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Push/BuildingInspectorAsView seam (gaia-free)
+#include "Ui/PanelDockHost.h"  // R766: the app's docked panels (RmlUi-free header)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
@@ -248,10 +249,14 @@ protected:
     // orbit-tuned heuristic, silently stomping the grant back to false every tick.
     virtual bool SkipResidencyHeuristic() const { return false; }
 
-    // Per-app HUD ownership: the building-inspector panel belongs to the game, so only the app
-    // that owns it mounts it on the shared composite UI node (BuildRenderGraph). EditorApplication
-    // overrides this to false; without that the inspector draws over the editor's layer panel.
-    virtual bool MountsBuildingInspector() const { return true; }
+    // R766: the app's panels. BuildRenderGraph mounts exactly what an app declares here through the
+    // panel dock (PanelDockHost), so per-app mounting is the declarations: the game declares its HUD
+    // (the UI node's primary document) and the building inspector as overlay panels; EditorApplication
+    // declares its own panels and no HUD. The layout persists per app under PanelLayoutName().
+    virtual void DeclarePanels(Vixen::RenderGraph::PanelDock& dock);
+    virtual std::string PanelLayoutName() const { return "game"; }
+    Vixen::RenderGraph::PanelDockHost& Panels() { return *panelDock_; }
+    const Vixen::RenderGraph::PanelDockHost& Panels() const { return *panelDock_; }
 
     /**
      * @brief Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger against
@@ -554,11 +559,13 @@ private:
     Vixen::App::HudView* hudView_ = nullptr;
 
     // Step-6 M-ui: the building-inspector view, mounted as a SECOND document on the composite UI node
-    // via IUiCompositionHost (BuildRenderGraph → MountBuildingInspector). Owned here (raw pointer, same
-    // incomplete-type/ODR reason as hudView_); the mount stores a borrowed pointer. buildingMount_ is
-    // the handle returned by Mount (0 if there's no composite UI node / the mount was rejected).
+    // through its panel declaration (R766, DeclarePanels). Owned here (raw pointer, same
+    // incomplete-type/ODR reason as hudView_); the mount stores a borrowed pointer.
     Vixen::App::BuildingInspectorView* buildingInspectorView_ = nullptr;
-    uint32_t buildingMount_ = 0;
+
+    // R766: the panel dock. Declared panels are mounted on the composite UI node in BuildRenderGraph;
+    // Update() re-places them when the layout or window size changes.
+    std::unique_ptr<Vixen::RenderGraph::PanelDockHost> panelDock_ = std::make_unique<Vixen::RenderGraph::PanelDockHost>();
 
     // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
     // PostTick call (for measuring this tick's CPU frame time). No-op object when
@@ -643,8 +650,8 @@ public:
     // resident (e.g. vixen_editor's single always-in-view document body) calls this instead of
     // relying on UpdateBodySceneResidency's camera-driven heuristic.
     void RequestBodyBrickResidency(bool resident);
-    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, wired onto the composite
-    // UI node in BuildRenderGraph via WireHudView). Replaces the pre-Inc-2 host call
+    // Host-facing HUD push: forwards into the app-owned HudView (hudView_, bound as the composite UI
+    // node's primary document through the "hud" panel declaration). Replaces the pre-Inc-2 host call
     // UIRenderNode::SetHudView — the projection now lives on HudView, which this app owns, so hosts
     // push through the app instead of the node. No-op before Prepare() (hudView_ wired but the UI
     // node absent on no-composite-UI graphs is fine — the view just holds the latest push).

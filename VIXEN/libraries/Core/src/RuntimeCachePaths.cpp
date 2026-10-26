@@ -223,6 +223,26 @@ std::filesystem::path UserCacheDirectory() {
     return std::filesystem::absolute(std::filesystem::temp_directory_path(ec) / "vixen-cache", ec);
 }
 
+std::filesystem::path UserSettingsDirectory() {
+    std::error_code ec;
+    if (const char* explicitRoot = std::getenv("VIXEN_SETTINGS_DIR"); explicitRoot && *explicitRoot) {
+        return std::filesystem::absolute(std::filesystem::path(explicitRoot), ec);
+    }
+#ifdef _WIN32
+    if (const char* roaming = std::getenv("APPDATA"); roaming && *roaming) {
+        return std::filesystem::path(roaming) / "vixen";
+    }
+#else
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
+        return std::filesystem::path(xdg) / "vixen";
+    }
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        return std::filesystem::path(home) / ".config" / "vixen";
+    }
+#endif
+    return std::filesystem::absolute(std::filesystem::temp_directory_path(ec) / "vixen-settings", ec);
+}
+
 bool IsProcessAlive(std::uint64_t processId) noexcept {
     return ::Vixen::IsProcessAliveImpl(processId);
 }

@@ -722,6 +722,31 @@ else()
 endif()
 
 # ===========================================================================
+# R766: the panel dock — model (pure CPU) and its RmlUi documents (headless, no Vulkan)
+# ===========================================================================
+if(TARGET GTest::gtest_main)
+    add_executable(test_panel_dock test_panel_dock.cpp)
+    target_link_libraries(test_panel_dock PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_panel_dock PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_panel_dock)
+
+    # Loads dock.rml + the editor's panel documents against the real EditorLayersView (editor include
+    # dir, AppFlow for the generated projection callable), like test_view_editor_layers_golden.
+    add_executable(test_panel_dock_documents test_panel_dock_documents.cpp)
+    target_link_libraries(test_panel_dock_documents PRIVATE GTest::gtest_main RenderGraph AppFlow)
+    target_include_directories(test_panel_dock_documents PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+    add_custom_command(TARGET test_panel_dock_documents POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:test_panel_dock_documents>/assets/ui"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui"
+            "$<TARGET_FILE_DIR:test_panel_dock_documents>/assets/ui"
+        COMMENT "Staging UI assets for test_panel_dock_documents"
+    )
+    set_target_properties(test_panel_dock_documents PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_panel_dock_documents)
+    message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")
+endif()
+
+# ===========================================================================
 # Inc-B: external-change .changed<LayerMask>() reconcile proof (headless — no Vulkan required)
 # ===========================================================================
 # Task 4's key proof: a deterministic EXTERNAL Gaia write (not via WriteU32/ToggleLayer/the

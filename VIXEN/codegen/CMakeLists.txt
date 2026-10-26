@@ -335,6 +335,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # Lives under application/editor (a CONSUMER artifact, same "engine sees only Ui/IView.h"
         # convention Hud.g.h's comment above documents).
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h" _out_editor_layers_header_run)
+        # R766: the dock's PanelLayout [View] — engine-side (RenderGraph Ui), since every app's dock binds it.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Ui/PanelLayout.g.h" _out_panel_layout_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
@@ -436,6 +438,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
+        set(_out_panel_layout_header_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Ui/PanelLayout.g.h")
         set(_out_hud_blob_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.blob.g.h")
         set(_out_hud_blob_data_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs")
@@ -1142,7 +1145,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
 
     # --- EditorLayers [View] schema (Inc-A2): the editor layer view's data-model, giving the
     # editor a real DirtyVariable target for the first time (View-Model-Binding-Inc-A2-Plan-
-    # 2026-07.md). Only --view is needed here (no markup/blob/writer sibling) — editor.rml is
+    # 2026-07.md). Only --view is needed here (no markup/blob/writer sibling) — the editor panel documents are
     # hand-authored data-bound markup, not composed from a generated RML fragment like hud.rml.
     set(_view_editor_layers_args
         "${_yk_dll_run}"
@@ -1155,6 +1158,22 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     add_custom_target(view_editor_layers_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args}
         COMMENT "[codegen] regenerate EditorLayers.g.h (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- PanelLayout [View] schema (R766): the panel dock's layout state, bound by the dock chrome
+    # (assets/ui/dock.rml) and read back by agents over the AppFlow channel.
+    set(_view_panel_layout_args
+        "${_yk_dll_run}"
+        --schema "${_schema_view_run}" --view PanelLayout
+        --out-header "${_out_panel_layout_header_run}")
+    vixen_add_codegen_check(view_panel_layout_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_panel_layout_args} --check
+        COMMENT "[codegen] golden check: PanelLayout.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(view_panel_layout_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_view_panel_layout_args}
+        COMMENT "[codegen] regenerate PanelLayout.g.h (Yeroket tool)"
         JOB_POOL msbuild
         VERBATIM)
 

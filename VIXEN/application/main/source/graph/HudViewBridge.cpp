@@ -5,7 +5,6 @@
 // robin_hood.h is a DIFFERENT VERSION from RmlUi's, sharing one include guard).
 #include "graph/HudViewBridge.h"
 #include "graph/HudView.h"
-#include "Nodes/UIRenderNode.h"
 
 namespace Vixen::App {
 
@@ -17,12 +16,8 @@ void DestroyHudView(HudView* view) {
     delete view;  // HudView is complete in this TU, so the real destructor runs here.
 }
 
-void WireHudView(Vixen::RenderGraph::UIRenderNode& node, HudView& view) {
-    // Non-owning aliased shared_ptr -- view is owned by the caller (VulkanGraphApplication's
-    // hudView_ member), which already outlives the graph/node it's wired into, so there is no
-    // real ownership to transfer; the no-op deleter documents that SetView's shared_ptr contract
-    // is satisfied without a second owner.
-    node.SetView(std::shared_ptr<Vixen::RenderGraph::IView>(&view, [](Vixen::RenderGraph::IView*) {}));
+Vixen::RenderGraph::IView& HudAsView(HudView& view) {
+    return view;
 }
 
 void PushHudView(HudView& view, int tick, int bodyCount, int activeLens, int activeLensCount,

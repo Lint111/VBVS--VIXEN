@@ -56,22 +56,40 @@ bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& o
         return true;
     }
     for (const auto& p : patterns_) {
-        if (selector.size() <= p.prefix.size() + p.suffix.size()) continue;
-        if (selector.compare(0, p.prefix.size(), p.prefix) != 0) continue;
-        if (selector.compare(selector.size() - p.suffix.size(), p.suffix.size(), p.suffix) != 0) continue;
-        std::string mid = selector.substr(p.prefix.size(), selector.size() - p.prefix.size() - p.suffix.size());
-        if (mid.empty()) continue;
         const auto action = registry_.find(static_cast<uint16_t>(p.action));
         if (action == registry_.end()) continue;
-        const auto param = std::find_if(action->second.begin(), action->second.end(),
-            [&](const ParamSchema& schema) { return p.paramName == schema.name; });
-        if (param == action->second.end()) continue;
-        if (param->type == Generated::FlowParamType::Int) {
-            int32_t value;
-            const auto parsed = std::from_chars(mid.data(), mid.data() + mid.size(), value);
-            if (parsed.ec != std::errc{} || parsed.ptr != mid.data() + mid.size()) continue;
+        if (selector.compare(0, p.literals.front().size(), p.literals.front()) != 0) continue;
+        std::vector<std::pair<std::string, std::string>> params;
+        size_t cursor = p.literals.front().size();
+        bool matched = true;
+        for (size_t i = 0; i < p.paramNames.size() && matched; ++i) {
+            const std::string& next = p.literals[i + 1];
+            const bool last = i + 1 == p.paramNames.size();
+            size_t end = std::string::npos;
+            if (last) {
+                // The final placeholder runs up to the trailing literal, which must end the selector.
+                if (selector.size() >= cursor + next.size() &&
+                    selector.compare(selector.size() - next.size(), next.size(), next) == 0) {
+                    end = selector.size() - next.size();
+                }
+            } else {
+                end = selector.find(next, cursor + 1);
+            }
+            if (end == std::string::npos || end <= cursor) { matched = false; break; }
+            std::string value = selector.substr(cursor, end - cursor);
+            const auto param = std::find_if(action->second.begin(), action->second.end(),
+                [&](const ParamSchema& schema) { return p.paramNames[i] == schema.name; });
+            if (param == action->second.end()) { matched = false; break; }
+            if (param->type == Generated::FlowParamType::Int) {
+                int32_t parsedValue;
+                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) { matched = false; break; }
+            }
+            params.emplace_back(p.paramNames[i], std::move(value));
+            cursor = end + next.size();
         }
-        out = BoundAction{p.action, p.on, {{p.paramName, mid}},
+        if (!matched || cursor != selector.size()) continue;
+        out = BoundAction{p.action, p.on, std::move(params),
                           {FlowTriggerKind::ElementTrigger, p.triggerId}};
         return true;
     }
@@ -95,9 +113,25 @@ void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& tri
     if (rb < lb) {
         return;   // malformed pattern -> inert (never a wrong dispatch)
     }
-    // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
-    patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName,
-                          trig.id ? trig.id : "", trig.action, trig.on});
+    // Split "panel-{panelId}-to-{region}" into literals {"panel-", "-to-", ""} and placeholders
+    // {panelId, region}. The first placeholder binds the generated ParamName ("layer-{index}-toggle"
+    // binds layerIndex); a further placeholder binds the action parameter it names.
+    PatternBinding binding{{}, {}, trig.id ? trig.id : "", trig.action, trig.on};
+    size_t cursor = 0;
+    while (true) {
+        const auto open = pat.find('{', cursor);
+        if (open == std::string::npos) { binding.literals.push_back(pat.substr(cursor)); break; }
+        const auto close = pat.find('}', open);
+        if (close == std::string::npos || close == open + 1) return;   // malformed -> inert
+        binding.literals.push_back(pat.substr(cursor, open - cursor));
+        binding.paramNames.push_back(binding.paramNames.empty() && trig.paramName && *trig.paramName
+                                         ? std::string(trig.paramName)
+                                         : pat.substr(open + 1, close - open - 1));
+        cursor = close + 1;
+    }
+    // Adjacent placeholders cannot be split deterministically.
+    for (size_t i = 1; i + 1 < binding.literals.size(); ++i) if (binding.literals[i].empty()) return;
+    patterns_.push_back(std::move(binding));
 }
 
 } // namespace Vixen::AppFlow

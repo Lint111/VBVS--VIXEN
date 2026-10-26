@@ -5,6 +5,8 @@
 // agnostic view contract, Inc-2 (see Renderer-Agnostic-View-Contract-Design-2026-07.md).
 #include <cstdint>
 
+#include "Ui/PanelDock.h"  // PanelRect
+
 namespace Rml { class DataModelConstructor; }
 
 namespace Vixen::RenderGraph {
@@ -43,6 +45,25 @@ public:
     /// fails to load, or the loaded document has a degenerate (0-size) layout. `view` must outlive
     /// the mount (the host stores a borrowed pointer; the caller owns it, as WireHudView does today).
     virtual MountHandle Mount(IView& view) = 0;
+
+    /// R766: mount `documentPath` as a panel document bound to `view`'s data model. Several panels may
+    /// share one view: the first mount creates the model, later mounts of the same view reuse it, and
+    /// the model is removed with its last document. A different view reusing a live model name is
+    /// still rejected. Mount(view) is Mount(view, view.DocumentPath()).
+    virtual MountHandle Mount(IView& view, const char* documentPath) = 0;
+
+    /// R766: bind `view` as the node's primary document (the HUD, which owns the HUD blob hot reload).
+    /// Call before the first compile, like UIRenderNode::SetView. Placement uses kPrimaryDocument.
+    virtual void BindPrimary(IView& view) = 0;
+    static constexpr MountHandle kPrimaryDocument = 0xFFFFFFFFu;
+
+    /// R766: where a mounted (or the primary) document's body goes, whether it is shown, and its
+    /// stacking order. The dock owns panel geometry; a panel's own RCSS styles only its content.
+    /// Applied on the next frame (a still-pending mount takes it when realized).
+    virtual void Place(MountHandle handle, const PanelRect& rect, bool visible, int z) = 0;
+
+    /// The UI context size in pixels; false before the first compile sized it.
+    virtual bool Extent(float& width, float& height) const = 0;
 
     /// Unmount a previously-mounted fragment. Tears down its document + isolated data model. A no-op
     /// for handle 0 or an already-unmounted handle.

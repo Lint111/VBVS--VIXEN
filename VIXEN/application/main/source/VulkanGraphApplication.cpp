@@ -2025,6 +2025,9 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             if (auto* ui = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_))) {
                 ui->PollHudHotReload();
+                // R766: re-place the declared panels when the layout or the window size changed
+                // (a revision/extent compare otherwise; nothing is touched on a steady frame).
+                panelDock_->Update();
             }
         }
 
@@ -4641,10 +4644,38 @@ void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, con
                                maxGrievance, strength, topRelName, topRelSig);
 }
 
+void VulkanGraphApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
+    using Vixen::RenderGraph::DockRegion;
+    using Vixen::RenderGraph::PanelDecl;
+    using Vixen::RenderGraph::PanelMount;
+    // The game's panels draw over the viewport (Overlay) exactly as before R766: the HUD positions its
+    // own widgets inside the full viewport (hud.rcss), and the building inspector anchors bottom-left
+    // inside its document. Both can be moved, docked or closed through the dock like any panel.
+    PanelDecl hud;
+    hud.id = "hud";
+    hud.title = "HUD";
+    hud.view = &Vixen::App::HudAsView(*hudView_);
+    hud.document = "assets/ui/hud.rml";
+    hud.region = DockRegion::Overlay;
+    hud.header = false;
+    hud.mount = PanelMount::Primary;
+    dock.Declare(std::move(hud));
+
+    PanelDecl building;
+    building.id = "building";
+    building.title = "Building";
+    building.view = &Vixen::App::BuildingInspectorAsView(*buildingInspectorView_);
+    building.document = "assets/ui/building_inspector.rml";
+    building.region = DockRegion::Overlay;
+    building.header = false;
+    building.size = 264.0f;
+    dock.Declare(std::move(building));
+}
+
 void VulkanGraphApplication::PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in) {
     // Forwards through the gaia-free bridge (never BuildingInspectorView.h directly — this TU sees
     // gaia.h). The view dirties its own bound model, so no host round-trip is needed. Safe any time
-    // after construction; a no-op visually when nothing is mounted (buildingMount_ == 0).
+    // after construction; a no-op visually when the app declares no "building" panel.
     if (!buildingInspectorView_) return;
     Vixen::App::PushBuildingInspector(*buildingInspectorView_, in);
 }

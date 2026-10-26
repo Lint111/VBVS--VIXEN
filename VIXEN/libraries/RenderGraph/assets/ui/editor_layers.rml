@@ -1,0 +1,33 @@
+<rml>
+<head>
+    <title>Layers</title>
+    <link type="text/rcss" href="editor.rcss"/>
+</head>
+<body>
+    <!-- R766 "layers" panel (left region): the rule layers of the open document, bound to the generated
+         EditorLayers View. Each row's ids are AppFlow selectors ("layer-<index>-toggle", ...), resolved
+         by AppFlowRuntime::DispatchBySelector; the panel names no action itself. The dock places this
+         document; this file styles only its content. -->
+    <div data-model="editor_layers" class="panel">
+        <div class="row" data-for="row : layers">
+            <div data-attr-id="row.elementId" class="checkbox" data-class-checked="row.isChecked" hit-mask="none"></div>
+            <span class="col-name">{{row.name}}</span>
+            <span class="col-op">{{row.op}}</span>
+            <div class="button" data-attr-id="row.moveUpId" hit-mask="none">ˆ</div>
+            <div class="button" data-attr-id="row.moveDownId" hit-mask="none">ˇ</div>
+            <div class="button" data-attr-id="row.deleteId" hit-mask="none">×</div>
+            <div class="program-controls">
+                <span class="value">instruction 0 · data 0: {{row.programFieldValue}}</span>
+                <div class="button" data-attr-id="row.programDownId" hit-mask="none">−</div>
+                <div class="button" data-attr-id="row.programUpId" hit-mask="none">+</div>
+            </div>
+        </div>
+        <div class="toolbar">
+            <div class="button" id="add-layer" hit-mask="none">Add rule layer</div>
+            <div class="button" id="undo-button" hit-mask="none">Undo</div>
+            <div class="button" id="redo-button" hit-mask="none">Redo</div>
+            <div class="button" id="save-button" hit-mask="none">Save</div>
+        </div>
+    </div>
+</body>
+</rml>
