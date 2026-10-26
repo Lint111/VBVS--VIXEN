@@ -36,6 +36,19 @@ layout(push_constant, std430) uniform TemporalAntiAliasingSystemPushConstants
     uint _ExtentY;
 } pc;
 
+float ResampleBlur(float offsetX, float offsetY) {
+    float blurX = 4.0 * offsetX * (1.0 - offsetX);
+    float blurY = 4.0 * offsetY * (1.0 - offsetY);
+    return (blurX > blurY ? blurX : blurY);
+}
+
+float HistoryFeedback(float historyWeight, float count, float offsetX, float offsetY) {
+    float ramp = count / (count + 1.0);
+    float ceiling = (historyWeight < ramp ? historyWeight : ramp);
+    return ceiling * (1.0 - 0.3 * ResampleBlur(offsetX, offsetY));
+}
+
+
 void TemporalAntiAliasingSystem_Body(in PrevCameraConfig reconstruction, int i) {
     int width = int(reconstruction.inputWidth);
     int height = int(reconstruction.inputHeight);
@@ -163,7 +176,7 @@ void TemporalAntiAliasingSystem_Body(in PrevCameraConfig reconstruction, int i) 
     historyR = clamp(historyR, minR, maxR);
     historyG = clamp(historyG, minG, maxG);
     historyB = clamp(historyB, minB, maxB);
-    float alpha = (historyValid ? min(historyWeight, count / (count + 1.0)) : 0.0);
+    float alpha = (historyValid ? HistoryFeedback(historyWeight, count, ax, ay) : 0.0);
     float centreWeight = (1.0 - alpha) / (1.0 + 0.2126 * centre.x + 0.7152 * centre.y + 0.0722 * centre.z);
     float historyLumaWeight = alpha / (1.0 + 0.2126 * historyR + 0.7152 * historyG + 0.0722 * historyB);
     float norm = 1.0 / (centreWeight + historyLumaWeight);

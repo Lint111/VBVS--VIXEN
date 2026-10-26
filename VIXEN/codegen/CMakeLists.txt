@@ -120,6 +120,8 @@ vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
+# AA kernel callables (R619.1): inlined into the GPU systems, C++ face for the resolve tests.
+set(_schema_aa_callables "${_cg}/aa-callables")
 set(_schema_gpu_generated "${_cg}/generated/gpu")
 set(_schema_gpu_staged "${CMAKE_CURRENT_BINARY_DIR}/gpu-schema-source")
 set(_schema_kernel_runtime "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime")
@@ -253,6 +255,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
         _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
         _codegen_to_wsl_path("${_schema_gpu_systems}" _schema_gpu_systems_run)
+        _codegen_to_wsl_path("${_schema_aa_callables}" _schema_aa_callables_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/TemporalResolve.g.hpp" _out_temporal_resolve_hdr_run)
         _codegen_to_wsl_path("${_schema_gpu_generated}" _schema_gpu_generated_run)
         _codegen_to_wsl_path("${_schema_kernel_runtime}" _schema_kernel_runtime_run)
         _codegen_to_wsl_path("${_schema_kernel_schema}" _schema_kernel_schema_run)
@@ -364,6 +368,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_view_run "${_cg}/view-schemas")
         set(_schema_gpu_staged_run "${_schema_gpu_staged}")
         set(_schema_gpu_systems_run "${_schema_gpu_systems}")
+        set(_schema_aa_callables_run "${_schema_aa_callables}")
+        set(_out_temporal_resolve_hdr_run "${VIXEN_ROOT}/application/main/include/Generated/TemporalResolve.g.hpp")
         set(_schema_gpu_generated_run "${_schema_gpu_generated}")
         set(_schema_kernel_runtime_run "${_schema_kernel_runtime}")
         set(_schema_kernel_schema_run "${_schema_kernel_schema}")
@@ -858,6 +864,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         set(_gpu_systems_args
             "${_yk_dll_run}"
             --schema "${_schema_gpu_systems_run}"
+            --schema "${_schema_aa_callables_run}"
             --schema "${_schema_gpu_generated_run}"
             --schema "${_schema_kernel_runtime_run}"
             --schema "${_schema_sim_framework_run}"
@@ -1322,6 +1329,22 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args}
         COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args}
         COMMENT "[codegen] regenerate MaterialColor.g.hpp/.glsl"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- TAA resolve feedback (R619.1): the [KernelCallable]s in codegen/aa-callables/ are inlined
+    # into TemporalAntiAliasingSystem.comp by the GPU-system emitter above; this is their C++ face.
+    set(_temporal_resolve_cpp_args
+        "${_yk_dll_run}"
+        --schema "${_schema_aa_callables_run}" --callable-cpp
+        --out-header "${_out_temporal_resolve_hdr_run}")
+    vixen_add_codegen_check(temporal_resolve_cpp_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_temporal_resolve_cpp_args} --check
+        COMMENT "[codegen] golden check: TemporalResolve.g.hpp matches the TAA resolve callables"
+        VERBATIM)
+    add_custom_target(temporal_resolve_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_temporal_resolve_cpp_args}
+        COMMENT "[codegen] regenerate TemporalResolve.g.hpp"
         JOB_POOL msbuild
         VERBATIM)
 

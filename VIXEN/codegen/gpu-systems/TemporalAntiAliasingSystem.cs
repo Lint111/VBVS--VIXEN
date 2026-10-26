@@ -1,6 +1,7 @@
 using System;
 using Undertow.Modding.Schema;
 using Undertow.Sim.Systems;
+using Vixen.AntiAliasing;
 using Vixen.Gpu;
 using Yeroket.Util.KernelFramework;
 
@@ -31,7 +32,9 @@ public struct float2
 //   https://advances.realtimerendering.com/s2014/), so bright outliers do not dominate the edge.
 // - Alpha carries the valid-history sample count: the weight ramps 1/N until it reaches the
 //   declared history-weight ceiling, so a still camera converges like the 1/N accumulation the
-//   design measured (8 frames ~ a 4-sample render).
+//   design measured (8 frames ~ a 4-sample render). A sub-texel reprojection gives up part of
+//   that weight (TemporalResolveCallables.HistoryFeedback): repeated sub-texel resampling is
+//   what softened moving silhouettes into a bright halo against a dark background.
 [KernelSystem(Emit = KernelEmitTargets.Glsl)]
 public static class TemporalAntiAliasingSystem
 {
@@ -188,7 +191,8 @@ public static class TemporalAntiAliasingSystem
         historyG = math.clamp(historyG, minG, maxG);
         historyB = math.clamp(historyB, minB, maxB);
 
-        float alpha = math.select(0.0f, math.min(historyWeight, count / (count + 1.0f)), historyValid);
+        float alpha = math.select(0.0f, TemporalResolveCallables.HistoryFeedback(historyWeight, count, ax, ay),
+                                  historyValid);
         float centreWeight = (1.0f - alpha) / (1.0f + 0.2126f * centre.x + 0.7152f * centre.y + 0.0722f * centre.z);
         float historyLumaWeight = alpha / (1.0f + 0.2126f * historyR + 0.7152f * historyG + 0.0722f * historyB);
         float norm = 1.0f / (centreWeight + historyLumaWeight);
