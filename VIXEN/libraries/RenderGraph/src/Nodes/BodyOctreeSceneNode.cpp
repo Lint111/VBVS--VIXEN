@@ -449,8 +449,46 @@ void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     // source. The registry owns one content-deduplicated blob and the emitted operands carry
     // its global indices, so the SSBO and generated shader are always one generation pair.
     glyphOutlineInstances_ = std::move(glyphInstances);
+    // The shader builder runs after this node's CompileImpl. Persistent octree buffers therefore
+    // already exist by the time the registry's glyph blob is known; replacing only this buffer
+    // keeps the runtime payload synchronized without rebuilding unrelated octree data.
+    if (GetDevice() != nullptr) {
+        RefreshGlyphOutlineBuffer();
+    }
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetGlyphOutlineInstances: " +
                   std::to_string(glyphOutlineInstances_.size()) + " rows staged");
+}
+
+void BodyOctreeSceneNode::RefreshGlyphOutlineBuffer() {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+
+    const VkDeviceSize size = std::max<VkDeviceSize>(
+        glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance), 1);
+    VkBuffer replacement = VK_NULL_HANDLE;
+    VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        glyphOutlineInstances_.empty() ? nullptr : glyphOutlineInstances_.data(),
+        replacement, replacementMemory, "glyph outline SSBO refresh");
+
+    if (glyphOutlineBuffer_ != VK_NULL_HANDLE || glyphOutlineMemory_ != VK_NULL_HANDLE) {
+        RetiredBufferGeneration retired;
+        retired.retiredAtFrame = executeFrameCounter_;
+        retired.buffers.emplace_back(glyphOutlineBuffer_, glyphOutlineMemory_);
+        pendingRetire_.push_back(std::move(retired));
+    }
+    glyphOutlineBuffer_ = replacement;
+    glyphOutlineMemory_ = replacementMemory;
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER.index, 0)) {
+        // The shader builder can run after TypedCompileImpl, so update the same Resource object
+        // that the descriptor gatherer already references; Execute re-emits it as well for the
+        // normal per-frame refresh path.
+        output->SetHandle<VkBuffer>(VkBuffer(glyphOutlineBuffer_));
+    }
+    RecordWholeBufferUpload(static_cast<uint64_t>(size));
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed glyph outline buffer (" +
+                  std::to_string(static_cast<uint64_t>(size)) + "B)");
 }
 
 void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes) {
@@ -801,6 +839,10 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
     // Re-emit the count (it may change each frame if SetInstances was called).
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT, emittedCount);
+
+    // SetGlyphOutlineInstances runs from the shader builder after CompileImpl, so publish its
+    // freshly-created handle through the Execute-role output before descriptor consumers run.
+    ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
 
     // Re-emit the octree slots with the freshly-created handles after a re-materialize,
     // so GetOutput()->GetHandle() (and any per-frame descriptor re-bind) sees the new buffers.

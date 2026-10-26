@@ -2166,6 +2166,65 @@ DecodedPng DecodePng(const std::filesystem::path& path) {
     return image;
 }
 
+struct GlyphTextEdgeStats {
+    std::size_t edgePixels = 0;
+    int maxDelta = 0;
+};
+
+GlyphTextEdgeStats MeasureGlyphTextEdges(const DecodedPng& image, bool rtlProofPair) {
+    GlyphTextEdgeStats stats;
+    if (image.width < 3 || image.height < 3 || image.rgba.empty()) return stats;
+
+    const int yBegin = image.height * 38 / 100;
+    const int yEnd = image.height * 70 / 100;
+    const std::array<std::pair<int, int>, 2> bands = rtlProofPair
+        ? std::array<std::pair<int, int>, 2>{
+            std::pair{image.width * 12 / 100, image.width * 45 / 100},
+            std::pair{image.width * 55 / 100, image.width * 88 / 100}}
+        : std::array<std::pair<int, int>, 2>{
+            std::pair{image.width * 25 / 100, image.width * 75 / 100},
+            std::pair{0, 0}};
+    const auto luma = [&](int x, int y) {
+        const std::size_t offset = (static_cast<std::size_t>(y) * image.width + x) * 4u;
+        return 0.2126f * image.rgba[offset] + 0.7152f * image.rgba[offset + 1] +
+               0.0722f * image.rgba[offset + 2];
+    };
+
+    for (const auto [xBegin, xEnd] : bands) {
+        if (xEnd <= xBegin) continue;
+        for (int y = yBegin; y < yEnd; ++y) {
+            for (int x = std::max(1, xBegin); x < std::min(image.width - 1, xEnd); ++x) {
+                const int horizontal = static_cast<int>(std::abs(luma(x + 1, y) - luma(x - 1, y)));
+                const int vertical = static_cast<int>(std::abs(luma(x, y + 1) - luma(x, y - 1)));
+                const int delta = std::max(horizontal, vertical);
+                stats.maxDelta = std::max(stats.maxDelta, delta);
+                if (delta >= 12) ++stats.edgePixels;
+            }
+        }
+    }
+    return stats;
+}
+
+bool ValidateGlyphTextInvariant(const std::filesystem::path& path, bool rtlProofPair,
+                                std::string& error) {
+    const DecodedPng image = DecodePng(path);
+    if (image.width == 0 || image.height == 0 || image.rgba.empty()) {
+        error = "could not decode GlyphSdf capture: " + path.string();
+        return false;
+    }
+    const GlyphTextEdgeStats stats = MeasureGlyphTextEdges(image, rtlProofPair);
+    // The plaque's lighting gradient is smooth in this band. A rendered glyph outline
+    // contributes hundreds of local high-contrast edge samples; this deliberately checks
+    // scene semantics rather than comparing against a captured golden image.
+    constexpr std::size_t kMinimumTextEdgePixels = 200;
+    if (stats.edgePixels < kMinimumTextEdgePixels || stats.maxDelta < 24) {
+        error = "GlyphSdf text invariant failed: edgePixels=" + std::to_string(stats.edgePixels) +
+            ", maxDelta=" + std::to_string(stats.maxDelta) + ", capture=" + path.string();
+        return false;
+    }
+    return true;
+}
+
 float SrgbToLinear(uint8_t code) {
     const float c = static_cast<float>(code) / 255.0f;
     return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
@@ -2269,6 +2328,11 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT")) {
+        ASSERT_TRUE(ValidateGlyphTextInvariant(
+            outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
+            << error;
+    }
 }
 
 TEST(LookdevCapture, RendersGlyphSdfAnalyticVsVoxel) {

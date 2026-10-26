@@ -344,6 +344,7 @@ private:
     void EnsureOctreesBuilt();                                        // build + concatenate once
     void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device,
                              bool publishingShellGeneration = false);  // complete pool generation
+    void RefreshGlyphOutlineBuffer();                                  // replace the shader-build payload only
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
