@@ -39,6 +39,7 @@
 #include "Core/PassGroupSchedule.h"   // BuildPassGroupSchedule
 #include "Data/Core/CompileTimeResourceSystem.h"  // Resource
 #include "Core/NodeContext.h"          // CleanupReason
+#include "Core/EngineContext.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "MainCacher.h"
@@ -94,6 +95,7 @@ protected:
     bool             deviceConfirmed_ = false;
     std::string      selectedDeviceName_;
     std::unique_ptr<VulkanDevice> deviceShell_;
+    std::unique_ptr<EngineContext> engineContext_;
     Vixen::EventBus::MessageBus submitBus_;
     std::vector<Vixen::Vulkan::Resources::QueueSubmitRequest> pendingSubmits_;
 
@@ -146,11 +148,22 @@ protected:
                 const auto& message = static_cast<const Vixen::EventBus::QueueSubmitRequestMessage&>(base);
                 pendingSubmits_.push_back(message.request);
                 return true;
-            });
+        });
         deviceShell_->SetMessageBus(&submitBus_);
+
+        // ShellRevalidateNode's cache providers are graph-owned after AR#8. These
+        // tests construct the node directly, so give it the same minimal owning
+        // context as a production host instead of relying on the retired singleton.
+        EngineConfig engineConfig{};
+        engineConfig.enableCalibration = false;
+        engineContext_ = std::make_unique<EngineContext>(engineConfig);
     }
 
     void TearDown() override {
+        // EngineContext owns the graph's MainCacher. Tear it down while the Vulkan
+        // device is still valid so cached layouts/pipelines are released before
+        // vkDestroyDevice (the production host follows the same dependency order).
+        engineContext_.reset();
         if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
         if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
         if (logicalDevice_ != VK_NULL_HANDLE) vkDestroyDevice(logicalDevice_, nullptr);
@@ -349,6 +362,7 @@ TEST_P(ShellRevalidateNodeTest, GpuDispatchMatchesCanonicalFlagsAndCompactedByte
     auto nodeBase = nodeType.CreateInstance("shell_revalidate_parity_test");
     auto* node = dynamic_cast<ShellRevalidateNode*>(nodeBase.get());
     ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&engineContext_->Graph());
     node->SetParameter(C::PARAM_SPIRV_PATH, std::string(SHELLDERIVE_SPV));
 
     Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
@@ -535,6 +549,7 @@ TEST_F(ShellRevalidateNodeTest, DisjointShellGenerationPassesGetZeroBarriers) {
     auto nodeBase = nodeType.CreateInstance("shell_revalidate_barrier_test");
     auto* node = dynamic_cast<ShellRevalidateNode*>(nodeBase.get());
     ASSERT_NE(node, nullptr);
+    node->SetOwningGraph(&engineContext_->Graph());
     node->SetParameter(C::PARAM_SPIRV_PATH, std::string(SHELLDERIVE_SPV));
 
     Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());

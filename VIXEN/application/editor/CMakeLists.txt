@@ -174,7 +174,10 @@ if(BUILD_TESTS AND TARGET VIXEN)
     set_tests_properties(vixen_text_shader_capture_producer PROPERTIES
         FIXTURES_SETUP VixenTextShaderCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-        TIMEOUT 180)
+        # The translated D3D12 path submits ~700 primary-dispatch chunks per 1920x1080
+        # frame; the 55-frame text animation therefore needs a little more than 180s on
+        # the headless WSL GPU while retaining the production capture resolution/schedule.
+        TIMEOUT 300)
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_text_shader_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_TEXT_SHADER_CAPTURE=1"
