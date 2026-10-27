@@ -73,6 +73,11 @@ if(BUILD_TESTS AND TARGET VIXEN)
     set(VIXEN_EDITOR_TEST_DOCUMENT "${VIXEN_EDITOR_CAPTURE_DIR}/sample_tri_layer.vxd")
     configure_file("${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
         "${VIXEN_EDITOR_TEST_DOCUMENT}" COPYONLY)
+    set(VIXEN_EDITOR_TARGET_FILE
+        "${VIXEN_BINARIES_DIR}/vixen_editor${CMAKE_EXECUTABLE_SUFFIX}")
+    set(VIXEN_EDITOR_CAPTURE_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/run_editor_capture.cmake")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_editor_capture.cmake.in"
+        "${VIXEN_EDITOR_CAPTURE_SCRIPT}" @ONLY)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_editor_capture_producer
@@ -87,7 +92,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
     else()
         add_test(NAME vixen_editor_capture_producer
-            COMMAND "$<TARGET_FILE:vixen_editor>" "${VIXEN_EDITOR_TEST_DOCUMENT}")
+            COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_EDITOR_CAPTURE_SCRIPT}")
     endif()
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
