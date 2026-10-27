@@ -121,6 +121,7 @@ REM explicitly lets CMake/Ninja run while cmd.exe stays on a drvfs cwd, even whe
 REM worktree itself is reached through the WSL UNC share.
 set "BUILD_DIR="
 if /i "%PRESET%"=="vixen-ninja" set "BUILD_DIR=%SRC_DIR%\..\build\ninja"
+if /i "%PRESET%"=="vixen-ninja-release" set "BUILD_DIR=%SRC_DIR%\..\build\ninja-release"
 if /i "%PRESET%"=="vixen-wsl" set "BUILD_DIR=%SRC_DIR%\..\build\wsl"
 if /i "%PRESET%"=="vixen-wsl-debug" set "BUILD_DIR=%SRC_DIR%\..\build\wsl-debug"
 set "BINARY_DIR_ARG="
