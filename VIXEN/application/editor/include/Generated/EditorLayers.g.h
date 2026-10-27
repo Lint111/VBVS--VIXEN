@@ -23,9 +23,9 @@ struct EditorLayersBind {
     int* redoDepth;
 };
 
-int BindEditorLayersModel_activeLayerCountOverride(int* activeLayerCount);
+int BindEditorLayersModel_activeLayerCountOverride(int* activeLayerCount) noexcept;
 
-inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLayersBind& b) {
+inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLayersBind& b) noexcept {
     if (auto sh = c.RegisterStruct<EditorLayerRow>()) {
         sh.RegisterMember("name", &EditorLayerRow::name);
         sh.RegisterMember("op", &EditorLayerRow::op);
@@ -67,7 +67,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
 }
 
 // Row-field projection: EditorLayerRow::isChecked <- Vixen::AppFlow::Reference::bitAt(source, index).
-inline bool ComputeEditorLayerRow_isChecked(uint32_t source, uint32_t index) {
+inline bool ComputeEditorLayerRow_isChecked(uint32_t source, uint32_t index) noexcept {
     return Vixen::AppFlow::Reference::bitAt(source, index);
 }
 

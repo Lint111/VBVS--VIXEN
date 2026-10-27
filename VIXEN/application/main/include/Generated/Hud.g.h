@@ -24,7 +24,7 @@ struct HudBind {
     float* inspectTopRelSig;
 };
 
-inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
+inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) noexcept {
     if (auto sh = c.RegisterStruct<HudFaction>()) {
         sh.RegisterMember("name", &HudFaction::name);
         sh.RegisterMember("grievance", &HudFaction::grievance);

@@ -12,7 +12,10 @@ file(REMOVE_RECURSE "${OUTPUT_ROOT}")
 file(MAKE_DIRECTORY "${OUTPUT_ROOT}")
 
 foreach(_root IN ITEMS "${SOURCE_ROOT}" "${LOCAL_ROOT}")
-    file(GLOB_RECURSE _sources "${_root}/*.cs")
+    # The GPU schema reader consumes SaveHistory/lineage.json alongside the C#
+    # declarations. Keep JSON sidecars in the staged source tree so the
+    # generator sees the same inputs as the source checkout.
+    file(GLOB_RECURSE _sources "${_root}/*.cs" "${_root}/*.json")
     foreach(_source IN LISTS _sources)
         file(TO_CMAKE_PATH "${_source}" _normalized_source)
         if(_normalized_source MATCHES "/(obj|bin)/")

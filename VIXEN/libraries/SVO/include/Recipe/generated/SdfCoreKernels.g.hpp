@@ -7,7 +7,9 @@
 #include "GlyphOutlineInstance.g.hpp"
 #include "PathInstance.g.hpp"
 
+namespace Yeroket::Sdf::Generated {}
 namespace Yeroket::Sdf::Kernels {
+using namespace Yeroket::Sdf::Generated;
 
 inline float SdfCore_GlyphOutline(glm::vec3 p, GlyphOutlineInstance glyph) noexcept {
     float minimumDistance = 1.0e20f;

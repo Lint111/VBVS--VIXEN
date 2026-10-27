@@ -17,7 +17,7 @@ struct PanelLayoutBind {
     float* viewportHeight;
 };
 
-inline void BindPanelLayoutModel(Rml::DataModelConstructor& c, const PanelLayoutBind& b) {
+inline void BindPanelLayoutModel(Rml::DataModelConstructor& c, const PanelLayoutBind& b) noexcept {
     if (auto sh = c.RegisterStruct<PanelLayoutStack>()) {
         sh.RegisterMember("region", &PanelLayoutStack::region);
         sh.RegisterMember("stack", &PanelLayoutStack::stack);

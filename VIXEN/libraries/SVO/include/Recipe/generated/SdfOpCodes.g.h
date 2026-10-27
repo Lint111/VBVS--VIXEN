@@ -267,17 +267,17 @@ inline constexpr std::array<RecipeOpcodeStackInfo, 124> RecipeOpcodeStackTable{{
     {182, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {183, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
 }};
-inline const RecipeOpcodeStackInfo* FindRecipeOpcodeStackInfo(std::uint8_t raw) {
+inline const RecipeOpcodeStackInfo* FindRecipeOpcodeStackInfo(std::uint8_t raw) noexcept {
     for (const auto& entry : RecipeOpcodeStackTable) if (entry.opcode == raw) return &entry;
     return nullptr;
 }
-inline StackArity RecipeStackStaticArity(SdfOpCode op) {
+inline StackArity RecipeStackStaticArity(SdfOpCode op) noexcept {
     const auto* entry = FindRecipeOpcodeStackInfo(static_cast<std::uint8_t>(op));
     return entry ? StackArity{entry->vPop, entry->vPush, entry->pPop, entry->pPush} : StackArity{0, 0, 0, 0};
 }
 }  // namespace Vixen::SVO::Recipe
 namespace Vixen::SVO {
-inline bool IsValidSdfOpCode(std::uint8_t raw) {
+inline bool IsValidSdfOpCode(std::uint8_t raw) noexcept {
     return Recipe::FindRecipeOpcodeStackInfo(raw) != nullptr;
 }
 }  // namespace Vixen::SVO
