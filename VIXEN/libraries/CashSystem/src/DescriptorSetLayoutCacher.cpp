@@ -93,17 +93,21 @@ std::uint64_t DescriptorSetLayoutCacher::ComputeKey(const DescriptorSetLayoutCre
 void DescriptorSetLayoutCacher::Cleanup() {
     LOG_INFO("Cleanup: Destroying " + std::to_string(EntryCount()) + " descriptor set layouts");
 
-    // Walks the published generation (immutable cells: a concurrent publish never invalidates
-    // the walk), then Clear() retires it.
-    ForEachEntry([&](const CacheEntry& entry) {
-        if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
-            // Note: We don't have direct access to VkDevice here
-            // In production, store device pointer or use deferred cleanup
-            LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
-        }
-    });
+    // This cacher is device-scoped, so TypedCacher's device is the authoritative
+    // owner of each Vulkan layout handle.
+    if (GetDevice()) {
+        ForEachEntry([&](const CacheEntry& entry) {
+            if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
+                vkDestroyDescriptorSetLayout(GetDevice()->device, entry.resource->layout, nullptr);
+                entry.resource->layout = VK_NULL_HANDLE;
+            }
+        });
+    } else {
+        LOG_WARNING("Skipping VkDescriptorSetLayout cleanup without a device");
+    }
 
-    Clear();  // Use base class Clear()
+    Clear();
+    LOG_INFO("Cleanup complete");
 }
 
 bool DescriptorSetLayoutCacher::SerializePayloadToFile(const std::filesystem::path& path) const {

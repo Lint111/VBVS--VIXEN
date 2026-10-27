@@ -803,7 +803,22 @@ void RenderGraph::ExecuteCleanup() {
 
     // Check if cleanup has already been executed
     if (cleanupStack.GetNodeCount() == 0) {
-        GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup already executed, skipping");
+        // Standalone node fixtures and host integrations may submit one-shot work through
+        // this graph without registering the node in cleanupStack.  They still populate
+        // queueTimelines_ with command-buffer/pool release callbacks, so returning here
+        // leaks those callbacks (and can leave native drivers holding child objects while
+        // the test tears down the VkDevice).  The timeline owns the device handle; wait
+        // for each unique device before releasing its deferred resources.
+        std::unordered_set<VkDevice> devices;
+        for (const auto& [queue, timeline] : queueTimelines_) {
+            (void)queue;
+            if (timeline.device != VK_NULL_HANDLE) devices.insert(timeline.device);
+        }
+        for (VkDevice device : devices) {
+            vkDeviceWaitIdle(device);
+        }
+        ReleaseQueueTimelines();
+        GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Released standalone queue timelines");
         return;
     }
 

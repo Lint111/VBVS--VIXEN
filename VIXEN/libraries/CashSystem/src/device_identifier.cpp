@@ -80,7 +80,17 @@ void DeviceRegistry::Initialize(Vixen::Vulkan::Resources::VulkanDevice* device) 
 }
 
 void DeviceRegistry::ClearAll() {
+    // Device-dependent cachers own Vulkan handles. Release those handles before
+    // their unique_ptrs disappear; DeviceNode uses the same path explicitly.
+    // Cachers are normally registered from leaves to parents (descriptor layout,
+    // pipeline layout, pipeline). Reverse registration preserves Vulkan's child
+    // before parent destruction rule for shared cached handles.
+    for (auto it = m_deviceCachers.rbegin(); it != m_deviceCachers.rend(); ++it) {
+        if (*it) (*it)->Cleanup();
+    }
     m_deviceCachers.clear();
+    m_initialized = false;
+    m_device = nullptr;
 }
 
 void DeviceRegistry::PersistWarmState() const {

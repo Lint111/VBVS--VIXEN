@@ -33,6 +33,11 @@ void MainCacher::CleanupGlobalCaches() {
 MainCacher::~MainCacher() {
     m_taskExecutor.WaitForBlocking();
 
+    // DeviceNode normally performs this phase before destroying VulkanDevice. The
+    // owner also covers standalone/fixture contexts that have a live device registry
+    // but no DeviceNode to drive the explicit cleanup callback.
+    ClearAll();
+
     // Cleanup global caches if not already done
     CleanupGlobalCaches();
 

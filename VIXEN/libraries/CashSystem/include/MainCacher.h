@@ -347,13 +347,8 @@ public:
 
         auto it = m_deviceRegistries.find(deviceId);
         if (it != m_deviceRegistries.end()) {
-            // Call Cleanup() on all cachers in this device registry
-            for (auto& cacher : it->second.m_deviceCachers) {
-                if (cacher) {
-                    cacher->Cleanup();
-                }
-            }
-            // Now erase the registry
+            // ClearAll destroys device-owned Vulkan handles before the registry is erased.
+            it->second.ClearAll();
             WriterScope scope(m_registryWriter);
             m_deviceRegistries.erase(it);
         }
@@ -371,6 +366,10 @@ public:
      * @brief Clear all caches for all devices and global caches
      */
     void ClearAll() {
+        for (auto& [deviceId, registry] : m_deviceRegistries) {
+            (void)deviceId;
+            registry.ClearAll();
+        }
         WriterScope scope(m_registryWriter);
 
         m_deviceRegistries.clear();
