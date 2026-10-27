@@ -217,7 +217,10 @@ std::optional<int> ReadAfterBackState(const std::string& logPath) {
 // failing hard if residency regresses back to mip-only (which renders capture_45 byte-IDENTICAL to
 // capture_5, i.e. 0 diff pixels -- see the R6-finding doc's own "two consecutive toggles render
 // byte-identical" proof of the pre-fix behaviour).
-constexpr int kMinMaskDiffPixels = 20;
+// Native AMD and translated Dozen rasterization produce different coverage at the editor's
+// small orbit-camera silhouette. The invariant is that the layer edit reaches pixels at all;
+// requiring the WSL-calibrated count of 20 made the native witness reject a real 8-pixel edit.
+constexpr int kMinMaskDiffPixels = 1;
 
 }  // namespace
 

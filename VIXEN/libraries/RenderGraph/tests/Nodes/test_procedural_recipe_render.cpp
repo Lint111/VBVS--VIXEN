@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -57,6 +58,17 @@
 #endif
 
 namespace {
+
+std::string GpuPngPath(const char* filename) {
+    std::filesystem::path root;
+    if (const char* configured = std::getenv("VIXEN_GPU_CAPTURE_DIR"); configured && *configured)
+        root = configured;
+    else
+        root = std::filesystem::temp_directory_path();
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    return (root / filename).string();
+}
 
 // ---------------------------------------------------------------------------
 // Push-constant block — byte-identical to the cbuffer PC in kTraceMain:
@@ -634,14 +646,14 @@ TEST_F(ProceduralRecipeRenderTest, RenderProceduralRecipe) {
     }
 
     // Step 7: write PNG (controller reads it to confirm smooth two-lobe peanut).
-    const char* pngPath = "/tmp/glsl_recipe_procedural.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_recipe_procedural.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     // Diagnostics.
     printf("[RenderProceduralRecipe] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -736,13 +748,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderMirrorCsgRecipe) {
     }
 
     // Step 7: write PNG — controller reads it to verify mirror symmetry + smooth-union.
-    const char* pngPath = "/tmp/glsl_sdf_m2_mirror.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m2_mirror.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderMirrorCsgRecipe] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -835,13 +847,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderSubtractBoxSphere) {
     }
 
     // Step 7: write PNG — validator reads it to verify box-with-spherical-cavity.
-    const char* pngPath = "/tmp/glsl_sdf_m3a_subtract.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m3a_subtract.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderSubtractBoxSphere] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -929,13 +941,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderTorus) {
     }
 
     // Step 7: write PNG — validator reads it to confirm ring/donut shape with hole.
-    const char* pngPath = "/tmp/glsl_sdf_m3b_torus.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m3b_torus.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderTorus] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1026,13 +1038,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderCone) {
     }
 
     // Step 7: write PNG — validator reads it to confirm cone/triangle shape.
-    const char* pngPath = "/tmp/glsl_sdf_m3b_cone.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m3b_cone.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderCone] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1118,13 +1130,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderPyramid) {
     }
 
     // Step 7: write PNG — validator reads it to confirm pyramid shape.
-    const char* pngPath = "/tmp/glsl_sdf_m3b_pyramid.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m3b_pyramid.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderPyramid] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1218,13 +1230,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderRevolution) {
         if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
     }
 
-    const char* pngPath = "/tmp/glsl_sdf_m4_revolution.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m4_revolution.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderRevolution] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1352,13 +1364,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderTwist) {
         if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
     }
 
-    const char* pngPath = "/tmp/glsl_sdf_m4_twist.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m4_twist.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderTwist] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1474,13 +1486,13 @@ TEST_F(ProceduralRecipeRenderTest, RenderDisplacement) {
         if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
     }
 
-    const char* pngPath = "/tmp/glsl_sdf_m4_displace.png";
-    const int pngOk = stbi_write_png(pngPath,
+    const std::string pngPath = GpuPngPath("glsl_sdf_m4_displace.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(),
         static_cast<int>(W), static_cast<int>(H), 4,
         rgba8.data(), static_cast<int>(W) * 4);
 
     printf("[RenderDisplacement] bodyPixels=%d  PNG written=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;
@@ -1639,10 +1651,10 @@ TEST_F(ProceduralRecipeRenderTest, RenderComposition) {
         if (fr > 0.08f || fg > 0.08f) ++bodyPixels;
     }
 
-    const char* pngPath = "/tmp/glsl_sdf_m5_composition.png";
-    const int pngOk = stbi_write_png(pngPath, (int)W, (int)H, 4, rgba8.data(), (int)W*4);
+    const std::string pngPath = GpuPngPath("glsl_sdf_m5_composition.png");
+    const int pngOk = stbi_write_png(pngPath.c_str(), (int)W, (int)H, 4, rgba8.data(), (int)W*4);
     printf("[RenderComposition] bodyPixels=%d  PNG=%s  path=%s\n",
-           bodyPixels, pngOk ? "YES" : "NO", pngPath);
+           bodyPixels, pngOk ? "YES" : "NO", pngPath.c_str());
     fflush(stdout);
 
     EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << pngPath;

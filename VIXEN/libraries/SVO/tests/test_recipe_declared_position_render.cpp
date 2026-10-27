@@ -1409,6 +1409,9 @@ void main() {
 TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels) {
     if (!timestampsSupported_)
         GTEST_SKIP() << "Selected compute queue has no timestamp support for the GPU-time witness.";
+    const auto backend = DeviceProofBackend();
+    if (backend == Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified)
+        GTEST_SKIP() << "AMD native GPU has no certified interval-proof backend; Dozen-only proof witness.";
 
     constexpr std::uint32_t kWidth = 64;
     constexpr std::uint32_t kHeight = 64;
@@ -1456,7 +1459,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         // ComposeCompiledRecipeRaymarchShader samples every point inside this box: pixel
         // centers are in (-6,6) for X/Y and the 121 z steps include both endpoints.
         compactionRequest.domainIsEnforced = true;
-        compactionRequest.backend = DeviceProofBackend();
+        compactionRequest.backend = backend;
         compactionRequest.requiredOutputChannels = kAllRecipeOutputChannels;
         compactionRequest.channelDependencies = {
             RecipeChannelDependency::GeometryWinner,
@@ -1498,7 +1501,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
                         glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
                             pixelWorld(lastY, kHeight) + kDomainPadding,
                             stepWorld(lastStep) + kDomainPadding)};
-                    const auto specialized = SpecializeRecipeTapeForTile(source, domain, DeviceProofBackend());
+                    const auto specialized = SpecializeRecipeTapeForTile(source, domain, backend);
                     ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
                         << "tile=" << tileX << "," << tileY << "," << tileZ;
                     ASSERT_EQ(specialized.instructions.size(), specialized.stats.retainedInstructions)

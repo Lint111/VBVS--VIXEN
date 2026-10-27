@@ -69,6 +69,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>   // getenv + portable env set/unset (VIXEN_STORED_SDF_DEMO bake gate)
+#include <filesystem>
 #include <thread>
 
 #include <cstring>
@@ -106,6 +107,17 @@ static void UnsetTestEnv(const char* name) {
 }
 
 namespace {
+
+std::string GpuPngPath(const char* filename) {
+    std::filesystem::path root;
+    if (const char* configured = std::getenv("VIXEN_GPU_CAPTURE_DIR"); configured && *configured)
+        root = configured;
+    else
+        root = std::filesystem::temp_directory_path();
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    return (root / filename).string();
+}
 
 using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
@@ -597,9 +609,10 @@ protected:
                  dummyShadow = VK_NULL_HANDLE, dummyAccum = VK_NULL_HANDLE, dummyPrevCam = VK_NULL_HANDLE;
         VkDeviceMemory dummyLightingMem = VK_NULL_HANDLE, dummyHitRecordMem = VK_NULL_HANDLE,
                        dummyShadowMem = VK_NULL_HANDLE, dummyAccumMem = VK_NULL_HANDLE, dummyPrevCamMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLighting, dummyLightingMem, true);
         {
             const Vixen::Gpu::LightingConfig defaultLighting = MakeTestDefaultLightingConfig();
+            const VkDeviceSize lightingBytes = std::max<VkDeviceSize>(256, sizeof(defaultLighting));
+            CreateHostBuffer(lightingBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLighting, dummyLightingMem, true);
             ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummyLightingMem, &defaultLighting, sizeof(defaultLighting)));
         }
         // HitRecord.glsl's HitRecord struct is 64 bytes; the shader indexes it by the FULL
@@ -1151,11 +1164,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
         rgb[i * 3 + 0] = hit ? r : 0; rgb[i * 3 + 1] = hit ? g : 0; rgb[i * 3 + 2] = hit ? bb : 0;
         if (hit) ++hitPixels;
     }
-    const char* outPath = "/tmp/glsl_shader_near.png";
-    EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+    const std::string outPath = GpuPngPath("glsl_shader_near.png");
+    EXPECT_NE(stbi_write_png(outPath.c_str(), kW, kH, 3, rgb.data(), kW * 3), 0)
         << "stbi_write_png failed for " << outPath;
     std::printf("[NEAR] %ux%u | device='%s' | render=%.0f ms | body pixels=%d / %u | -> %s\n",
-                kW, kH, selectedDeviceName_.c_str(), renderMs, hitPixels, kW * kH, outPath);
+                kW, kH, selectedDeviceName_.c_str(), renderMs, hitPixels, kW * kH, outPath.c_str());
     EXPECT_GT(hitPixels, 0) << "Shader produced an all-sky image — the body was not hit.";
 
     vkDeviceWaitIdle(logicalDevice_);
@@ -1380,15 +1393,15 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
         else                                ++grayPixels;      // kind 2 (moon, gray/white mat)
     }
 
-    const char* outPath = "/tmp/glsl_shader_multikind.png";
-    EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+    const std::string outPath = GpuPngPath("glsl_shader_multikind.png");
+    EXPECT_NE(stbi_write_png(outPath.c_str(), kW, kH, 3, rgb.data(), kW * 3), 0)
         << "stbi_write_png failed for " << outPath;
 
     std::printf("[MULTIKIND] %ux%u | device='%s' | render=%.0f ms | body px total=%d | "
                 "kind0(red/star octree0)=%d  kind1(green/planet octree1)=%d  "
                 "kind2(gray/moon octree2)=%d | -> %s\n",
                 kW, kH, selectedDeviceName_.c_str(), renderMs, anyBody,
-                redPixels, greenPixels, grayPixels, outPath);
+                redPixels, greenPixels, grayPixels, outPath.c_str());
 
     // The fix proof: octreeIndex 1 AND 2 must now render real bodies (non-zero), not blank.
     // (Before the 432-byte UBO-array-stride fix, kind1/kind2 were exactly 0.)
@@ -2098,7 +2111,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
 
     // --- Smooth sphere (octree 0): STRICT solid-silhouette (no-holes) oracle ---
     std::vector<HitRecordCpu> smooth;
-    ASSERT_NO_FATAL_FAILURE(renderBody(0u, "/tmp/glsl_sdf_smooth_near.png", smooth));
+    ASSERT_NO_FATAL_FAILURE(renderBody(0u, GpuPngPath("glsl_sdf_smooth_near.png").c_str(), smooth));
 
     uint64_t totalBody = 0, totalSpan = 0;
     int bodyRows = 0, bodyPixels = 0;
@@ -2185,7 +2198,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
 
     // --- Displaced sphere (octree 1): lenient coverage + PNG for inspection ---
     std::vector<HitRecordCpu> displaced;
-    ASSERT_NO_FATAL_FAILURE(renderBody(1u, "/tmp/glsl_sdf_displaced_near.png", displaced));
+    ASSERT_NO_FATAL_FAILURE(renderBody(1u, GpuPngPath("glsl_sdf_displaced_near.png").c_str(), displaced));
     int dispBody = 0;
     for (uint32_t i = 0; i < kW * kH; ++i) {
         if ((displaced[i].flags & kHitRecordFlagHit) != 0u) ++dispBody;
@@ -2361,10 +2374,10 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
         rgb[i * 3 + 1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
         rgb[i * 3 + 2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
     }
-    const char* outPath = "/tmp/glsl_sdf_multichannel.png";
-    EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+    const std::string outPath = GpuPngPath("glsl_sdf_multichannel.png");
+    EXPECT_NE(stbi_write_png(outPath.c_str(), kW, kH, 3, rgb.data(), kW * 3), 0)
         << "stbi_write_png failed for " << outPath;
-    std::printf("[MULTICHANNEL] %ux%u | render=%.0f ms | -> %s\n", kW, kH, renderMs, outPath);
+    std::printf("[MULTICHANNEL] %ux%u | render=%.0f ms | -> %s\n", kW, kH, renderMs, outPath.c_str());
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);
@@ -2476,7 +2489,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
 
     // Write PNG (controller reads this to verify visually).
-    const char* outPath = "/tmp/glsl_sdf_recipe_peanut.png";
+    const std::string outPath = GpuPngPath("glsl_sdf_recipe_peanut.png");
     {
         std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
         for (uint32_t i = 0; i < kW * kH; ++i) {
@@ -2486,7 +2499,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
             rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
             rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
-        EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
+        EXPECT_NE(stbi_write_png(outPath.c_str(), kW, kH, 3, rgb.data(), kW * 3), 0)
             << "stbi_write_png failed for " << outPath;
     }
 
@@ -2505,7 +2518,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     }
     const double fillRatio = (totalSpan > 0) ? double(totalBody) / double(totalSpan) : 0.0;
     std::printf("[RECIPE] peanut: bodyPx=%d rows=%d fillRatio=%.4f | render=%.0f ms | -> %s\n",
-                bodyPixels, bodyRows, fillRatio, ms, outPath);
+                bodyPixels, bodyRows, fillRatio, ms, outPath.c_str());
 
     EXPECT_GT(bodyPixels, 20000) << "recipe-baked body barely rendered";
     EXPECT_GT(fillRatio, 0.97)   << "recipe-baked body has interior holes (fillRatio=" << fillRatio << ")";
@@ -2705,7 +2718,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
 
     // --- render A (single sphere) ---
     int widthA = 0, pxA = 0;
-    renderAndMeasure("/tmp/glsl_sdf_remat_A.png", widthA, pxA);
+    renderAndMeasure(GpuPngPath("glsl_sdf_remat_A.png").c_str(), widthA, pxA);
 
     // --- EDIT at runtime: sphere∪sphere peanut (two offset lobes, wider than A) ---
     // Inc2a: object-centered (local); center=(32,32,32) places the pair back at the same
@@ -2730,7 +2743,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     // --- render B on eight consecutive frames after the publication flip ---
     int widthB = 0, pxB = 0;
     std::vector<uint8_t> firstFrameBytes;
-    renderAndMeasure("/tmp/glsl_sdf_remat_B.png", widthB, pxB, &firstFrameBytes);
+    renderAndMeasure(GpuPngPath("glsl_sdf_remat_B.png").c_str(), widthB, pxB, &firstFrameBytes);
     const uint64_t generationB = node->PublishedShellGeneration();
     for (uint32_t frame = 1; frame < 8u; ++frame) {
         frameIndex = frame % 2u;

@@ -104,7 +104,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
     }
     std::lock_guard<std::mutex> lock(g_sink.mu);
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        // The Windows validation loader emits this registry lookup diagnostic for
+        // an optional device GUID on AMD drivers. It is not a Vulkan object-lifetime
+        // validation message and appears before the first test operation.
+#ifdef _WIN32
+        const std::string message(data->pMessage);
+        if (message.find("windows_get_device_registry_files: unable to obtain GUID for:7 error:37")
+                == std::string::npos)
+            g_sink.errors.push_back(message);
+#else
         g_sink.errors.emplace_back(data->pMessage);
+#endif
     } else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
         g_sink.warnings.emplace_back(data->pMessage);
     }

@@ -39,10 +39,10 @@ REM undo/redo window (30/60/90) and well before exit (120), so they don't intera
 REM Captures: 5 (pre-first-edit baseline) and 45 (post-first-edit, resident) feed the R6 residency
 REM smoke check. 75/105 are kept for diagnostics (post-undo / post-redo) but are byte-identical to
 REM 45 by design (mask invisible) so the gate no longer diffs them.
-set VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110
-set VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105
+set VIXEN_EDITOR_SCRIPT=parameter_up:0@20,parameter_up:0@21,parameter_up:0@22,parameter_up:0@23,toggle:2@30,undo@60,redo@90,save@100,reopen@110,settings@120,back@130
+set VIXEN_EDITOR_CAPTURE_FRAMES=5,25,45,75,105,115
 set VIXEN_EDITOR_CAPTURE_DIR=temp
-set VIXEN_EXIT_AFTER_FRAMES=120
+set VIXEN_EXIT_AFTER_FRAMES=140
 
 REM cd to the VIXEN dir this .bat lives under (temp\..) -- NOT a hardcoded worktree path, so the
 REM script works unmodified in whichever worktree/checkout invokes it.
