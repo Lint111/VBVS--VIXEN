@@ -64,7 +64,7 @@ vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST 
 # The build-tree directories are the non-queue fallback; Linux command wrappers switch each GPU
 # process to UT_QUEUE_CAPTURE_ROOT at run time so documents, logs, and captures stay together.
 # The shared application test environment supplies Dozen and its loader paths.
-if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
+if(BUILD_TESTS AND TARGET VIXEN)
     set(VIXEN_EDITOR_CAPTURE_ROOT "${CMAKE_BINARY_DIR}/runtime-captures")
     set(VIXEN_EDITOR_CAPTURE_DIR "${VIXEN_EDITOR_CAPTURE_ROOT}/editor")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
@@ -74,16 +74,21 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     configure_file("${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
         "${VIXEN_EDITOR_TEST_DOCUMENT}" COPYONLY)
 
-    add_test(NAME vixen_editor_capture_producer
-        COMMAND bash -c
-            "set -eu
-            capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
-            capture_dir=\"\${capture_root}/editor\"
-            document=\"\${capture_dir}/sample_tri_layer.vxd\"
-            mkdir -p \"\${capture_dir}\"
-            cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
-            export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
-            exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME vixen_editor_capture_producer
+            COMMAND bash -c
+                "set -eu
+                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
+                capture_dir=\"\${capture_root}/editor\"
+                document=\"\${capture_dir}/sample_tri_layer.vxd\"
+                mkdir -p \"\${capture_dir}\"
+                cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
+                export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
+                exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
+    else()
+        add_test(NAME vixen_editor_capture_producer
+            COMMAND "$<TARGET_FILE:vixen_editor>" "${VIXEN_EDITOR_TEST_DOCUMENT}")
+    endif()
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"

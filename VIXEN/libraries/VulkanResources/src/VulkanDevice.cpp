@@ -13,9 +13,15 @@
 
 using namespace Vixen::Vulkan::Resources;
 
-VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
-    gpu = physicalDevice;
-}
+VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice)
+    : device(VK_NULL_HANDLE)
+    , gpu(physicalDevice)
+    , gpuProperties{}
+    , gpuMemoryProperties{}
+    , queue(VK_NULL_HANDLE)
+    , graphicsQueueIndex(0)
+    , queueFamilyCount(0)
+    , deviceFeatures{} {}
 
 VulkanDevice::~VulkanDevice() {
     DestroyDevice();
