@@ -166,6 +166,7 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    std::fprintf(stderr, "[probe] RenderGraph dtor begin\\n");
     PhaseTiming::PrintSummary();
     // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
     // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
@@ -185,14 +186,17 @@ RenderGraph::~RenderGraph() {
     if (mainCacher && reinterpret_cast<uintptr_t>(mainCacher) != 0xFFFFFFFFFFFFFFFF) {
         mainCacher->CleanupGlobalCaches();
     }
+    std::fprintf(stderr, "[probe] RenderGraph dtor after globals\\n");
 
     // Unsubscribe from events - ScopedSubscriptions handles this automatically via RAII
     // No manual Unsubscribe() calls needed
 
     // Flush deferred destructions before cleanup
     deferredDestruction.Flush();
+    std::fprintf(stderr, "[probe] RenderGraph dtor before Clear\\n");
 
     Clear();
+    std::fprintf(stderr, "[probe] RenderGraph dtor after Clear\\n");
 }
 
 NodeHandle RenderGraph::AddNodeImpl(NodeType* nodeType, const std::string& instanceName) {
@@ -711,6 +715,7 @@ void RenderGraph::Connect(const SubGraphHandle& source, uint32_t sourcePort,
 
 
 void RenderGraph::Clear() {
+    std::fprintf(stderr, "[probe] RenderGraph Clear begin\\n");
     renderPassFinalLayouts_.clear();
     // Save persistent caches BEFORE cleanup destroys resources
     if (mainCacher) {
@@ -719,6 +724,7 @@ void RenderGraph::Clear() {
 
         auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
         bool saveSuccess = saveFuture.get();
+        std::fprintf(stderr, "[probe] RenderGraph Clear after SaveAllAsync success=%d\\n", saveSuccess ? 1 : 0);
 
         if (saveSuccess) {
             GRAPH_LOG_INFO("[RenderGraph::Clear] Persistent caches saved successfully");
@@ -729,9 +735,12 @@ void RenderGraph::Clear() {
 
     // Execute cleanup callbacks in dependency order BEFORE clearing instances
     ExecuteCleanup();
+    std::fprintf(stderr, "[probe] RenderGraph Clear after ExecuteCleanup\\n");
 
     instances.clear();
+    std::fprintf(stderr, "[probe] RenderGraph Clear after instances\\n");
     resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
+    std::fprintf(stderr, "[probe] RenderGraph Clear after resources\\n");
     nameToHandle.clear();
     instancesByType.clear();
     executionOrder.clear();
