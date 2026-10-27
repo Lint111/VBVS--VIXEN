@@ -870,7 +870,7 @@ protected:
         const std::vector<GpuRecipeTapeInstruction>& tape,
         const std::array<TileTapeRange, 64>& ranges, std::uint32_t w, std::uint32_t h,
         std::vector<float>& outRgba32f, std::vector<std::uint32_t>& outClauseCounts,
-        double& gpuMilliseconds) {
+        double& gpuMilliseconds, double* pipelineCompileMilliseconds = nullptr) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
         ASSERT_FALSE(tape.empty());
@@ -941,8 +941,12 @@ protected:
         pipelineInfo.stage.pName = "main";
         pipelineInfo.layout = pipelineLayout;
         VkPipeline pipeline = VK_NULL_HANDLE;
+        const auto pipelineCompileStart = std::chrono::steady_clock::now();
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &pipelineInfo,
             nullptr, &pipeline), VK_SUCCESS);
+        if (pipelineCompileMilliseconds != nullptr)
+            *pipelineCompileMilliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - pipelineCompileStart).count();
 
         VkQueryPoolCreateInfo queryPoolInfo{};
         queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
@@ -2117,4 +2121,95 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     EXPECT_EQ(tapeExact, tapeSupportedCount) << "tape evaluator differs from runtime-operand field";
     if (std::getenv("VIXEN_RECIPE_CORPUS_REQUIRE_INLINE_EXACT"))
         EXPECT_EQ(inlineExact, results.size()) << "inline literals differ from runtime operands";
+}
+
+// Opt-in diagnostic for the native-driver compiler regression. The generated evaluator should
+// keep a fixed source shape as declared position depth grows; this test records both shader sizes
+// and the wall time spent in vkCreateComputePipelines for the exact deep-position corpus shape.
+TEST_F(DeclaredPositionRenderTest, PositionTapePipelineCompileScaling) {
+    if (!std::getenv("VIXEN_RECIPE_POSITION_TAPE_BENCHMARK"))
+        GTEST_SKIP() << "Set VIXEN_RECIPE_POSITION_TAPE_BENCHMARK=1 for the compile-scaling witness.";
+
+    const std::string tapeSdfCoreGlsl = WithPathInstanceBuffer(
+        WithGlyphOutlineBuffer(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH), 31), 32);
+    const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
+    ASSERT_FALSE(tapeSdfCoreGlsl.empty());
+    ASSERT_FALSE(tapeGlsl.empty());
+
+    const std::string tapeAdapter = R"GLSL(
+    bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
+        return EvalRecipeTape(offset, count, p, distanceValue, clauses);
+    }
+    )GLSL";
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    const std::array<std::uint32_t, 5> depths{8u, 16u, 32u, 48u, 64u};
+
+    std::ofstream results;
+    if (const char* resultsPath = std::getenv("VIXEN_RECIPE_POSITION_TAPE_RESULTS")) {
+        results.open(resultsPath);
+        ASSERT_TRUE(results.good()) << resultsPath;
+    }
+    const std::filesystem::path captureDirectory = std::getenv("BOUNDSCORE_TAPE_CAPTURE_DIR")
+        ? std::filesystem::path(std::getenv("BOUNDSCORE_TAPE_CAPTURE_DIR")) / "position-depth"
+        : std::filesystem::path{};
+    if (!captureDirectory.empty()) std::filesystem::create_directories(captureDirectory);
+
+    for (const std::uint32_t depth : depths) {
+        std::vector<SdfInstruction> program;
+        program.reserve(depth * 2u + 1u);
+        for (std::uint32_t i = 0; i < depth; ++i) {
+            SdfInstruction mirror{};
+            mirror.opCode = static_cast<std::uint8_t>(SdfOpCode::MirrorX);
+            program.push_back(mirror);
+        }
+        SdfInstruction sphere{};
+        sphere.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+        sphere.data[3] = 0.75f;
+        program.push_back(sphere);
+        for (std::uint32_t i = 0; i < depth; ++i) {
+            SdfInstruction restore{};
+            restore.opCode = static_cast<std::uint8_t>(SdfOpCode::RestorePos);
+            program.push_back(restore);
+        }
+
+        TapeStorageCounts counts;
+        const std::vector<GpuRecipeTapeInstruction> tape = PackAllocatedGpuTape(program, counts);
+        ASSERT_EQ(counts.positions, depth);
+        std::array<TileTapeRange, 64> ranges{};
+        ranges[0] = {0u, static_cast<std::uint32_t>(tape.size())};
+
+        const std::string source = ComposeTileTapeRaymarchShader(
+            tapeSdfCoreGlsl, TapeStorageDefines(counts) + tapeGlsl, tapeAdapter);
+        const auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            source, "main", options);
+        ASSERT_TRUE(compiled.success) << "depth=" << depth << "\n" << compiled.GetFullLog();
+        const std::size_t spirvBytes = compiled.spirv.size() * sizeof(std::uint32_t);
+        if (!captureDirectory.empty()) {
+            const std::string stem = "depth-" + std::to_string(depth);
+            std::ofstream(captureDirectory / (stem + ".comp")) << source;
+            std::ofstream binary(captureDirectory / (stem + ".spv"), std::ios::binary);
+            binary.write(reinterpret_cast<const char*>(compiled.spirv.data()),
+                static_cast<std::streamsize>(spirvBytes));
+        }
+
+        std::vector<float> pixels;
+        std::vector<std::uint32_t> clauses;
+        double gpuMilliseconds = 0.0;
+        double pipelineCompileMilliseconds = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(compiled.spirv, tape, ranges, 8, 8,
+            pixels, clauses, gpuMilliseconds, &pipelineCompileMilliseconds));
+        std::cout << "[RecipePositionTapeCompile] device=" << selectedDeviceName_
+            << " depth=" << depth << " glslBytes=" << source.size()
+            << " spirvBytes=" << spirvBytes
+            << " vkCreateComputePipelinesMs=" << pipelineCompileMilliseconds
+            << " gpuMs=" << gpuMilliseconds << std::endl;
+        if (results.good()) {
+            results << "{\"device\":\"" << selectedDeviceName_ << "\",\"depth\":" << depth
+                << ",\"glslBytes\":" << source.size() << ",\"spirvBytes\":" << spirvBytes
+                << ",\"vkCreateComputePipelinesMs\":" << pipelineCompileMilliseconds
+                << ",\"gpuMs\":" << gpuMilliseconds << "}\n";
+        }
+    }
 }

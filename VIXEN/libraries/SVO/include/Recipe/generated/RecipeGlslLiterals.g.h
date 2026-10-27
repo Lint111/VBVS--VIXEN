@@ -5,7 +5,7 @@
 #include <string>
 namespace Vixen::SVO::Recipe {
 // Integer transport preserves every binary32 word, independently of locale and decimal parsing.
-inline std::string RecipeGlslFloatLiteral(float value) {
+inline std::string RecipeGlslFloatLiteral(float value) noexcept {
     return "uintBitsToFloat(" + std::to_string(std::bit_cast<std::uint32_t>(value)) + "u)";
 }
 } // namespace Vixen::SVO::Recipe
