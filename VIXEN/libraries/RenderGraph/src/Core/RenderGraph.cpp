@@ -800,15 +800,18 @@ void RenderGraph::HandleWindowClose() {
 }
 
 void RenderGraph::ExecuteCleanup() {
+    std::fprintf(stderr, "[probe] ExecuteCleanup begin\\n");
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Executing cleanup callbacks...");
 
     InvalidateExecutionEpoch();
+    std::fprintf(stderr, "[probe] ExecuteCleanup after epoch\\n");
 
     // AR#16: from here the graph's resources are being destroyed. Mark the graph un-renderable so
     // RenderFrame() stops executing nodes (which would index freed per-image sync arrays and trip a
     // vector-out-of-range on shutdown). The render loop may run one more iteration after a
     // WindowCloseEvent triggers this cleanup.
     isCleanedUp = true;
+    std::fprintf(stderr, "[probe] ExecuteCleanup after cleaned flag nodes=%zu\\n", cleanupStack.GetNodeCount());
 
     // Check if cleanup has already been executed
     if (cleanupStack.GetNodeCount() == 0) {
@@ -828,6 +831,7 @@ void RenderGraph::ExecuteCleanup() {
         }
         ReleaseQueueTimelines();
         GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Released standalone queue timelines");
+        std::fprintf(stderr, "[probe] ExecuteCleanup standalone return\\n");
         return;
     }
 
