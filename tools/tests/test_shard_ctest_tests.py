@@ -29,6 +29,7 @@ class CTestShardTests(unittest.TestCase):
                 capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout.strip(), "4 1 1")
             shard_zero = Path(output, "shard-0.regex").read_text(encoding="utf-8")
+            self.assertNotIn("?:", shard_zero)
             self.assertIn("fixture_setup", shard_zero)
             self.assertIn("fixture_case", shard_zero)
             self.assertIn("fixture_cleanup", shard_zero)

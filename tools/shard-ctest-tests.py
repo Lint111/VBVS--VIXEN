@@ -27,7 +27,9 @@ def is_dependent(test: dict) -> bool:
 
 
 def regex_for(names: list[str]) -> str:
-    return "^(?:" + "|".join(re.escape(name) for name in names) + ")$"
+    # CTest uses its own regex dialect and does not support Python's
+    # non-capturing-group syntax.
+    return "^(" + "|".join(re.escape(name) for name in names) + ")$"
 
 
 def main() -> int:
