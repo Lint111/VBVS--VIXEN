@@ -196,7 +196,8 @@ set_property(TARGET VixenApp PROPERTY C_STANDARD_REQUIRED ON)
 set_target_properties(VixenApp PROPERTIES FOLDER "Application")
 
 if(MSVC)
-    target_compile_options(VixenApp PRIVATE /FS)
+    # BuildRenderGraph.cpp exceeds MSVC's default object section limit on native Release builds.
+    target_compile_options(VixenApp PRIVATE /FS /bigobj)
 endif()
 
 if(USE_PRECOMPILED_HEADERS)
