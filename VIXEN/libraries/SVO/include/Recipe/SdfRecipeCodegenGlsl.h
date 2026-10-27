@@ -67,7 +67,8 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
     uint32_t glyphInstanceBase = 0,
     std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
-    bool readInstructionOperands = false)
+    bool readInstructionOperands = false,
+    bool useBoundedGlyphOutline = false)
 {
     std::vector<std::string> stk;
     std::string body;
@@ -170,6 +171,21 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     };  // end walk lambda
 
     walk(walk, prog, count);
+
+    // The generated kernel remains available to standalone/specialized shaders, but the
+    // production uber shader uses the runtime-buffer variant.  It loops to the uploaded
+    // SegmentCount instead of asking the driver to carry the fixed 64-entry aggregate loop
+    // through every glyph call site.  Keep this selection at the emitter seam so callers that
+    // intentionally compose the legacy standalone kernel retain their existing contract.
+    if (useBoundedGlyphOutline) {
+        constexpr std::string_view legacyCall = "SdfCore_GlyphOutline(";
+        constexpr std::string_view boundedCall = "SdfCore_GlyphOutlineBounded(";
+        std::size_t at = 0;
+        while ((at = body.find(legacyCall, at)) != std::string::npos) {
+            body.replace(at, legacyCall.size(), boundedCall);
+            at += boundedCall.size();
+        }
+    }
 
     assert(!stk.empty() && "EmitProceduralFieldFunctionGlsl: empty value stack at return");
     std::string signature = emitDeclaredPositionOutParam

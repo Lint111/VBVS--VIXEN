@@ -108,7 +108,9 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                                &registry,
                                                entry->glyphInstances,
                                                /*glyphInstanceBase=*/0,
-                                               entry->pathInstances)
+                                               entry->pathInstances,
+                                               /*readInstructionOperands=*/false,
+                                               /*useBoundedGlyphOutline=*/true)
             << "\n";
     }
 

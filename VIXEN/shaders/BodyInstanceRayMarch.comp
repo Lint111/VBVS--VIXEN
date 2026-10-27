@@ -126,6 +126,7 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 // reason: the spliced sdfRecipe_<id> bodies call SdfCore_* helpers, so they must already exist.
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#undef SdfCore_GlyphOutline
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)

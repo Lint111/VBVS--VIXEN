@@ -2145,7 +2145,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::ifstream compFile(compPath);
             std::ostringstream compBuf;
             compBuf << compFile.rdbuf();
-            const std::string rawSource = compBuf.str();
+            std::string rawSource = compBuf.str();
+
+            // R768: the production uber shader routes GlyphOutline through the packed binding
+            // 52 helper from RecipeGlyphBindings.glsl. Strip the unreachable generated typed
+            // glyph helper from this one source assembly so the driver does not compile the
+            // fixed-capacity aggregate in parallel with the live packed path. The canonical
+            // generated file remains untouched for specialized shaders and its codegen drift
+            // gate; this is a production-source composition choice, not a second kernel.
+            constexpr std::string_view sdfInclude =
+                "#include \"recipe/SdfCoreKernels.g.glsl\"";
+            std::filesystem::path sdfKernelPath;
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+            sdfKernelPath = std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) /
+                            "recipe" / "SdfCoreKernels.g.glsl";
+#else
+            sdfKernelPath = std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl");
+#endif
+            if (std::filesystem::exists(sdfKernelPath)) {
+                std::ifstream sdfFile(sdfKernelPath);
+                std::ostringstream sdfBuf;
+                sdfBuf << sdfFile.rdbuf();
+                const std::string compactSdfCore =
+                    Vixen::SVO::Recipe::WithoutGlyphOutlineKernel(sdfBuf.str());
+                const std::size_t includePos = rawSource.find(sdfInclude);
+                if (!compactSdfCore.empty() && includePos != std::string::npos) {
+                    rawSource.replace(includePos, sdfInclude.size(), compactSdfCore);
+                }
+            }
 
             std::string splicedSource;
             std::vector<float> occupancyGridBlob;
@@ -9045,6 +9072,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, kSceneRoles);
     sceneProviders.Provide("GlyphOutlineBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("GlyphOutlineFlatBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, kSceneRoles);
     sceneProviders.Provide("RayTraceBuffer", voxelGridNode,
                            VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
