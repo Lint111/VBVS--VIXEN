@@ -198,10 +198,19 @@ bool PresentationSamplingRequested() {
 uint32_t DefaultFramesPerScenario() {
     const uint32_t frames = Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerScenario
                                                                           : kDefaultFramesPerScenario;
-    // A presentation capture shows the converged resolve: two full jitter cycles, so every
-    // pixel's history holds each Halton sample twice before the frame is written.
-    return PresentationSamplingRequested()
-        ? std::max(frames, 2u * Vixen::RenderGraph::kReconstructionJitterCycle) : frames;
+    if (!PresentationSamplingRequested()) return frames;
+
+    // Presentation captures use TAA's fixed Halton sequence.  The resolve reaches its
+    // configured history-weight ceiling once count/(count + 1) reaches that ceiling; a
+    // complete jitter cycle is the deterministic coverage bound for the visual sample set.
+    // This is a convergence criterion derived from the provider, not an arbitrary second
+    // cycle: with the default 0.9 ceiling it is max(16, 9) == 16 frames.
+    const float historyWeight = std::clamp(gRenderPathConfig.antiAliasingHistoryWeight, 0.0f, 1.0f);
+    const uint32_t feedbackCount = historyWeight >= 1.0f
+        ? kMaxFramesPerScenario
+        : std::min(kMaxFramesPerScenario, static_cast<uint32_t>(std::ceil(
+              historyWeight / std::max(1.0f - historyWeight, 1.0e-6f))));
+    return std::max({frames, Vixen::RenderGraph::kReconstructionJitterCycle, feedbackCount});
 }
 
 uint32_t CaptureFramesPerScenario(std::string& error) {
