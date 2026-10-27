@@ -80,7 +80,6 @@ void DeviceRegistry::Initialize(Vixen::Vulkan::Resources::VulkanDevice* device) 
 }
 
 void DeviceRegistry::ClearAll() {
-    std::fprintf(stderr, "[probe] DeviceRegistry ClearAll cachers=%zu device=%p\\n", m_deviceCachers.size(), static_cast<void*>(m_device));
     // Device-dependent cachers own Vulkan handles. Release those handles before
     // their unique_ptrs disappear; DeviceNode uses the same path explicitly.
     // Cachers are normally registered from leaves to parents (descriptor layout,

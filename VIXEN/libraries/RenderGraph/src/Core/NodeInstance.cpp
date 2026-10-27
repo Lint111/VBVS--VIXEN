@@ -48,6 +48,13 @@ NodeInstance::~NodeInstance() {
     // Unsubscribe from all EventBus messages - ScopedSubscriptions handles this via RAII
     // No manual Unsubscribe() calls needed
 
+    // A node compiled against a graph can be host-owned rather than present in the graph's
+    // instances vector. Remove its raw cleanup callback before the object disappears; otherwise
+    // the graph's later ExecuteAll() would call this dangling NodeInstance.
+    if (owningGraph) {
+        owningGraph->GetCleanupStack().Unregister(nodeHandle);
+    }
+
     Cleanup();
 
     // shared_ptr automatically handles cleanup:

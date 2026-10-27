@@ -239,6 +239,17 @@ public:
     }
 
     /**
+     * @brief Remove a callback whose directly-owned node is being destroyed.
+     *
+     * Graph-owned nodes normally remain alive until ExecuteAll() has run. Host/test
+     * integrations may compile a node against a graph and then own that node separately;
+     * retaining its raw callback would make the next graph teardown call a dangling object.
+     */
+    void Unregister(NodeHandle handle) {
+        nodes.erase(handle);
+    }
+
+    /**
      * @brief Get number of registered cleanup actions
      */
     size_t GetNodeCount() const {

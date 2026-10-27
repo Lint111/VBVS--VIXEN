@@ -31,14 +31,12 @@ void MainCacher::CleanupGlobalCaches() {
 }
 
 MainCacher::~MainCacher() {
-    std::fprintf(stderr, "[probe] MainCacher dtor registries=%zu global=%zu\\n", m_deviceRegistries.size(), m_globalCachers.size());
     m_taskExecutor.WaitForBlocking();
 
     // DeviceNode normally performs this phase before destroying VulkanDevice. The
     // owner also covers standalone/fixture contexts that have a live device registry
     // but no DeviceNode to drive the explicit cleanup callback.
     ClearAll();
-    std::fprintf(stderr, "[probe] MainCacher dtor after ClearAll registries=%zu\\n", m_deviceRegistries.size());
 
     // Cleanup global caches if not already done
     CleanupGlobalCaches();
