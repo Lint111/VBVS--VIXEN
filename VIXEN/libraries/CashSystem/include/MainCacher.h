@@ -366,6 +366,7 @@ public:
      * @brief Clear all caches for all devices and global caches
      */
     void ClearAll() {
+        std::fprintf(stderr, "[probe] MainCacher ClearAll registries=%zu\\n", m_deviceRegistries.size());
         for (auto& [deviceId, registry] : m_deviceRegistries) {
             (void)deviceId;
             registry.ClearAll();
