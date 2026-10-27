@@ -186,8 +186,8 @@ TEST(UberShaderSplice, SharedGlyphRowsUseOneDeduplicatedRuntimeBuffer) {
     EXPECT_EQ(registry.GlyphOutlineBytes(), 2u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance));
     constexpr std::size_t legacyBytes = 3u * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance);
     EXPECT_LT(registry.GlyphOutlineBytes(), legacyBytes);
-    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 0u)"), 2u);
-    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutline(p, 1u)"), 1u);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutlineBounded(p, 0u)"), 2u);
+    EXPECT_EQ(CountOccurrences(spliced, "SdfCore_GlyphOutlineBounded(p, 1u)"), 1u);
     EXPECT_EQ(spliced.find("GlyphOutlineInstance glyphOutlineInstances["), std::string::npos)
         << "glyph outlines must not be emitted as shader-local arrays";
 

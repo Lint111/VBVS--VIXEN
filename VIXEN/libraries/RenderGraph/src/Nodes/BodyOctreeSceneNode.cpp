@@ -12,6 +12,7 @@
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cctype>    // std::isspace for whitespace-safe boolean env flags
 #include <cstdio>    // std::snprintf (BrickDataHash log line)
@@ -449,6 +450,53 @@ void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     // source. The registry owns one content-deduplicated blob and the emitted operands carry
     // its global indices, so the SSBO and generated shader are always one generation pair.
     glyphOutlineInstances_ = std::move(glyphInstances);
+    // R768: keep the production uber shader away from the fixed-capacity 3,616-byte row ABI.
+    // The first word is the row count, followed by ten words per row and fourteen words per
+    // uploaded segment (four float3 control points plus kind/contour-start).
+    constexpr std::size_t kHeaderWords = 10;
+    constexpr std::size_t kSegmentWords = 14;
+    const auto word = [](float value) { return std::bit_cast<std::uint32_t>(value); };
+    std::size_t segmentCountTotal = 0;
+    for (const auto& row : glyphOutlineInstances_) {
+        segmentCountTotal += std::min<std::uint32_t>(row.SegmentCount,
+            static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
+    }
+    glyphOutlineFlatWords_.assign(1 + glyphOutlineInstances_.size() * kHeaderWords +
+        segmentCountTotal * kSegmentWords, 0u);
+    glyphOutlineFlatWords_[0] = static_cast<std::uint32_t>(glyphOutlineInstances_.size());
+    const std::size_t segmentDataBase = 1 + glyphOutlineInstances_.size() * kHeaderWords;
+    std::size_t segmentOffset = 0;
+    for (std::size_t rowIndex = 0; rowIndex < glyphOutlineInstances_.size(); ++rowIndex) {
+        const auto& row = glyphOutlineInstances_[rowIndex];
+        const std::size_t header = 1 + rowIndex * kHeaderWords;
+        const std::uint32_t rowSegmentCount = std::min<std::uint32_t>(row.SegmentCount,
+            static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
+        glyphOutlineFlatWords_[header + 0] = static_cast<std::uint32_t>(segmentOffset);
+        glyphOutlineFlatWords_[header + 1] = rowSegmentCount;
+        glyphOutlineFlatWords_[header + 2] = row.FillRule;
+        glyphOutlineFlatWords_[header + 4] = word(row.BoundsMin.X);
+        glyphOutlineFlatWords_[header + 5] = word(row.BoundsMin.Y);
+        glyphOutlineFlatWords_[header + 6] = word(row.BoundsMin.Z);
+        glyphOutlineFlatWords_[header + 7] = word(row.BoundsMax.X);
+        glyphOutlineFlatWords_[header + 8] = word(row.BoundsMax.Y);
+        glyphOutlineFlatWords_[header + 9] = word(row.BoundsMax.Z);
+        for (std::uint32_t segmentIndex = 0; segmentIndex < rowSegmentCount; ++segmentIndex) {
+            const auto& segment = row.Segments[segmentIndex];
+            const std::size_t base = segmentDataBase + segmentOffset * kSegmentWords;
+            const auto emitPoint = [&](std::size_t offset, const auto& point) {
+                glyphOutlineFlatWords_[base + offset + 0] = word(point.X);
+                glyphOutlineFlatWords_[base + offset + 1] = word(point.Y);
+                glyphOutlineFlatWords_[base + offset + 2] = word(point.Z);
+            };
+            emitPoint(0, segment.P0);
+            emitPoint(3, segment.P1);
+            emitPoint(6, segment.P2);
+            emitPoint(9, segment.P3);
+            glyphOutlineFlatWords_[base + 12] = segment.Kind;
+            glyphOutlineFlatWords_[base + 13] = segment.ContourStart;
+            ++segmentOffset;
+        }
+    }
     // The shader builder runs after this node's CompileImpl. Persistent octree buffers therefore
     // already exist by the time the registry's glyph blob is known; replacing only this buffer
     // keeps the runtime payload synchronized without rebuilding unrelated octree data.
@@ -477,21 +525,38 @@ void BodyOctreeSceneNode::RefreshGlyphOutlineBuffer() {
         glyphOutlineInstances_.empty() ? nullptr : glyphOutlineInstances_.data(),
         replacement, replacementMemory, "glyph outline SSBO refresh");
 
-    if (glyphOutlineBuffer_ != VK_NULL_HANDLE || glyphOutlineMemory_ != VK_NULL_HANDLE) {
+    const VkDeviceSize flatSize = std::max<VkDeviceSize>(
+        glyphOutlineFlatWords_.size() * sizeof(std::uint32_t), 1);
+    VkBuffer flatReplacement = VK_NULL_HANDLE;
+    VkDeviceMemory flatReplacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, flatSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        glyphOutlineFlatWords_.empty() ? nullptr : glyphOutlineFlatWords_.data(),
+        flatReplacement, flatReplacementMemory, "packed glyph outline SSBO refresh");
+
+    if (glyphOutlineBuffer_ != VK_NULL_HANDLE || glyphOutlineMemory_ != VK_NULL_HANDLE ||
+        glyphOutlineFlatBuffer_ != VK_NULL_HANDLE || glyphOutlineFlatMemory_ != VK_NULL_HANDLE) {
         RetiredBufferGeneration retired;
         retired.retiredAtFrame = executeFrameCounter_;
         retired.buffers.emplace_back(glyphOutlineBuffer_, glyphOutlineMemory_);
+        retired.buffers.emplace_back(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_);
         pendingRetire_.push_back(std::move(retired));
     }
     glyphOutlineBuffer_ = replacement;
     glyphOutlineMemory_ = replacementMemory;
+    glyphOutlineFlatBuffer_ = flatReplacement;
+    glyphOutlineFlatMemory_ = flatReplacementMemory;
     if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER.index, 0)) {
         // The shader builder can run after TypedCompileImpl, so update the same Resource object
         // that the descriptor gatherer already references; Execute re-emits it as well for the
         // normal per-frame refresh path.
         output->SetHandle<VkBuffer>(VkBuffer(glyphOutlineBuffer_));
     }
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER.index, 0)) {
+        output->SetHandle<VkBuffer>(VkBuffer(glyphOutlineFlatBuffer_));
+    }
     RecordWholeBufferUpload(static_cast<uint64_t>(size));
+    RecordWholeBufferUpload(static_cast<uint64_t>(flatSize));
     NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed glyph outline buffer (" +
                   std::to_string(static_cast<uint64_t>(size)) + "B)");
 }
@@ -670,6 +735,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // R631: runtime glyph-outline SSBO (binding 51), always emitted with a descriptor-valid
     // one-byte placeholder when the active recipe set contains no glyph data.
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
     // Surface-Shell ESVO cache — publish descriptor-valid placeholders until the
     // first complete generation is produced and re-emitted by ExecuteImpl.
     ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,           shellDataBuffer_);
@@ -852,6 +918,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         glyphOutlineBufferDirty_ = false;
     }
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
 
     // Re-emit the octree slots with the freshly-created handles after a re-materialize,
     // so GetOutput()->GetHandle() (and any per-frame descriptor re-bind) sees the new buffers.
@@ -866,6 +933,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
         // Publish shell handles with the config created from the same complete pool.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, shellDataBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_);
@@ -1401,6 +1469,12 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         glyphOutlineInstances_.empty() ? nullptr : glyphOutlineInstances_.data(),
         glyphOutlineBuffer_, glyphOutlineMemory_, "glyph outline SSBO");
+    const VkDeviceSize glyphOutlineFlatSize = std::max<VkDeviceSize>(
+        glyphOutlineFlatWords_.size() * sizeof(std::uint32_t), 1);
+    CreateHostBuffer(device, glyphOutlineFlatSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        glyphOutlineFlatWords_.empty() ? nullptr : glyphOutlineFlatWords_.data(),
+        glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_, "packed glyph outline SSBO");
 
     // E6-T2: charge every wholesale CreateHostBuffer call separately.  A
     // one-byte placeholder is still a known allocation and remains visible in
@@ -1417,6 +1491,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
     RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineFlatSize));
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
@@ -1743,6 +1818,7 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
     retire(tierRefTableBuffer_,  tierRefTableMemory_);
     retire(occupancyGridBuffer_, occupancyGridMemory_);
     retire(glyphOutlineBuffer_,  glyphOutlineMemory_);
+    retire(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_);
 
     // The RT acceleration structure references the shell/proxy source about to be replaced.
     // Its AS handles and tracked buffer allocations are retired on the SAME clock so a still
@@ -2142,6 +2218,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
     destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
     destroy(glyphOutlineBuffer_,  glyphOutlineMemory_);  // R631
+    destroy(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_); // R768
 }
 
 // ============================================================================

@@ -156,6 +156,7 @@ public:
         return transformPerFrame_.GetUniformBuffer(ringSlot % kRingSize);
     }
     VkBuffer GetGlyphOutlineBufferHandle() const { return glyphOutlineBuffer_; }
+    VkBuffer GetGlyphOutlineFlatBufferHandle() const { return glyphOutlineFlatBuffer_; }
 
     /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.
@@ -505,6 +506,7 @@ private:
     // mirrors providedPool_'s "stashed here, consumed at (re)Compile" shape.
     std::vector<float> occupancyGrid_;
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineInstances_;
+    std::vector<std::uint32_t> glyphOutlineFlatWords_;
 
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
@@ -561,6 +563,8 @@ private:
     // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
     VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;
+    VkBuffer       glyphOutlineFlatBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory glyphOutlineFlatMemory_ = VK_NULL_HANDLE;
     bool           glyphOutlineBufferDirty_ = false;
 
     // OOC R1: a MONOTONIC per-node Execute counter — the retire/reclaim clock. It is NOT
