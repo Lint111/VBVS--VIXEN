@@ -5,6 +5,10 @@ endif()
 if(NOT DEFINED LOOKDEV_CAPTURE_BUDGET_S)
     set(LOOKDEV_CAPTURE_BUDGET_S 900)
 endif()
+# Keep the child process guard aligned with the suite-level CMake budget.  The
+# capture executable defaults to a shorter standalone budget when invoked
+# directly, but this wrapper explicitly owns the longer suite budget.
+set(ENV{VIXEN_LOOKDEV_CAPTURE_BUDGET_MS} "${LOOKDEV_CAPTURE_BUDGET_S}000")
 string(TIMESTAMP _suite_start "%s")
 
 set(_gtest_filter "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
