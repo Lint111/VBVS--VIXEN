@@ -57,6 +57,14 @@ endif()
 
 set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# WSLENV /p presents a WSL checkout to native CMake as a Windows path.  Keep
+# the normalized form for CONFIGURE_DEPENDS globs; raw backslashes become
+# CMake escape sequences when VerifyGlobs.cmake is generated.
+set(_undertow_root_cmake "")
+if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
+    file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _undertow_root_cmake)
+endif()
+
 # Engine worktrees live below vixen/engine/.claude-worktrees/<lane>, so the
 # historical four-parent relative path resolves to engine/core instead of the
 # undertow superproject's core directory. Probe both repository layouts without
@@ -78,9 +86,9 @@ else()
         endif()
     else()
         set(_schema_catalog_candidates "")
-        if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
+        if(_undertow_root_cmake)
             list(APPEND _schema_catalog_candidates
-                "$ENV{UNDERTOW_ROOT}/core/src/Undertow.Authoring/Schema/schemas.json")
+                "${_undertow_root_cmake}/core/src/Undertow.Authoring/Schema/schemas.json")
         endif()
         list(APPEND _schema_catalog_candidates
             "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
@@ -127,8 +135,8 @@ set(_schema_gpu_staged "${CMAKE_CURRENT_BINARY_DIR}/gpu-schema-source")
 set(_schema_kernel_runtime "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime")
 set(_schema_kernel_schema "${_schema_kernel_runtime}/Schema")
 set(_undertow_core_src "")
-if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
-    set(_undertow_core_src "$ENV{UNDERTOW_ROOT}/core/src")
+if(_undertow_root_cmake)
+    set(_undertow_core_src "${_undertow_root_cmake}/core/src")
 elseif(_schema_catalog_source)
     get_filename_component(_undertow_schema_dir "${_schema_catalog_source}" DIRECTORY)
     get_filename_component(_undertow_core_src "${_undertow_schema_dir}/../.." ABSOLUTE)
