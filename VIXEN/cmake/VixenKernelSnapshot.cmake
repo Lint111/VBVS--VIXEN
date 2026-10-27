@@ -114,7 +114,12 @@ function(vixen_kernel_snapshot repository sha out_directory)
     set(_stage "${_directory}.partial-${_writer}")
     set(_archive "${_stage}.tar")
     file(MAKE_DIRECTORY "${_stage}")
-    execute_process(COMMAND "${_vixen_kernel_git}" -C "${repository}" archive
+    # Windows Git commonly has core.autocrlf=true.  `git archive` otherwise applies
+    # that checkout policy while materializing the pinned source tree, so a native
+    # codegen run can emit CRLF from the same commit whose WSL snapshot is LF.  The
+    # snapshot is an immutable source artifact, not a working tree; archive the blob
+    # bytes exactly and let the generated-file LF policy apply at the VIXEN boundary.
+    execute_process(COMMAND "${_vixen_kernel_git}" -c core.autocrlf=false -C "${repository}" archive
         --format=tar --output "${_archive}" "${sha}"
         RESULT_VARIABLE _archived ERROR_VARIABLE _error)
     if(NOT _archived EQUAL 0)

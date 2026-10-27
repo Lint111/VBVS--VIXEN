@@ -1,4 +1,6 @@
-# Auto detect text files and perform LF normalization
-* text=auto
-/VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp -text whitespace=cr-at-eol
-/VIXEN/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h -text whitespace=cr-at-eol
+# Keep checked text and generated outputs LF on every platform. `text=auto`
+# leaves binary assets untouched while `eol=lf` makes the working-tree form
+# deterministic for native Windows checkouts too.
+* text=auto eol=lf
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp text eol=lf whitespace=cr-at-eol
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h text eol=lf whitespace=cr-at-eol
