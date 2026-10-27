@@ -15,8 +15,8 @@ namespace BodyOctreeSceneNodeCounts {
     // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
-    // + flattened runtime glyph-outline buffer (R631).
-    static constexpr size_t OUTPUTS = 19;
+    // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
+    static constexpr size_t OUTPUTS = 20;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -34,7 +34,7 @@ namespace BodyOctreeSceneNodeCounts {
  * INSTANCE_BUFFER (VkBuffer) + INSTANCE_COUNT (int32_t) feed the instanced draw.
  *
  * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX)
- * Outputs: 19 (the octree, instance, SDF, shell, tier-ref, occupancy, RT-query,
+ * Outputs: 20 (the octree, instance, SDF, shell, tier-ref, occupancy, RT-query,
  *              proxy-AABB, transform, motion, and glyph-outline outputs above).
  */
 CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
@@ -62,7 +62,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (19) =====
+    // ===== OUTPUTS (20) =====
     // Same names/types as VoxelGridNode's octree slots (so Task 8 can swap nodes).
     OUTPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
@@ -181,6 +181,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     OUTPUT_SLOT(GLYPH_OUTLINE_BUFFER, VkBuffer, 18,
         SlotNullability::Required, SlotMutability::WriteOnly);
 
+    // R768: packed outline words consumed by the production uber shader at binding 52.
+    OUTPUT_SLOT(GLYPH_OUTLINE_FLAT_BUFFER, VkBuffer, 19,
+        SlotNullability::Required, SlotMutability::WriteOnly);
+
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
@@ -266,6 +270,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         glyphOutlineDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(GLYPH_OUTLINE_BUFFER, "glyph_outline_buffer", ResourceLifetime::Persistent, glyphOutlineDesc);
 
+        BufferDescriptor glyphOutlineFlatDesc{};
+        glyphOutlineFlatDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(GLYPH_OUTLINE_FLAT_BUFFER, "glyph_outline_flat_buffer", ResourceLifetime::Persistent, glyphOutlineFlatDesc);
+
         // W-RTQUERY Slice A: TLAS handle output — HandleDescriptor mirrors
         // AccelerationStructureNodeConfig::TLAS_HANDLE exactly (same handle-passthrough
         // convention as VULKAN_DEVICE_IN above; not a buffer-usage resource).
@@ -309,6 +317,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(INSTANCE_TRANSFORM_BUFFER_Slot::index == 16, "INSTANCE_TRANSFORM_BUFFER must be at index 16");
     static_assert(INSTANCE_MOTION_BUFFER_Slot::index == 17, "INSTANCE_MOTION_BUFFER must be at index 17");
     static_assert(GLYPH_OUTLINE_BUFFER_Slot::index == 18, "GLYPH_OUTLINE_BUFFER must be at index 18");
+    static_assert(GLYPH_OUTLINE_FLAT_BUFFER_Slot::index == 19, "GLYPH_OUTLINE_FLAT_BUFFER must be at index 19");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -320,6 +329,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<INSTANCE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INSTANCE_TRANSFORM_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<GLYPH_OUTLINE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<GLYPH_OUTLINE_FLAT_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, int32_t>);
     static_assert(std::is_same_v<OCTREE_SDF_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKLOOKUP_BUFFER_Slot::Type, VkBuffer>);

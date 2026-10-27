@@ -969,6 +969,8 @@ protected:
         VkDeviceMemory occupancyGridMem = VK_NULL_HANDLE;
         VkBuffer glyphOutlineBuf = VK_NULL_HANDLE;
         VkDeviceMemory glyphOutlineMem = VK_NULL_HANDLE;
+        VkBuffer glyphOutlineFlatBuf = VK_NULL_HANDLE;
+        VkDeviceMemory glyphOutlineFlatMem = VK_NULL_HANDLE;
         VkDeviceMemory tierRefMem = VK_NULL_HANDLE, requestMem = VK_NULL_HANDLE, resultMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, rayTraceBuf, rayTraceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, channelPoolBuf, channelPoolMem, true);
@@ -979,6 +981,9 @@ protected:
         CreateHostBuffer(1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, occupancyGridBuf, occupancyGridMem, true);
         // The shared glyph outline blob (binding 51) the recipe kernels read; this fixture has no glyphs.
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, glyphOutlineBuf, glyphOutlineMem, true);
+        // R768 added the packed production outline stream at binding 52. This direct shader
+        // fixture does not upload glyphs, but it must still satisfy the reflected descriptor ABI.
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, glyphOutlineFlatBuf, glyphOutlineFlatMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tierRefBuf, tierRefMem, true);
         CreateHostBuffer(sizeof(request), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                          requestBuf, requestMem, false);
@@ -994,9 +999,9 @@ protected:
             out.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return out;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 16> bindings = {{
+        const std::array<VkDescriptorSetLayoutBinding, 17> bindings = {{
             bind(1), bind(2), bind(3), bind(4), bind(5), bind(10), bind(11),
-            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47), bind(48), bind(51),
+            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47), bind(48), bind(51), bind(52),
         }};
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1039,7 +1044,7 @@ protected:
         VkDescriptorSet set = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
 
-        const std::array<VkDescriptorBufferInfo, 16> infos = {{
+        const std::array<VkDescriptorBufferInfo, 17> infos = {{
             {nodesBuf, 0, VK_WHOLE_SIZE},
             {bricksBuf, 0, VK_WHOLE_SIZE},
             {materialsBuf, 0, VK_WHOLE_SIZE},
@@ -1056,8 +1061,9 @@ protected:
             {instanceTransformBuf, 0, VK_WHOLE_SIZE},
             {occupancyGridBuf, 0, VK_WHOLE_SIZE},
             {glyphOutlineBuf, 0, VK_WHOLE_SIZE},
+            {glyphOutlineFlatBuf, 0, VK_WHOLE_SIZE},
         }};
-        std::array<VkWriteDescriptorSet, 16> writes{};
+        std::array<VkWriteDescriptorSet, 17> writes{};
         for (size_t i = 0; i < writes.size(); ++i) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[i].dstSet = set;
@@ -1114,6 +1120,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, resultBuf, nullptr); vkFreeMemory(logicalDevice_, resultMem, nullptr);
         vkDestroyBuffer(logicalDevice_, occupancyGridBuf, nullptr); vkFreeMemory(logicalDevice_, occupancyGridMem, nullptr);
         vkDestroyBuffer(logicalDevice_, glyphOutlineBuf, nullptr); vkFreeMemory(logicalDevice_, glyphOutlineMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, glyphOutlineFlatBuf, nullptr); vkFreeMemory(logicalDevice_, glyphOutlineFlatMem, nullptr);
     }
 
     // Device->host readback of an arbitrary SSBO via vkCmdCopyBuffer (same pattern as
