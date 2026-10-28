@@ -179,9 +179,9 @@ inline constexpr AppFlowDataTarget kDataTargets[] = {
 
 // Mirrors RecipeContainerView's role: the reader later tasks parse the artifact through.
 struct AppFlowContainerView {
-    constexpr AppFlowContainerView() noexcept :
+    constexpr AppFlowContainerView() :
         actions_(kActionDecls), transitions_(kTransitions),
-        states_(std::span<const FlowStateId>(kStateIds) noexcept), initialState_(kInitialState), terminalStates_(std::span<const FlowStateId>(kTerminalStateIds))
+        states_(std::span<const FlowStateId>(kStateIds)), initialState_(kInitialState), terminalStates_(std::span<const FlowStateId>(kTerminalStateIds))
         , elementTriggers_(kElementTriggers), keyDefaults_(kKeyDefaults), returnEdges_(kReturnEdges)
         , dataTargets_(kDataTargets)
     {}
@@ -196,7 +196,7 @@ struct AppFlowContainerView {
         std::span<const FlowStateId> states = std::span<const FlowStateId>(kStateIds),
         FlowStateId initialState = kInitialState,
         std::span<const FlowStateId> terminalStates = std::span<const FlowStateId>(kTerminalStateIds)
-    ) noexcept : actions_(actions), transitions_(transitions), states_(states), initialState_(initialState), terminalStates_(terminalStates)
+    ) : actions_(actions), transitions_(transitions), states_(states), initialState_(initialState), terminalStates_(terminalStates)
         , elementTriggers_(elementTriggers), keyDefaults_(keyDefaults), returnEdges_(returnEdges)
         , dataTargets_(dataTargets)
     {}
@@ -212,23 +212,23 @@ private:
     std::span<const AppFlowReturnEdge> returnEdges_;
     std::span<const AppFlowDataTarget> dataTargets_;
 public:
-    static constexpr std::span<const AppFlowActionDecl> actions() noexcept { return kActionDecls; }
-    static constexpr std::span<const AppFlowTransition> transitions() noexcept { return kTransitions; }
-    static constexpr std::span<const FlowStateId> stateIds() noexcept { return std::span<const FlowStateId>(kStateIds); }
-    static constexpr std::span<const FlowStateId> terminalStateIds() noexcept { return std::span<const FlowStateId>(kTerminalStateIds); }
-    static constexpr std::span<const AppFlowElementTrigger> elementTriggers() noexcept { return kElementTriggers; }
-    static constexpr std::span<const AppFlowKeyDefault> keyDefaults() noexcept { return kKeyDefaults; }
-    static constexpr std::span<const AppFlowReturnEdge> returnEdges() noexcept { return kReturnEdges; }
-    static constexpr std::span<const AppFlowDataTarget> dataTargets() noexcept { return kDataTargets; }
-    constexpr std::span<const AppFlowActionDecl> actionTable() const noexcept { return actions_; }
-    constexpr std::span<const AppFlowTransition> transitionTable() const noexcept { return transitions_; }
-    constexpr std::span<const FlowStateId> stateTable() const noexcept { return states_; }
-    constexpr FlowStateId initialState() const noexcept { return initialState_; }
-    constexpr std::span<const FlowStateId> terminalStateTable() const noexcept { return terminalStates_; }
-    constexpr std::span<const AppFlowElementTrigger> elementTriggerTable() const noexcept { return elementTriggers_; }
-    constexpr std::span<const AppFlowKeyDefault> keyDefaultTable() const noexcept { return keyDefaults_; }
-    constexpr std::span<const AppFlowReturnEdge> returnEdgeTable() const noexcept { return returnEdges_; }
-    constexpr std::span<const AppFlowDataTarget> dataTargetTable() const noexcept { return dataTargets_; }
+    static constexpr std::span<const AppFlowActionDecl> actions() { return kActionDecls; }
+    static constexpr std::span<const AppFlowTransition> transitions() { return kTransitions; }
+    static constexpr std::span<const FlowStateId> stateIds() { return std::span<const FlowStateId>(kStateIds); }
+    static constexpr std::span<const FlowStateId> terminalStateIds() { return std::span<const FlowStateId>(kTerminalStateIds); }
+    static constexpr std::span<const AppFlowElementTrigger> elementTriggers() { return kElementTriggers; }
+    static constexpr std::span<const AppFlowKeyDefault> keyDefaults() { return kKeyDefaults; }
+    static constexpr std::span<const AppFlowReturnEdge> returnEdges() { return kReturnEdges; }
+    static constexpr std::span<const AppFlowDataTarget> dataTargets() { return kDataTargets; }
+    constexpr std::span<const AppFlowActionDecl> actionTable() const { return actions_; }
+    constexpr std::span<const AppFlowTransition> transitionTable() const { return transitions_; }
+    constexpr std::span<const FlowStateId> stateTable() const { return states_; }
+    constexpr FlowStateId initialState() const { return initialState_; }
+    constexpr std::span<const FlowStateId> terminalStateTable() const { return terminalStates_; }
+    constexpr std::span<const AppFlowElementTrigger> elementTriggerTable() const { return elementTriggers_; }
+    constexpr std::span<const AppFlowKeyDefault> keyDefaultTable() const { return keyDefaults_; }
+    constexpr std::span<const AppFlowReturnEdge> returnEdgeTable() const { return returnEdges_; }
+    constexpr std::span<const AppFlowDataTarget> dataTargetTable() const { return dataTargets_; }
 };
 
 } // namespace Vixen::AppFlow::Generated
