@@ -22,7 +22,7 @@ namespace Vixen::Views {
 // per-field 1:1 transform of one value. That's precisely why it doesn't fit Projection's shape
 // (design §5a maps ONE source value to ONE bound value via a named transform) and needs Override:
 // the framework generates no wiring at all, only this hook point.
-inline int BindEditorLayersModel_activeLayerCountOverride(int* maskAsInt) {
+inline int BindEditorLayersModel_activeLayerCountOverride(int* maskAsInt) noexcept {
     return std::popcount(static_cast<uint32_t>(*maskAsInt));
 }
 

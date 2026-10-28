@@ -27,7 +27,7 @@
 // implementation. A trivial popcount stand-in is enough; this test isn't proving the real
 // editor's behavior, only that the generated call site resolves against SOME definition.
 namespace Vixen::Views {
-int BindEditorLayersModel_activeLayerCountOverride(int* maskAsInt) {
+int BindEditorLayersModel_activeLayerCountOverride(int* maskAsInt) noexcept {
     return std::popcount(static_cast<unsigned>(*maskAsInt));
 }
 }  // namespace Vixen::Views
