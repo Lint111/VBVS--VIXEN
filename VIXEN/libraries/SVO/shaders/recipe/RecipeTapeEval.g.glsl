@@ -2,6 +2,7 @@
 // AllocateRecipeTapeRegisters supplies packed addresses and the actual peak depths.
 // The caller declares RecipeTapeInstruction recipeTape[] and SdfCore_* callables.
 // recipeTape[instructionIndex].data[3] is accessed through YK_TAPE_DATA for shared chunks.
+// The position stack is a per-invocation storage-buffer tape at binding 4; callers allocate 64 vec4 slots per invocation.
 struct RecipeTapeOutput { uint channel; uint valueOffset; uint elementCount; };
 #if !defined(RECIPE_TAPE_VALUE_COUNT) || !defined(RECIPE_TAPE_POSITION_COUNT)
 #error Define tape storage counts from AllocateRecipeTapeRegisters.
@@ -670,12 +671,22 @@ void RecipeTapeValuesSet(inout RecipeTapeValues registers, uint slot, float valu
     }
     }
 }
-struct RecipeTapePositions { vec4 slots[64]; };
-vec4 RecipeTapePositionsGet(in RecipeTapePositions registers, uint slot) {
-    return registers.slots[slot];
+layout(std430, binding = 4) buffer RecipeTapePositionStackBuffer {
+    vec4 slots[];
+} recipeTapePositionStack;
+struct RecipeTapePositions { uint base; };
+uint RecipeTapePositionBase() {
+    uint dispatchWidth = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    uint dispatchHeight = gl_NumWorkGroups.y * gl_WorkGroupSize.y;
+    uint invocation = gl_GlobalInvocationID.z * dispatchWidth * dispatchHeight
+        + gl_GlobalInvocationID.y * dispatchWidth + gl_GlobalInvocationID.x;
+    return invocation * 64u;
 }
-void RecipeTapePositionsSet(inout RecipeTapePositions registers, uint slot, vec4 value) {
-    registers.slots[slot] = value;
+vec4 RecipeTapePositionsGet(in RecipeTapePositions registers, uint slot) {
+    return recipeTapePositionStack.slots[registers.base + slot];
+}
+void RecipeTapePositionsSet(in RecipeTapePositions registers, uint slot, vec4 value) {
+    recipeTapePositionStack.slots[registers.base + slot] = value;
 }
 #ifndef RECIPE_TAPE_SHARED_CHUNK
 #define RECIPE_TAPE_SHARED_CHUNK 0
@@ -694,6 +705,7 @@ bool EvalRecipeTapeOutputsWithParams(uint tapeOffset, uint tapeCount, precise ve
     out uint outputCount, out uint outputValueCount, out vec3 declaredPosition, out uint executedClauses) {
     RecipeTapeValues values;
     RecipeTapePositions positions;
+    positions.base = RecipeTapePositionBase();
     outputCount = 0u; outputValueCount = 0u; declaredPosition = vec3(0.0); executedClauses = 0u;
     if (tapeCount == 0u) return false;
     bool valid = true;

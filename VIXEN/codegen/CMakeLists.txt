@@ -120,7 +120,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "378431d91b55d24f845640b6240dfb00c1221ddf")
+set(_vixen_tracked_yeroket_kernel_sha "6e3474325d55e14ebfc803c1b816fd805e4ac64c")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)

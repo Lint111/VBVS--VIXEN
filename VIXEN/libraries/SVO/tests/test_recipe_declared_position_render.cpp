@@ -109,9 +109,9 @@ std::string ComposeTileTapeRaymarchShader(const std::string& sdfCoreGlsl,
     ss << "layout(set=0,binding=1,std430) readonly buffer InRecipeTape { RecipeTapeInstruction recipeTape[]; };\n";
     ss << "layout(set=0,binding=2,std430) readonly buffer InTileRanges { uvec2 tileRanges[]; };\n";
     ss << "layout(set=0,binding=3,std430) writeonly buffer OutClauseCounts { uint clauseCounts[]; };\n";
+    ss << "layout(local_size_x=8,local_size_y=8) in;\n";
     ss << evaluatorSource << "\n" << evaluatorAdapter << "\n";
     ss << R"GLSL(
-layout(local_size_x=8,local_size_y=8) in;
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outImage);
@@ -885,15 +885,22 @@ protected:
         const VkDeviceSize tapeBytes = tape.size() * sizeof(GpuRecipeTapeInstruction);
         const VkDeviceSize rangeBytes = ranges.size() * sizeof(TileTapeRange);
         const VkDeviceSize clauseBytes = static_cast<VkDeviceSize>(w) * h * sizeof(std::uint32_t);
+        const std::uint32_t dispatchWidth = ((w + 7u) / 8u) * 8u;
+        const std::uint32_t dispatchHeight = ((h + 7u) / 8u) * 8u;
+        const VkDeviceSize positionStackBytes = static_cast<VkDeviceSize>(dispatchWidth)
+            * dispatchHeight * 64u * sizeof(float) * 4u;
         VkBuffer tapeBuffer = VK_NULL_HANDLE; VkDeviceMemory tapeMemory = VK_NULL_HANDLE;
         VkBuffer rangeBuffer = VK_NULL_HANDLE; VkDeviceMemory rangeMemory = VK_NULL_HANDLE;
         VkBuffer clauseBuffer = VK_NULL_HANDLE; VkDeviceMemory clauseMemory = VK_NULL_HANDLE;
+        VkBuffer positionStackBuffer = VK_NULL_HANDLE; VkDeviceMemory positionStackMemory = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(tapeBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             tapeBuffer, tapeMemory));
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(rangeBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             rangeBuffer, rangeMemory));
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(clauseBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             clauseBuffer, clauseMemory));
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(positionStackBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            positionStackBuffer, positionStackMemory));
         void* mapped = nullptr;
         ASSERT_EQ(vkMapMemory(logicalDevice_, tapeMemory, 0, tapeBytes, 0, &mapped), VK_SUCCESS);
         std::memcpy(mapped, tape.data(), static_cast<size_t>(tapeBytes));
@@ -912,16 +919,16 @@ protected:
         VkShaderModule shaderModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &shaderInfo, nullptr, &shaderModule), VK_SUCCESS);
 
-        VkDescriptorSetLayoutBinding bindings[6]{};
+        VkDescriptorSetLayoutBinding bindings[7]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        for (std::uint32_t binding = 1; binding < 4; ++binding)
+        for (std::uint32_t binding = 1; binding < 5; ++binding)
             bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
                 VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        bindings[4] = {31, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        bindings[5] = {32, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[5] = {31, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[6] = {32, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo setLayoutInfo{};
         setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        setLayoutInfo.bindingCount = 6;
+        setLayoutInfo.bindingCount = 7;
         setLayoutInfo.pBindings = bindings;
         VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &setLayoutInfo, nullptr, &setLayout), VK_SUCCESS);
@@ -957,7 +964,7 @@ protected:
 
         VkDescriptorPoolSize poolSizes[2] = {
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
         };
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -981,20 +988,21 @@ protected:
             glyphBuffer, glyphMemory));
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             pathBuffer, pathMemory));
-        VkDescriptorBufferInfo bufferInfos[5] = {
+        VkDescriptorBufferInfo bufferInfos[6] = {
             {tapeBuffer, 0, VK_WHOLE_SIZE},
             {rangeBuffer, 0, VK_WHOLE_SIZE},
             {clauseBuffer, 0, VK_WHOLE_SIZE},
+            {positionStackBuffer, 0, VK_WHOLE_SIZE},
             {glyphBuffer, 0, VK_WHOLE_SIZE},
             {pathBuffer, 0, VK_WHOLE_SIZE},
         };
-        constexpr std::uint32_t bufferBindings[] = {1, 2, 3, 31, 32};
-        VkWriteDescriptorSet writes[6]{};
+        constexpr std::uint32_t bufferBindings[] = {1, 2, 3, 4, 31, 32};
+        VkWriteDescriptorSet writes[7]{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = descriptorSet; writes[0].dstBinding = 0;
         writes[0].descriptorCount = 1; writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writes[0].pImageInfo = &imageInfo;
-        for (std::uint32_t index = 0; index < 5; ++index) {
+        for (std::uint32_t index = 0; index < 6; ++index) {
             writes[index + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[index + 1].dstSet = descriptorSet;
             writes[index + 1].dstBinding = bufferBindings[index];
@@ -1002,7 +1010,7 @@ protected:
             writes[index + 1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             writes[index + 1].pBufferInfo = &bufferInfos[index];
         }
-        vkUpdateDescriptorSets(logicalDevice_, 6, writes, 0, nullptr);
+        vkUpdateDescriptorSets(logicalDevice_, 7, writes, 0, nullptr);
 
         VkCommandBufferAllocateInfo commandAllocateInfo{};
         commandAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1114,6 +1122,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, clauseBuffer, nullptr); vkFreeMemory(logicalDevice_, clauseMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, rangeBuffer, nullptr); vkFreeMemory(logicalDevice_, rangeMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, tapeBuffer, nullptr); vkFreeMemory(logicalDevice_, tapeMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, positionStackBuffer, nullptr); vkFreeMemory(logicalDevice_, positionStackMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, pathBuffer, nullptr); vkFreeMemory(logicalDevice_, pathMemory, nullptr);
         vkDestroyBuffer(logicalDevice_, glyphBuffer, nullptr); vkFreeMemory(logicalDevice_, glyphMemory, nullptr);
     }
