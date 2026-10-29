@@ -23,8 +23,10 @@ self="$(readlink -f -- "${BASH_SOURCE[0]}")"
 # queue so queued codegen sees the same schema checkout as this lane without a
 # hand-set UNDERTOW_ROOT. If the lane has no counterpart, use the sibling
 # Undertow checkout; CMake performs the same pair-then-fallback derivation.
-vixen_root="$(cd "$(dirname "$self")/.." && pwd -P)"
-lane_root="$(dirname "$vixen_root")"
+vixen_repo_root="$(cd "$(dirname "$self")/.." && pwd -P)"
+vixen_root="$vixen_repo_root/VIXEN"
+[[ -d "$vixen_root" ]] || vixen_root="$vixen_repo_root"
+lane_root="$vixen_repo_root"
 worktrees_root="$(dirname "$lane_root")"
 provider_repo="$(dirname "$worktrees_root")"
 projects_root="$(dirname "$provider_repo")"
