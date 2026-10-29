@@ -13,6 +13,36 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 set(VIXEN_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 include("${VIXEN_ROOT}/cmake/VixenWindowsGitTrust.cmake")
 
+# A VIXEN lane and its Undertow consumer share a lane name under sibling
+# .claude-worktrees directories. Publish the derived consumer root in the
+# configure environment before libraries are added; Text and codegen both use
+# that interface, and neither needs a hand-set UNDERTOW_ROOT.
+option(VIXEN_AUTO_DERIVE_UNDERTOW_ROOT
+    "Derive UNDERTOW_ROOT from the paired lane or pinned provider layout" ON)
+if(NOT DEFINED ENV{UNDERTOW_ROOT} AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
+    get_filename_component(_vixen_lane_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+    get_filename_component(_vixen_lane_name "${_vixen_lane_root}" NAME)
+    get_filename_component(_vixen_worktrees_root "${_vixen_lane_root}" DIRECTORY)
+    get_filename_component(_vixen_provider_repo "${_vixen_worktrees_root}" DIRECTORY)
+    get_filename_component(_vixen_projects_root "${_vixen_provider_repo}" DIRECTORY)
+    set(_undertow_lane_candidate
+        "${_vixen_projects_root}/undertow/.claude-worktrees/${_vixen_lane_name}")
+    foreach(_undertow_candidate
+        "${_undertow_lane_candidate}"
+        "${_vixen_projects_root}/undertow")
+        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json")
+            get_filename_component(_undertow_root_derived "${_undertow_candidate}" REALPATH)
+            set(ENV{UNDERTOW_ROOT} "${_undertow_root_derived}")
+            if("${_undertow_candidate}" STREQUAL "${_undertow_lane_candidate}")
+                message(STATUS "[vixen] using paired Undertow lane: ${_undertow_root_derived}")
+            else()
+                message(STATUS "[vixen] using Undertow sibling for pinned VIXEN provider: ${_undertow_root_derived}")
+            endif()
+            break()
+        endif()
+    endforeach()
+endif()
+
 set(Recipe_Name "VIXEN")
 
 # Standalone entry point for the renderer's non-graphics dependency contract.

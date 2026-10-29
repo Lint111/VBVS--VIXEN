@@ -65,11 +65,9 @@ if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
     file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _undertow_root_cmake)
 endif()
 
-# A VIXEN lane is paired with the same-named Undertow lane beside the provider
-# checkout.  Derive that consumer root from the checkout layout before falling
-# back to the sibling Undertow checkout used by the pinned provider snapshot;
-# this keeps the schema and generated shader interfaces on the same lane without
-# requiring every queued configure to export UNDERTOW_ROOT by hand.
+# Keep this option available when codegen is embedded directly rather than
+# configured through the VIXEN top-level project; the top-level project derives
+# and exports the root before adding libraries and this subdirectory.
 option(VIXEN_AUTO_DERIVE_UNDERTOW_ROOT
     "Derive UNDERTOW_ROOT from the paired lane or pinned provider layout" ON)
 if(NOT _undertow_root_cmake AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
