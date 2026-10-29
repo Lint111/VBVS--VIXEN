@@ -18,6 +18,27 @@ set -euo pipefail
 
 self="$(readlink -f -- "${BASH_SOURCE[0]}")"
 
+# A VIXEN lane and its Undertow consumer are siblings under the same
+# .claude-worktrees directory. Export the paired consumer before locating the
+# queue so queued codegen sees the same schema checkout as this lane without a
+# hand-set UNDERTOW_ROOT. If the lane has no counterpart, use the sibling
+# Undertow checkout; CMake performs the same pair-then-fallback derivation.
+vixen_root="$(cd "$(dirname "$self")/.." && pwd -P)"
+lane_root="$(dirname "$vixen_root")"
+worktrees_root="$(dirname "$lane_root")"
+provider_repo="$(dirname "$worktrees_root")"
+projects_root="$(dirname "$provider_repo")"
+lane_name="$(basename "$lane_root")"
+for undertow_candidate in \
+    "$projects_root/undertow/.claude-worktrees/$lane_name" \
+    "$projects_root/undertow"; do
+  if [[ -f "$undertow_candidate/core/src/Undertow.Authoring/Schema/schemas.json" ]]; then
+    [[ -n "${UNDERTOW_ROOT:-}" ]] || export UNDERTOW_ROOT="$(cd "$undertow_candidate" && pwd -P)"
+    break
+  fi
+done
+export VIXEN_ROOT="${VIXEN_ROOT:-$vixen_root}"
+
 usable() {
   local candidate real
   candidate="$1"
@@ -27,7 +48,10 @@ usable() {
 }
 
 queue=""
-if [[ -n "${UT_QUEUE_SCRIPT:-}" ]]; then
+if [[ -n "${WITH_TEST_LOCK_BIN:-}" ]]; then
+  usable "$WITH_TEST_LOCK_BIN" || { echo "[with-test-lock] WITH_TEST_LOCK_BIN is not a usable queue script: $WITH_TEST_LOCK_BIN" >&2; exit 2; }
+  queue="$WITH_TEST_LOCK_BIN"
+elif [[ -n "${UT_QUEUE_SCRIPT:-}" ]]; then
   usable "$UT_QUEUE_SCRIPT" || { echo "[with-test-lock] UT_QUEUE_SCRIPT is not a usable queue script: $UT_QUEUE_SCRIPT" >&2; exit 2; }
   queue="$UT_QUEUE_SCRIPT"
 elif [[ -n "${UNDERTOW_ROOT:-}" ]]; then

@@ -65,6 +65,37 @@ if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
     file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _undertow_root_cmake)
 endif()
 
+# A VIXEN lane is paired with the same-named Undertow lane beside the provider
+# checkout.  Derive that consumer root from the checkout layout before falling
+# back to the sibling Undertow checkout used by the pinned provider snapshot;
+# this keeps the schema and generated shader interfaces on the same lane without
+# requiring every queued configure to export UNDERTOW_ROOT by hand.
+option(VIXEN_AUTO_DERIVE_UNDERTOW_ROOT
+    "Derive UNDERTOW_ROOT from the paired lane or pinned provider layout" ON)
+if(NOT _undertow_root_cmake AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
+    get_filename_component(_vixen_lane_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+    get_filename_component(_vixen_lane_name "${_vixen_lane_root}" NAME)
+    get_filename_component(_vixen_worktrees_root "${_vixen_lane_root}" DIRECTORY)
+    get_filename_component(_vixen_provider_repo "${_vixen_worktrees_root}" DIRECTORY)
+    get_filename_component(_vixen_projects_root "${_vixen_provider_repo}" DIRECTORY)
+    set(_undertow_lane_candidate
+        "${_vixen_projects_root}/undertow/.claude-worktrees/${_vixen_lane_name}")
+    set(_undertow_sibling_candidates
+        "${_undertow_lane_candidate}"
+        "${_vixen_projects_root}/undertow")
+    foreach(_undertow_candidate IN LISTS _undertow_sibling_candidates)
+        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json")
+            get_filename_component(_undertow_root_cmake "${_undertow_candidate}" REALPATH)
+            if("${_undertow_candidate}" STREQUAL "${_undertow_lane_candidate}")
+                message(STATUS "[codegen] using paired Undertow lane: ${_undertow_root_cmake}")
+            else()
+                message(STATUS "[codegen] using Undertow sibling for pinned VIXEN provider: ${_undertow_root_cmake}")
+            endif()
+            break()
+        endif()
+    endforeach()
+endif()
+
 # Engine worktrees live below vixen/engine/.claude-worktrees/<lane>, so the
 # historical four-parent relative path resolves to engine/core instead of the
 # undertow superproject's core directory. Probe both repository layouts without

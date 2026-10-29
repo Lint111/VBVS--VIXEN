@@ -36,6 +36,7 @@
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "VIXEN_AUTO_PROVISION_WSL_VULKAN": "ON",
+        "VIXEN_AUTO_DERIVE_UNDERTOW_ROOT": "ON",
         "VIXEN_CAPABILITY_BUILD_MODE": "FULL"
       }
     },
