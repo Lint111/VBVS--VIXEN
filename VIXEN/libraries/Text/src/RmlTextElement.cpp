@@ -34,9 +34,11 @@ void ApplyTagStyle(Rml::Element* element, const TextElement& source, const TextT
         break;
     case BuiltInTextTag::Color: {
         element->SetClass("ut-text-color", true);
-        const std::uint32_t red = description.rgba & 0xffu;
+        // Text colours use the authored 0xAARRGGBB packing. RmlUi's CSS accepts the
+        // visible RGB bytes in that order; the high alpha byte is intentionally ignored.
+        const std::uint32_t red = (description.rgba >> 16u) & 0xffu;
         const std::uint32_t green = (description.rgba >> 8u) & 0xffu;
-        const std::uint32_t blue = (description.rgba >> 16u) & 0xffu;
+        const std::uint32_t blue = description.rgba & 0xffu;
         char color[8]{};
         std::snprintf(color, sizeof(color), "#%02x%02x%02x", red, green, blue);
         element->SetProperty("color", color);

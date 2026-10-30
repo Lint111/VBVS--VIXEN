@@ -1,0 +1,13 @@
+<rml>
+  <head>
+    <title>ut-text capture</title>
+    <link type="text/rcss" href="ut_text_capture.rcss" />
+  </head>
+  <body>
+    <div id="panel">
+      <div id="heading">UT-TEXT BUILT-IN TAGS</div>
+      <ut-text id="ut-text-line" />
+      <div id="legend">emphasis · colour · pause marker · size</div>
+    </div>
+  </body>
+</rml>

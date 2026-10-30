@@ -41,13 +41,13 @@ private:
 
 class FixtureResolver final : public Vixen::Text::TextResolver {
 public:
-    FixtureResolver() {
+    explicit FixtureResolver(std::uint32_t color = 0x0064c8ffu) : color_(color) {
         constexpr char kText[] = "A bold blue pause big.";
         bytes.assign(kText, sizeof(kText) - 1u);
         offsets = {0u, static_cast<std::uint32_t>(bytes.size())};
         elements = {
             {Vixen::Text::TextElementKind::ConventionTag, 0u, 1u, 0u}, // emphasis
-            {Vixen::Text::TextElementKind::ConventionTag, 0u, 2u, 0x0064c8ffu}, // color
+            {Vixen::Text::TextElementKind::ConventionTag, 0u, 2u, color_}, // color
             {Vixen::Text::TextElementKind::ConventionTag, 0u, 3u, 0u}, // pause
             {Vixen::Text::TextElementKind::ConventionTag, 0u, 4u, 0u}, // size
             {Vixen::Text::TextElementKind::AuthoredTag, 0u, 77u, 0u}, // profile/override hook
@@ -56,8 +56,8 @@ public:
             {0u, 2u, 6u},   // bold
             {1u, 7u, 11u},  // blue
             {2u, 12u, 12u}, // pause marker
-            {3u, 13u, 17u}, // big
-            {4u, 18u, 18u}, // authored hook marker
+            {3u, 18u, 21u}, // big
+            {4u, 21u, 21u}, // authored hook marker
         };
     }
 
@@ -82,6 +82,7 @@ public:
     }
 
 private:
+    std::uint32_t color_;
     std::string bytes;
     std::vector<std::uint32_t> offsets;
     std::vector<Vixen::Text::TextElement> elements;
@@ -135,7 +136,7 @@ TEST_F(RmlTextElementTest, RegisteredElementResolvesClosedTagsAndAuthoredHook) {
     EXPECT_NE(first.find("blue"), Rml::String::npos);
     EXPECT_NE(first.find("big"), Rml::String::npos);
     EXPECT_NE(first.find("font-weight: 700"), Rml::String::npos);
-    EXPECT_NE(first.find("color: #ffc864"), Rml::String::npos);
+    EXPECT_NE(first.find("color: #64c8ff"), Rml::String::npos);
     EXPECT_NE(first.find("data-ut-text-pause=\"true\""), Rml::String::npos);
     EXPECT_NE(first.find("font-size: 125%"), Rml::String::npos);
     EXPECT_NE(first.find("data-ut-authored-tag=\"77\""), Rml::String::npos);
@@ -159,6 +160,21 @@ TEST_F(RmlTextElementTest, RegisteredElementResolvesClosedTagsAndAuthoredHook) {
     const Rml::String second = element->GetInnerRML();
     EXPECT_EQ(second.find("bold"), second.rfind("bold"));
     EXPECT_EQ(element->RebuildCount(), rebuilds + 1u);
+}
+
+TEST_F(RmlTextElementTest, ColorTagPreservesDistinctRgbByteOrder) {
+    const Rml::String rml = R"(<rml><head><title>text</title></head><body style="font-family: LatoLatin;"><ut-text id="line" /></body></rml>)";
+    Rml::ElementDocument* document = context_->LoadDocumentFromMemory(rml);
+    ASSERT_NE(document, nullptr);
+    auto* element = static_cast<Vixen::Text::RmlTextElement*>(document->GetElementById("line"));
+    ASSERT_NE(element, nullptr);
+
+    // 0x12345678 has deliberately distinct R/G/B bytes (12/34/56) and a non-zero alpha byte.
+    element->SetResolver(std::make_shared<FixtureResolver>(0x12345678u));
+    element->SetTextRef({0u, 0u});
+    context_->Update();
+
+    EXPECT_NE(element->GetInnerRML().find("color: #345678"), Rml::String::npos);
 }
 
 TEST_F(RmlTextElementTest, MotionFlagsAreReadableByDefaultAndDoNotStartAnimation) {

@@ -1,0 +1,46 @@
+body {
+    width: 100%;
+    height: 100%;
+    background-color: #12182a;
+    color: #d8e4ff;
+    font-family: LatoLatin;
+}
+
+#panel {
+    position: absolute;
+    left: 42px;
+    top: 28px;
+    width: 556px;
+    height: 112px;
+    padding: 18px 20px;
+    background-color: #243455;
+    border-width: 2px;
+    border-color: #6d91d6;
+}
+
+#heading {
+    color: #dbe6ff;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+#ut-text-line {
+    display: block;
+    font-size: 24px;
+    color: #e8efff;
+    margin-bottom: 12px;
+}
+
+#ut-text-line .ut-text-emphasis {
+    font-weight: 700;
+}
+
+#ut-text-line .ut-text-color {
+    color: #64c8ff;
+}
+
+#legend {
+    color: #9fb2d8;
+    font-size: 13px;
+}
