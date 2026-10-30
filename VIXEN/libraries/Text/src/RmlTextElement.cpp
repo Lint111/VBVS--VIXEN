@@ -77,6 +77,9 @@ void ApplyTagStyle(Rml::Element* element, const TextElement& source, const TextT
 
 RmlTextElement::RmlTextElement(const Rml::String& tag) : Rml::Element(tag) {
     SetAttribute("data-ut-text-motion", "reduced");
+    // The baked row is authoritative text. Inline span boundaries must not make RmlUi
+    // collapse authored spaces between adjacent styled runs.
+    SetProperty("white-space", "pre-wrap");
 }
 
 void RmlTextElement::SetResolver(std::shared_ptr<const TextResolver> resolver) {

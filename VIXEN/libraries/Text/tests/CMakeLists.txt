@@ -76,6 +76,7 @@ if(TARGET GTest::gtest_main)
     )
     target_compile_definitions(test_rml_text_element PRIVATE
         TEXT_LATO_FONT_PATH="${CMAKE_CURRENT_LIST_DIR}/../../RenderGraph/assets/ui/LatoLatin-Regular.ttf"
+        TEXT_LATO_BOLD_FONT_PATH="${CMAKE_CURRENT_LIST_DIR}/../../RenderGraph/assets/ui/LatoLatin-Bold.ttf"
     )
     if(MSVC)
         target_compile_options(test_rml_text_element PRIVATE /W4 /WX)

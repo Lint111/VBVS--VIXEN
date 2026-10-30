@@ -10,7 +10,7 @@ body {
     position: absolute;
     left: 42px;
     top: 28px;
-    width: 556px;
+    width: 414px;
     height: 112px;
     padding: 18px 20px;
     background-color: #243455;
@@ -29,6 +29,7 @@ body {
     display: block;
     font-size: 24px;
     color: #e8efff;
+    white-space: pre-wrap;
     margin-bottom: 12px;
 }
 

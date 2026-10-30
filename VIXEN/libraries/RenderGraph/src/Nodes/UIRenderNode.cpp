@@ -292,6 +292,11 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
             : GetParameterValue<std::string>(UIRenderNodeConfig::RML_DOCUMENT_PATH, "assets/ui/demo.rml");
         const std::string docPath = requestedDocPath.empty() ? std::string{} : ResolveUiAsset(requestedDocPath);
         Rml::LoadFontFace(fontPath);
+        const std::string boldFontPath = ResolveUiAsset("assets/ui/LatoLatin-Bold.ttf");
+        if (!Rml::LoadFontFace(boldFontPath, "LatoLatin", Rml::Style::FontStyle::Normal,
+                               Rml::Style::FontWeight::Bold)) {
+            NODE_LOG_WARNING("[UIRenderNode] bundled Lato bold face could not be loaded: " + boldFontPath);
+        }
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
             // Renderer-agnostic view seam (Inc-2): the consumer's IView registers its own structs/

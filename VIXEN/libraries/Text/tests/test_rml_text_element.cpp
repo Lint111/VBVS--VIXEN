@@ -3,6 +3,7 @@
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/RenderInterface.h>
 #include <RmlUi/Core/SystemInterface.h>
 
@@ -38,6 +39,17 @@ public:
 private:
     std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
+
+std::string RenderedText(const Rml::Element* element) {
+    std::string result;
+    if (const auto* text = dynamic_cast<const Rml::ElementText*>(element)) {
+        for (const auto& line : text->GetLines())
+            result += line.text;
+    }
+    for (int index = 0; index < element->GetNumChildren(); ++index)
+        result += RenderedText(element->GetChild(index));
+    return result;
+}
 
 class FixtureResolver final : public Vixen::Text::TextResolver {
 public:
@@ -97,6 +109,8 @@ protected:
         Rml::SetFontEngineInterface(&font_);
         ASSERT_TRUE(Rml::Initialise());
         ASSERT_TRUE(Rml::LoadFontFace(TEXT_LATO_FONT_PATH));
+        ASSERT_TRUE(Rml::LoadFontFace(TEXT_LATO_BOLD_FONT_PATH, "LatoLatin", Rml::Style::FontStyle::Normal,
+                                      Rml::Style::FontWeight::Bold));
         registry_ = std::make_unique<Vixen::Text::RmlTextElementRegistry>(resolver_);
         ASSERT_TRUE(registry_->Register());
         context_ = Rml::CreateContext("ut_text", Rml::Vector2i(640, 120));
@@ -141,6 +155,7 @@ TEST_F(RmlTextElementTest, RegisteredElementResolvesClosedTagsAndAuthoredHook) {
     EXPECT_NE(first.find("font-size: 125%"), Rml::String::npos);
     EXPECT_NE(first.find("data-ut-authored-tag=\"77\""), Rml::String::npos);
     EXPECT_EQ(element->GetAttribute<Rml::String>("data-ut-text-motion", ""), "reduced");
+    EXPECT_EQ(element->GetComputedValues().white_space(), Rml::Style::WhiteSpace::Prewrap);
 
     Rml::ElementList emphasis;
     Rml::ElementList color;
@@ -151,6 +166,21 @@ TEST_F(RmlTextElementTest, RegisteredElementResolvesClosedTagsAndAuthoredHook) {
     EXPECT_EQ(emphasis.size(), 1u);
     EXPECT_EQ(color.size(), 1u);
     EXPECT_EQ(size.size(), 1u);
+
+    // Layout, rather than serialized markup, is the contract: spaces survive the styled
+    // inline boundaries and the emphasis weight resolves to the registered bold face.
+    EXPECT_EQ(RenderedText(element), "A bold blue pause big.");
+    ASSERT_EQ(emphasis.size(), 1u);
+    EXPECT_EQ(emphasis.front()->GetComputedValues().font_weight(), Rml::Style::FontWeight::Bold);
+    const auto normalFace = font_.GetFontFaceHandle(
+        "LatoLatin", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 24);
+    const auto boldFace = font_.GetFontFaceHandle(
+        "LatoLatin", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, 24);
+    const auto emphasisFace = font_.GetFontFaceHandle(
+        "LatoLatin", emphasis.front()->GetComputedValues().font_style(),
+        emphasis.front()->GetComputedValues().font_weight(), 24);
+    EXPECT_NE(normalFace, boldFace);
+    EXPECT_EQ(emphasisFace, boldFace);
 
     // Reflow/replay is a fresh materialization, not an append. The plain row appears exactly once
     // after a second explicit rebuild and another RmlUi update.
