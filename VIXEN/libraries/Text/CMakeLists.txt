@@ -47,6 +47,7 @@ set(TEXT_HEADERS
     include/Text/Bidi.h
     include/Text/LineBreaker.h
     include/Text/RmlFontEngine.h
+    include/Text/RmlTextElement.h
     include/Text/Shaper.h
     "${TEXT_SHADER_GLSL_INTERFACE}"
     src/shaders/text.vert
@@ -60,6 +61,7 @@ set(TEXT_SOURCES
     src/GlyphOutline.cpp
     src/LineBreaker.cpp
     src/RmlFontEngine.cpp
+    src/RmlTextElement.cpp
     src/Shaper.cpp
 )
 

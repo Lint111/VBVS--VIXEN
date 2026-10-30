@@ -38,3 +38,16 @@ lane-7 FreeType path remains the default, so existing Latin HUD output is
 unchanged until the content loader supplies a preset. The native fixture uses
 the existing bundled Lato face and a test-only Noto Sans Arabic variable font;
 its SIL OFL notice is in `licenses/NotoSansArabic-OFL.txt`.
+
+## `<ut-text>`
+
+`RmlTextElementRegistry` registers the custom `<ut-text>` element with RmlUi. A consumer supplies a
+`TextResolver`, binds a `TextRef` with `RmlTextElement::SetTextRef`, and the element materializes the
+resolver's baked UTF-8 row and ordinal spans as ordinary inline RmlUi elements. This keeps dialogue
+text on the existing `RmlFontEngine` path and avoids runtime markup parsing. The resolver describes
+the closed built-in emphasis, color, pause, and size tags; authored/profile/override ordinals remain
+observable as inert hook classes and data attributes for the R784.6 seam.
+
+`UIRenderNode` owns the registry for the lifetime of its RmlUi context. Readable/reduced-motion mode
+is the default, and `Rebuild` clears and rematerializes children so replay and reflow do not append
+duplicate text.

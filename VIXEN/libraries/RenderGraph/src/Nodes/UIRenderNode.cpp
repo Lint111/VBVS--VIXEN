@@ -1,6 +1,7 @@
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/UIRenderNode.h"
 #include "Text/RmlFontEngine.h"
+#include "Text/RmlTextElement.h"
 #include "Text/GlyphAtlas.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
@@ -92,6 +93,12 @@ std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string
 UIRenderNode::UIRenderNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<UIRenderNodeConfig>(instanceName, nodeType),
       fontEngine_(std::make_unique<Vixen::Text::RmlFontEngine>()) {}
+
+void UIRenderNode::SetTextResolver(std::shared_ptr<const Vixen::Text::TextResolver> resolver) {
+    textResolver_ = std::move(resolver);
+    if (textElementRegistry_)
+        textElementRegistry_->SetResolver(textResolver_);
+}
 
 UIRenderNode::~UIRenderNode() = default;
 
@@ -276,6 +283,8 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());
         Rml::Initialise();
+        textElementRegistry_ = std::make_unique<Vixen::Text::RmlTextElementRegistry>(textResolver_);
+        textElementRegistry_->Register();
         const std::string fontPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::FONT_PATH, "assets/ui/LatoLatin-Regular.ttf"));
         // R766: an app whose panels are all mounted documents (the editor) has no primary document —
         // no view and an empty RML_DOCUMENT_PATH load nothing here.
@@ -855,7 +864,10 @@ void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
             placement.appliedTo = nullptr;
             placement.dirty = true;
         }
+        if (textElementRegistry_)
+            textElementRegistry_->Unregister();
         Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
+        textElementRegistry_.reset();
         renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
         initialized_ = false;
     }

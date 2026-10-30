@@ -66,5 +66,23 @@ if(TARGET GTest::gtest_main)
     endif()
     set_target_properties(test_text_shader_layout PROPERTIES FOLDER "Tests/Text")
     vixen_gtest_discover_tests(Text test_text_shader_layout)
+
+    add_executable(test_rml_text_element
+        test_rml_text_element.cpp
+    )
+    target_link_libraries(test_rml_text_element PRIVATE
+        GTest::gtest_main
+        Text
+    )
+    target_compile_definitions(test_rml_text_element PRIVATE
+        TEXT_LATO_FONT_PATH="${CMAKE_CURRENT_LIST_DIR}/../../RenderGraph/assets/ui/LatoLatin-Regular.ttf"
+    )
+    if(MSVC)
+        target_compile_options(test_rml_text_element PRIVATE /W4 /WX)
+    else()
+        target_compile_options(test_rml_text_element PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    set_target_properties(test_rml_text_element PROPERTIES FOLDER "Tests/Text")
+    vixen_gtest_discover_tests(Text test_rml_text_element)
 endif()
 vixen_schedule_runtime_dlls_for_current_directory()

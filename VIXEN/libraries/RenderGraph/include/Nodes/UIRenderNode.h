@@ -21,7 +21,7 @@
 
 struct SwapChainPublicVariables;  // global (VulkanSwapChain.h); full include in the .cpp
 namespace Rml { class Context; class ElementDocument; }
-namespace Vixen::Text { class RmlFontEngine; }
+namespace Vixen::Text { class RmlFontEngine; class RmlTextElementRegistry; class TextResolver; }
 
 namespace Vixen::RenderGraph {
 
@@ -58,6 +58,10 @@ public:
     /// Poll the opt-in HUD .viewblob source and transactionally re-register its RmlUi model.
     /// Hosts call this once at the top of their update tick, before rendering begins.
     void PollHudHotReload();
+
+    /// Supply the generated TextRef resolver before the first compile. The node registers the
+    /// <ut-text> factory element with this resolver when RmlUi is initialised.
+    void SetTextResolver(std::shared_ptr<const Vixen::Text::TextResolver> resolver);
 
     // --- IUiCompositionHost (relational-vertical-slice M-ui) ---
     // A second-document mount lifecycle over this node's one shared Rml::Context, beside the primary
@@ -122,6 +126,8 @@ private:
     Vixen::Ui::VixenRmlSystemInterface systemInterface_;
     Vixen::Ui::VixenRmlRenderInterface renderInterface_;
     std::unique_ptr<Vixen::Text::RmlFontEngine> fontEngine_;
+    std::shared_ptr<const Vixen::Text::TextResolver> textResolver_;
+    std::unique_ptr<Vixen::Text::RmlTextElementRegistry> textElementRegistry_;
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
 
