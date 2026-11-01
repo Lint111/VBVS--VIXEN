@@ -55,6 +55,8 @@ vixen_add_checked_target(sdi_merged_drift_gate ALL
     DEPENDS sdi_tool "${_vixen_root}/shaders/sdi-variants.json" ${_sdi_merged_inputs}
     COMMENT "Merged SDI drift gate (stale? build target sdi_merged_regen)"
     VERBATIM)
+# Stable top-level name for the drift gate (the gate's own target is sdi_merged_drift_gate).
+add_custom_target(sdi_merged_check DEPENDS sdi_merged_drift_gate)
 add_custom_target(sdi_merged_regen
     COMMAND sdi_tool merge-variants "${_vixen_root}/shaders/sdi-variants.json"
     WORKING_DIRECTORY "${_vixen_root}"
