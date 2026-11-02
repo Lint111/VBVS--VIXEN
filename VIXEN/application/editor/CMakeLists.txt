@@ -87,6 +87,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 capture_dir=\"\${capture_root}/editor\"
                 document=\"\${capture_dir}/sample_tri_layer.vxd\"
                 mkdir -p \"\${capture_dir}\"
+                rm -f \"\${capture_dir}\"/editor_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
                 cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
                 export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
                 exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
@@ -145,6 +146,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
                 capture_dir=\"\${capture_root}/hud\"
                 mkdir -p \"\${capture_dir}\"
+                rm -f \"\${capture_dir}\"/hud_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
                 exec \"$<TARGET_FILE:VIXEN>\"")
     else()
@@ -176,6 +178,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
                 capture_dir=\"\${capture_root}/textshader\"
                 mkdir -p \"\${capture_dir}\"
+                rm -f \"\${capture_dir}\"/hud_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
                 exec \"$<TARGET_FILE:VIXEN>\"")
     else()
