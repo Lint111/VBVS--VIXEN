@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.20...4.2)
 project(Text VERSION 1.0.0 LANGUAGES CXX)
 
 if(NOT DEFINED ENV{UNDERTOW_ROOT} OR "$ENV{UNDERTOW_ROOT}" STREQUAL "")
-    message(FATAL_ERROR "Text requires UNDERTOW_ROOT so it can consume the generated text shader interface")
+    message(FATAL_ERROR
+        "Text (VIXEN/libraries/Text) needs UNDERTOW_ROOT to find the generated text shader interface, "
+        "and VIXEN/CMakeLists.txt could not derive it: no Undertow checkout with "
+        "core/src/Undertow.Authoring/Schema/schemas.json exists at <projects>/undertow/.claude-worktrees/<lane> "
+        "or <projects>/undertow. Fix: export UNDERTOW_ROOT=<undertow checkout> (or create the paired lane worktree), "
+        "or configure through tools/vixen-native.sh, which forwards it.")
 endif()
 file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _undertow_root_input)
 get_filename_component(_undertow_root "${_undertow_root_input}" REALPATH)
