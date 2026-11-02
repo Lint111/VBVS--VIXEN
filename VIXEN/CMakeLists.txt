@@ -217,6 +217,9 @@ option(VULKAN_TRIMMED_BUILD "Build with Vulkan headers only (no runtime libs)" O
 option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
+else()
+    # BUILD_TESTS is the one switch: OFF must also stop dependencies' ctest/test targets
+    set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
 endif()
 
 # Enable code coverage (requires Debug build and GCC/Clang)
