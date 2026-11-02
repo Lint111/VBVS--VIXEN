@@ -18,6 +18,7 @@ BodyInstanceSceneStats BodyInstanceScenePiece::Update(
     if (result.dropped) instances.resize(kMaxInstances); // deterministic first-row overflow policy
     result.submitted = instances.size();
     application_.SetBodyInstances(std::move(instances));
+    sceneInitialized_ = true;
     hasInstances_ = result.submitted != 0;
     ++uploadCount_;
     result.uploaded = true;
@@ -25,6 +26,12 @@ BodyInstanceSceneStats BodyInstanceScenePiece::Update(
 }
 
 void BodyInstanceScenePiece::Clear() {
+    if (!sceneInitialized_) {
+        application_.SetBodyInstances({});
+        sceneInitialized_ = true;
+        ++uploadCount_;
+        return;
+    }
     if (!hasInstances_) return;
     application_.SetBodyInstances({});
     hasInstances_ = false;

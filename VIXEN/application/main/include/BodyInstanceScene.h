@@ -37,6 +37,7 @@ private:
     VulkanGraphApplication& application_;
     std::uint64_t lastRevision_ = 0;
     bool hasRevision_ = false;
+    bool sceneInitialized_ = false;
     bool hasInstances_ = false;
     std::uint64_t uploadCount_ = 0;
 };
