@@ -112,6 +112,11 @@ run_bat() {
         cd "$(dirname "$cmd_exe")/../.."
     fi
     local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    # Lane builds share ws memory and must not fetch into another lane's cache: default the four-job
+    # cap and a checkout-local FetchContent cache here (T-2955); an explicit value still wins.
+    export VIXEN_MAX_BUILD_JOBS="${VIXEN_MAX_BUILD_JOBS:-4}"
+    export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
+    mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"

@@ -24,12 +24,13 @@ printf '%s\n' "$@" > "$FAKE_ARGV"
 echo "$*" >> "$FAKE_CALLS"
 pwd > "$FAKE_CWD"
 printf '%s\n' "${WSLENV-}" > "$FAKE_WSLENV"
+printf '%s %s\n' "${VIXEN_MAX_BUILD_JOBS-}" "${VIXEN_FETCHCONTENT_CACHE-}" > "$FAKE_LANE_ENV"
 echo "fake cmd output"
 exit "${FAKE_RC:-0}"
 STUB
 chmod +x "$fake/cmd.exe"
 export FAKE_ARGV="$scratch/argv.txt" FAKE_CWD="$scratch/cwd.txt" FAKE_CALLS="$scratch/calls.txt"
-export FAKE_WSLENV="$scratch/wslenv.txt"
+export FAKE_WSLENV="$scratch/wslenv.txt" FAKE_LANE_ENV="$scratch/laneenv.txt"
 export VIXEN_NATIVE_SYSTEM32="$fake"
 # A PATH with no Windows entries, as in an SSH shell.
 export PATH="/usr/bin:/bin"
@@ -84,6 +85,10 @@ check "an argument with spaces stays one argument" \
     bash -c '"$0" bat build.bat "two words" >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${#a[@]}" = 3 && test "${a[2]}" = "two words"' "$launcher"
 check "YEROKET_ROOT is forwarded into the Windows process as a path" \
     bash -c 'YEROKET_ROOT=/home/x/Yeroket-Fantasy "$0" bat build.bat >/dev/null; tr ":" "\n" < "$FAKE_WSLENV" | grep -qx "YEROKET_ROOT/p"' "$launcher"
+check "build defaults the four-job cap and a checkout-local fetch cache (T-2955)" \
+    bash -c '"$0" build >/dev/null; test "$(cat "$FAKE_LANE_ENV")" = "4 $1/lane-a/.tmp/fetch" && test -d "$1/lane-a/.tmp/fetch"' "$launcher" "$native"
+check "explicit job cap and fetch cache are kept" \
+    bash -c 'VIXEN_MAX_BUILD_JOBS=2 VIXEN_FETCHCONTENT_CACHE=/tmp/x-fetch-$$ "$0" build >/dev/null; test "$(cat "$FAKE_LANE_ENV")" = "2 /tmp/x-fetch-$$"; rmdir /tmp/x-fetch-$$' "$launcher"
 check "bat refuses a path that leaves the worktree" \
     bash -c '! "$0" bat ../elsewhere.bat >/dev/null 2>&1' "$launcher"
 check "build exit code is the batch file's exit code" \
