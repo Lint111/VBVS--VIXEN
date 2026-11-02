@@ -647,6 +647,16 @@ target_link_libraries(RenderGraphNodes PUBLIC ${RENDERGRAPH_NODE_OBJECT_LIBS} Re
 add_library(RenderGraph INTERFACE)
 target_link_libraries(RenderGraph INTERFACE RenderGraphCore)
 
+# T-5841: the merged-SDI drift gate is cheap (sdi_tool --check). Order it before the heavy
+# RenderGraph compiles so a stale committed generated/sdi/merged header fails the build
+# immediately instead of after the full graph has compiled against it. The gate is unchanged;
+# stale headers are regenerated with the sdi_merged_regen target.
+if(TARGET sdi_merged_drift_gate)
+    add_dependencies(RenderGraphCore sdi_merged_drift_gate)
+    add_dependencies(RenderGraphNodes sdi_merged_drift_gate)
+    add_dependencies(RenderGraphUiSupport sdi_merged_drift_gate)
+endif()
+
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
     target_link_libraries(RenderGraph INTERFACE
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>")
