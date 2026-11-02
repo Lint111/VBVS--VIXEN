@@ -4,20 +4,13 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
-repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
 undertow_root="${UNDERTOW_ROOT:-}"
-# Each lane keeps its own source/build checkout. The native runner and GPU queue are
-# still shared; only the mutable Git working tree is isolated so concurrent lanes
-# cannot change the source under another lane's CMake configure or CTest process.
-native_root=/mnt/c/vixen-native/nativerunner-textshader
+source "$script_dir/native-common.sh"
 queue=/home/liory/.local/bin/with-test-lock.sh
-cmd_exe=/mnt/c/Windows/System32/cmd.exe
+cmd_exe="$native_cmd_exe"
 native_batch="$native_root/reports/capturespeed/reproduce/native-build.bat"
 
-if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
-  echo "native-build: refusing to sync a dirty VIXEN tree; commit the runner change first" >&2
-  exit 2
-fi
+native_require_interop
 if [[ -z "$undertow_root" ]]; then
   echo "native-build: set UNDERTOW_ROOT to the paired Undertow worktree" >&2
   exit 2
@@ -27,10 +20,13 @@ if [[ ! -d "$undertow_root/core/src/Undertow.Authoring/Schema" ]]; then
   exit 2
 fi
 undertow_root="$(cd "$undertow_root" && pwd -P)"
+# Forward slashes: backslash UNC paths break CMake string escapes (\U) in VerifyGlobs.cmake.
 undertow_root_win="$(wslpath -m "$undertow_root")"
+undertow_id="$(native_undertow_identity "$undertow_root")"
+repo_commit="$(native_resolve_commit)"
 
 native_batch_win="$(wslpath -w "$native_batch")"
-bash "$queue" --agent nativerunner --resource build --label "nativerunner:native-build-${repo_commit:0:12}" -- bash -c '
+bash "$queue" --agent nativerunner --resource build --label "nativerunner:native-build-${native_lane_id}-${repo_commit:0:12}" -- bash -c '
     set -euo pipefail
     native_root="$1"
     repo_root="$2"
@@ -38,6 +34,8 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
     native_batch_win="$4"
     cmd_exe="$5"
     undertow_root_win="$6"
+    undertow_id="$7"
+    native_lane_id="$8"
     if [[ ! -d "$native_root/.git" ]]; then
       mkdir -p "$(dirname "$native_root")"
       git clone --no-hardlinks "$repo_root" "$native_root"
@@ -52,7 +50,7 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
     heartbeat() {
       while :; do
         sleep 60
-        printf "[heartbeat] vixendll native Windows build active %s\\n" "$(date +%T)"
+        printf "[heartbeat] native Windows build %s active %s\\n" "$native_lane_id" "$(date +%T)"
       done
     }
     heartbeat &
@@ -62,5 +60,5 @@ bash "$queue" --agent nativerunner --resource build --label "nativerunner:native
       wait "$heartbeat_pid" 2>/dev/null || true
     }
     trap cleanup EXIT INT TERM
-    "$cmd_exe" /d /c "$native_batch_win $repo_commit $undertow_root_win"
-  ' nativerunner-native-build "$native_root" "$repo_root" "$repo_commit" "$native_batch_win" "$cmd_exe" "$undertow_root_win"
+    "$cmd_exe" /d /c "$native_batch_win $repo_commit $undertow_root_win $undertow_id"
+  ' nativerunner-native-build "$native_root" "$repo_root" "$repo_commit" "$native_batch_win" "$cmd_exe" "$undertow_root_win" "$undertow_id" "$native_lane_id"

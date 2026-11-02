@@ -13,10 +13,11 @@ usage() {
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
-repo_commit="$(git -C "$repo_root" rev-parse HEAD)"
-native_root=/mnt/c/vixen-native/nativerunner-textshader
+source "$script_dir/native-common.sh"
+repo_commit="$(native_resolve_commit)"
 queue=/home/liory/.local/bin/with-test-lock.sh
-powershell_exe=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+powershell_exe="$native_powershell_exe"
+native_require_interop
 mode=state
 capture=""
 state=""
@@ -49,7 +50,20 @@ while (($#)); do
   shift
 done
 
-if [[ ! -f "$native_root/build/native/$repo_commit/.vixendll-build-ready" ]]; then
+# A build is reusable only for the same VIXEN commit and the same paired Undertow schema tree.
+need_build=false
+build_dir="$native_root/build/native/$repo_commit"
+if [[ ! -f "$build_dir/.vixendll-build-ready" ]]; then
+  need_build=true
+elif [[ -n "${UNDERTOW_ROOT:-}" && -d "${UNDERTOW_ROOT}/core/src/Undertow.Authoring/Schema" ]]; then
+  want_id="$(native_undertow_identity "$UNDERTOW_ROOT")"
+  have_id="$(cat "$build_dir/.undertow-identity" 2>/dev/null || true)"
+  if [[ "$want_id" != "$have_id" ]]; then
+    echo "native-capture: build for $repo_commit used Undertow schema tree '${have_id:-unknown}', UNDERTOW_ROOT is '$want_id'; rebuilding" >&2
+    need_build=true
+  fi
+fi
+if [[ "$need_build" == true ]]; then
   bash "$script_dir/native-build.sh"
 fi
 
@@ -57,8 +71,8 @@ native_ps="$native_root/reports/capturespeed/reproduce/native-capture.ps1"
 native_ps_win="$(wslpath -w "$native_ps")"
 native_root_win="$(wslpath -w "$native_root")"
 resource="${VIXEN_NATIVE_QUEUE_RESOURCE:-gpu-native}"
-queue_args=(--agent vixendll --resource "$resource" \
-  --label "vixendll:native-${capture:-${mode}}-${state:-${ctest_label:-missing-dll}}")
+queue_args=(--agent "$native_lane_id" --resource "$resource" \
+  --label "${native_lane_id}:native-${capture:-${mode}}-${state:-${ctest_label:-missing-dll}}")
 if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 
 capture_rc=0
