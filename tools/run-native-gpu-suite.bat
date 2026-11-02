@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 REM Run the comparable correctness GPU list from a Windows-native checkout.
 REM The build is intentionally separate: run build.bat all vixen-ninja-release first.
 
@@ -24,5 +24,5 @@ if not exist "%BUILD_DIR%\CTestTestfile.cmake" (
 
 echo [native-gpu-suite] build=%BUILD_DIR%
 echo [native-gpu-suite] device test list: label gpu, excluding native and nightly
-"%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --no-tests=error --output-on-failure %*
+"%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
 exit /b %errorlevel%

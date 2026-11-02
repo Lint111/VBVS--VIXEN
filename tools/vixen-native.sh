@@ -94,6 +94,19 @@ do_sync() {
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
 
+# cmd.exe re-parses its command line, so an unquoted `|`, `&`, `<`, `>` in an argument (a CTest -R
+# regex such as A|B) becomes a command separator before the batch file starts. Interop does not
+# quote them, so caret-escape the metacharacters for the command line, and also hand the batch file
+# the exact arguments in VIXEN_NATIVE_ARGS (each double-quoted), which it can expand with
+# `!VIXEN_NATIVE_ARGS!` under delayed expansion without cmd.exe re-parsing them (a `%1`/`%*`
+# expansion is re-parsed and cannot be made safe).
+cmd_escape_arg() { local a="$1"; a="${a//^/^^}"; a="${a//&/^&}"; a="${a//|/^|}"; a="${a//</^<}"; a="${a//>/^>}"; echo "$a"; }
+quote_arg_list() {
+    local out="" a
+    for a in "$@"; do out+="\"${a//\"/\\\"}\" "; done
+    echo "${out% }"
+}
+
 # Runs a batch file with its own directory as the working directory, so the name carries no
 # Windows path (a path with spaces or backslashes is mangled by interop) and cmd.exe never
 # starts on a UNC directory. A UNC-only base falls back to the drive root and the full path.
@@ -111,12 +124,15 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
-    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    local cmd_args=() a
+    for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
+    export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
-    say "running: cmd.exe /c $win_arg $* (log: $log_file)"
+    say "running: cmd.exe /c $win_arg ${cmd_args[*]:-} (log: $log_file)"
     set +e
-    "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"
+    "$cmd_exe" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"
     rc="${PIPESTATUS[0]}"
     set -e
     say "exit code $rc"
