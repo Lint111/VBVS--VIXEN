@@ -2513,8 +2513,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
                // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.g.glsl"
                // under libraries/SVO/shaders — a different tree than the paths above.
-               .AddIncludePath("libraries/SVO/shaders")
-               .AddIncludePath("../libraries/SVO/shaders");
+               .AddSvoShaderIncludePaths();
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
         builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
@@ -2648,8 +2647,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders");
+                   .AddSvoShaderIncludePaths();
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
             builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
@@ -2709,8 +2707,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders");
+                   .AddSvoShaderIncludePaths();
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
             builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
@@ -2854,8 +2851,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders");
+                   .AddSvoShaderIncludePaths();
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
             builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif
@@ -2889,8 +2885,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                   .AddIncludePath("libraries/SVO/shaders")
-                   .AddIncludePath("../libraries/SVO/shaders");
+                   .AddSvoShaderIncludePaths();
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
             builder.AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR);
 #endif

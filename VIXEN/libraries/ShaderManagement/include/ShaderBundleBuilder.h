@@ -174,6 +174,19 @@ public:
     ShaderBundleBuilder& AddIncludePath(const std::filesystem::path& path);
 
     /**
+     * @brief Add the shared SVO shader tree (libraries/SVO/shaders) that recipe kernels #include
+     *
+     * One definition of the SVO include roots for graph-built stages and direct shader tests, so a
+     * new shared include never resolves in one and fails in the other. With no argument it adds the
+     * working-directory-relative pair the application resolves; with a shader directory
+     * (<root>/shaders) it adds the tree next to it.
+     *
+     * @param shaderDir The repository shader directory, or empty for the application's relative roots
+     * @return Reference to this builder
+     */
+    ShaderBundleBuilder& AddSvoShaderIncludePaths(const std::filesystem::path& shaderDir = {});
+
+    /**
      * @brief Use this cache manager instead of DefaultShaderCacheManager()
      *
      * Every build is cached by default; this only redirects it.

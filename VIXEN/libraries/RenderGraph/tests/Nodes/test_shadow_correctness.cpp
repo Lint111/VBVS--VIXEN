@@ -545,7 +545,7 @@ protected:
                    .SetTargetSpirvVersion(15)
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
-                   .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
+                   .AddSvoShaderIncludePaths(shaderDir)
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      shaderDir / "SpatialReuseShade.comp", "main")
                    .EnableSdiGeneration(false);
@@ -573,7 +573,7 @@ protected:
                    .SetTargetSpirvVersion(15)
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
-                   .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
+                   .AddSvoShaderIncludePaths(shaderDir)
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      shaderDir / "ShadowVisibilityWave.comp", "main")
                    .EnableSdiGeneration(false);
@@ -623,7 +623,7 @@ protected:
             .SetTargetSpirvVersion(15)
             .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
             .AddIncludePath(shaderDir)
-            .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
+            .AddSvoShaderIncludePaths(shaderDir)
             .AddStage(ShaderManagement::ShaderStage::Compute,
                 Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(source.str(), registry))
             .EnableSdiGeneration(false);

@@ -346,6 +346,13 @@ ShaderBundleBuilder& ShaderBundleBuilder::AddIncludePath(const std::filesystem::
     return *this;
 }
 
+ShaderBundleBuilder& ShaderBundleBuilder::AddSvoShaderIncludePaths(const std::filesystem::path& shaderDir) {
+    if (shaderDir.empty()) {
+        return AddIncludePath("libraries/SVO/shaders").AddIncludePath("../libraries/SVO/shaders");
+    }
+    return AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders");
+}
+
 ShaderBundleBuilder& ShaderBundleBuilder::EnableCaching(ShaderCacheManager* cacheManager) {
     cacheManager_ = cacheManager;
     return *this;
