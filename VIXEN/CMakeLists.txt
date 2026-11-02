@@ -144,6 +144,9 @@ if(USE_CCACHE)
             message(STATUS "VIXEN compiler cache data: ${_vixen_compiler_cache_path}")
         endif()
     endif()
+else()
+    include("${VIXEN_ROOT}/cmake/VixenCompilerCache.cmake")
+    vixen_clear_cached_compiler_cache_launchers()
 endif()
 
 # Unity builds - combine source files for faster compilation
