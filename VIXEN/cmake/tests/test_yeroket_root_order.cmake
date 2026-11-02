@@ -74,6 +74,11 @@ run_probe("${env_root}" "")
 assert_resolved("the environment beats the home probe" "${env_root}"
     "kernel root from the YEROKET_ROOT environment variable:")
 
+string(REPLACE "/" "\\" env_root_backslashes "${env_root}")
+run_probe("${env_root_backslashes}" "")
+assert_resolved("a backslash-form environment root is normalized" "${env_root}"
+    "kernel root from the YEROKET_ROOT environment variable:")
+
 run_probe("" "")
 assert_resolved("the home probe is used when nothing is set" "${clone}" "kernel root from the home-directory probe:")
 

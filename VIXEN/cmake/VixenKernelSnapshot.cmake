@@ -60,6 +60,9 @@ function(vixen_resolve_yeroket_root home_candidates out_root)
         set(_source "the YEROKET_ROOT environment variable")
     endif()
     if(NOT _root STREQUAL "")
+        # WSLENV /p hands native CMake a Windows-form path (backslashes, \\wsl.localhost\...); raw
+        # backslashes become escape sequences in the generated globs, so own the normalization here.
+        file(TO_CMAKE_PATH "${_root}" _root)
         if(NOT IS_DIRECTORY "${_root}")
             message(FATAL_ERROR "[codegen] kernel root from ${_source} is not a directory: ${_root}")
         endif()
