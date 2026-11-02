@@ -3,6 +3,7 @@
 #include "ShaderPreprocessor.h"
 
 #include <algorithm>
+#include <functional>
 
 namespace ShaderManagement {
 
@@ -44,6 +45,12 @@ std::shared_ptr<ShaderDataBundle> ShaderFamily::Get(
         if (!key.empty()) key += ';';
         key += f;
     }
+
+    // The base source is part of the member identity: a SourceProvider may splice content
+    // that depends on the environment (debug toggles etc.), and a feature-set-only key
+    // would hand back the member compiled from the previous source.
+    key += '|';
+    key += std::to_string(std::hash<std::string>{}(source_()));
 
     auto it = members_.find(key);
     if (it != members_.end()) {
