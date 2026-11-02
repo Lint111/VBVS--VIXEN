@@ -76,7 +76,7 @@ cmake -B build
 cmake --build build --config Debug --parallel 16      # or --config Release
 ```
 
-Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN/`, its binary tree is `build/wsl`) is wrapped by one command: `./build-wsl.sh --target VIXEN -j4` (configure, then build; any `cmake --build` args pass through).
+Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN/`, its binary tree is `build/wsl`) is wrapped by one command: `./build-wsl.sh --target VIXEN -j4` (configure, then build; `-DVAR=VALUE` args go to configure, a bare `Release` is accepted (the preset is Release), any other `cmake --build` args pass through, and `./build-wsl.sh --clean` deletes only `build/wsl`).
 
 Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=ON`.
 
