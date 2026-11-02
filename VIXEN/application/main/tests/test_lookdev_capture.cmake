@@ -64,6 +64,31 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_lookdev_presentation_tests})
 
+    # T-2621: single-pass artifact mode. One fresh process per state (no repeat render, no pixel
+    # comparison), about half the wall time of the State.* tests, for before/after sheets and timing
+    # distributions. Label `native` keeps these out of the default suites, so the repeat-pixel witness
+    # above still gates; select with `ctest -L native -R LookdevCapture.SinglePass`.
+    set(_lookdev_single_pass_tests)
+    foreach(_state IN LISTS _lookdev_states)
+        set(_test Application.LookdevCapture.SinglePass.${_state})
+        add_test(NAME ${_test}
+            COMMAND ${CMAKE_COMMAND}
+                "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
+                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev-single-pass"
+                "-DLOOKDEV_CAPTURE_STATES=${_state}"
+                -DLOOKDEV_CAPTURE_REPEAT=OFF
+                -DLOOKDEV_CAPTURE_BUDGET_S=900
+                -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
+        set_tests_properties(${_test}
+            PROPERTIES
+                LABELS "native"
+                TIMEOUT 1200
+                ENVIRONMENT "${_lookdev_test_environment}"
+                ENVIRONMENT_MODIFICATION "${_lookdev_test_environment_modification}")
+        list(APPEND _lookdev_single_pass_tests ${_test})
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_lookdev_single_pass_tests})
+
     # The four-state aggregate keeps its name for the capture tooling that selects it. It carries only
     # the `native` label, which the split runner excludes by default (`ctest -L native` selects it).
     list(LENGTH _lookdev_states _lookdev_state_count)
