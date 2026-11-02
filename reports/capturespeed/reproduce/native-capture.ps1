@@ -157,8 +157,10 @@ if ($Mode -eq 'state') {
   throw "Unsupported native capture mode: $Mode"
 }
 $sw = [Diagnostics.Stopwatch]::StartNew()
-& $ctest @ctestArgs 2>&1 | Tee-Object -FilePath $log
-$exitCode = $LASTEXITCODE
+# CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
+# cancelled run cannot leave capture executables behind (T-4916, T-4917).
+. (Join-Path $PSScriptRoot 'native-process.ps1')
+$exitCode = Invoke-NativeJobProcess -FilePath $ctest -ArgumentList $ctestArgs -LogPath $log -Description 'ctest'
 $sw.Stop()
 $result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
 $result | Tee-Object -FilePath "$log.result.txt"
