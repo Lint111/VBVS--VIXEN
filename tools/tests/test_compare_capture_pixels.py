@@ -4,6 +4,8 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -135,6 +137,32 @@ class CompareCapturePixelsTests(unittest.TestCase):
                 self.assertTrue(tool.check_reference_provenance(provenance, repository, "HEAD"))
             self.assertIn("references older than", err.getvalue())
             self.assertIn("affine look-dev instance placement", err.getvalue())
+
+    def test_queue_provenance_reads_the_queue_job_environment(self):
+        self.assertIsNone(tool.queue_provenance({}))
+        line = tool.queue_provenance(
+            {"UT_TEST_LOCK_HELD": "1", "UT_AGENT_ID": "gpuyield", "UT_QUEUE_RESOURCE": "light"}
+        )
+        self.assertEqual(line, "agent=gpuyield resource=light bench_window=none")
+
+    def test_require_queue_rejects_an_unqueued_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a").mkdir()
+            (root / "b").mkdir()
+            env = {k: v for k, v in os.environ.items() if k != "UT_TEST_LOCK_HELD"}
+            result = subprocess.run(
+                [sys.executable, str(TOOL), "--require-queue", str(root / "a"), str(root / "b")],
+                capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("not an attested witness", result.stderr)
+            env["UT_TEST_LOCK_HELD"] = "1"
+            result = subprocess.run(
+                [sys.executable, str(TOOL), "--require-queue", str(root / "a"), str(root / "b")],
+                capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
+            )
+            self.assertIn("queue provenance: agent=", result.stdout)
 
 
 if __name__ == "__main__":
