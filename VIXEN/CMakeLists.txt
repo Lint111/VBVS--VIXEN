@@ -534,6 +534,15 @@ vixen_ensure_msbuild_job_pool()
 # MSVC parallel build PDB fix (must be right after project())
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FS")
+    # A preset or command line that sets CMAKE_CXX_FLAGS replaces CMake's MSVC defaults, dropping
+    # /EHsc and /GR (C4530 in the SVO precompiled header). Re-add them when absent so overrides
+    # only need to carry their own extra flags (T-2822).
+    foreach(_vixen_required_cxx_flag /EHsc /GR)
+        string(FIND "${CMAKE_CXX_FLAGS}" "${_vixen_required_cxx_flag}" _vixen_flag_pos)
+        if(_vixen_flag_pos EQUAL -1)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_vixen_required_cxx_flag}")
+        endif()
+    endforeach()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /FS")
 
     # Disable incremental linking (must ALSO be right after project() — CMake only sets its
