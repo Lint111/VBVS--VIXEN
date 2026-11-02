@@ -54,15 +54,25 @@ resolve_branch() {
     git -C "$repo_root" rev-parse --verify -q "refs/heads/$branch" >/dev/null || die "no local branch '$branch' in $repo_root"
 }
 
+# DrvFS reports every file as executable, so a native checkout that inherits core.fileMode=true
+# lists thousands of tracked files as mode-changed (T-2947). Set it on this clone's own config only.
+ignore_drvfs_filemode() {
+    git -C "$1" config core.fileMode false
+}
+
 do_checkout() {
     validate_lane
     resolve_branch
     local dir; dir="$(native_dir)"
-    if [[ -d "$dir/.git" ]]; then return 0; fi
+    if [[ -d "$dir/.git" ]]; then
+        ignore_drvfs_filemode "$dir"
+        return 0
+    fi
     [[ ! -e "$dir" ]] || die "$dir exists but is not a git checkout; refusing to touch it"
     mkdir -p "$native_base"
     say "cloning $branch into $dir"
     git clone --quiet --no-hardlinks --branch "$branch" "$repo_root" "$dir"
+    ignore_drvfs_filemode "$dir"
 }
 
 do_sync() {
