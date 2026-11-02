@@ -70,5 +70,23 @@ class NativeArgumentTests(unittest.TestCase):
         self.assertIn("YK=[]", done.stdout)
 
 
+@unittest.skipUnless(CMD_EXE.exists() and NATIVE_BASE.is_dir(), "needs WSL with a Windows-side native root")
+class BuildLogDirTests(unittest.TestCase):
+    def test_status_and_log_land_in_the_requested_directory(self):
+        script = Path(__file__).parents[2] / "VIXEN" / "scripts" / "build"
+        with tempfile.TemporaryDirectory(dir=NATIVE_BASE, prefix="_logdir-") as base:
+            for name in ("run_build_with_summary.ps1", "SetWindowsChildErrorMode.ps1"):
+                shutil.copy(script / name, base)
+            env = dict(os.environ, VIXEN_BUILD_LOG_DIR=str(Path(base) / "logs"),
+                       WSLENV=os.environ.get("WSLENV", "") + ":VIXEN_BUILD_LOG_DIR/p")
+            subprocess.run([str(CMD_EXE), "/c", "powershell", "-ExecutionPolicy", "Bypass", "-File",
+                            ".\\run_build_with_summary.ps1", "-CMakeExe", "C:\\nonexistent\\cmake.exe",
+                            "-Preset", "x", "-SkipLock", "-BuildId", "logdirtest"],
+                           cwd=base, env=env, capture_output=True, text=True)
+            logs = Path(base) / "logs"
+            self.assertTrue((logs / "vixen_build_status.txt").exists())
+            self.assertIn("build_id: logdirtest", (logs / "vixen_build_status.txt").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

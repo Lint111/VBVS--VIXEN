@@ -152,10 +152,15 @@ run_bat() {
         cd "$(dirname "$cmd_exe")/../.."
     fi
     infer_roots
+    # Build status and per-build logs go to the lane's own checkout, not the machine-wide Windows
+    # TEMP shared by every concurrent build; queue tickets keep TEMP because build_queue.ps1 reads it.
+    if [[ -z "${VIXEN_BUILD_LOG_DIR:-}" && -z "${VIXEN_QUEUE_TICKET_ID:-}" && "$direct" != 1 ]]; then
+        export VIXEN_BUILD_LOG_DIR="$(native_dir)/.tmp/native-build"
+    fi
     local cmd_args=() a
     for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
     export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
-    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg ${cmd_args[*]:-} (log: $log_file)"
