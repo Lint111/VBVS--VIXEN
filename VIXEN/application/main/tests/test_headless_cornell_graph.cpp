@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -272,8 +273,18 @@ private:
 };
 
 TEST(HeadlessCornellGraph, ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams) {
-    const char* prefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
-    ASSERT_NE(prefix, nullptr) << "CMake must set VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX";
+    // CMake's TEST_ENVIRONMENT sets the prefix for ctest runs; a direct invocation (for example a
+    // queued HDR on/off witness that only overrides VIXEN_HDR_EXPOSURE) falls back to the temp
+    // directory instead of failing on setup (T-4958).
+    const char* envPrefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
+    const std::string prefixStorage = envPrefix != nullptr
+        ? std::string(envPrefix)
+        : (std::filesystem::temp_directory_path() / "vixen-headless-cornell-frame").string();
+    const char* prefix = prefixStorage.c_str();
+    if (envPrefix == nullptr) {
+        std::cerr << "[headless-cornell] VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX unset; writing captures to "
+                  << prefixStorage << "-*.png (set it to choose another location)\n";
+    }
     const std::filesystem::path first = std::string(prefix) + "-a.png";
     const std::filesystem::path second = std::string(prefix) + "-b.png";
     std::error_code ec;
