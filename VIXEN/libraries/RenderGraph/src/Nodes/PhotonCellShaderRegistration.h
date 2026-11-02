@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 #pragma once
 
+#include "Core/ShaderSourceDir.h"
 #include "Nodes/ShaderLibraryNode.h"
 
 #include <filesystem>
@@ -14,7 +15,7 @@ namespace Vixen::RenderGraph::Detail {
 inline std::filesystem::path FindPhotonShader(const char* shaderName) {
     const std::filesystem::path candidates[] = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-        std::filesystem::path(VIXEN_SHADER_SOURCE_DIR) / shaderName,
+        std::filesystem::path(Vixen::RenderGraph::ResolveShaderSourceDir(VIXEN_SHADER_SOURCE_DIR)) / shaderName,
 #endif
         std::filesystem::path("shaders") / shaderName,
         std::filesystem::path("../shaders") / shaderName,
@@ -49,7 +50,7 @@ inline void RegisterPhotonShader(ShaderLibraryNode& shaderLibrary,
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(Vixen::RenderGraph::ResolveShaderSourceDir(VIXEN_SHADER_SOURCE_DIR))
 #endif
                    .AddStage(ShaderManagement::ShaderStage::Compute,
                              ReadPhotonShader(shaderPath), "main");

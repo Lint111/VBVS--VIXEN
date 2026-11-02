@@ -43,6 +43,7 @@ add_executable(test_rendergraph_core
     test_executeonly_behavior.cpp
     test_typed_node_lifecycle.cpp
     test_lightingconfig_parity.cpp
+    test_shader_source_dir.cpp
     Nodes/test_camera_history.cpp
     Nodes/test_reconstruction_depth.cpp
     Nodes/test_instance_motion_history.cpp

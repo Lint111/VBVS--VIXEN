@@ -1,6 +1,7 @@
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/SkyProjectionNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/ShaderSourceDir.h"
 #include "Core/NodeLogging.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
 #include "Core/FrameSyncSchedule.h"     // SubmitGroup, SyncEdge, FindGroupForNode
@@ -48,7 +49,7 @@ uint32_t FindMemoryType(const VkPhysicalDeviceMemoryProperties& memProps, uint32
 std::filesystem::path ResolveShaderPath(const std::string& shaderName) {
     std::vector<std::filesystem::path> candidates = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-        std::filesystem::path(VIXEN_SHADER_SOURCE_DIR) / shaderName,
+        std::filesystem::path(Vixen::RenderGraph::ResolveShaderSourceDir(VIXEN_SHADER_SOURCE_DIR)) / shaderName,
 #endif
         std::filesystem::path("shaders") / shaderName,
         std::filesystem::path("../shaders") / shaderName,
