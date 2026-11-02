@@ -31,15 +31,19 @@ def write_png(path, width, height, rgba):
 
 
 def sheet(images, path):
+    if not images or len(images) % 4:
+        raise ValueError(f"contact sheet needs a positive multiple of 4 images (4 per row), got {len(images)}; "
+                         "supply complete rows of captures")
     width, height, _ = images[0]
     if any(image[:2] != (width, height) for image in images):
         raise ValueError("capture extents differ")
+    rows = len(images)//4
     rgba = bytearray()
-    for row in range(len(images)//4):
+    for row in range(rows):
         for y in range(height):
             for _, _, data in images[row*4:(row+1)*4]:
                 rgba.extend(data[y*width*4:(y+1)*width*4])
-    write_png(path, width*4, height*4, rgba)
+    write_png(path, width*4, height*rows, rgba)
 
 
 def dot(a, b):
