@@ -1,0 +1,26 @@
+{
+  "id": "undercard:card-template",
+  "kind": "render_recipe",
+  "fidelity": "block-out",
+  "geometry": {
+    "op": "BoxRounded",
+    "size": [63.0, 1.5, 88.0],
+    "corner_radius": 3.0,
+    "panel": true
+  },
+  "frame": {
+    "op": "Panel",
+    "inset": 2.0,
+    "trim_width": 1.25,
+    "material_param": "card_type",
+    "materials": { "industry_plain": "copper_iron", "order_brass": "brass" }
+  },
+  "pips": {
+    "in_slot": { "param": 0, "repeat_max": 3, "op": "ReadParam+Repeat" },
+    "out_slot": { "param": 1, "repeat_max": 3, "op": "ReadParam+Repeat" },
+    "stalled": { "param": 2, "op": "amber_emission_pulse" },
+    "order_count": { "param": 3, "repeat_max": 3, "op": "ReadParam+Repeat" },
+    "order_met": { "param": 4, "op": "seal_emission" },
+    "highlight": { "param": 5, "values": [0, 1, 2], "op": "edge_response" }
+  }
+}

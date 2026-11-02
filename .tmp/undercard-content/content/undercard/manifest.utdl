@@ -1,0 +1,9 @@
+UTDL
+// Provisional Undercard pack root. The bootstrap lane has not landed in the assigned
+// Undercard worktree, so this source is kept under VIXEN/.tmp until that repo owns it.
+{
+  type: manifest,
+  id: undercard,
+  version: "0.1.0",
+  name: "Undercard",
+}

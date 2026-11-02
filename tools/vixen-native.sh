@@ -111,7 +111,10 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
-    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    # Keep the per-recipe look-dev inputs available to the native capture command. The
+    # recipe path/pack root/schema and output directory are WSL paths and need WSLENV's
+    # /p conversion; the ids and scalar knobs are ordinary strings.
+    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"
