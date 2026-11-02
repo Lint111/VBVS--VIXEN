@@ -83,6 +83,12 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
     message(STATUS "[Application Tests] Added: vixen_lookdev_capture (${_lookdev_state_count} per-state tests of 4 angles, repeat-pixel witness; aggregate under label native)")
 
+    # T-4918: the frame measurement behind the stored-SDF "visible geometry" assertion, on synthetic pixels:
+    # no device, no GPU lock.
+    add_test(NAME Application.LookdevCapture.GeometryEdgeMeasure
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" "--gtest_filter=LookdevCaptureGeometryEdges.*")
+    set_tests_properties(Application.LookdevCapture.GeometryEdgeMeasure PROPERTIES LABELS "Application" TIMEOUT 120)
+
     foreach(_depth_case IN ITEMS native reduced-odd fixed-exposure)
         set(_depth_scale 1.0)
         set(_depth_fixed_exposure 0)
