@@ -8,6 +8,7 @@
 // Header-only (mirrors IRenderTarget.h / stb's own header-only shape) so no new library/.cpp
 // wiring is needed — callers just #include this + link the existing `stb` target for the
 // STB_IMAGE_WRITE_IMPLEMENTATION TU (exactly one TU in the whole link must define it).
+#include "Debug/ReadbackDiagnostics.h"
 #include "IRenderTarget.h"
 #include "VulkanDevice.h"
 #include <stb_image_write.h>
@@ -64,14 +65,16 @@ struct PendingRenderTargetReadback {
         if (!state || !state->completion || !state->completion->IsRetired()) return false;
         const auto current = std::move(state);
         if (current->completion->Result() != VK_SUCCESS) {
-            err = "RenderTargetReadback queue-owner submit failed: " +
-                  std::to_string(current->completion->Result());
+            err = DescribeReadbackFailure("PendingRenderTargetReadback::Poll", "queue-owner submit",
+                                          current->completion->Result());
             current->Cleanup();
             return true;
         }
         void* mapped = nullptr;
-        if (vkMapMemory(current->device, current->memory, 0, current->size, 0, &mapped) != VK_SUCCESS) {
-            err = "RenderTargetReadback: vkMapMemory failed";
+        const VkResult mapResult =
+            vkMapMemory(current->device, current->memory, 0, current->size, 0, &mapped);
+        if (mapResult != VK_SUCCESS) {
+            err = DescribeReadbackFailure("PendingRenderTargetReadback::Poll", "vkMapMemory", mapResult);
             current->Cleanup();
             return true;
         }
@@ -151,8 +154,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     poolInfo.queueFamilyIndex = queueFamilyIndex;
-    if (vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &cmdPool) != VK_SUCCESS) {
-        err = "ReadRenderTargetBytes: vkCreateCommandPool failed";
+    if (const VkResult r = vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &cmdPool); r != VK_SUCCESS) {
+        err = DescribeReadbackFailure("ReadRenderTargetBytes", "vkCreateCommandPool", r);
         return false;
     }
 
@@ -162,8 +165,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     cbAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cbAlloc.commandBufferCount = 1;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &cbAlloc, &cmd) != VK_SUCCESS) {
-        err = "ReadRenderTargetBytes: vkAllocateCommandBuffers failed";
+    if (const VkResult r = vkAllocateCommandBuffers(vkDevice, &cbAlloc, &cmd); r != VK_SUCCESS) {
+        err = DescribeReadbackFailure("ReadRenderTargetBytes", "vkAllocateCommandBuffers", r);
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
     }
@@ -177,8 +180,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     bufInfo.size = bufSize;
     bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(vkDevice, &bufInfo, nullptr, &hostBuf) != VK_SUCCESS) {
-        err = "ReadRenderTargetBytes: vkCreateBuffer failed";
+    if (const VkResult r = vkCreateBuffer(vkDevice, &bufInfo, nullptr, &hostBuf); r != VK_SUCCESS) {
+        err = DescribeReadbackFailure("ReadRenderTargetBytes", "vkCreateBuffer", r);
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
     }
@@ -204,8 +207,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = memTypeIndex;
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &hostMem) != VK_SUCCESS) {
-        err = "ReadRenderTargetBytes: vkAllocateMemory failed";
+    if (const VkResult r = vkAllocateMemory(vkDevice, &allocInfo, nullptr, &hostMem); r != VK_SUCCESS) {
+        err = DescribeReadbackFailure("ReadRenderTargetBytes", "vkAllocateMemory", r);
         vkDestroyBuffer(vkDevice, hostBuf, nullptr);
         vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
         return false;
@@ -272,7 +275,8 @@ inline bool ReadRenderTargetBytes(Vixen::Vulkan::Resources::VulkanDevice* device
     const auto completion = device->PublishSubmitRequest(std::move(request));
     if (!completion || (completion->Result() != VK_NOT_READY &&
                         completion->Result() != VK_SUCCESS)) {
-        err = "ReadRenderTargetBytes: queue owner rejected the readback";
+        err = DescribeReadbackFailure("ReadRenderTargetBytes", "queue-owner submit",
+                                      completion ? completion->Result() : VK_ERROR_INITIALIZATION_FAILED);
         return false;
     }
     state->completion = completion;
