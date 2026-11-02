@@ -50,6 +50,7 @@ target_compile_definitions(VulkanResources PUBLIC
     VIXEN_CONFIGURED_FSR3_UPSCALER=${_vixen_fsr3_configured})
 
 set(VIXEN_APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/BodyInstanceScene.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
     # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
