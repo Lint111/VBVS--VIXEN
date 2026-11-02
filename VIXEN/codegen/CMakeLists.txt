@@ -632,9 +632,11 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
         set(_tool_build_command "${VIXEN_DOTNET}" build "${_yk_tool}/CodegenTool.csproj")
     endif()
+    # The trailing '/' is load-bearing: project files that build "$(OutDir)Name.dll" by
+    # concatenation otherwise write <cache>/binName.dll (T-6427).
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
         -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
-        --output "${_tool_cached_bin_run}")
+        --output "${_tool_cached_bin_run}/")
     if(_codegen_need_wsl_bridge)
         vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
             "${_tool_cached_bin_run}" "${_tool_local_bin_run}" "${_tool_stamp_run}" ${_tool_build_command})
