@@ -114,8 +114,24 @@ run_capture() {
     local log_path="$4"
     shift 4
 
-    if ! (cd -- "$working_dir" && timeout 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1; then
-        echo "$name capture failed; last output from $log_path:" >&2
+    # The app log goes to a file, so the queue's idle watchdog would see a silent payload for up to
+    # the 300 s bound. Run the capture in its own process group (setsid) so a killed wrapper can
+    # take the whole group down instead of orphaning it, and print a heartbeat while it runs.
+    local capture_pid heartbeat_pid rc=0 started=$SECONDS
+    (cd -- "$working_dir" && exec setsid timeout -k 10s 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1 &
+    capture_pid=$!
+    (while sleep 30; do
+        echo "[heartbeat] $name capture running $((SECONDS - started))s, log $(stat -c %s -- "$log_path" 2>/dev/null || echo 0) bytes"
+    done) &
+    heartbeat_pid=$!
+    trap 'kill -TERM -- "-$capture_pid" 2>/dev/null || true; kill "$heartbeat_pid" 2>/dev/null || true' TERM INT
+    wait "$capture_pid" || rc=$?
+    trap - TERM INT
+    kill "$heartbeat_pid" 2>/dev/null || true
+    wait "$heartbeat_pid" 2>/dev/null || true
+    kill -TERM -- "-$capture_pid" 2>/dev/null || true   # stragglers of a finished or timed-out run
+    if [[ $rc -ne 0 ]]; then
+        echo "$name capture failed (exit $rc); last output from $log_path:" >&2
         tail -n 80 "$log_path" >&2
         return 1
     fi

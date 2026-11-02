@@ -115,10 +115,17 @@ run_bat() {
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"
+    # The last link/stage step of a native build is silent and uses almost no WSL-side CPU, which
+    # the queue's idle watchdog reads as a stall (T-6207). Say that the Windows process is alive.
+    local heartbeat_pid started=$SECONDS
+    (while sleep "${VIXEN_NATIVE_HEARTBEAT_S:-30}"; do echo "[vixen-native] heartbeat: $bat_name running $((SECONDS - started))s"; done) &
+    heartbeat_pid=$!
     set +e
     "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"
     rc="${PIPESTATUS[0]}"
     set -e
+    kill "$heartbeat_pid" 2>/dev/null || true
+    wait "$heartbeat_pid" 2>/dev/null || true
     say "exit code $rc"
     return "$rc"
 }

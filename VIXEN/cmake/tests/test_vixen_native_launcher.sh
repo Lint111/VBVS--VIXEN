@@ -92,5 +92,7 @@ check "build output is kept in the log" \
     bash -c 'log="$1/build.log"; "$0" --log "$log" build >/dev/null; grep -q "fake cmd output" "$log"' "$launcher" "$scratch"
 check "a provisioning stop (exit 20) stops the build before build.bat runs" \
     bash -c 'rm -rf "$1/lane-a/VIXEN/.win-native-toolchain"; : > "$FAKE_CALLS"; FAKE_RC=20 "$0" build all >/dev/null; rc=$?; test $rc = 20 && test "$(wc -l < "$FAKE_CALLS")" = 1 && grep -q "build.bat provision" "$FAKE_CALLS"' "$launcher" "$native"
+check "a silent batch step is covered by a heartbeat line (T-6207)" \
+    bash -c 'sed -i "s/^exit /sleep \${FAKE_SLEEP:-0}; exit /" "$1/cmd.exe"; FAKE_SLEEP=3 VIXEN_NATIVE_HEARTBEAT_S=1 "$0" bat build.bat | grep -q "heartbeat: build.bat running"' "$launcher" "$fake"
 
 exit "$failures"

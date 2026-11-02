@@ -42,8 +42,13 @@ void WindowNode::TypedSetupImpl(TypedSetupContext& ctx) {
     if (!glfwInit()) {
         const char* err = nullptr;
         glfwGetError(&err);
-        NODE_LOG_ERROR(std::string("[WindowNode] glfwInit failed: ") + (err ? err : "unknown"));
-        throw std::runtime_error("WindowNode: glfwInit failed");
+        const char* display = std::getenv("DISPLAY");
+        const std::string reason = std::string("[WindowNode] glfwInit failed: ") + (err ? err : "unknown") +
+            " (DISPLAY=" + ((display && *display) ? display : "<unset>") +
+            "). A windowed run needs a reachable X server: on WSL set DISPLAY=:0 and unset WAYLAND_DISPLAY" +
+            " (the socket is /tmp/.X11-unix/X0), or run through tools/run-vixen-windowed-captures.sh, which does both.";
+        NODE_LOG_ERROR(reason);
+        throw std::runtime_error(reason);
     }
     NODE_LOG_INFO("[WindowNode] GLFW initialised");
 }
