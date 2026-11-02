@@ -272,10 +272,11 @@ private:
 };
 
 TEST(HeadlessCornellGraph, ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams) {
-    const char* prefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
-    ASSERT_NE(prefix, nullptr) << "CMake must set VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX";
-    const std::filesystem::path first = std::string(prefix) + "-a.png";
-    const std::filesystem::path second = std::string(prefix) + "-b.png";
+    // CTest sets the prefix; a direct invocation falls back to the same name so the witness self-provisions.
+    const char* envPrefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
+    const std::string prefix = envPrefix != nullptr ? envPrefix : "headless-cornell-frame";
+    const std::filesystem::path first = prefix + "-a.png";
+    const std::filesystem::path second = prefix + "-b.png";
     std::error_code ec;
     std::filesystem::remove(first, ec);
     std::filesystem::remove(second, ec);
