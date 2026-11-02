@@ -873,7 +873,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args} --check
             DEPENDS "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool
                 ${_gpu_schema_source_files}
-            COMMENT "[codegen] golden check: FrameTargets schema JSON matches its source declaration"
+            COMMENT "[codegen] golden check: FrameTargets schema JSON matches its source declaration (on drift: cmake --build <build-dir> --target frame_targets_refresh regenerates schema JSON, typed refs, composition outputs and UI SPIR-V together)"
             JOB_POOL vixen_codegen
             VERBATIM)
         add_dependencies(frame_targets_schema_check frame_targets_schema_source_stage)
@@ -891,7 +891,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             --namespace Vixen.Codegen.Gpu)
         vixen_add_codegen_check(frame_targets_ref_check ALL
             COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_ref_args} --check
-            COMMENT "[codegen] golden check: FrameTargetsRef matches the canonical schema"
+            COMMENT "[codegen] golden check: FrameTargetsRef matches the canonical schema (on drift: cmake --build <build-dir> --target frame_targets_refresh regenerates schema JSON, typed refs, composition outputs and UI SPIR-V together)"
             VERBATIM)
         add_dependencies(frame_targets_ref_check frame_targets_schema_check)
         add_custom_target(frame_targets_ref_regen
