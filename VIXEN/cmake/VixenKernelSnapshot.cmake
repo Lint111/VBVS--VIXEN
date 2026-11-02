@@ -165,3 +165,17 @@ function(vixen_codegen_build_config output cache_dir cached_binary_dir local_bin
     string(APPEND _content ")\n")
     vixen_write_if_different("${output}" "${_content}")
 endfunction()
+
+# Writes the pin this build tree generates from next to the binaries, so a capture or benchmark
+# taken from the tree can be attributed to its kernel without reading the CMake cache: the effective
+# SHA, the tracked pin, and whether a per-build-tree override is in force.
+function(vixen_record_kernel_pin output tracked effective)
+    if(effective STREQUAL tracked)
+        set(_overridden false)
+    else()
+        set(_overridden true)
+    endif()
+    vixen_write_if_different("${output}"
+        "{\n  \"effective_kernel_sha\": \"${effective}\",\n  \"tracked_kernel_sha\": \"${tracked}\",\n  \"override_active\": ${_overridden}\n}\n")
+    message(STATUS "[codegen] effective kernel pin recorded in ${output}")
+endfunction()
