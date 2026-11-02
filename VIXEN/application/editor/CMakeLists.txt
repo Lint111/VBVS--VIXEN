@@ -65,6 +65,22 @@ vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST 
 # process to UT_QUEUE_CAPTURE_ROOT at run time so documents, logs, and captures stay together.
 # The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND TARGET VIXEN)
+    # One timeline for the producer, the Windows .bat and the cache gate; the .bat cannot include
+    # CMake, so a drift fails the configure instead of surfacing as a missing capture later.
+    include("${CMAKE_CURRENT_SOURCE_DIR}/editor_capture_contract.cmake")
+    set(_editor_capture_bat "${VIXEN_ROOT}/temp/run_editor_script.bat")
+    file(STRINGS "${_editor_capture_bat}" _editor_capture_bat_lines REGEX "^set VIXEN_(EDITOR_SCRIPT|EDITOR_CAPTURE_FRAMES|EXIT_AFTER_FRAMES)=")
+    foreach(_expected
+        "set VIXEN_EDITOR_SCRIPT=${VIXEN_EDITOR_CAPTURE_SCRIPT}"
+        "set VIXEN_EDITOR_CAPTURE_FRAMES=${VIXEN_EDITOR_CAPTURE_FRAME_LIST}"
+        "set VIXEN_EXIT_AFTER_FRAMES=${VIXEN_EDITOR_CAPTURE_EXIT_AFTER_FRAMES}")
+        if(NOT "${_expected}" IN_LIST _editor_capture_bat_lines)
+            message(FATAL_ERROR "editor capture timeline drift: ${_editor_capture_bat} lacks the line "
+                "'${_expected}'. The shared timeline lives in application/editor/editor_capture_contract.cmake "
+                "(the CTest producer and test_editor_toggle_undo_capture.cpp use it); edit the .bat to match "
+                "so the Windows batch producer and the test do not disagree.")
+        endif()
+    endforeach()
     set(VIXEN_EDITOR_CAPTURE_ROOT "${CMAKE_BINARY_DIR}/runtime-captures")
     set(VIXEN_EDITOR_CAPTURE_DIR "${VIXEN_EDITOR_CAPTURE_ROOT}/editor")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
@@ -102,8 +118,8 @@ if(BUILD_TESTS AND TARGET VIXEN)
         TEST_ENVIRONMENT
             # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
-            "VIXEN_EDITOR_SCRIPT=parameter_up:0@20,parameter_up:0@21,parameter_up:0@22,parameter_up:0@23,toggle:2@30,undo@60,redo@90,save@100,reopen@110,settings@120,back@130"
-            "VIXEN_EDITOR_CAPTURE_FRAMES=5,25,45,75,105,115"
+            "VIXEN_EDITOR_SCRIPT=${VIXEN_EDITOR_CAPTURE_SCRIPT}"
+            "VIXEN_EDITOR_CAPTURE_FRAMES=${VIXEN_EDITOR_CAPTURE_FRAME_LIST}"
             "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
@@ -113,7 +129,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
             "VIXEN_HDR_EXPOSURE_DT=0.5"
             "VIXEN_HDR_EXPOSURE_SPEED_UP=100"
             "VIXEN_HDR_EXPOSURE_SPEED_DOWN=100"
-            "VIXEN_EXIT_AFTER_FRAMES=140")
+            "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_EDITOR_CAPTURE_EXIT_AFTER_FRAMES}")
 
     if(VIXEN_FAIL_SCENARIOS)
         set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
