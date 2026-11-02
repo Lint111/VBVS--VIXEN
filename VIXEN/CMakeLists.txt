@@ -615,10 +615,24 @@ endif()
 # top-level project: a parent super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already owns
 # this cache-wide setting and must not be overridden by an inner add_subdirectory.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE} AND NOT "$ENV{VIXEN_FETCHCONTENT_CACHE}" STREQUAL "")
-        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "FetchContent base directory" FORCE)
-    elseif(DEFINED ENV{FETCHCONTENT_BASE_DIR} AND NOT "$ENV{FETCHCONTENT_BASE_DIR}" STREQUAL "")
-        set(FETCHCONTENT_BASE_DIR "$ENV{FETCHCONTENT_BASE_DIR}" CACHE PATH "FetchContent base directory" FORCE)
+    # cmd.exe keeps the space in `set VAR=path && cmake`, yielding "path /glm-subbuild/..." (T-6879,
+    # T-4347). Trim surrounding whitespace so a stray separator cannot split the cache path.
+    foreach(_vixen_fc_var VIXEN_FETCHCONTENT_CACHE FETCHCONTENT_BASE_DIR)
+        set(_vixen_fc_env_${_vixen_fc_var} "")
+        if(DEFINED ENV{${_vixen_fc_var}})
+            string(STRIP "$ENV{${_vixen_fc_var}}" _vixen_fc_trimmed)
+            if(NOT _vixen_fc_trimmed STREQUAL "$ENV{${_vixen_fc_var}}")
+                message(WARNING "${_vixen_fc_var} had leading/trailing whitespace ('$ENV{${_vixen_fc_var}}') "
+                    "in VIXEN/CMakeLists.txt; using '${_vixen_fc_trimmed}'. In cmd.exe write "
+                    "`set VAR=path&& cmake ...` (no space before &&).")
+            endif()
+            set(_vixen_fc_env_${_vixen_fc_var} "${_vixen_fc_trimmed}")
+        endif()
+    endforeach()
+    if(NOT _vixen_fc_env_VIXEN_FETCHCONTENT_CACHE STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "${_vixen_fc_env_VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "FetchContent base directory" FORCE)
+    elseif(NOT _vixen_fc_env_FETCHCONTENT_BASE_DIR STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "${_vixen_fc_env_FETCHCONTENT_BASE_DIR}" CACHE PATH "FetchContent base directory" FORCE)
     else()
         if(DEFINED CACHE{FETCHCONTENT_BASE_DIR})
             get_property(_vixen_fetchcontent_existing CACHE FETCHCONTENT_BASE_DIR PROPERTY VALUE)
