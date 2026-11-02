@@ -10,13 +10,15 @@ for /f "delims=" %%I in ("%~dp0..\..\..") do set "NATIVE_ROOT=%%~fI"
 set "NATIVE_CACHE_ROOT=%NATIVE_ROOT%\.tmp"
 set "VIXEN_NATIVE_BUILD_DIR=%NATIVE_ROOT%\build\native\%VIXEN_NATIVE_BUILD_KEY%"
 set "READY_FILE=%VIXEN_NATIVE_BUILD_DIR%\.vixendll-build-ready"
-if exist "%READY_FILE%" (
-  set /p READY_SHA=<"%READY_FILE%"
-  if /I "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" (
-    echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY%.
-    exit /b 0
-  )
-)
+rem Read the marker OUTSIDE any parenthesized block: cmd expands %VAR% for a whole block at parse time,
+rem so a set /p inside "if exist (...)" is never seen by the comparison in the same block (T-4926).
+if not exist "%READY_FILE%" goto :build
+set "READY_SHA="
+set /p READY_SHA=<"%READY_FILE%"
+if /I not "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" goto :build
+echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY%.
+exit /b 0
+:build
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b %errorlevel%
 if not "%~2"=="" set "UNDERTOW_ROOT=%~2"
