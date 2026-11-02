@@ -78,6 +78,8 @@ cmake --build build --config Debug --parallel 16      # or --config Release
 
 Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN/`, its binary tree is `build/wsl`) is wrapped by one command: `./build-wsl.sh --target VIXEN -j4` (configure, then build; any `cmake --build` args pass through).
 
+Sanitizer trees (Debug, GCC) have their own presets: `cmake -S VIXEN --preset vixen-wsl-asan` (ASan+UBSan, `build/wsl-asan`) and `--preset vixen-wsl-tsan` (TSan, `build/wsl-tsan`), then `cmake --build build/wsl-asan --target <test> -j4`. They demote only `-Wmaybe-uninitialized` from third-party Gaia/GLM headers out of `-Werror`; all other warnings stay errors.
+
 Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=ON`.
 
 ### Visual Studio
