@@ -91,6 +91,33 @@ do_sync() {
     say "synced $dir to ${tip:0:12} ($branch, tree ${tree_native:0:12} verified)"
 }
 
+# The Windows build cannot probe the WSL layout itself, so export the same roots the Linux route
+# derives (VIXEN/codegen/CMakeLists.txt, tools/with-test-lock.sh): the Undertow lane paired with this
+# worktree's name, else the sibling Undertow checkout; the Yeroket kernel from $HOME/Github, else
+# the projects sibling. Explicit UNDERTOW_ROOT / YEROKET_ROOT always win. run_bat forwards them as paths.
+infer_roots() {
+    local projects_root candidate
+    projects_root="$(cd "$repo_root/../../.." 2>/dev/null && pwd -P)" || return 0
+    if [[ -z "${UNDERTOW_ROOT:-}" ]]; then
+        for candidate in "$projects_root/undertow/.claude-worktrees/$(basename "$repo_root")" "$projects_root/undertow"; do
+            if [[ -f "$candidate/core/src/Undertow.Authoring/Schema/schemas.json" ]]; then
+                export UNDERTOW_ROOT="$(cd "$candidate" && pwd -P)"
+                say "UNDERTOW_ROOT inferred: $UNDERTOW_ROOT"
+                break
+            fi
+        done
+    fi
+    if [[ -z "${YEROKET_ROOT:-}" ]]; then
+        for candidate in "$HOME/Github/Yeroket-Fantasy" "$projects_root/Yeroket-Fantasy"; do
+            if [[ -f "$candidate/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj" ]]; then
+                export YEROKET_ROOT="$(cd "$candidate" && pwd -P)"
+                say "YEROKET_ROOT inferred: $YEROKET_ROOT"
+                break
+            fi
+        done
+    fi
+}
+
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
 
@@ -124,6 +151,7 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
+    infer_roots
     local cmd_args=() a
     for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
     export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
