@@ -632,8 +632,11 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
         set(_tool_build_command "${VIXEN_DOTNET}" build "${_yk_tool}/CodegenTool.csproj")
     endif()
+    # NETSDK1188 is the SDK complaining that Microsoft.CodeAnalysis 4.8.0 ships
+    # resource folders with locales .NET does not recognise (26 warnings per pin
+    # materialization, T-4740). Only that code is silenced; project warnings stay.
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
-        -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
+        -p:InvariantGlobalization=true -nowarn:NETSDK1188 --artifacts-path "${_tool_artifacts_run}"
         --output "${_tool_cached_bin_run}")
     if(_codegen_need_wsl_bridge)
         vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
