@@ -38,6 +38,11 @@ add_test(NAME Provision.GdbDependencyPackages
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
 set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
 
+add_test(NAME Provision.GpuEnvironmentScript
+    COMMAND "${CMAKE_COMMAND}" "-DCMAKE_CURRENT_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            -P "${VIXEN_ROOT}/cmake/tests/test_gpu_environment_script.cmake")
+set_tests_properties(Provision.GpuEnvironmentScript PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.KernelPinOverride
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_pin_override.cmake")

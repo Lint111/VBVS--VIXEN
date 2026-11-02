@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""End-to-end R6 proof through the stdio MCP server and editor-owned AppFlow channel."""
+"""End-to-end R6 proof through the stdio MCP server and editor-owned AppFlow channel.
+
+Run outside CTest (e.g. as a queued GPU job), first `. <build>/vixen-gpu-env.sh`: configure writes the same
+Vulkan ICD, layer and library environment CTest gives GPU tests, without it the editor fails with
+VK_ERROR_INCOMPATIBLE_DRIVER.
+"""
 
 from __future__ import annotations
 
