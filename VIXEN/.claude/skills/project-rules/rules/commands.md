@@ -25,6 +25,16 @@ The provisioner detects each pinned tool, caches installers, and logs each step 
 
 **Note:** a WSL `cmake --build` in this harness AUTO-BACKGROUNDS even without a background flag — overlapping builds of the SAME target race on the link output and truncate the binary. Build one target at a time and block on it. (See the watcher-polling note under Test Commands and the friction log.)
 
+## Detached queued jobs (long witnesses)
+
+Prefer a foreground queued job. When a witness must outlive the launching shell, detach it into its own session with stdin closed and output redirected; `nohup bash ...` alone was observed to exit immediately with an empty log (lockcpusan, 2026-10-22) because the shell's process group is torn down with the tool call:
+```bash
+nohup setsid bash tools/with-test-lock.sh --agent <lane> --resource <build|test|gpu> --label <lane>:<step> -- <cmd> \
+    < /dev/null > <log> 2>&1 &
+echo $! > <log>.pid   # kill only this explicit PID, never by pattern
+```
+Poll `<log>` and `tools/with-test-lock.sh --status` with short bounded checks; do not wrap this in another queue job.
+
 ## Build Commands
 
 ### Incremental Build (Daily Workflow)
