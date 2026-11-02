@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 
 namespace {
 // Encapsulates the standalone app's rolling CPU frame-time instrumentation (relocated from
@@ -90,7 +92,19 @@ VulkanStatus VulkanApplicationBase::CreateVulkanInstance(std::vector<const char*
     // (SIGABRT, "Invalid instance"). Surfacing it lets InitializeVulkanCore report and exit cleanly.
     VkResult result = instanceObj.CreateInstance(layers, extensions, applicationName);
     if (result != VK_SUCCESS) {
-        return std::unexpected(VulkanError{result, "vkCreateInstance failed"});
+        const auto envOrUnset = [](const char* name) {
+            const char* value = std::getenv(name);
+            return value ? std::string(value) : std::string("<unset>");
+        };
+        std::string reason = "vkCreateInstance failed (VK_ICD_FILENAMES=" + envOrUnset("VK_ICD_FILENAMES") +
+            ", VK_DRIVER_FILES=" + envOrUnset("VK_DRIVER_FILES") + ")";
+        if (result == VK_ERROR_INCOMPATIBLE_DRIVER) {
+            reason += ": the Vulkan loader found no usable driver in that selection. Fix: point VK_ICD_FILENAMES "
+                      "at a driver that loads on this host (Dozen: ~/.cache/vixen/wsl-vulkan/dzn_icd.json; "
+                      "software fallback: the system lavapipe lvp_icd*.json under /usr/share/vulkan/icd.d), "
+                      "or unset it for the loader default";
+        }
+        return std::unexpected(VulkanError{result, reason});
     }
     return {};
 }
