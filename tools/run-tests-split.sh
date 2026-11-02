@@ -144,6 +144,24 @@ if (( cpu_selected + gpu_selected == 0 )); then
   exit 2
 fi
 
+# Fail before queueing when a selected test's executable was never built: otherwise the run
+# spends its queue slots and reports "Not Run" per test (T-6532). The fix is a full build.
+missing_executables="$(ctest --test-dir "$build_dir" --show-only=json-v1 "${select_args[@]}" | python3 -c '
+import json, os, sys
+for test in json.load(sys.stdin).get("tests", []):
+    # ctest drops "command" from the listing when it cannot resolve the executable.
+    command = test.get("command") or []
+    if not command or (os.path.isabs(command[0]) and not os.path.exists(command[0])):
+        print(test["name"] + " -> " + (command[0] if command else "<executable not found>"))
+')" || { echo "[run-tests-split] could not read the selected tests for the executable preflight" >&2; exit 2; }
+if [[ -n "$missing_executables" ]]; then
+  echo "[run-tests-split] $(wc -l <<<"$missing_executables") selected test executable(s) are not built in $build_dir:" >&2
+  head -n 10 <<<"$missing_executables" >&2
+  echo "Why: the build tree only contains the targets someone built; the selection runs every test it names." >&2
+  echo "Fix: ./build-wsl.sh (full build, no --target) through the queue, then rerun; or narrow with --label/--regex." >&2
+  exit 2
+fi
+
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
 [[ -z "${VK_ICD_FILENAMES:-}" && -f "$icd" ]] && gpu_env=(VK_ICD_FILENAMES="$icd")
