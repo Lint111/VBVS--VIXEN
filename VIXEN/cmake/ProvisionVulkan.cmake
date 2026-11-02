@@ -301,10 +301,32 @@ if(NOT Vulkan_FOUND AND VIXEN_AUTO_PROVISION_VULKAN)
 endif()
 
 if(NOT Vulkan_FOUND)
+    # What / where / why / fix: name the inputs that decided this, because the usual cause is an
+    # override pair (auto-provision OFF + a private VIXEN_VULKAN_CACHE_DIR) that never looks at the
+    # shared SDK another worktree already provisioned.
+    if(DEFINED ENV{VULKAN_SDK} AND NOT "$ENV{VULKAN_SDK}" STREQUAL "")
+        set(_vixen_vk_env "$ENV{VULKAN_SDK}")
+    else()
+        set(_vixen_vk_env "<unset>")
+    endif()
+    vixen_shared_cache_root(_vixen_vk_shared_root)
+    set(_vixen_vk_shared_sdk "${_vixen_vk_shared_root}/vulkan-sdk/${VIXEN_VULKAN_SDK_VERSION}/x86_64")
+    if(EXISTS "${_vixen_vk_shared_sdk}/include/vulkan/vulkan.h")
+        set(_vixen_vk_fix "export VULKAN_SDK=${_vixen_vk_shared_sdk}  (already provisioned on this machine), then rerun configure")
+    else()
+        set(_vixen_vk_fix "install a Vulkan SDK and export VULKAN_SDK, or rerun with -DVIXEN_AUTO_PROVISION_VULKAN=ON and network access")
+    endif()
+    if(VIXEN_AUTO_PROVISION_VULKAN)
+        set(_vixen_vk_why "auto-provisioning did not produce a usable SDK in the cache dir")
+    else()
+        set(_vixen_vk_why "auto-provisioning is OFF so the cache dir is never consulted")
+    endif()
     message(FATAL_ERROR
-        "VIXEN: Vulkan not found and could not be auto-provisioned.\n"
-        "  - Ensure network access, or install the Vulkan SDK, or\n"
-        "  - re-run with -DVIXEN_AUTO_PROVISION_VULKAN=ON (default).")
+        "VIXEN: Vulkan ${VIXEN_VULKAN_SDK_VERSION} not found and not provisioned.\n"
+        "  VIXEN_AUTO_PROVISION_VULKAN=${VIXEN_AUTO_PROVISION_VULKAN}; VIXEN_VULKAN_CACHE_DIR=${VIXEN_VULKAN_CACHE_DIR}; "
+        "env VULKAN_SDK=${_vixen_vk_env}\n"
+        "  Why: no system or VULKAN_SDK install was found, and ${_vixen_vk_why}.\n"
+        "  Fix: ${_vixen_vk_fix}.")
 endif()
 
 # Static version capability checks use the same floors exported to CapabilityGraph. Vulkan API
