@@ -117,9 +117,15 @@ if(BUILD_TESTS AND TARGET VIXEN)
 
     if(VIXEN_FAIL_SCENARIOS)
         set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
-        add_test(NAME vixen_device_loss_recovery
-            COMMAND bash -c
-                "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_test(NAME vixen_device_loss_recovery
+                COMMAND bash -c
+                    "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        else()
+            add_test(NAME vixen_device_loss_recovery
+                COMMAND "${CMAKE_COMMAND}" "-DAPP_EXE=$<TARGET_FILE:VIXEN>" "-DLOG=${VIXEN_DEVICE_LOSS_LOG}"
+                    "-DWORKDIR=$<TARGET_FILE_DIR:VIXEN>" -P "${CMAKE_CURRENT_SOURCE_DIR}/run_device_loss_recovery.cmake")
+        endif()
         set_tests_properties(vixen_device_loss_recovery PROPERTIES
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
             TIMEOUT 180)
