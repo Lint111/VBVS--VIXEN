@@ -68,6 +68,7 @@ TEST(CacheCodec, RoundTripPodStringVector) {
     EXPECT_EQ(v, (std::vector<int>{1, 2, 3, 4, 5}));
     EXPECT_TRUE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -90,6 +91,7 @@ TEST(CacheCodec, ReadVectorHugeLengthFailsWithoutAllocating) {
     // cap and the remaining file size.
     EXPECT_TRUE(v.empty());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -109,6 +111,7 @@ TEST(CacheCodec, ReadVectorLengthWithinCapButBeyondFileFails) {
     EXPECT_FALSE(r.ReadVector(v, 1'000'000));
     EXPECT_FALSE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -140,6 +143,7 @@ TEST(CacheCodec, TruncatedStreamFailsAtTheRightRead) {
     EXPECT_FALSE(r.ReadVector(v, 1024));
     EXPECT_FALSE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -250,6 +254,7 @@ TEST(CacheCodec, ReadStringLengthBeyondCapFails) {
     EXPECT_FALSE(r.ReadString(s, 100));  // cap smaller than the actual string
     EXPECT_FALSE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -271,6 +276,7 @@ TEST(CacheCodec, SizeTimesSizeofOverflowRejected) {
     EXPECT_FALSE(r.ReadVector(v, std::numeric_limits<size_t>::max()));
     EXPECT_FALSE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -295,6 +301,7 @@ TEST(CacheCodec, RoundTrip32BitLengthVariants) {
     EXPECT_EQ(v, (std::vector<uint32_t>{0x07230203u, 1, 2, 3}));
     EXPECT_TRUE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -314,6 +321,7 @@ TEST(CacheCodec, ReadVector32HugeLengthFailsWithoutAllocating) {
     EXPECT_FALSE(r.Ok());
     EXPECT_TRUE(v.empty());
 
+    in.close();
     std::filesystem::remove(path);
 }
 
@@ -333,5 +341,6 @@ TEST(CacheCodec, EmptyVectorRoundTrips) {
     EXPECT_TRUE(v.empty());
     EXPECT_TRUE(r.Ok());
 
+    in.close();
     std::filesystem::remove(path);
 }
