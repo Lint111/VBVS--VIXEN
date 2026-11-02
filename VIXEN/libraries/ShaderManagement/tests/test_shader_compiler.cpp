@@ -404,3 +404,43 @@ TEST_F(ShaderCompilerTest, CompileCache_BuilderCachesWithoutOptIn) {
     ASSERT_TRUE(bypass.success);
     EXPECT_EQ(cache.GetStatistics().totalCacheHits, 1u);
 }
+
+// T-6903: the compile key covers every #include the preprocessor inlined, so editing an included GLSL file
+// (RecipeGlyphBindings.glsl and the generated SDI bindings reach shaders this way) is a miss, never a stale hit.
+TEST_F(ShaderCompilerTest, CompileCache_IncludedFileChangeIsAMiss) {
+    ShaderCacheConfig config;
+    config.cacheDirectory = testDir / "spirv";
+    ShaderCacheManager cache(config);
+
+    const auto shaderDir = testDir / "include_shaders";
+    std::filesystem::create_directories(shaderDir);
+    const auto writeFile = [](const std::filesystem::path& path, const std::string& text) {
+        std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+    };
+    writeFile(shaderDir / "main.comp",
+              "#version 450\n#include \"scale.glsl\"\n"
+              "layout(local_size_x = 8) in;\n"
+              "layout(std430, binding = 0) buffer Data { float values[]; };\n"
+              "void main() { values[gl_GlobalInvocationID.x] *= kScale; }\n");
+
+    const auto build = [&]() {
+        ShaderBundleBuilder builder;
+        builder.SetProgramName("IncludeProbe")
+               .SetPipelineType(PipelineTypeConstraint::Compute)
+               .EnableSdiGeneration(false)
+               .EnableCaching(&cache)
+               .AddIncludePath(shaderDir)
+               .AddStageFromFile(ShaderStage::Compute, shaderDir / "main.comp");
+        return builder.Build();
+    };
+
+    writeFile(shaderDir / "scale.glsl", "const float kScale = 3.0;\n");
+    ASSERT_TRUE(build().success);
+    ASSERT_TRUE(build().success);
+    EXPECT_EQ(cache.GetStatistics().totalCacheHits, 1u) << "unchanged include must hit";
+
+    writeFile(shaderDir / "scale.glsl", "const float kScale = 5.0;\n");
+    const auto edited = build();
+    ASSERT_TRUE(edited.success) << edited.errorMessage;
+    EXPECT_EQ(cache.GetStatistics().totalCacheHits, 1u) << "edited include must recompile, not reuse the stale SPIR-V";
+}
