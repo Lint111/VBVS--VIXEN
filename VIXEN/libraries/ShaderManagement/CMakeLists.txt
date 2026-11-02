@@ -128,6 +128,13 @@ else()
     target_include_directories(ShaderManagement PUBLIC ${VULKAN_HEADERS_INCLUDE_DIR})
 endif()
 
+# UBSan's vptr check makes ShaderCompiler.cpp reference RTTI (typeinfo for glslang::TShader/TProgram),
+# which the Vulkan SDK's glslang libraries (built -fno-rtti) do not define, so an ASan+UBSan link fails
+# at the very last step (T-4729). vptr is the only RTTI-dependent sanitizer; the rest stay instrumented.
+if(NOT VULKAN_TRIMMED_BUILD_ACTIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(src/ShaderCompiler.cpp PROPERTIES COMPILE_OPTIONS "-fno-sanitize=vptr")
+endif()
+
 # C++23 standard
 target_compile_features(ShaderManagement PUBLIC cxx_std_23)
 
