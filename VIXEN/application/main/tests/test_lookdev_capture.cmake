@@ -357,4 +357,20 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
+
+    # T-4922: a host-level shadow diagnostic override (VIXEN_SHADOW_CONFIG_*) would reach both the before and
+    # after captures of every case and mask a renderer change. Every capture case clears them explicitly; the
+    # isolation cases name them in their own modification list (unset, then their one override) and are skipped.
+    get_property(_lookdev_all_tests DIRECTORY PROPERTY TESTS)
+    foreach(_test IN LISTS _lookdev_all_tests)
+        if(NOT _test MATCHES "^Application\\.(LookdevCapture|ReconstructionInputs|ExposureTonemapParity)\\.")
+            continue()
+        endif()
+        get_test_property("${_test}" ENVIRONMENT_MODIFICATION _test_environment_modification)
+        if("${_test_environment_modification}" MATCHES "VIXEN_SHADOW_CONFIG_ENABLED")
+            continue()
+        endif()
+        set_property(TEST "${_test}" APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            "VIXEN_SHADOW_CONFIG_ENABLED=unset:" "VIXEN_SHADOW_CONFIG_BIAS_EPSILON=unset:")
+    endforeach()
 endif()
