@@ -91,6 +91,33 @@ do_sync() {
     say "synced $dir to ${tip:0:12} ($branch, tree ${tree_native:0:12} verified)"
 }
 
+# The native checkout is intentionally flattened under /mnt/c/vixen-native, so CMake cannot
+# derive the paired Undertow checkout from the Windows path. Mirror the Linux route here before
+# WSLENV conversion. Explicit roots still win; the native process receives the resulting WSL path
+# as a Windows path through the /p marker below.
+infer_roots() {
+    local projects_root candidate
+    projects_root="$(cd "$repo_root/../../.." 2>/dev/null && pwd -P)" || return 0
+    if [[ -z "${UNDERTOW_ROOT:-}" ]]; then
+        for candidate in "$projects_root/undertow/.claude-worktrees/$(basename "$repo_root")" "$projects_root/undertow"; do
+            if [[ -f "$candidate/core/src/Undertow.Authoring/Schema/schemas.json" ]]; then
+                export UNDERTOW_ROOT="$(cd "$candidate" && pwd -P)"
+                say "UNDERTOW_ROOT inferred: $UNDERTOW_ROOT"
+                break
+            fi
+        done
+    fi
+    if [[ -z "${YEROKET_ROOT:-}" ]]; then
+        for candidate in "$HOME/Github/Yeroket-Fantasy" "$projects_root/Yeroket-Fantasy"; do
+            if [[ -f "$candidate/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj" ]]; then
+                export YEROKET_ROOT="$(cd "$candidate" && pwd -P)"
+                say "YEROKET_ROOT inferred: $YEROKET_ROOT"
+                break
+            fi
+        done
+    fi
+}
+
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
 
@@ -114,6 +141,7 @@ run_bat() {
     # Keep the per-recipe look-dev inputs available to the native capture command. The
     # recipe path/pack root/schema and output directory are WSL paths and need WSLENV's
     # /p conversion; the ids and scalar knobs are ordinary strings.
+    infer_roots
     local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
