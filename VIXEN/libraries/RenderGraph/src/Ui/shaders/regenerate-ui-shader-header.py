@@ -40,6 +40,27 @@ def find_glslc() -> str:
     raise RuntimeError("glslc was not found on PATH, in VULKAN_SDK, or in the VIXEN SDK cache")
 
 
+GLSLC_TIMEOUT_SECONDS = float(os.environ.get("VIXEN_GLSLC_TIMEOUT_SECONDS", "60"))
+
+
+def run_glslc(glslc: str, args: list[str]) -> None:
+    """Run glslc with a bound: a wedged compiler must fail the build with its cause, not hang it."""
+    try:
+        subprocess.run([glslc, *args], check=True, timeout=GLSLC_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"regenerate-ui-shader-header: glslc ({glslc}) made no progress for {GLSLC_TIMEOUT_SECONDS:g}s "
+            f"compiling {' '.join(args)}. A healthy compile takes under a second; check for a stuck or "
+            "orphaned glslc process and the Vulkan SDK install, or raise VIXEN_GLSLC_TIMEOUT_SECONDS. "
+            "If the checked-in header is already current, `--check` verifies it without a build step."
+        ) from None
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"regenerate-ui-shader-header: glslc ({glslc}) exited {error.returncode} compiling "
+            f"{' '.join(args)}; fix the shader error above, then rerun."
+        ) from None
+
+
 def words_from_spirv(path: Path) -> list[int]:
     data = path.read_bytes()
     if len(data) % 4:
@@ -96,8 +117,8 @@ def main() -> None:
         if generate_ui:
             vert_spv = temp / "ui.vert.spv"
             frag_spv = temp / "ui.frag.spv"
-            subprocess.run([glslc, str(SHADER_DIR / "ui.vert"), "-o", str(vert_spv)], check=True)
-            subprocess.run([glslc, str(SHADER_DIR / "ui.frag"), "-o", str(frag_spv)], check=True)
+            run_glslc(glslc, [str(SHADER_DIR / "ui.vert"), "-o", str(vert_spv)])
+            run_glslc(glslc, [str(SHADER_DIR / "ui.frag"), "-o", str(frag_spv)])
             ui_header = "\n".join(
                 [
                     "// AUTO-GENERATED from src/Ui/shaders/ui.vert + ui.frag via glslc.",
@@ -116,12 +137,12 @@ def main() -> None:
         if generate_text:
             text_vert_spv = temp / "text.vert.spv"
             text_frag_spv = temp / "text.frag.spv"
-            subprocess.run([glslc, "-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
-                            str(TEXT_SHADER_DIR / "text.vert"),
-                            "-o", str(text_vert_spv)], check=True)
-            subprocess.run([glslc, "-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
-                            str(TEXT_SHADER_DIR / "text.frag"),
-                            "-o", str(text_frag_spv)], check=True)
+            run_glslc(glslc, ["-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
+                              str(TEXT_SHADER_DIR / "text.vert"),
+                              "-o", str(text_vert_spv)])
+            run_glslc(glslc, ["-I", str(text_interface_dir), "-I", str(TEXT_SHADER_DIR),
+                              str(TEXT_SHADER_DIR / "text.frag"),
+                              "-o", str(text_frag_spv)])
             text_header = "\n".join(
                 [
                     "// AUTO-GENERATED from libraries/Text/src/shaders/text.vert + text.frag via glslc.",
