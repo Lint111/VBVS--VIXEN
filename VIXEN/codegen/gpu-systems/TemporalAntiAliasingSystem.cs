@@ -3,7 +3,6 @@ using Undertow.Modding.Schema;
 using Undertow.Sim.Systems;
 using Vixen.AntiAliasing;
 using Vixen.Gpu;
-using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
 
@@ -35,7 +34,7 @@ public struct float2
 //   design measured (8 frames ~ a 4-sample render). A sub-texel reprojection gives up part of
 //   that weight (TemporalResolveCallables.HistoryFeedback): repeated sub-texel resampling is
 //   what softened moving silhouettes into a bright halo against a dark background.
-[KernelSystem(Emit = KernelEmitTargets.Glsl)]
+[KernelSystem]
 public static class TemporalAntiAliasingSystem
 {
     // Keep intrinsic spellings local so callable reach does not emit their C# bodies.
