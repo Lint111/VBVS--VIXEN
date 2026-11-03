@@ -3,9 +3,13 @@ include("${CMAKE_CURRENT_LIST_DIR}/VixenWriteIfDifferent.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/VixenWindowsGitTrust.cmake")
 
 # The default cache is outside source checkouts. Tests/isolated lanes can override
-# it with an untracked directory inside their own worktree.
+# it with an untracked directory inside their own worktree, either with -DVIXEN_KERNEL_CACHE_DIR
+# or by exporting VIXEN_KERNEL_CACHE_DIR (so every configure of a lane inherits it, as with
+# VIXEN_FETCHCONTENT_CACHE); the -D value wins.
 if(NOT DEFINED VIXEN_KERNEL_CACHE_DIR)
-    if(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
+    if(NOT "$ENV{VIXEN_KERNEL_CACHE_DIR}" STREQUAL "")
+        set(_vixen_kernel_cache "$ENV{VIXEN_KERNEL_CACHE_DIR}")
+    elseif(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
         set(_vixen_kernel_cache "$ENV{XDG_CACHE_HOME}/vixen/kernel-codegen")
     elseif(WIN32 AND NOT "$ENV{LOCALAPPDATA}" STREQUAL "")
         set(_vixen_kernel_cache "$ENV{LOCALAPPDATA}/VIXEN/kernel-codegen")
