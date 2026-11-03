@@ -147,6 +147,10 @@ fi
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
 [[ -z "${VK_ICD_FILENAMES:-}" && -f "$icd" ]] && gpu_env=(VK_ICD_FILENAMES="$icd")
+# A lost device leaves every later GPU case hanging until its CTest timeout; the guard stops the run at
+# the first device loss or consecutive case timeouts and the per-case default bounds one hung case (T-7061).
+gpu_case_timeout="${VIXEN_GPU_CASE_TIMEOUT:-600}"
+gpu_guard=(python3 "$root/tools/ctest-gpu-guard.py" --)
 witness_env=()
 (( witness )) && witness_env=(VIXEN_GPU_WITNESS_DIR="$out_dir/witness")
 
@@ -220,13 +224,15 @@ run_gpu_shards() {
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
           --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
-          ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+            --timeout "$gpu_case_timeout" \
             -R "$shard_regex" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
-          ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+            --timeout "$gpu_case_timeout" \
             -R "$shard_regex" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
@@ -273,10 +279,15 @@ run_part() {
     run_gpu_shards "$cpu_tokens" "$@"
     return $?
   fi
+  local part_guard=() part_timeout=()
+  if [[ "$part" == gpu ]]; then
+    part_guard=("${gpu_guard[@]}")
+    part_timeout=(--timeout "$gpu_case_timeout")
+  fi
   queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
-    ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
-          --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
+    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
+          ${part_timeout[@]+"${part_timeout[@]}"} --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?
   echo "$status $((SECONDS - started))" >"$out_dir/$part.status"
