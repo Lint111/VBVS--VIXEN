@@ -147,9 +147,68 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
+# A federation super-build supplies the one kernel provider already resolved by
+# Undertow's provider-root contract. Keep the standalone pin below for direct
+# VIXEN builds, but never let a nested VIXEN configure silently select a second
+# kernel when the parent has already declared one.
+set(VIXEN_KERNEL_PROVIDER_ROOT "" CACHE PATH
+    "Federation kernel provider checkout replacing VIXEN's standalone kernel pin")
+set(VIXEN_KERNEL_PROVIDER_REVISION "" CACHE STRING
+    "Exact Git revision expected at VIXEN_KERNEL_PROVIDER_ROOT")
+set(VIXEN_KERNEL_PROVIDER_REPOSITORY "" CACHE STRING
+    "Repository used for the federation kernel provider")
+if(NOT VIXEN_KERNEL_PROVIDER_ROOT STREQUAL "")
+    get_filename_component(_vixen_kernel_provider_root "${VIXEN_KERNEL_PROVIDER_ROOT}" REALPATH)
+    if(NOT EXISTS "${_vixen_kernel_provider_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj")
+        message(FATAL_ERROR
+            "VIXEN: federation kernel provider is missing CodegenTool~/CodegenTool.csproj: "
+            "${_vixen_kernel_provider_root}")
+    endif()
+    if(NOT VIXEN_KERNEL_PROVIDER_REVISION MATCHES "^[0-9a-f]+$")
+        message(FATAL_ERROR
+            "VIXEN: VIXEN_KERNEL_PROVIDER_REVISION must be a full lowercase SHA when "
+            "VIXEN_KERNEL_PROVIDER_ROOT is set")
+    endif()
+    string(LENGTH "${VIXEN_KERNEL_PROVIDER_REVISION}" _vixen_kernel_provider_revision_length)
+    if(NOT _vixen_kernel_provider_revision_length EQUAL 40)
+        message(FATAL_ERROR
+            "VIXEN: VIXEN_KERNEL_PROVIDER_REVISION must be a full 40-character SHA when "
+            "VIXEN_KERNEL_PROVIDER_ROOT is set")
+    endif()
+    execute_process(
+        COMMAND git -C "${_vixen_kernel_provider_root}" rev-parse HEAD
+        RESULT_VARIABLE _vixen_kernel_provider_revision_rc
+        OUTPUT_VARIABLE _vixen_kernel_provider_actual_revision
+        ERROR_VARIABLE _vixen_kernel_provider_revision_error
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(NOT _vixen_kernel_provider_revision_rc EQUAL 0)
+        message(FATAL_ERROR
+            "VIXEN: cannot verify federation kernel provider ${_vixen_kernel_provider_root}: "
+            "${_vixen_kernel_provider_revision_error}")
+    endif()
+    if(NOT "${_vixen_kernel_provider_actual_revision}" STREQUAL "${VIXEN_KERNEL_PROVIDER_REVISION}")
+        message(FATAL_ERROR
+            "VIXEN: federation kernel provider revision mismatch: declared "
+            "${VIXEN_KERNEL_PROVIDER_REVISION}, fetched ${_vixen_kernel_provider_actual_revision} "
+            "at ${_vixen_kernel_provider_root}")
+    endif()
+    if(VIXEN_KERNEL_PROVIDER_REPOSITORY STREQUAL "")
+        set(VIXEN_KERNEL_PROVIDER_REPOSITORY "https://github.com/Lint111/Yeroket-Fantasy.git")
+    endif()
+    set(YEROKET_ROOT "${_vixen_kernel_provider_root}" CACHE PATH
+        "Federation kernel provider root supplied by the parent build" FORCE)
+    message(STATUS "[codegen] using federation kernel provider: ${_vixen_kernel_provider_root} "
+        "(${VIXEN_KERNEL_PROVIDER_REVISION})")
+endif()
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "6e3474325d55e14ebfc803c1b816fd805e4ac64c")
+# This is the standalone VIXEN pin. It is also the federation pin used by
+# Undertow main-wave and is known to accept implicit queue-delivery markers.
+set(_vixen_tracked_yeroket_kernel_sha "45d8ccd835ef16e4511c4367b257d28fb03d5af2")
+if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
+    set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
+endif()
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
