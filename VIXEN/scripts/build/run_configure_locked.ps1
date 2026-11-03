@@ -42,7 +42,16 @@ if (-not $SkipLock) {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenConfigureLock")
     Write-Host "[configure] Waiting for the machine-wide configure lock (another worktree may be configuring)..."
     $lockWaitStart = Get-Date
-    $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    try {
+        $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    } catch [System.Threading.AbandonedMutexException] {
+        # WaitOne throws after transferring ownership to this process. The old
+        # Windows-native wrapper could be cancelled from WSL while cmake.exe
+        # survived, leaving the named mutex abandoned for the next lane.
+        $acquired = $true
+        Write-Host "[configure] Recovered an abandoned configure lock; the previous owner exited without releasing it."
+        Write-Host "[configure] Continuing with this configure; if it is stale, delete only this lane's build tree and retry."
+    }
     if (-not $acquired) {
         $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
         Write-Host "[configure] TIMEOUT after $($waited)s waiting for the configure lock - another configure is still running."
@@ -63,8 +72,36 @@ try {
     if ($SourceDir) { $cmakeArgs += @('-S', $SourceDir) }
     $cmakeArgs += @('--preset', $Preset)
     if ($BinaryDir) { $cmakeArgs += @('-B', $BinaryDir) }
-    & $CMakeExe @cmakeArgs
-    exit $LASTEXITCODE
+    $configureLog = Join-Path $env:TEMP "vixen_configure_$([Guid]::NewGuid().ToString('N')).log"
+    $startTime = Get-Date
+    $job = Start-Job -ScriptBlock {
+        param($cmakeExe, $args, $logPath)
+        & $cmakeExe @args *>&1 | Out-File -FilePath $logPath -Encoding utf8
+        $LASTEXITCODE
+    } -ArgumentList $CMakeExe, (,$cmakeArgs), $configureLog
+    try {
+        while ($job.State -eq 'Running') {
+            Start-Sleep -Seconds 5
+            if ($job.State -eq 'Running') {
+                $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
+                $lastLine = (Get-Content -Path $configureLog -Tail 1 -ErrorAction SilentlyContinue)
+                if ($lastLine) {
+                    Write-Host "[configure] still running (${elapsed}s): $lastLine"
+                } else {
+                    Write-Host "[configure] still running (${elapsed}s); CMake has not emitted a new line yet."
+                }
+            }
+        }
+        $jobOutput = Receive-Job -Job $job
+        $configureExit = $jobOutput | Select-Object -Last 1
+        if ($configureExit -is [int]) { exit $configureExit }
+        exit 1
+    } finally {
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        if (Test-Path $configureLog) {
+            Write-Host "[configure] CMake log: $configureLog"
+        }
+    }
 } finally {
     # Released even if cmake throws or this script is Ctrl+C'd -- the Mutex also auto-releases
     # if THIS process itself dies, so a killed configure can never wedge the lock (same

@@ -99,7 +99,7 @@ base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; f
 # starts on a UNC directory. A UNC-only base falls back to the drive root and the full path.
 run_bat() {
     local bat="$1"; shift
-    local bat_dir bat_name win_arg rc
+    local bat_dir bat_name win_arg rc cmd_pid start_epoch elapsed
     need_cmd
     bat_dir="$(dirname "$bat")"; bat_name="$(basename "$bat")"
     [[ -f "$bat" ]] || die "batch file not found: $bat"
@@ -118,10 +118,34 @@ run_bat() {
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"
+
+    # WSL does not reliably forward a queue cancellation to the Windows process
+    # behind cmd.exe. Keep the interop PID so a stopped queue job cannot leave
+    # cmake.exe holding Global\\VixenConfigureLock/Global\\VixenBuildLock for the
+    # next lane. The 30-second status line is also the only truthful heartbeat
+    # available while Windows is scanning a WSL/9P provider tree.
+    cleanup_cmd() {
+        if [[ -n "${cmd_pid:-}" ]] && kill -0 "$cmd_pid" 2>/dev/null; then
+            say "received cancellation; terminating Windows command pid $cmd_pid"
+            kill -TERM "$cmd_pid" 2>/dev/null || true
+        fi
+    }
+    trap 'cleanup_cmd; exit 143' INT TERM
     set +e
-    "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"
-    rc="${PIPESTATUS[0]}"
+    "$cmd_exe" /c "$win_arg" "$@" > >(tee "$log_file") 2>&1 &
+    cmd_pid=$!
+    start_epoch="$(date +%s)"
+    while kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 30
+        if kill -0 "$cmd_pid" 2>/dev/null; then
+            elapsed=$(( $(date +%s) - start_epoch ))
+            say "still running Windows command pid $cmd_pid (${elapsed}s elapsed); see $log_file"
+        fi
+    done
+    wait "$cmd_pid"
+    rc="$?"
     set -e
+    trap - INT TERM
     say "exit code $rc"
     return "$rc"
 }

@@ -122,7 +122,15 @@ if (-not $SkipLock) {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenBuildLock")
     Write-Host "[build] Waiting for the machine-wide build lock (another build may be running)..."
     $lockWaitStart = Get-Date
-    $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    try {
+        $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    } catch [System.Threading.AbandonedMutexException] {
+        # WaitOne throws after transferring ownership to this process. This is
+        # recoverable when a cancelled native cmd.exe left the build owner dead.
+        $acquired = $true
+        Write-Host "[build] Recovered an abandoned build lock; the previous owner exited without releasing it."
+        Write-Host "[build] Continuing with this build; if it is stale, delete only this lane's build tree and retry."
+    }
     if (-not $acquired) {
         $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
         Write-Host "[build] TIMEOUT after $($waited)s waiting for the build lock - another build is still running."
