@@ -17,8 +17,18 @@ if(TARGET glm)
 endif()
 
 # The single Gaia pin shared by VIXEN, the native loader, undertow and the kernel lives in gaia.pin.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/gaia.pin")
-file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/gaia.pin" _vixen_gaia_pin_lines REGEX "^(sha|remote):")
+# A consuming application that validates a different Gaia commit (a fork under test) passes its own
+# pin file with -DVIXEN_GAIA_PIN_FILE=<path>; the exact-revision guard below still applies to it, so
+# the provider checkout never needs editing.
+set(VIXEN_GAIA_PIN_FILE "${CMAKE_CURRENT_LIST_DIR}/gaia.pin" CACHE FILEPATH
+    "Gaia pin file ('sha:' and 'remote:' lines) VIXEN fetches and verifies; override per consumer.")
+if(NOT EXISTS "${VIXEN_GAIA_PIN_FILE}")
+    message(FATAL_ERROR
+        "VIXEN: VIXEN_GAIA_PIN_FILE '${VIXEN_GAIA_PIN_FILE}' does not exist. Pass the path of a pin file "
+        "with 'sha:' and 'remote:' lines, or unset it to use ${CMAKE_CURRENT_LIST_DIR}/gaia.pin.")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${VIXEN_GAIA_PIN_FILE}")
+file(STRINGS "${VIXEN_GAIA_PIN_FILE}" _vixen_gaia_pin_lines REGEX "^(sha|remote):")
 foreach(_vixen_gaia_pin_line IN LISTS _vixen_gaia_pin_lines)
     if(_vixen_gaia_pin_line MATCHES "^sha:[ \t]*([0-9a-f]+)")
         set(VIXEN_GAIA_UPSTREAM_REVISION "${CMAKE_MATCH_1}")
@@ -27,7 +37,7 @@ foreach(_vixen_gaia_pin_line IN LISTS _vixen_gaia_pin_lines)
     endif()
 endforeach()
 if(NOT VIXEN_GAIA_UPSTREAM_REVISION MATCHES "^[0-9a-f]+$" OR NOT VIXEN_GAIA_REPOSITORY)
-    message(FATAL_ERROR "VIXEN: ${CMAKE_CURRENT_LIST_DIR}/gaia.pin needs 'sha:' and 'remote:' lines")
+    message(FATAL_ERROR "VIXEN: ${VIXEN_GAIA_PIN_FILE} needs 'sha: <hex commit>' and 'remote: <url>' lines")
 endif()
 if((NOT DEFINED FETCHCONTENT_SOURCE_DIR_GAIA OR "${FETCHCONTENT_SOURCE_DIR_GAIA}" STREQUAL "")
    AND DEFINED FETCHCONTENT_BASE_DIR)
