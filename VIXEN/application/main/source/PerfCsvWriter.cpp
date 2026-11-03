@@ -1,6 +1,7 @@
 #include "PerfCsvWriter.h"
 #include "Core/GPUPerformanceLogger.h"
 
+#include <cstdio>
 #include <cstdlib>  // std::getenv
 #include <numeric>  // std::accumulate
 
@@ -37,6 +38,10 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
 
     row.passMs.reserve(passes.size());
     for (const auto& pass : passes) {
+        if (pass.logger && !pass.logger->HasQuerySlot() && warnedNoSlot_.insert(pass.columnName).second) {
+            std::fprintf(stderr, "[PerfCsvWriter] column '%s' has no GPU query slot, so its 0 means unmeasured, "
+                                 "not fast; raise maxQueryConsumers in DeviceNode.cpp\n", pass.columnName.c_str());
+        }
         const double ms = pass.logger ? static_cast<double>(pass.logger->GetLastDispatchMs()) : 0.0;
         row.passMs.emplace_back(pass.columnName, ms);
     }

@@ -152,6 +152,9 @@ public:
      */
     GPUQueryManager::QuerySlotHandle GetQuerySlot() const { return querySlot_; }
 
+    /// False when no slot was allocated: GetLastDispatchMs() is then always 0 because nothing is measured.
+    bool HasQuerySlot() const { return querySlot_ != GPUQueryManager::INVALID_SLOT; }
+
 private:
     std::shared_ptr<GPUQueryManager> queryManager_;
     GPUQueryManager::QuerySlotHandle querySlot_ = GPUQueryManager::INVALID_SLOT;

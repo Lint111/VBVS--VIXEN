@@ -14,7 +14,10 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_
         querySlot_ = queryManager_->AllocateQuerySlot(name + "_GPUPerf");
 
         if (querySlot_ == GPUQueryManager::INVALID_SLOT) {
-            Warning("Failed to allocate GPU query slot - GPU timing disabled");
+            Error("No free GPU query slot for '" + name + "' (" + std::to_string(queryManager_->GetAllocatedSlotCount()) +
+                  " of " + std::to_string(queryManager_->GetMaxSlotCount()) +
+                  " in use): this pass's GPU timing is disabled and its perf column has no data; "
+                  "raise maxQueryConsumers in DeviceNode.cpp");
         } else {
             frameDispatchInfo_.resize(queryManager_->GetFrameCount());
 
