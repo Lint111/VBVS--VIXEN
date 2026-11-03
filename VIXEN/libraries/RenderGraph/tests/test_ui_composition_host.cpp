@@ -23,6 +23,7 @@
 #include "graph/HudView.h"
 #include "Ui/VixenRmlSystemInterface.h"
 #include "Text/RmlFontEngine.h"
+#include "UiTestAssets.h"
 
 class NullRenderInterface2 final : public Rml::RenderInterface {
 public:
@@ -39,6 +40,8 @@ public:
 class UiCompositionHostTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // assets/ui is staged beside the executable; do not depend on the caller's working directory.
+        Vixen::TestSupport::EnterExecutableDirectory();
         Rml::SetSystemInterface(&sysIface_);
         Rml::SetRenderInterface(&renderIface_);
         Rml::SetFontEngineInterface(&fontEngine_);
