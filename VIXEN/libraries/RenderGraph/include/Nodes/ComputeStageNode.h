@@ -54,7 +54,8 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer,
+    /// Returns false when recording failed and the fault was reported (R213); the caller skips the submit.
+    bool RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer,
                                uint32_t imageIndex, uint32_t frameIndex, bool isConsumer);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
                              VkPipelineLayout layout, VkDescriptorSet descriptorSet);

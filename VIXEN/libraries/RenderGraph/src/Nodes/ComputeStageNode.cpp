@@ -190,7 +190,9 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; RecordComputeCommands still selects image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
-    RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
+    if (!RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer)) {
+        return;  // fault already reported (R213); nothing recorded to submit this frame.
+    }
     commandBuffers_.MarkReady(currentFrameIndex);
 
     // P5b: timeline primitives from FrameSyncNode (Optional — VK_NULL_HANDLE / 0 if not wired).
@@ -294,12 +296,31 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD
 // ============================================================================
 
-void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
+bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                              uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkBeginCommandBuffer failed");
+    if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
+        GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands vkBeginCommandBuffer",
+                                         beginResult);
+        return false;
     }
+
+    // R213: a per-frame record failure is reported as a GPU fault (what/where/why in the site string)
+    // instead of thrown; the half-recorded buffer is closed so the next frame can begin it again.
+    const auto abortRecording = [&](const std::string& site) {
+        vkEndCommandBuffer(cmd);
+        GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands " + site, VK_ERROR_UNKNOWN);
+        return false;
+    };
+    const auto endRecording = [&](const char* site) {
+        const VkResult endResult = vkEndCommandBuffer(cmd);
+        if (endResult != VK_SUCCESS) {
+            GetOwningGraph()->ReportGpuFault(std::string("ComputeStageNode::RecordComputeCommands ") + site,
+                                             endResult);
+            return false;
+        }
+        return true;
+    };
 
     // Begin GPU timing frame (reset this slot's queries) — mirrors ComputeDispatchNode.
     // Baked-Perf M4 Task 4.3: this reset MUST run every frame regardless of
@@ -344,7 +365,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
             GetOwningGraph()->ReportGpuFault(
                 "ComputeStageNode::RecordComputeCommands external recorder: " + failure, VK_ERROR_UNKNOWN);
         }
-        return;
+        return true;  // unchanged: the external-recorder path still submits after reporting its fault.
     }
 
     // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch
@@ -360,10 +381,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
             gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
             gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, 0, 0);
         }
-        if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkEndCommandBuffer failed");
-        }
-        return;
+        return endRecording("dispatch-disabled vkEndCommandBuffer");
     }
 
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
@@ -380,8 +398,9 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         NodeInstance::GetInput(ComputeStageNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
     const uint32_t setIndex = frameIndexWired ? currentFrameIndex : imageIndex;
     if (descriptorSets.empty() || setIndex >= descriptorSets.size()) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] Invalid descriptor sets for set index " +
-                                 std::to_string(setIndex));
+        return abortRecording("invalid descriptor sets for set index " + std::to_string(setIndex) +
+                              " (have " + std::to_string(descriptorSets.size()) +
+                              "; check the DESCRIPTOR_SETS input is wired and sized to the frame ring)");
     }
 
     // Dispatch dims: explicit params, falling back to the swapchain extent (consumer),
@@ -420,8 +439,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         dispatchY = (extent.height + 7) / 8;
     }
     if (dispatchX == 0 || dispatchY == 0 || dispatchZ == 0) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] Dispatch dims unresolved "
-                                 "(set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
+        return abortRecording("dispatch dims unresolved (set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
     }
 
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
@@ -491,9 +509,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // presentation-only blit node reading it via TRANSFER_SRC) owns whatever comes
     // next — this pass's job ends at GENERAL.
 
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkEndCommandBuffer failed");
-    }
+    return endRecording("vkEndCommandBuffer");
 }
 
 // ============================================================================
