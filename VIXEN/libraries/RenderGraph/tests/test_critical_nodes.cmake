@@ -666,12 +666,12 @@ else()
 endif()
 set_target_properties(test_rendergraph_criticalnodes_windowedcapture PROPERTIES FOLDER "Tests/RenderGraph Tests")
 # The CMake paths remain the outside-queue fallback. The file-only consumers prefer
-# UT_QUEUE_CAPTURE_ROOT/<editor|hud> at test runtime, matching the GPU fixture wrappers.
+# VIXEN_CAPTURE_ROOT (else UT_QUEUE_CAPTURE_ROOT)/<editor|hud> at test runtime, matching the GPU fixture wrappers.
 vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_windowedcapture
     FIXTURES_REQUIRED "VixenEditorCapture;VixenHudCapture"
     TEST_ENVIRONMENT
-        "VIXEN_EDITOR_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/editor"
-        "VIXEN_HUD_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/hud")
+        "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/editor"
+        "VIXEN_HUD_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/hud")
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)")
 
 # ===========================================================================

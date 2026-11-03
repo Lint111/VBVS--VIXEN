@@ -288,6 +288,7 @@ include(cmake/ProvisionGdb.cmake)
 
 # Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
 include(cmake/VixenAssets.cmake)
+include(cmake/VixenCaptureRoot.cmake)
 include(cmake/VixenTesting.cmake)
 
 # Configure-time AddNode<T>-call-site scan (vixen_generate_node_manifest) — drives scoped

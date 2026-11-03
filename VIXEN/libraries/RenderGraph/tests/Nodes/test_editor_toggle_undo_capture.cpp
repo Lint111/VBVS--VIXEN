@@ -102,8 +102,11 @@ struct Image {
 std::string CaptureDir() {
     // The box queue supplies this only when the test is running; it must win over the
     // configure-time fallback injected by vixen_gtest_discover_tests.
-    if (const char* root = std::getenv("UT_QUEUE_CAPTURE_ROOT")) {
-        if (*root != '\0') return std::string(root) + "/editor";
+    // VIXEN_CAPTURE_ROOT (explicit or queue-exported) wins, then the legacy queue variable.
+    for (const char* name : {"VIXEN_CAPTURE_ROOT", "UT_QUEUE_CAPTURE_ROOT"}) {
+        if (const char* root = std::getenv(name)) {
+            if (*root != '\0') return std::string(root) + "/editor";
+        }
     }
     if (const char* env = std::getenv("VIXEN_EDITOR_CAPTURE_DIR")) return env;
     return "temp";
