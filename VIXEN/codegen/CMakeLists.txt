@@ -149,7 +149,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "8c82754a7b6d9f868fd83c27b59156cb20ea8aec")
+set(_vixen_tracked_yeroket_kernel_sha "94ad257ef96226e66d36be26415389f42028201a")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -187,7 +187,7 @@ set(_out_gpu_systems_node_config "${_schema_gpu_generated}/GpuNodes.g.inc")
 set(_frame_targets_undertow_note "")
 set(_frame_targets_pin_note "")
 if(_undertow_root_cmake AND EXISTS "${_undertow_root_cmake}/toolchain/providers/kernel.pin")
-    set(_frame_targets_undertow_note "; paired Undertow source ${_undertow_root_cmake}")
+    set(_frame_targets_undertow_note " | paired Undertow source ${_undertow_root_cmake}")
     file(STRINGS "${_undertow_root_cmake}/toolchain/providers/kernel.pin" _undertow_kernel_pin_lines
         REGEX "^sha:[ \\t]*[0-9a-fA-F]{40}")
     if(_undertow_kernel_pin_lines)
@@ -201,11 +201,11 @@ if(_undertow_root_cmake AND EXISTS "${_undertow_root_cmake}/toolchain/providers/
                 OUTPUT_QUIET ERROR_QUIET)
             if(_vixen_pin_is_older EQUAL 0)
                 set(_frame_targets_pin_note
-                    "; VIXEN kernel pin ${YEROKET_KERNEL_SHA} is older than the Undertow tree pin ${_undertow_kernel_pin}; "
+                    " | VIXEN kernel pin ${YEROKET_KERNEL_SHA} is older than the Undertow tree pin ${_undertow_kernel_pin} | "
                     "fix by updating VIXEN's tracked pin to ${_undertow_kernel_pin} or pairing Undertow to the VIXEN pin")
             else()
                 set(_frame_targets_pin_note
-                    "; VIXEN kernel pin ${YEROKET_KERNEL_SHA} does not match the Undertow tree pin ${_undertow_kernel_pin}; "
+                    " | VIXEN kernel pin ${YEROKET_KERNEL_SHA} does not match the Undertow tree pin ${_undertow_kernel_pin} | "
                     "fix by pairing Undertow to the VIXEN pin or updating VIXEN's tracked pin to the paired tree")
             endif()
         endif()
@@ -666,7 +666,10 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     endif()
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
         -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
-        --output "${_tool_cached_bin_run}")
+        # SourceGenerator~'s analyzer deployment concatenates $(OutputPath) with
+        # the assembly name; retain the separator when dotnet's --output value
+        # is passed through the cached CodegenTool materializer.
+        --output "${_tool_cached_bin_run}/")
     if(_codegen_need_wsl_bridge)
         vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
             "${_tool_cached_bin_run}" "${_tool_local_bin_run}" "${_tool_stamp_run}" ${_tool_build_command})
