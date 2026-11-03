@@ -16,13 +16,7 @@ layout(std430, binding = 0) readonly buffer ProxyAabbBuffer {
     ShellProxyAabb proxyAabbs[];
 };
 
-struct BodyInstance {
-    vec3  color;
-    uint  octreeIndex;
-    uint  providerKind;
-    uint  recipeId;
-    float recipeParams[6];
-};
+#include "BodyInstanceRecord.glsl"
 layout(std430, binding = 1) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };

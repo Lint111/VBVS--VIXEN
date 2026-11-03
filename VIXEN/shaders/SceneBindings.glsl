@@ -1088,13 +1088,7 @@ layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
 // ============================================================================
 // BODY INSTANCE MATERIAL SSBO (binding 10, std430, 48 B / element)
 // ============================================================================
-struct BodyInstance {
-    vec3  color;             // 0..11
-    uint  octreeIndex;       // 12
-    uint  providerKind;      // 16  (0 = Stored/ESVO, 1 = Procedural)
-    uint  recipeId;          // 20
-    float recipeParams[6];   // 24..47
-};
+#include "BodyInstanceRecord.glsl"
 // std430 SSBO record, 48 bytes — byte-for-byte identical to BodyInstanceMaterialGpu.
 
 layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
