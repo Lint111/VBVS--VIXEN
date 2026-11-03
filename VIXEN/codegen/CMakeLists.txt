@@ -149,7 +149,7 @@ include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
-set(_vixen_tracked_yeroket_kernel_sha "6e3474325d55e14ebfc803c1b816fd805e4ac64c")
+set(_vixen_tracked_yeroket_kernel_sha "8c82754a7b6d9f868fd83c27b59156cb20ea8aec")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
@@ -179,6 +179,38 @@ set(_out_gpu_systems_manifest "${VIXEN_ROOT}/shaders/Generated/GpuSystems.manife
 set(_out_gpu_systems_glsl_dir "${VIXEN_ROOT}/shaders/Generated")
 set(_out_gpu_systems_schedule "${_schema_gpu_generated}/GpuSchedule.g.h")
 set(_out_gpu_systems_node_config "${_schema_gpu_generated}/GpuNodes.g.inc")
+
+# FrameTargets is a renderer-owned schema projection. Its source closure is
+# intentionally independent of Undertow's full core/src tree; keep the paired
+# consumer path only for diagnostics when its provider pin has moved ahead of
+# the VIXEN codegen pin.
+set(_frame_targets_undertow_note "")
+set(_frame_targets_pin_note "")
+if(_undertow_root_cmake AND EXISTS "${_undertow_root_cmake}/toolchain/providers/kernel.pin")
+    set(_frame_targets_undertow_note "; paired Undertow source ${_undertow_root_cmake}")
+    file(STRINGS "${_undertow_root_cmake}/toolchain/providers/kernel.pin" _undertow_kernel_pin_lines
+        REGEX "^sha:[ \\t]*[0-9a-fA-F]{40}")
+    if(_undertow_kernel_pin_lines)
+        list(GET _undertow_kernel_pin_lines 0 _undertow_kernel_pin_line)
+        string(REGEX REPLACE "^sha:[ \\t]*" "" _undertow_kernel_pin "${_undertow_kernel_pin_line}")
+        if(NOT _undertow_kernel_pin STREQUAL "${YEROKET_KERNEL_SHA}")
+            execute_process(
+                COMMAND git -C "${YEROKET_ROOT}" merge-base --is-ancestor
+                    "${YEROKET_KERNEL_SHA}" "${_undertow_kernel_pin}"
+                RESULT_VARIABLE _vixen_pin_is_older
+                OUTPUT_QUIET ERROR_QUIET)
+            if(_vixen_pin_is_older EQUAL 0)
+                set(_frame_targets_pin_note
+                    "; VIXEN kernel pin ${YEROKET_KERNEL_SHA} is older than the Undertow tree pin ${_undertow_kernel_pin}; "
+                    "fix by updating VIXEN's tracked pin to ${_undertow_kernel_pin} or pairing Undertow to the VIXEN pin")
+            else()
+                set(_frame_targets_pin_note
+                    "; VIXEN kernel pin ${YEROKET_KERNEL_SHA} does not match the Undertow tree pin ${_undertow_kernel_pin}; "
+                    "fix by pairing Undertow to the VIXEN pin or updating VIXEN's tracked pin to the paired tree")
+            endif()
+        endif()
+    endif()
+endif()
 string(SHA256 _gpu_systems_stack_hash "vixen:frame-targets")
 string(SUBSTRING "${_gpu_systems_stack_hash}" 0 16 _gpu_systems_stack_hash)
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
@@ -825,55 +857,29 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # GeneratedSystemStages, so the build derives every system in one pass.
     if(EXISTS "${_schema_sim_framework}/SystemDeclarations.cs"
         AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
-        # SchemaJsonSourceEmitter resolves every declaration referenced by the
-        # local schema, including Undertow runtime schema declarations. Stage the
-        # authored source roots together in the build tree so the checked input
-        # remains isolated from both source checkouts.
-        set(_gpu_schema_stage_script "${_cg}/StageGpuSchemaSource.cmake")
-        # The VIXEN artifact does not consume Undertow's Faction AI message
-        # kinds. Their newer named visibility argument is outside this pinned
-        # source reader's supported Message syntax; keep that unrelated pack
-        # source out of this local schema overlay.
-        set(_gpu_schema_excluded_sources)
-        if(IS_DIRECTORY "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-            list(APPEND _gpu_schema_excluded_sources
-                "${_undertow_core_src}/Undertow.Content.Core/Systems/FactionAi")
-        endif()
         set(_gpu_schema_source_files)
-        if(_undertow_core_src AND IS_DIRECTORY "${_undertow_core_src}")
-            file(GLOB_RECURSE _undertow_gpu_schema_sources CONFIGURE_DEPENDS
-                "${_undertow_core_src}/*.cs")
-            foreach(_source IN LISTS _undertow_gpu_schema_sources)
-                if(NOT _source MATCHES "/(obj|bin)/")
-                    list(APPEND _gpu_schema_source_files "${_source}")
-                endif()
-            endforeach()
-        endif()
         file(GLOB_RECURSE _vixen_gpu_schema_sources CONFIGURE_DEPENDS
             "${_schema_gpu_source}/*.cs")
         list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
 
         add_custom_target(frame_targets_schema_source_stage
-            COMMAND "${CMAKE_COMMAND}"
-                "-DSOURCE_ROOT=${_undertow_core_src}"
-                "-DLOCAL_ROOT=${_schema_gpu_source}"
-                "-DEXCLUDED_SOURCES=${_gpu_schema_excluded_sources}"
-                "-DOUTPUT_ROOT=${_schema_gpu_staged}"
-                -P "${_gpu_schema_stage_script}"
-            DEPENDS ${_gpu_schema_source_files} "${_gpu_schema_stage_script}"
-            COMMENT "[codegen] stage Undertow and VIXEN GPU schema sources"
+            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_schema_gpu_staged}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_schema_gpu_source}" "${_schema_gpu_staged}"
+            DEPENDS ${_gpu_schema_source_files}
+            COMMENT "[codegen] stage VIXEN FrameTargets schema source from ${_schema_gpu_source}"
             VERBATIM)
 
         set(_frame_targets_schema_args
             "${_yk_dll_run}" --schema-json-source
             --schema-source "${_schema_gpu_staged_run}"
             --schema-kernel-source "${_schema_kernel_schema_run}"
+            --schema-closure-root "Vixen.Codegen.Gpu.FrameTargets"
             --out-json "${_out_gpu_schema_json_run}")
         vixen_add_checked_target(frame_targets_schema_check ALL
             COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args} --check
             DEPENDS "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool
                 ${_gpu_schema_source_files}
-            COMMENT "[codegen] golden check: FrameTargets schema JSON matches its source declaration"
+            COMMENT "[frame_targets_schema_check] FrameTargets schema JSON matches ${_schema_gpu_source}${_frame_targets_undertow_note}${_frame_targets_pin_note}"
             JOB_POOL vixen_codegen
             VERBATIM)
         add_dependencies(frame_targets_schema_check frame_targets_schema_source_stage)
