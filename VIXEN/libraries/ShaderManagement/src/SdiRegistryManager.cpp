@@ -1,5 +1,7 @@
 #include "SdiRegistryManager.h"
+#include "RuntimeCachePaths.h"
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -269,13 +271,12 @@ bool SdiRegistryManager::RegenerateRegistry() {
         std::string code = GenerateRegistryToString();
 
         // Write to file
-        std::ofstream file(config_.registryHeaderPath);
-        if (!file.is_open()) {
+        std::string writeError;
+        if (!Vixen::AtomicWriteText(config_.registryHeaderPath, code, &writeError)) {
+            std::cerr << "SDI registry header write failed (what: " << config_.registryHeaderPath.string()
+                      << ", why: " << writeError << ", fix: check the SDI output directory is writable)\n";
             return false;
         }
-
-        file << code;
-        file.close();
 
         // Reset change tracking
         changesSinceRegeneration_ = 0;
@@ -545,11 +546,7 @@ SdiRegistryManager::Stats SdiRegistryManager::GetStats() const {
 void SdiRegistryManager::SaveRegistry() {
     std::filesystem::path registryPath = config_.sdiDirectory / "sdi_registry.dat";
 
-    std::ofstream file(registryPath);
-    if (!file.is_open()) {
-        return;
-    }
-
+    std::ostringstream file;
     for (const auto& [uuid, entry] : entries_) {
         file << uuid << "|"
              << entry.programName << "|"
@@ -559,7 +556,11 @@ void SdiRegistryManager::SaveRegistry() {
              << (entry.isActive ? "1" : "0") << "\n";
     }
 
-    file.close();
+    std::string writeError;
+    if (!Vixen::AtomicWriteText(registryPath, file.str(), &writeError)) {
+        std::cerr << "SDI registry write failed (what: " << registryPath.string() << ", why: " << writeError
+                  << ", fix: check the SDI output directory is writable)\n";
+    }
 }
 
 void SdiRegistryManager::LoadRegistry() {

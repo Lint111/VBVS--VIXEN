@@ -154,6 +154,27 @@ TEST_F(SdiLifecycleTest, GeneratedCppFilesUseDotGInfix) {
     EXPECT_EQ(registryConfig.registryHeaderPath.filename(), "SDI_Registry.g.h");
 }
 
+// T-4988: generated SDI headers are written through a unique sibling and renamed, so concurrent
+// processes never expose a torn file and no temporary sibling is left behind.
+TEST_F(SdiLifecycleTest, NamesHeaderWriteIsAtomicAndLeavesNoTemporarySibling) {
+    SdiGeneratorConfig sdiConfig;
+    sdiConfig.outputDirectory = sdiOutputDir;
+    SpirvInterfaceGenerator generator(sdiConfig);
+
+    SpirvReflectionData reflectionData;
+    const auto first = generator.GenerateNamesHeader("Atomic", "atomic_uuid", reflectionData);
+    const auto second = generator.GenerateNamesHeader("Atomic", "atomic_uuid", reflectionData);
+    ASSERT_FALSE(first.empty());
+    EXPECT_EQ(first, second);
+
+    std::size_t entries = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(sdiOutputDir)) {
+        ++entries;
+        EXPECT_EQ(entry.path().filename(), "AtomicNames.g.h") << "stray sibling: " << entry.path();
+    }
+    EXPECT_EQ(entries, 1u);
+}
+
 // ===== Phase 1: Build Complete Shader Bundle with SDI =====
 
 TEST_F(SdiLifecycleTest, BuildCompleteShaderBundleWithSDI) {
