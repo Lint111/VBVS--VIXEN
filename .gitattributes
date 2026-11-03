@@ -2,5 +2,5 @@
 # leaves binary assets untouched while `eol=lf` makes the working-tree form
 # deterministic for native Windows checkouts too.
 * text=auto eol=lf
-/VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp text eol=lf whitespace=cr-at-eol
-/VIXEN/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h text eol=lf whitespace=cr-at-eol
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp -text
+/VIXEN/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h -text

@@ -81,7 +81,25 @@ function(vixen_resolve_yeroket_root home_candidates out_root)
 endfunction()
 
 function(vixen_kernel_snapshot repository sha out_directory)
+    # A short SHA (git's abbreviation minimum is 4 hex digits) is resolved against the kernel
+    # repository first. Git's own rule decides it: a prefix naming several objects is refused, never guessed.
     string(LENGTH "${sha}" _length)
+    if(_length LESS 40 AND _length GREATER_EQUAL 4 AND sha MATCHES "^[0-9a-fA-F]+$")
+        find_program(_vixen_kernel_git NAMES git REQUIRED)
+        vixen_trust_wsl_git_directory("${repository}")
+        execute_process(COMMAND "${_vixen_kernel_git}" -C "${repository}" rev-parse --disambiguate=${sha}
+            OUTPUT_VARIABLE _matches ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REPLACE "\n" ";" _matches "${_matches}")
+        list(LENGTH _matches _count)
+        if(_count EQUAL 0)
+            message(FATAL_ERROR "[codegen] kernel SHA ${sha} names no object in ${repository}")
+        elseif(_count GREATER 1)
+            message(FATAL_ERROR "[codegen] kernel SHA ${sha} is ambiguous in ${repository}: "
+                "${_count} objects match; give more hex digits")
+        endif()
+        set(sha "${_matches}")
+        string(LENGTH "${sha}" _length)
+    endif()
     if(NOT _length EQUAL 40 OR NOT sha MATCHES "^[0-9a-fA-F]+$")
         message(FATAL_ERROR "[codegen] YEROKET_KERNEL_SHA must be a full commit SHA: ${sha}")
     endif()
