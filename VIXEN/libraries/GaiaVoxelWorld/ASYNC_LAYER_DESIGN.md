@@ -355,7 +355,6 @@ libraries/GaiaVoxelWorld/
 ├── include/
 │   ├── GaiaVoxelWorld.h           - Entity creation API
 │   ├── VoxelComponents.h          - ECS components
-│   ├── ComponentRegistry.h        - Type-safe component tags
 │   ├── ECSBackedRegistry.h        - Unified attribute system
 │   ├── VoxelCreationRequest.h     - Batch creation struct
 │   ├── VoxelInjectionQueue.h      - Async entity creation (NEW)
