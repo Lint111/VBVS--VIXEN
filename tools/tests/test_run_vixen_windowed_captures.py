@@ -68,6 +68,17 @@ class CaptureRunnerVulkanEnvironmentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(lines, ["/opt/inherited/icd.json unset"] * 2)
 
+
+class CaptureShadingModeTests(unittest.TestCase):
+    def test_unknown_shading_mode_is_rejected_before_launching_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                ["bash", str(RUNNER), tmp, "VIXEN", tmp, "vixen_editor", str(Path(tmp) / "out")],
+                env=dict(os.environ, VIXEN_CAPTURE_SHADING="bogus"), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("lambert-ggx or cel", result.stderr)
+
+
 ABSOLUTE_ROOT_SCRIPT = Path(__file__).parents[1] / "run-vixen-windowed-captures.sh"
 
 # Stands in for a capture binary: writes a non-empty PNG for each frame named in its capture-dir variable.

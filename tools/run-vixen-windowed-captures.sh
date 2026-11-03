@@ -20,6 +20,18 @@ mkdir -p "$hud_dir" "$editor_dir"
 # lane runs never stack windows on a shared desktop. VIXEN_HIDDEN_WINDOW=0 shows them.
 export VIXEN_HIDDEN_WINDOW="${VIXEN_HIDDEN_WINDOW:-1}"
 
+# Shading mode of the HUD capture: lambert-ggx (default, the legacy capture look) or cel (the
+# default cel body/HUD scene). Select with VIXEN_CAPTURE_SHADING; anything else is rejected.
+capture_shading="${VIXEN_CAPTURE_SHADING:-lambert-ggx}"
+case "$capture_shading" in
+    lambert-ggx) shading_env=(VIXEN_TEST_CELSHADE_LAMBERT_GGX=1) ;;
+    cel) shading_env=() ;;  # cel is the application default when the flag is unset
+    *)
+        echo "VIXEN_CAPTURE_SHADING='$capture_shading' is not a shading mode (use lambert-ggx or cel);" >&2
+        echo "  set it when invoking tools/run-vixen-windowed-captures.sh, or unset it for the lambert-ggx default." >&2
+        exit 2 ;;
+esac
+
 # Match the runtime environment configured for CTest in
 # VIXEN/cmake/VixenTesting.cmake. This script launches the applications directly,
 # so CTest's ENVIRONMENT properties (library path, VK_ICD_FILENAMES, VK_LAYER_PATH)
@@ -131,7 +143,7 @@ rm -f -- \
     "$editor_dir/editor_capture_105.png"
 
 run_capture "HUD" "$vixen" "$vixen_runtime_dir" "$capture_root/hud.log" \
-    "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1" \
+    "${shading_env[@]}" \
     "VIXEN_HUD_SCRIPT=A@30,B@60" \
     "VIXEN_HUD_CAPTURE_FRAMES=5,45,75" \
     "VIXEN_HUD_CAPTURE_DIR=$hud_dir" \
