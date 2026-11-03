@@ -28,6 +28,11 @@ function(vixen_configure_ctest_gpu_environment output_variable)
         if(VIXEN_WSL_DZN_LIBRARY_DIR AND IS_DIRECTORY "${VIXEN_WSL_DZN_LIBRARY_DIR}")
             list(APPEND _library_dirs "${VIXEN_WSL_DZN_LIBRARY_DIR}")
         endif()
+        # libvulkan_dzn.so links libxcb-keysyms etc. from the provisioner's extracted deps, which are
+        # on no loader path; without them vkCreateInstance returns VK_ERROR_INCOMPATIBLE_DRIVER.
+        if(VIXEN_WSL_DZN_DEPS_LIBRARY_DIR AND IS_DIRECTORY "${VIXEN_WSL_DZN_DEPS_LIBRARY_DIR}")
+            list(APPEND _library_dirs "${VIXEN_WSL_DZN_DEPS_LIBRARY_DIR}")
+        endif()
 
         if(VIXEN_WINDOWING_CACHE_DIR)
             foreach(_candidate
