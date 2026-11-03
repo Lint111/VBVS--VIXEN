@@ -73,12 +73,15 @@ try {
     $cmakeArgs += @('--preset', $Preset)
     if ($BinaryDir) { $cmakeArgs += @('-B', $BinaryDir) }
     $configureLog = Join-Path $env:TEMP "vixen_configure_$([Guid]::NewGuid().ToString('N')).log"
+    $cmakeArgsJson = $cmakeArgs | ConvertTo-Json -Compress
     $startTime = Get-Date
     $job = Start-Job -ScriptBlock {
-        param($cmakeExe, $args, $logPath)
+        param($cmakeExe, $argsJson, $logPath)
+        $args = @($argsJson | ConvertFrom-Json)
         & $cmakeExe @args *>&1 | Out-File -FilePath $logPath -Encoding utf8
         $LASTEXITCODE
-    } -ArgumentList $CMakeExe, (,$cmakeArgs), $configureLog
+    } -ArgumentList $CMakeExe, $cmakeArgsJson, $configureLog
+    $configureExit = 1
     try {
         while ($job.State -eq 'Running') {
             Start-Sleep -Seconds 5
@@ -93,15 +96,15 @@ try {
             }
         }
         $jobOutput = Receive-Job -Job $job
-        $configureExit = $jobOutput | Select-Object -Last 1
-        if ($configureExit -is [int]) { exit $configureExit }
-        exit 1
+        $lastOutput = $jobOutput | Select-Object -Last 1
+        if ($null -ne $lastOutput) { $configureExit = [int]$lastOutput }
     } finally {
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
         if (Test-Path $configureLog) {
             Write-Host "[configure] CMake log: $configureLog"
         }
     }
+    exit $configureExit
 } finally {
     # Released even if cmake throws or this script is Ctrl+C'd -- the Mutex also auto-releases
     # if THIS process itself dies, so a killed configure can never wedge the lock (same
