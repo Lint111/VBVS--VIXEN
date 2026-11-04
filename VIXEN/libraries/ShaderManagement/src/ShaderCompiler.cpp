@@ -8,6 +8,9 @@
 #include <glslang/SPIRV/disassemble.h>
 #include <spirv-tools/libspirv.hpp>
 
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <mutex>
@@ -102,7 +105,52 @@ CompilationOutput ShaderCompiler::CompileFile(
     return CompileCached(stage, source, filePath.string(), entryPoint, options);
 }
 
+namespace {
+
+// Diagnostic capture (T-5128): when VIXEN_SHADER_DUMP_DIR names a directory, every successful
+// compile (fresh or cache hit) writes its inlined GLSL and SPIR-V there as
+// <source stem>-<stage>-<source hash>.{glsl,spv}, so generator changes can be compared with
+// tools/spirv-metrics.sh without editing the compiler for one run.
+void DumpCompileIfRequested(ShaderStage stage, const std::string& source,
+                            const std::string& sourceName, const CompilationOutput& output)
+{
+    const char* dir = std::getenv("VIXEN_SHADER_DUMP_DIR");
+    if (dir == nullptr || *dir == '\0' || !output.success) {
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        std::fprintf(stderr, "[ShaderCompiler] VIXEN_SHADER_DUMP_DIR '%s' is not creatable (%s); "
+                             "shader dump skipped. Point it at a writable directory.\n",
+                     dir, ec.message().c_str());
+        return;
+    }
+    const std::string stem = std::filesystem::path(sourceName).stem().string();
+    const std::string hash = ComputeSHA256Hex(source.data(), source.size()).substr(0, 12);
+    const std::filesystem::path base = std::filesystem::path(dir) /
+        ((stem.empty() ? std::string("shader") : stem) + "-" + std::to_string(static_cast<int>(stage)) + "-" + hash);
+    std::ofstream(base.string() + ".glsl", std::ios::binary) << source;
+    std::ofstream spv(base.string() + ".spv", std::ios::binary);
+    spv.write(reinterpret_cast<const char*>(output.spirv.data()),
+              static_cast<std::streamsize>(output.spirv.size() * sizeof(uint32_t)));
+}
+
+} // namespace
+
 CompilationOutput ShaderCompiler::CompileCached(
+    ShaderStage stage,
+    const std::string& source,
+    const std::string& sourceName,
+    const std::string& entryPoint,
+    const CompilationOptions& options)
+{
+    CompilationOutput result = CompileCachedImpl(stage, source, sourceName, entryPoint, options);
+    DumpCompileIfRequested(stage, source, sourceName, result);
+    return result;
+}
+
+CompilationOutput ShaderCompiler::CompileCachedImpl(
     ShaderStage stage,
     const std::string& source,
     const std::string& sourceName,

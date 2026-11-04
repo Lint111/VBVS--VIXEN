@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -272,11 +273,20 @@ private:
 };
 
 TEST(HeadlessCornellGraph, ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams) {
-    // CTest sets the prefix; a direct invocation falls back to the same name so the witness self-provisions.
+    // CMake's TEST_ENVIRONMENT sets the prefix for ctest runs; a direct invocation (for example a
+    // queued HDR on/off witness that only overrides VIXEN_HDR_EXPOSURE) falls back to the temp
+    // directory instead of failing on setup (T-4958).
     const char* envPrefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
-    const std::string prefix = envPrefix != nullptr ? envPrefix : "headless-cornell-frame";
-    const std::filesystem::path first = prefix + "-a.png";
-    const std::filesystem::path second = prefix + "-b.png";
+    const std::string prefixStorage = envPrefix != nullptr
+        ? std::string(envPrefix)
+        : (std::filesystem::temp_directory_path() / "vixen-headless-cornell-frame").string();
+    const char* prefix = prefixStorage.c_str();
+    if (envPrefix == nullptr) {
+        std::cerr << "[headless-cornell] VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX unset; writing captures to "
+                  << prefixStorage << "-*.png (set it to choose another location)\n";
+    }
+    const std::filesystem::path first = std::string(prefix) + "-a.png";
+    const std::filesystem::path second = std::string(prefix) + "-b.png";
     std::error_code ec;
     std::filesystem::remove(first, ec);
     std::filesystem::remove(second, ec);

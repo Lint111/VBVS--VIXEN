@@ -321,6 +321,38 @@ TEST_F(ShaderCompilerTest, CompileCache_SecondCompileIsServedFromCache) {
     EXPECT_EQ(first.spirv, second.spirv);
 }
 
+TEST_F(ShaderCompilerTest, DumpDir_WritesGlslAndSpirvForFreshAndCachedCompiles) {
+    const std::filesystem::path dumpDir = testDir / "dump";
+#ifdef _WIN32
+    _putenv_s("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str());
+#else
+    setenv("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str(), 1);
+#endif
+    ShaderCacheManager cache([&] { ShaderCacheConfig c; c.cacheDirectory = testDir / "spirv"; return c; }());
+    ShaderCompiler compiler;
+    compiler.SetCache(&cache);
+    auto fresh = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+    auto cached = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
+#ifdef _WIN32
+    _putenv_s("VIXEN_SHADER_DUMP_DIR", "");
+#else
+    unsetenv("VIXEN_SHADER_DUMP_DIR");
+#endif
+    ASSERT_TRUE(fresh.success) << fresh.errorLog;
+    EXPECT_TRUE(cached.fromCache);
+
+    size_t glsl = 0, spv = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dumpDir)) {
+        if (entry.path().extension() == ".glsl") ++glsl;
+        if (entry.path().extension() == ".spv") {
+            ++spv;
+            EXPECT_EQ(std::filesystem::file_size(entry.path()), fresh.spirv.size() * sizeof(uint32_t));
+        }
+    }
+    EXPECT_EQ(glsl, 1u) << "same source hashes to one dump name";
+    EXPECT_EQ(spv, 1u);
+}
+
 TEST_F(ShaderCompilerTest, CompileCache_OptionChangeIsAMiss) {
     ShaderCacheConfig config;
     config.cacheDirectory = testDir / "spirv";

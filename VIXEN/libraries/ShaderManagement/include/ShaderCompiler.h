@@ -182,6 +182,14 @@ private:
         const CompilationOptions& options
     );
 
+    CompilationOutput CompileCachedImpl(
+        ShaderStage stage,
+        const std::string& source,
+        const std::string& sourceName,
+        const std::string& entryPoint,
+        const CompilationOptions& options
+    );
+
     // State
     bool initialized = false;
     ShaderCacheManager* cache_ = nullptr;

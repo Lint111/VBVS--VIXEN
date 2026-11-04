@@ -155,6 +155,11 @@ if(TARGET sdi_tool)
                 ${_vixen_root}/shaders/sdi-variants.json --check
         WORKING_DIRECTORY ${_vixen_root}
     )
+    # ctest never builds anything: without this edge, building only the ShaderManagement test
+    # executables leaves build/<tree>/bin/sdi_tool missing and the drift test reports "Not Run"
+    # (T-5156). Building the tests now builds the tool the drift test executes.
+    add_dependencies(ShaderManagementTests sdi_tool)
+    add_dependencies(test_sdi_variant_merge sdi_tool)
 endif()
 
 # Link against library target - includes propagate automatically
