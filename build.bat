@@ -275,5 +275,5 @@ set "BUILDID_ARG="
 if not "%VIXEN_BUILD_ID%"=="" set "BUILDID_ARG=-BuildId \"%VIXEN_BUILD_ID%\""
 set "BUILD_DIR_ARG="
 if not "%BUILD_DIR%"=="" set "BUILD_DIR_ARG=-BuildDir \"%BUILD_DIR%\""
-powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" %BUILD_DIR_ARG% -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG%
+powershell -ExecutionPolicy Bypass -File "%SRC_DIR%\scripts\build\run_build_with_summary.ps1" -CMakeExe "%CMAKE_EXE%" -Preset "%PRESET%" %BUILD_DIR_ARG% -LockTimeoutSeconds %VIXEN_BUILD_LOCK_TIMEOUT% %SKIP_LOCK_ARG% %TARGET_ARG% %TICKET_ARG% %BUILDID_ARG% -StreamProgress
 exit /b %errorlevel%

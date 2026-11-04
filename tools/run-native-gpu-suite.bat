@@ -34,8 +34,12 @@ if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
 if defined VIXEN_NATIVE_ARGS (
-    "%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
+    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!"
 ) else (
-    "%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
+    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*"
 )
+REM The phase wrapper prints "[phase:native-gpu-suite] alive ..." while the ctest tree uses CPU, so the
+REM WSL queue watchdog does not mistake a long silent device test for a dead payload (and still
+REM sees a hung one: no CPU growth stops the heartbeat). Arguments travel in an env var, not quoting.
+powershell -ExecutionPolicy Bypass -File "%ROOT%\VIXEN\scripts\build\run_with_phase_progress.ps1" -Phase native-gpu-suite -Exe "%CTEST_EXE%" -ArgLineEnv VIXEN_PHASE_ARGS
 exit /b %errorlevel%

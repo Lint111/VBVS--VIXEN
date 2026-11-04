@@ -234,6 +234,8 @@ $lastTotal = "?"
 $lastTarget = ""
 $failedTargets = @()
 $printedDone = 0
+$lastProgressAt = Get-Date
+$lastToolCpu = 0.0
 
 while ($job.State -eq 'Running') {
     Start-Sleep -Seconds 5
@@ -259,6 +261,19 @@ while ($job.State -eq 'Running') {
     if ($StreamProgress -and $lastDone -gt $printedDone) {
         Write-Host "[$lastDone/$lastTotal] $lastTarget"
         $printedDone = $lastDone
+        $lastProgressAt = Get-Date
+    } elseif ($StreamProgress -and ((Get-Date) - $lastProgressAt).TotalSeconds -ge 30) {
+        # A long compile or link prints no ninja line for minutes. Say so only while the
+        # toolchain processes really accumulate CPU; a hung build stays silent for the watchdog.
+        $toolCpu = 0.0
+        foreach ($p in (Get-Process -Name cl, link, lld-link, clang, clang-cl, ninja, cmake, cicc -ErrorAction SilentlyContinue)) {
+            try { $toolCpu += $p.TotalProcessorTime.TotalSeconds } catch { }
+        }
+        if ($toolCpu -gt $lastToolCpu) {
+            Write-Host ("[build] still working elapsed={0}s after [{1}/{2}] {3}" -f $elapsed, $lastDone, $lastTotal, $lastTarget)
+            $lastProgressAt = Get-Date
+        }
+        $lastToolCpu = $toolCpu
     }
 }
 
