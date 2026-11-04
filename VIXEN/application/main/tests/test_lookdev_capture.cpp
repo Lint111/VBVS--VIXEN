@@ -157,6 +157,8 @@ constexpr uint32_t kReservoirHistoryCap = 32;
 constexpr uint32_t kMaxFramesPerScenario = 2 * kReservoirHistoryCap;
 constexpr uint32_t kDefaultFramesPerScenario = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
+constexpr double kBudgetReferencePixels = 500.0 * 500.0; // The default window the 300 s budget was measured at.
+constexpr double kMaxScaledProcessBudgetMs = 900000.0;   // Same ceiling the registered high-resolution CTests set.
 constexpr float kPitchRadians = 0.45f;
 constexpr uint32_t kGlyphSdfRecipeId = 0x47594c50u; // GLYP
 constexpr uint32_t kGlyphSdfRtlPairRecipeId = kGlyphSdfRecipeId + 1U;
@@ -228,12 +230,27 @@ int CenteredBakeRegionSide(int gridResolution, float boundRadius,
     return std::clamp(brickAlignedSide, 16, gridResolution);
 }
 
+double EnvWindowDimension(const char* name, double fallback) {
+    const char* requested = std::getenv(name);
+    if (!requested || *requested == '\0') return fallback;
+    const double value = std::strtod(requested, nullptr);
+    return value > 0.0 ? value : fallback;
+}
+
+// The explicit VIXEN_LOOKDEV_CAPTURE_BUDGET_MS always wins. Otherwise per-frame cost grows with
+// pixel count, so a larger window scales the default (never below it, capped at the high-resolution
+// ceiling) instead of failing a valid 1000x1000 witness after its images were written (T-5239).
 double ProcessBudgetMs() {
     const char* requested = std::getenv("VIXEN_LOOKDEV_CAPTURE_BUDGET_MS");
-    if (!requested || *requested == '\0') return kDefaultProcessBudgetMs;
-    char* end = nullptr;
-    const double value = std::strtod(requested, &end);
-    return (end == requested || *end != '\0' || value <= 0.0) ? kDefaultProcessBudgetMs : value;
+    if (requested && *requested != '\0') {
+        char* end = nullptr;
+        const double value = std::strtod(requested, &end);
+        if (end != requested && *end == '\0' && value > 0.0) return value;
+    }
+    const double pixels = EnvWindowDimension("VIXEN_WINDOW_WIDTH", 500.0) *
+        EnvWindowDimension("VIXEN_WINDOW_HEIGHT", 500.0);
+    const double scaled = kDefaultProcessBudgetMs * (pixels / kBudgetReferencePixels);
+    return std::clamp(scaled, kDefaultProcessBudgetMs, kMaxScaledProcessBudgetMs);
 }
 
 struct CaptureScenario {
@@ -2162,7 +2179,7 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     }
     if (processMs > budgetMs) {
         error = "look-dev capture exceeded its runtime budget: " + std::to_string(processMs) +
-            " ms > " + std::to_string(budgetMs) + " ms (VIXEN_LOOKDEV_CAPTURE_BUDGET_MS)";
+            " ms > " + std::to_string(budgetMs) + " ms (default scales with VIXEN_WINDOW_WIDTH*HEIGHT; set VIXEN_LOOKDEV_CAPTURE_BUDGET_MS to override)";
         return false;
     }
     for (const auto& scenario : scenarios) {
