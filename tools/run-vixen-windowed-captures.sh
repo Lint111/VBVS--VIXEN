@@ -20,6 +20,16 @@ mkdir -p "$hud_dir" "$editor_dir"
 # lane runs never stack windows on a shared desktop. VIXEN_HIDDEN_WINDOW=0 shows them.
 export VIXEN_HIDDEN_WINDOW="${VIXEN_HIDDEN_WINDOW:-1}"
 
+# Byte witnesses must not depend on persistent runtime state (T-2901: a shared runtime-cache with 9
+# shader hits changed HUD pixels versus a fresh one with 9 misses). VIXEN_CAPTURE_ISOLATED_CACHE=1
+# runs both apps against a fresh cache under the capture directory; the default keeps the shared
+# cache so ordinary captures stay fast. The cache directory is printed so the witness records it.
+if [[ "${VIXEN_CAPTURE_ISOLATED_CACHE:-0}" == 1 ]]; then
+    rm -rf -- "$capture_root/cache" "$capture_root/shared-cache"
+    export VIXEN_CACHE_DIR="$capture_root/cache" VIXEN_SHARED_CACHE_DIR="$capture_root/shared-cache"
+    echo "Isolated runtime cache: $VIXEN_CACHE_DIR (shared: $VIXEN_SHARED_CACHE_DIR)"
+fi
+
 # Match the runtime environment configured for CTest in
 # VIXEN/cmake/VixenTesting.cmake. This script launches the applications directly,
 # so CTest's ENVIRONMENT properties (library path, VK_ICD_FILENAMES, VK_LAYER_PATH)
@@ -114,8 +124,24 @@ run_capture() {
     local log_path="$4"
     shift 4
 
-    if ! (cd -- "$working_dir" && timeout 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1; then
-        echo "$name capture failed; last output from $log_path:" >&2
+    # The app log goes to a file, so the queue's idle watchdog would see a silent payload for up to
+    # the 300 s bound. Run the capture in its own process group (setsid) so a killed wrapper can
+    # take the whole group down instead of orphaning it, and print a heartbeat while it runs.
+    local capture_pid heartbeat_pid rc=0 started=$SECONDS
+    (cd -- "$working_dir" && exec setsid timeout -k 10s 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1 &
+    capture_pid=$!
+    (while sleep 30; do
+        echo "[heartbeat] $name capture running $((SECONDS - started))s, log $(stat -c %s -- "$log_path" 2>/dev/null || echo 0) bytes"
+    done) &
+    heartbeat_pid=$!
+    trap 'kill -TERM -- "-$capture_pid" 2>/dev/null || true; kill "$heartbeat_pid" 2>/dev/null || true' TERM INT
+    wait "$capture_pid" || rc=$?
+    trap - TERM INT
+    kill "$heartbeat_pid" 2>/dev/null || true
+    wait "$heartbeat_pid" 2>/dev/null || true
+    kill -TERM -- "-$capture_pid" 2>/dev/null || true   # stragglers of a finished or timed-out run
+    if [[ $rc -ne 0 ]]; then
+        echo "$name capture failed (exit $rc); last output from $log_path:" >&2
         tail -n 80 "$log_path" >&2
         return 1
     fi
