@@ -87,7 +87,7 @@ endfunction()
 
 function(vixen_gtest_discover_tests suite target)
     cmake_parse_arguments(PARSE_ARGV 2 VGT
-        "NO_PRETTY_TYPES;NO_PRETTY_VALUES;GPU"
+        "NO_PRETTY_TYPES;NO_PRETTY_VALUES;GPU;HEADLESS"
         "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;PROCESSORS;FIXTURES_REQUIRED"
         "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
 
@@ -134,7 +134,17 @@ function(vixen_gtest_discover_tests suite target)
     set(_labels "${suite};exe:${target}")
     string(REPLACE ";" "\\\\;" _labels "${_labels}")
     set(_properties LABELS "${_labels}")
-    set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
+    # HEADLESS registers a CPU-only test (document/recipe code) with normal discovery, labels and class
+    # stub but without the display / Vulkan loader / ICD environment, so it runs where none exists.
+    if(VGT_HEADLESS)
+        if(VGT_GPU OR VGT_GPU_TESTS)
+            message(FATAL_ERROR "vixen_gtest_discover_tests(${suite} ${target}): HEADLESS cannot be combined with GPU or GPU_TESTS. "
+                "Drop HEADLESS for a test that touches the device, or drop GPU/GPU_TESTS for a CPU-only test.")
+        endif()
+        set(_environment ${VGT_TEST_ENVIRONMENT})
+    else()
+        set(_environment ${VIXEN_CTEST_GPU_ENVIRONMENT} ${VGT_TEST_ENVIRONMENT})
+    endif()
     if(_environment)
         string(JOIN ";" _environment_value ${_environment})
         # GoogleTest serializes properties through a second CMake script, so

@@ -94,10 +94,19 @@ endif()
 
 # 1) System X11 dev present? Just enable the X11 backend and let GLFW find it normally.
 find_path(_vixen_x11_sys NAMES X11/Xlib.h PATHS /usr/include)
+set(_vixen_windowing_runtime_only FALSE)
 if(_vixen_x11_sys)
     set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
     message(STATUS "VIXEN: found system X11 dev (${_vixen_x11_sys}); GLFW X11 backend enabled.")
-    return()
+    # The selected Vulkan ICD (Dozen) loads libxcb-keysyms.so.1 at run time, which system -dev headers
+    # do not imply. Without it the provisioned cache must still supply the runtime closure, or tests
+    # fail with VK_ERROR_INCOMPATIBLE_DRIVER (T-2835). Build still uses the system headers.
+    find_library(_vixen_xcb_keysyms_sys NAMES libxcb-keysyms.so.1)
+    if(_vixen_xcb_keysyms_sys)
+        return()
+    endif()
+    set(_vixen_windowing_runtime_only TRUE)
+    message(STATUS "VIXEN: system libxcb-keysyms.so.1 not found; provisioning the X11 runtime closure for the Vulkan ICD.")
 endif()
 
 set(_vk_cache_hdr "${VIXEN_WINDOWING_CACHE_DIR}/usr/include/X11/Xlib.h")
@@ -166,7 +175,12 @@ if(NOT _vixen_windowing_ok AND VIXEN_AUTO_PROVISION_WINDOWING)
 endif()
 
 # 3) Use the cache if we have it; else fall back to the null backend (build still succeeds).
-if(_vixen_windowing_ok)
+if(_vixen_windowing_ok AND _vixen_windowing_runtime_only)
+    message(STATUS "VIXEN: X11 runtime libraries provisioned at ${VIXEN_WINDOWING_CACHE_DIR} (system headers still used for the build).")
+elseif(_vixen_windowing_runtime_only)
+    message(WARNING "VIXEN: libxcb-keysyms.so.1 is missing and could not be provisioned into ${VIXEN_WINDOWING_CACHE_DIR}; "
+                    "the Dozen Vulkan ICD will fail to load. Install libxcb-keysyms1 (apt install libxcb-keysyms1).")
+elseif(_vixen_windowing_ok)
     set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
     # include() runs in this (dependencies) scope, where the GLFW FetchContent below also runs, so a
     # plain set here is what GLFW's find_package(X11) sees — no PARENT_SCOPE needed.
@@ -183,6 +197,7 @@ endif()
 
 unset(_vk_cache_hdr)
 unset(_vk_cache_keysyms)
+unset(_vixen_windowing_runtime_only)
 
 if(NOT TARGET vixen-uninstall-windowing)
     add_custom_target(vixen-uninstall-windowing

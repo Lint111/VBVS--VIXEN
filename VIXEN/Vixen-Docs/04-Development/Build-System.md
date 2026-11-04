@@ -129,6 +129,12 @@ cmake --build build --config Debug --target Core GaiaVoxelWorld SVO --parallel 1
 cmake --build build --config Debug --target test_rebuild_hierarchy test_cornell_box --parallel 16
 ```
 
+**`RenderGraph` is not a build target.** It is an INTERFACE library (it only carries link
+requirements), so `--target RenderGraph` fails with `No rule to make target 'RenderGraph'`.
+Build the concrete libraries instead: `RenderGraphCore` (graph engine) and `RenderGraphNodes`
+(concrete nodes), e.g. `--target RenderGraphCore RenderGraphNodes VIXEN vixen_editor`.
+Consumers still link `RenderGraph`. List real targets with `cmake --build build --target help`.
+
 **Build Time:** ~30 seconds - 1 minute
 
 ---
