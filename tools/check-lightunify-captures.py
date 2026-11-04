@@ -32,7 +32,8 @@ def write_png(path, width, height, rgba):
 
 def sheet(images, path):
     if not images or len(images) % 4:
-        raise ValueError("contact sheet needs complete rows of four images")
+        raise ValueError(f"contact sheet needs a positive multiple of 4 images (4 per row), got {len(images)}; "
+                         "supply complete rows of captures")
     width, height, _ = images[0]
     if any(image[:2] != (width, height) for image in images):
         raise ValueError("capture extents differ")
