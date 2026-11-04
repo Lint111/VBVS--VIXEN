@@ -61,6 +61,10 @@ queue_args=(--agent vixendll --resource "$resource" \
   --label "vixendll:native-${capture:-${mode}}-${state:-${ctest_label:-missing-dll}}")
 if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 
+# VIXEN_NATIVE_CTEST_INDEX="start,end" resumes an all-tests run; the manifest merges every slice.
+ctest_index_args=()
+if [[ -n "${VIXEN_NATIVE_CTEST_INDEX:-}" ]]; then ctest_index_args=(-CtestIndex "$VIXEN_NATIVE_CTEST_INDEX"); fi
+
 capture_rc=0
 if [[ "$mode" == state ]]; then
   bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
@@ -78,7 +82,7 @@ else
   else
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode all-tests || capture_rc=$?
+      -Commit "$repo_commit" -Mode all-tests "${ctest_index_args[@]}" || capture_rc=$?
   fi
 fi
 
