@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import struct
 import sys
@@ -196,6 +197,17 @@ def _is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
         detail = result.stderr.strip() or "git merge-base failed"
         raise RuntimeError(detail)
     return result.returncode == 0
+
+
+def queue_provenance(environ: dict[str, str] | None = None) -> str | None:
+    """Return the queue identity exported to a queued payload, or None when run outside the queue."""
+    env = os.environ if environ is None else environ
+    if env.get("UT_TEST_LOCK_HELD") != "1":
+        return None
+    return (
+        f"agent={env.get('UT_AGENT_ID', 'unknown')} resource={env.get('UT_QUEUE_RESOURCE', 'unknown')} "
+        f"bench_window={env.get('UT_QUEUE_BENCH_WINDOW', 'none')}"
+    )
 
 
 def _provenance_value(value: object) -> str:
@@ -491,6 +503,11 @@ def main() -> int:
         help="also fail when PNG file bytes differ, even if decoded pixels match",
     )
     parser.add_argument(
+        "--require-queue",
+        action="store_true",
+        help="fail (exit 2) unless run inside a box-queue job, so a landing witness cannot be unattested",
+    )
+    parser.add_argument(
         "--crops",
         type=Path,
         metavar="DIR",
@@ -543,6 +560,20 @@ def main() -> int:
     for directory in (args.before, args.after):
         if not directory.is_dir():
             parser.error(f"not a directory: {directory}")
+
+    queue = queue_provenance()
+    if queue is not None:
+        print(f"queue provenance: {queue}")
+    elif args.require_queue:
+        print(
+            "ERROR: not running inside a box-queue job, so this comparison is not an attested witness. "
+            "Rerun it as: bash tools/with-test-lock.sh --agent <agent> --resource light --label <label> -- "
+            "python3 tools/compare-capture-pixels.py ... (or drop --require-queue for a local check).",
+            file=sys.stderr,
+        )
+        return 2
+    else:
+        print("queue provenance: none (unqueued run; not an attested witness)")
 
     try:
         if args.reference_provenance and check_reference_provenance(

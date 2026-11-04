@@ -58,6 +58,15 @@ background-job working-directory/encoding pitfalls).
 
 ### 1.1 Initial Configuration
 
+`CMakeLists.txt` lives in `VIXEN/`, not at the checkout root (`cmake -S . -B build` from the root
+exits 1). From the checkout root use the explicit source and build directories:
+
+```bash
+cmake -S VIXEN -B VIXEN/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+```
+
+The commands below assume the working directory is `VIXEN/`:
+
 ```bash
 # Standard configuration (Unity builds disabled)
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
@@ -404,6 +413,9 @@ Its default exit code is `0` when paired pixels match, `1` for missing or
 different captures, and `2` for unreadable or unsupported PNG data. Use
 `--max-differing-pixels N` and `--channel-tolerance N` for a pixel tolerance;
 `--require-byte-identical` also makes a PNG byte difference fail the command.
+The comparator prints a `queue provenance:` line (agent and resource of the enclosing box-queue
+job, or `none`). Pass `--require-queue` for a landing witness: an unqueued run then exits `2`
+instead of producing an unattested pass.
 
 ## 14. Related Pages
 
