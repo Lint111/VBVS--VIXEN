@@ -100,4 +100,27 @@ check "a provisioning stop (exit 20) stops the build before build.bat runs" \
 check "a silent batch step is covered by a heartbeat line (T-6207)" \
     bash -c 'sed -i "s/^exit /sleep \${FAKE_SLEEP:-0}; exit /" "$1/cmd.exe"; FAKE_SLEEP=3 VIXEN_NATIVE_HEARTBEAT_S=1 "$0" bat build.bat | grep -q "heartbeat: build.bat running"' "$launcher" "$fake"
 
+# Kernel pin: a YEROKET_ROOT clone that lacks the tracked pin is topped up from the sibling checkout.
+sibling="$scratch/kernel-sibling"
+git init -q -b main "$sibling"
+git -C "$sibling" -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m old
+git clone -q "$sibling" "$scratch/kernel-snapshot"
+git -C "$sibling" -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m pinned
+pin="$(git -C "$sibling" rev-parse HEAD)"
+mkdir -p "$lane_repo/VIXEN/codegen"
+printf 'set(_vixen_tracked_yeroket_kernel_sha "%s")\n' "$pin" > "$lane_repo/VIXEN/codegen/CMakeLists.txt"
+git -C "$lane_repo" add -A
+git -C "$lane_repo" commit -q -m pin
+mkdir -p "$native/lane-a/VIXEN/.win-native-toolchain"
+check "prepare fetches the tracked kernel pin into a YEROKET_ROOT clone that lacks it" \
+    bash -c '! git -C "$2" cat-file -e "$3^{commit}" 2>/dev/null && YEROKET_ROOT="$2" VIXEN_YEROKET_PIN_SOURCE="$1" "$0" prepare >/dev/null && git -C "$2" cat-file -e "$3^{commit}"' "$launcher" "$sibling" "$scratch/kernel-snapshot" "$pin"
+check "prepare leaves a YEROKET_ROOT clone that already has the pin untouched" \
+    bash -c 'YEROKET_ROOT="$2" VIXEN_YEROKET_PIN_SOURCE=/nonexistent "$0" prepare 2>&1 | { ! grep -q "fetching it"; }' "$launcher" "$sibling" "$scratch/kernel-snapshot"
+git clone -q "$scratch/kernel-snapshot" "$scratch/kernel-stale"
+git -C "$scratch/kernel-stale" reset -q --hard HEAD~1 2>/dev/null
+git -C "$scratch/kernel-stale" -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m stale-only
+git -C "$scratch/kernel-stale" gc -q --prune=now 2>/dev/null
+check "prepare names the pin and the fix when no sibling checkout has it" \
+    bash -c 'HOME=/nonexistent YEROKET_ROOT="$1" "$0" prepare 2>&1 | grep -q "VIXEN_YEROKET_PIN_SOURCE"' "$launcher" "$scratch/kernel-stale"
+
 exit "$failures"

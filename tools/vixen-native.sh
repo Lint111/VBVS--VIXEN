@@ -8,7 +8,7 @@
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
 #   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
-#   prepare                    sync + provision (run this before queueing the build)
+#   prepare                    sync + kernel pin fetch + provision (run this before queueing the build)
 #   build [ACTION [PRESET [TARGET]]]
 #                              prepare, then build.bat (ACTION defaults to build.bat's own default)
 #   bat RELPATH [ARGS]         prepare, then run a batch file of the checkout (e.g. a direct vcvars64 route)
@@ -229,8 +229,28 @@ do_provision() {
     }
 }
 
+# A YEROKET_ROOT clone (the lane's native kernel snapshot) that predates the tracked pin makes the
+# configure fail; fetch the pin from the sibling Yeroket checkout (VIXEN_YEROKET_PIN_SOURCE, else
+# ~/projects or ~/Github Yeroket-Fantasy) before it runs.
+do_kernel_pin() {
+    local root="${YEROKET_ROOT:-}" pin source candidate
+    [[ -n "$root" && -e "$root/.git" ]] || return 0
+    pin="$(sed -n 's/^set(_vixen_tracked_yeroket_kernel_sha "\([0-9a-f]\{40\}\)").*/\1/p' "$(base_dir)/VIXEN/codegen/CMakeLists.txt")"
+    [[ -n "$pin" ]] || die "no tracked kernel pin (_vixen_tracked_yeroket_kernel_sha) in $(base_dir)/VIXEN/codegen/CMakeLists.txt"
+    if git -C "$root" cat-file -e "$pin^{commit}" 2>/dev/null; then return 0; fi
+    for candidate in "${VIXEN_YEROKET_PIN_SOURCE:-}" "$HOME/projects/Yeroket-Fantasy" "$HOME/Github/Yeroket-Fantasy"; do
+        if [[ -n "$candidate" && "$candidate" != "$root" ]] && git -C "$candidate" cat-file -e "$pin^{commit}" 2>/dev/null; then source="$candidate"; break; fi
+    done
+    [[ -n "${source:-}" ]] || die "YEROKET_ROOT $root lacks tracked kernel pin $pin and no sibling checkout has it; fetch it into one of them or set VIXEN_YEROKET_PIN_SOURCE"
+    say "YEROKET_ROOT lacks tracked kernel pin ${pin:0:12}; fetching it from $source"
+    git -C "$root" -c uploadpack.allowAnySHA1InWant=true fetch --quiet --no-tags "$source" "$pin" \
+        || die "could not fetch kernel pin $pin from $source into $root"
+    git -C "$root" cat-file -e "$pin^{commit}" 2>/dev/null || die "kernel pin $pin is still missing from $root after the fetch from $source"
+}
+
 do_prepare() {
     if [[ "$direct" != 1 ]]; then do_sync; fi
+    do_kernel_pin
     do_provision
 }
 
