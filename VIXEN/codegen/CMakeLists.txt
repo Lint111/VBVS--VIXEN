@@ -653,7 +653,9 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # materialization, T-4740). Only that code is silenced; project warnings stay.
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
         -p:InvariantGlobalization=true -nowarn:NETSDK1188 --artifacts-path "${_tool_artifacts_run}"
-        --output "${_tool_cached_bin_run}")
+        --output "${_tool_cached_bin_run}/")
+    # The trailing '/' is load-bearing: project files that build "$(OutDir)Name.dll" by
+    # concatenation otherwise write <cache>/binName.dll (T-6427).
     if(_codegen_need_wsl_bridge)
         vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
             "${_tool_cached_bin_run}" "${_tool_local_bin_run}" "${_tool_stamp_run}" ${_tool_build_command})
