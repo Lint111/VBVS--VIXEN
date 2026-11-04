@@ -9,11 +9,13 @@
 # server, or WSLg on WSL).
 #
 # Precedence (mirrors ProvisionVulkan): a system X11 dev install wins; else the cache; else download.
-# If nothing is available and auto-provision is off, GLFW falls back to the null backend (compiles,
-# no window) so the build never breaks.
+# General VIXEN consumers may keep the null-backend fallback, while native consumers can require a
+# real windowing prerequisite and receive an actionable configure failure instead.
 #
 # Knobs:
 #   -DVIXEN_AUTO_PROVISION_WINDOWING=OFF   don't auto-download; use system X11 or the null backend
+#   -DVIXEN_REQUIRE_WINDOWING=ON            fail if X11 headers/runtime cannot be provisioned
+#   -DVIXEN_WINDOWING_SYSTEM_INCLUDE_DIR   system X11 include root (default /usr/include)
 #   -DVIXEN_WINDOWING_CACHE_DIR=<path>     the one dir (with usr/ inside) holding the provisioned X11 dev libs
 #                                          (default ${XDG_CACHE_HOME:-~/.cache}/vixen/windowing/<key>, shared by
 #                                          all worktrees; a dedicated dir the provisioner owns)
@@ -29,6 +31,7 @@ endif()
 include("${CMAKE_CURRENT_LIST_DIR}/VixenSharedCache.cmake")
 
 option(VIXEN_AUTO_PROVISION_WINDOWING "Auto-provision X11 dev libs for GLFW on Linux when absent" ON)
+option(VIXEN_REQUIRE_WINDOWING "Fail when the GLFW X11 windowing prerequisite is unavailable" OFF)
 set(_arch "x86_64-linux-gnu")
 
 # The package set is the single source for both the download and the cache key, so changing it
@@ -40,6 +43,8 @@ set(_vixen_windowing_packages
     libxcb-keysyms1-dev
     libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libxext6 libxfixes3 libxrender1
     libxau6 libxdmcp6 libxcb1 libxcb-keysyms1)
+string(REPLACE ";" " " _vixen_windowing_package_args "${_vixen_windowing_packages}")
+set(_vixen_windowing_apt_command "apt-get download ${_vixen_windowing_package_args}")
 set(_vixen_windowing_distro "")
 if(EXISTS "/etc/os-release")
     file(STRINGS "/etc/os-release" _vixen_os_release REGEX "^(ID|VERSION_ID)=")
@@ -93,7 +98,11 @@ if(NOT _vixen_wayland_scanner)
 endif()
 
 # 1) System X11 dev present? Just enable the X11 backend and let GLFW find it normally.
-find_path(_vixen_x11_sys NAMES X11/Xlib.h PATHS /usr/include)
+set(_vixen_windowing_system_include "/usr/include")
+if(DEFINED VIXEN_WINDOWING_SYSTEM_INCLUDE_DIR)
+    set(_vixen_windowing_system_include "${VIXEN_WINDOWING_SYSTEM_INCLUDE_DIR}")
+endif()
+find_path(_vixen_x11_sys NAMES X11/Xlib.h PATHS "${_vixen_windowing_system_include}" NO_DEFAULT_PATH)
 set(_vixen_windowing_runtime_only FALSE)
 if(_vixen_x11_sys)
     set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
@@ -118,6 +127,10 @@ set(_vk_cache_keysyms "${VIXEN_WINDOWING_CACHE_DIR}/usr/lib/${_arch}/libxcb-keys
 #    before the atomic rename into place, plus the files below.
 set(_vixen_windowing_stamp "${VIXEN_WINDOWING_CACHE_DIR}/${VIXEN_SHARED_CACHE_STAMP}")
 set(_vixen_windowing_ok FALSE)
+set(_vixen_windowing_failure_detail "X11 provisioning was not attempted")
+set(_vixen_windowing_apt_result "not-run")
+set(_vixen_windowing_apt_stdout "")
+set(_vixen_windowing_apt_stderr "")
 if(EXISTS "${_vixen_windowing_stamp}" AND EXISTS "${_vk_cache_hdr}" AND EXISTS "${_vk_cache_keysyms}")
     set(_vixen_windowing_ok TRUE)
 endif()
@@ -149,10 +162,22 @@ if(NOT _vixen_windowing_ok AND VIXEN_AUTO_PROVISION_WINDOWING)
             execute_process(
                 COMMAND ${_vixen_apt} download ${_vixen_windowing_packages}
                 WORKING_DIRECTORY "${_vixen_windowing_tmp}/_dl"
-                RESULT_VARIABLE _vixen_dlrc OUTPUT_QUIET ERROR_QUIET)
+                RESULT_VARIABLE _vixen_dlrc
+                OUTPUT_VARIABLE _vixen_windowing_apt_stdout
+                ERROR_VARIABLE _vixen_windowing_apt_stderr)
+            set(_vixen_windowing_apt_result "${_vixen_dlrc}")
             file(GLOB _vixen_debs "${_vixen_windowing_tmp}/_dl/*.deb")
+            set(_vixen_windowing_extract_failure "")
             foreach(_deb ${_vixen_debs})
-                execute_process(COMMAND ${_vixen_dpkg} -x "${_deb}" "${_vixen_windowing_tmp}" OUTPUT_QUIET ERROR_QUIET)
+                execute_process(
+                    COMMAND ${_vixen_dpkg} -x "${_deb}" "${_vixen_windowing_tmp}"
+                    RESULT_VARIABLE _vixen_extract_rc
+                    OUTPUT_VARIABLE _vixen_extract_stdout
+                    ERROR_VARIABLE _vixen_extract_stderr)
+                if(NOT _vixen_extract_rc EQUAL 0 AND NOT _vixen_windowing_extract_failure)
+                    set(_vixen_windowing_extract_failure
+                        "dpkg-deb -x ${_deb} exited with status ${_vixen_extract_rc}: ${_vixen_extract_stderr}")
+                endif()
             endforeach()
             file(REMOVE_RECURSE "${_vixen_windowing_tmp}/_dl")
             if(EXISTS "${_vixen_windowing_tmp}/usr/include/X11/Xlib.h" AND
@@ -164,14 +189,23 @@ if(NOT _vixen_windowing_ok AND VIXEN_AUTO_PROVISION_WINDOWING)
                 set(_vixen_windowing_ok TRUE)
             else()
                 file(REMOVE_RECURSE "${_vixen_windowing_tmp}")
-                message(STATUS "VIXEN: X11 dev download/extract was incomplete (apt-get download rc=${_vixen_dlrc}); nothing was cached.")
+                if(_vixen_windowing_extract_failure)
+                    set(_vixen_windowing_failure_detail "${_vixen_windowing_extract_failure}")
+                else()
+                    set(_vixen_windowing_failure_detail
+                        "X11 dev download/extract was incomplete (apt-get download rc=${_vixen_dlrc})")
+                endif()
+                message(STATUS "VIXEN: ${_vixen_windowing_failure_detail}; nothing was cached.")
             endif()
         endif()
         file(LOCK "${VIXEN_WINDOWING_CACHE_DIR}.lock" RELEASE)
     else()
+        set(_vixen_windowing_failure_detail "apt-get and/or dpkg-deb is unavailable")
         message(STATUS "VIXEN: no apt-get/dpkg-deb — cannot auto-provision X11. Install libx11-dev "
                        "libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev, or accept the null backend.")
     endif()
+elseif(NOT _vixen_windowing_ok AND NOT VIXEN_AUTO_PROVISION_WINDOWING)
+    set(_vixen_windowing_failure_detail "VIXEN_AUTO_PROVISION_WINDOWING=OFF")
 endif()
 
 # 3) Use the cache if we have it; else fall back to the null backend (build still succeeds).
@@ -181,6 +215,7 @@ elseif(_vixen_windowing_runtime_only)
     message(WARNING "VIXEN: libxcb-keysyms.so.1 is missing and could not be provisioned into ${VIXEN_WINDOWING_CACHE_DIR}; "
                     "the Dozen Vulkan ICD will fail to load. Install libxcb-keysyms1 (apt install libxcb-keysyms1).")
 elseif(_vixen_windowing_ok)
+    # 3) The complete X11 development and runtime closure is available.
     set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
     # include() runs in this (dependencies) scope, where the GLFW FetchContent below also runs, so a
     # plain set here is what GLFW's find_package(X11) sees — no PARENT_SCOPE needed.
@@ -190,6 +225,19 @@ elseif(_vixen_windowing_ok)
     endif()
     message(STATUS "VIXEN: X11 dev provisioned at ${VIXEN_WINDOWING_CACHE_DIR}; GLFW X11 backend enabled.")
 else()
+    if(VIXEN_REQUIRE_WINDOWING)
+        message(FATAL_ERROR
+            "VIXEN: X11 windowing prerequisite failed.\n"
+            "what: X11/Xlib.h and the XCB keysyms runtime are unavailable.\n"
+            "where: /usr/include/X11/Xlib.h or ${_vk_cache_hdr}; cache entry ${VIXEN_WINDOWING_CACHE_DIR}.\n"
+            "why: GLFW's X11 backend and the native launcher window require these headers and libraries.\n"
+            "fix: provision the packages into the cache with this exact command (no sudo):\n"
+            "  cd ${VIXEN_WINDOWING_CACHE_DIR}/_dl && ${_vixen_windowing_apt_command}\n"
+            "detail: ${_vixen_windowing_failure_detail}\n"
+            "apt status: ${_vixen_windowing_apt_result}\n"
+            "apt stdout: ${_vixen_windowing_apt_stdout}\n"
+            "apt stderr: ${_vixen_windowing_apt_stderr}")
+    endif()
     set(GLFW_BUILD_X11 OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
     message(STATUS "VIXEN: X11 dev unavailable — GLFW null backend (engine compiles, no window).")

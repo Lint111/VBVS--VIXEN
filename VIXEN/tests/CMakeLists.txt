@@ -46,6 +46,11 @@ add_test(NAME Provision.VulkanNotFoundMessage
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SMOKE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vulkan-not-found"
             -P "${VIXEN_ROOT}/cmake/tests/test_vulkan_not_found_message.cmake")
 set_tests_properties(Provision.VulkanNotFoundMessage PROPERTIES LABELS "cpu")
+add_test(NAME Provision.WindowingFailure
+    COMMAND "${CMAKE_COMMAND}"
+            "-DVIXEN_WINDOWING_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windowing-provisioning"
+            -P "${VIXEN_ROOT}/cmake/tests/test_windowing_provisioning.cmake")
+set_tests_properties(Provision.WindowingFailure PROPERTIES LABELS "cpu")
 
 add_test(NAME Native.KernelPinOverride
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"
