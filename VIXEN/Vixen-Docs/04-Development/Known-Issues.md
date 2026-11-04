@@ -1050,7 +1050,9 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 
 **Planned fix:** `Dep-Cache-AutoHeal-Design-2026-07.md` — a CMake reconcile-against-pin step that auto-clears a stale `_deps` cache at configure (+ an opt-in adopt-newer-local path + a `-DVIXEN_CLEAR_DEP_CACHE` knob). Will close this KI when implemented.
 
-**Severity:** Low (one-time per-build-dir clear; fresh dirs unaffected) · **Status:** OPEN (self-clears as build dirs are recreated; auto-heal fix designed)
+**Update 2026-11-03 (vel-297-vixen verify, T-0020):** the staleness is no longer silent. `VIXEN/dependencies/native/CMakeLists.txt` now runs `git rev-parse HEAD` on the fetched Gaia source after `FetchContent_MakeAvailable` and fails configure with `Gaia source revision mismatch: declared <sha>, fetched <sha> ... Refresh the FetchContent source directory`. Auto-heal itself (clearing the stale `_deps` dir) is still not implemented.
+
+**Severity:** Low (one-time per-build-dir clear; fresh dirs unaffected) · **Status:** OPEN (loud configure failure with fix hint; auto-heal fix designed, not implemented)
 ## KI-022 — `VIXEN_RESIZE_AT_FRAME` mid-run window resize crashes with an access violation (pre-existing, unrelated to Sampled Lighting)
 [[spt:T-0021]]
 
