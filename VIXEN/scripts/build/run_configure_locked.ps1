@@ -37,12 +37,15 @@ param(
     [switch]$SkipLock
 )
 
+. "$PSScriptRoot\NamedMutex.ps1"
+. "$PSScriptRoot\Register-NativeRunRoot.ps1"
+
 $mutex = $null
 if (-not $SkipLock) {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenConfigureLock")
     Write-Host "[configure] Waiting for the machine-wide configure lock (another worktree may be configuring)..."
     $lockWaitStart = Get-Date
-    $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    $acquired = Wait-VixenMutex -Mutex $mutex -TimeoutSeconds $LockTimeoutSeconds -Name 'Global\VixenConfigureLock' -Tag '[configure]'
     if (-not $acquired) {
         $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
         Write-Host "[configure] TIMEOUT after $($waited)s waiting for the configure lock - another configure is still running."

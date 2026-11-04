@@ -259,7 +259,11 @@ function Update-TicketLastSeen($ticketId) {
 
 function Test-BuildLockFree {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenBuildLock")
-    $acquired = $mutex.WaitOne(0)
+    try {
+        $acquired = $mutex.WaitOne(0)
+    } catch [System.Threading.AbandonedMutexException] {
+        $acquired = $true  # the holder was killed; we own the abandoned mutex (T-4910)
+    }
     if ($acquired) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
     return $acquired
