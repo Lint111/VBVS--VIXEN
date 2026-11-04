@@ -39,6 +39,18 @@ class SplitRunnerSelectionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn("/nonexistent/test_unbuilt_exe", result.stderr)
         self.assertIn("--target rendergraph_svo_tests", result.stderr)
+
+    def test_unbuilt_executable_fails_before_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "CTestTestfile.cmake").write_text(
+                TESTFILE + 'add_test(cpu_unbuilt "/nonexistent/never-built")\n'
+                'set_tests_properties(cpu_unbuilt PROPERTIES LABELS "cpu;Suite")\n')
+            result = subprocess.run(
+                ["bash", str(SCRIPT), "--build-dir", directory, "--no-queue", "--label", "Suite"],
+                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("cpu_unbuilt -> ", result.stderr)
+        self.assertIn("Fix:", result.stderr)
         self.assertNotIn("tests passed", result.stdout)
 
 

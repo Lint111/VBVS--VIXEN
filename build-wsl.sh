@@ -10,6 +10,10 @@
 #   ./build-wsl.sh --clean                                    (delete only <repo>/build/wsl)
 # A bare "Release" is accepted because the preset already selects it; any other build
 # type is rejected here instead of failing later inside `cmake --build`.
+#   ./build-wsl.sh --help                                     (this text; touches nothing)
+# A full build (no --target) first builds the FrameTargets schema/ref drift checks so a stale
+# generated schema fails in seconds instead of after the whole compile graph; the same checks
+# still run again as part of the full build, so no gate is skipped.
 # BUILD_WSL_DRY_RUN=1 prints the cmake commands instead of running them.
 set -euo pipefail
 
@@ -18,8 +22,12 @@ tree="$root/build/wsl"
 
 configure_args=()
 build_args=()
+has_target=0
 while (($#)); do
     case "$1" in
+        -h|--help)
+            sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'
+            exit 0 ;;
         --clean)
             if (($# > 1)); then
                 echo "build-wsl.sh: --clean takes no other arguments (got: ${*:2}). Fix: run './build-wsl.sh --clean' alone, then rebuild." >&2
@@ -37,6 +45,7 @@ while (($#)); do
             echo "build-wsl.sh: build type '$1' is not available through the vixen-wsl preset, which is fixed to Release (binary tree $tree)." >&2
             echo "Fix: use the vixen-wsl-debug preset directly (cmake -S VIXEN --preset vixen-wsl-debug), or pass -DCMAKE_BUILD_TYPE=$1 to a separate tree." >&2
             exit 2 ;;
+        --target|-t) has_target=1; build_args+=("$1"); shift ;;
         *) build_args+=("$1"); shift ;;
     esac
 done
@@ -47,5 +56,15 @@ run() {
 
 run cmake -S "$root/VIXEN" --preset vixen-wsl "${configure_args[@]}"
 echo "[build-wsl] configure ok: $tree"
+if ((!has_target)); then
+    fast_checks=(frame_targets_schema_check frame_targets_ref_check)
+    if [[ -n "${BUILD_WSL_DRY_RUN:-}" ]] || cmake --build "$tree" --target help 2>/dev/null | grep -q "frame_targets_schema_check"; then
+        if ! run cmake --build "$tree" --target "${fast_checks[@]}"; then
+            echo "build-wsl.sh: the generated FrameTargets schema/ref under $root/VIXEN/codegen/generated is stale (checked before the full build to save the compile)." >&2
+            echo "Fix: ./build-wsl.sh --target frame_targets_refresh, commit the regenerated files, then rerun this build." >&2
+            exit 1
+        fi
+    fi
+fi
 run cmake --build "$tree" "${build_args[@]}"
 echo "[build-wsl] build ok: $tree (${build_args[*]:-all targets})"

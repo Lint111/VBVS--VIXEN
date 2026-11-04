@@ -144,18 +144,28 @@ if (( cpu_selected + gpu_selected == 0 )); then
   exit 2
 fi
 
-# A label gate selects tests whose executables a scoped build (say only vixen_lookdev_capture) never
-# produced; ctest would report them "Not Run" minutes later with no hint. Name them now (T-4693).
+# Fail before queueing when a selected test's executable was never built: otherwise the run
+# spends its queue slots and reports "Not Run" per test (T-6532). The fix is a full build.
+missing_executables="$(ctest --test-dir "$build_dir" --show-only=json-v1 "${select_args[@]}" | python3 -c '
+import json, os, sys
+for test in json.load(sys.stdin).get("tests", []):
+    # ctest drops "command" from the listing when it cannot resolve the executable.
+    command = test.get("command") or []
+    if not command or (os.path.isabs(command[0]) and not os.path.exists(command[0])):
+        print(test["name"] + " -> " + (command[0] if command else "<executable not found>"))
+')" || { echo "[run-tests-split] could not read the selected tests for the executable preflight" >&2; exit 2; }
+# A label gate also catches CTest's explicit NOT_BUILT marker when the selected executable
+# cannot be resolved in the listing (T-4693).
 missing_report="$(ctest --test-dir "$build_dir" -N -V "${select_args[@]}" 2>&1 |
   sed -n 's/^Could not find executable \(.*\)$/  \1/p; s/^ *Test *#[0-9]*: \(.*\)_NOT_BUILT$/  \1 (target not built)/p' | sort -u)"
-if [[ -n "$missing_report" ]]; then
-  {
-    echo "[run-tests-split] selected tests whose executables are not built in $build_dir:"
-    echo "$missing_report"
-    echo "[run-tests-split] why: the build was scoped to other targets, so these executables were never produced."
-    echo "[run-tests-split] fix: build the aggregate gate first: cmake --build $build_dir --target rendergraph_svo_tests"
-    echo "[run-tests-split]      (builds every RenderGraph/SVO/Application suite executable, VIXEN and vixen_editor), or narrow the selection with --label/--regex."
-  } >&2
+if [[ -n "$missing_executables" || -n "$missing_report" ]]; then
+  echo "[run-tests-split] selected test executable(s) are not built in $build_dir:" >&2
+  [[ -n "$missing_executables" ]] && head -n 10 <<<"$missing_executables" >&2
+  [[ -n "$missing_report" ]] && echo "$missing_report" >&2
+  echo "[run-tests-split] why: the build was scoped to other targets, so these executables were never produced." >&2
+  echo "[run-tests-split] Fix: ./build-wsl.sh (full build, no --target) through the queue, then rerun; or narrow with --label/--regex." >&2
+  echo "[run-tests-split] fix: build the aggregate gate first: cmake --build $build_dir --target rendergraph_svo_tests" >&2
+  echo "[run-tests-split]      (builds every RenderGraph/SVO/Application suite executable, VIXEN and vixen_editor), or narrow the selection with --label/--regex." >&2
   exit 2
 fi
 
