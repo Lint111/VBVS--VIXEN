@@ -2,11 +2,10 @@ using System;
 using Undertow.Modding.Schema;
 using Undertow.Sim.Systems;
 using Vixen.Gpu;
-using Yeroket.Util.KernelFramework;
 
 namespace Vixen.Codegen.Gpu;
 
-[KernelSystem(Emit = KernelEmitTargets.Glsl)]
+[KernelSystem]
 public static class ExposureTonemapSystem
 {
     // Private declarations remain syntax-only: callable reach must not emit their
