@@ -902,6 +902,8 @@ if(ENABLE_COVERAGE)
     )
 endif()
 
+vixen_write_test_executable_manifest()
+
 # CompileTimeResourceSystem tests moved to RenderGraph/tests/
 # (See RenderGraph/tests/CMakeLists.txt for test configuration)
 

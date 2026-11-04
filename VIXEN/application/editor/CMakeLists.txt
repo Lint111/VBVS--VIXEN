@@ -125,9 +125,11 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 mkdir -p \"\${capture_dir}\"
                 rm -f \"\${capture_dir}\"/editor_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
                 cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
+                rm -f \"\${capture_dir}\"/*.png
                 export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
                 ${VIXEN_EDITOR_FRESH_CLEAN}
                 \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1
+                compgen -G \"\${capture_dir}/*.png\" > /dev/null || { echo \"vixen_editor wrote no PNG under \${capture_dir} in this run; see \${capture_dir}/run_editor_script.log\" >&2; exit 1; }
                 ${VIXEN_EDITOR_FRESH_CHECK}")
     else()
         add_test(NAME vixen_editor_capture_producer
@@ -197,6 +199,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
                 ${VIXEN_HUD_FRESH_CLEAN}
                 \"$<TARGET_FILE:VIXEN>\"
+                compgen -G \"\${capture_dir}/hud_capture_*.png\" > /dev/null || { echo \"VIXEN wrote no hud_capture_*.png under \${capture_dir} in this run\" >&2; exit 1; }
                 ${VIXEN_HUD_FRESH_CHECK}")
     else()
         add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
@@ -233,6 +236,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
                 ${VIXEN_TEXT_FRESH_CLEAN}
                 \"$<TARGET_FILE:VIXEN>\"
+                compgen -G \"\${capture_dir}/hud_capture_*.png\" > /dev/null || { echo \"VIXEN wrote no hud_capture_*.png under \${capture_dir} in this run\" >&2; exit 1; }
                 ${VIXEN_TEXT_FRESH_CHECK}")
     else()
         add_test(NAME vixen_text_shader_capture_producer COMMAND $<TARGET_FILE:VIXEN>)

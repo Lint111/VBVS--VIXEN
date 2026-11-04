@@ -266,6 +266,14 @@ while [[ $# -gt 0 ]]; do
 done
 [[ $# -gt 0 ]] || die "missing command (cmd|checkout|sync|provision|prepare|build|bat); see --help"
 command_name="$1"; shift
+# The native checkout is only a sync target. Run from inside it, the wrapper would sync the clone to
+# itself and silently build whatever commit the clone already holds instead of the lane's tip.
+if [[ "$direct" != 1 && "$command_name" != cmd ]]; then
+    native_real="$(cd "$native_base" 2>/dev/null && pwd -P || true)"
+    if [[ -n "$native_real" && "$repo_root/" == "$native_real/"* ]]; then
+        die "run from the source worktree, not the native clone ($repo_root is under $native_real): the wrapper there would sync the clone to itself and build a stale commit; use the lane worktree's tools/vixen-native.sh (or --direct to build this checkout as is)"
+    fi
+fi
 if [[ -z "$log_file" ]]; then
     log_file="$repo_root/.tmp/vixen-native/$lane-$command_name-$(date +%Y%m%d-%H%M%S).log"
 fi

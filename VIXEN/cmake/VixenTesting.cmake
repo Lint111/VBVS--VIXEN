@@ -183,6 +183,7 @@ function(vixen_gtest_discover_tests suite target)
     # Stage imported runtime DLLs before POST_BUILD test discovery launches the
     # executable, so discovery itself also works without a PATH workaround.
     vixen_stage_runtime_dlls_for_target(${target})
+    set_property(GLOBAL APPEND PROPERTY VIXEN_REGISTERED_TEST_EXECUTABLES "${target}")
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
     vixen_test_class_register(${target} "${_test_list_variable}")
 
@@ -249,4 +250,18 @@ endfunction()
 function(vixen_register_verification_targets directory)
     _vixen_collect_subtree_targets("${directory}" _suite_targets)
     set_property(GLOBAL APPEND PROPERTY VIXEN_RENDERGRAPH_SVO_BUILD_TARGETS ${_suite_targets})
+endfunction()
+
+# Writes <build>/test-executables.tsv ("<target><TAB><path>" per registered gtest executable) so a
+# queued targeted witness reads the binary path instead of guessing the per-library output layout.
+# Call once, after every add_subdirectory() that registers tests.
+function(vixen_write_test_executable_manifest)
+    get_property(_targets GLOBAL PROPERTY VIXEN_REGISTERED_TEST_EXECUTABLES)
+    list(REMOVE_DUPLICATES _targets)
+    list(SORT _targets)
+    set(_content "")
+    foreach(_target IN LISTS _targets)
+        string(APPEND _content "${_target}\t$<TARGET_FILE:${_target}>\n")
+    endforeach()
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/test-executables.tsv" CONTENT "${_content}")
 endfunction()
