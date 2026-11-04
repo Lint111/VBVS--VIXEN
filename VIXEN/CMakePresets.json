@@ -72,6 +72,32 @@
         "CMAKE_CXX_COMPILER": "g++",
         "VIXEN_AUTO_PROVISION_WSL_VULKAN": "ON"
       }
+    },
+    {
+      "name": "vixen-wsl-asan",
+      "inherits": "vixen-wsl-debug",
+      "displayName": "VIXEN WSL AddressSanitizer + UBSan (Linux/GCC, Debug)",
+      "description": "Debug build instrumented with -fsanitize=address,undefined for submit-test and lifetime validation. Third-party headers (Gaia, GLM) trip -Wmaybe-uninitialized under instrumentation and the project's -Werror test targets would promote it to a hard error, so that one diagnostic is demoted with -Wno-error=maybe-uninitialized (it still prints; every other warning stays an error). Build: cmake -S VIXEN --preset vixen-wsl-asan && cmake --build build/wsl-asan --target <test> -j4.",
+      "binaryDir": "${sourceDir}/../build/wsl-asan",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -Wno-error=maybe-uninitialized",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -Wno-error=maybe-uninitialized",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "vixen-wsl-tsan",
+      "inherits": "vixen-wsl-debug",
+      "displayName": "VIXEN WSL ThreadSanitizer (Linux/GCC, Debug)",
+      "description": "Debug build instrumented with -fsanitize=thread for submit-test and lock-order validation; TSan cannot be combined with ASan, hence a separate tree. Third-party headers (Gaia, GLM) trip -Wmaybe-uninitialized under instrumentation and the project's -Werror test targets would promote it to a hard error, so that one diagnostic is demoted with -Wno-error=maybe-uninitialized (it still prints; every other warning stays an error). Build: cmake -S VIXEN --preset vixen-wsl-tsan && cmake --build build/wsl-tsan --target <test> -j4.",
+      "binaryDir": "${sourceDir}/../build/wsl-tsan",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer -Wno-error=maybe-uninitialized",
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer -Wno-error=maybe-uninitialized",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=thread"
+      }
     }
   ],
   "buildPresets": [
@@ -80,6 +106,8 @@
     { "name": "vixen-wsl", "configurePreset": "vixen-wsl" },
     { "name": "vixen-wsl-full", "configurePreset": "vixen-wsl-full" },
     { "name": "vixen-wsl-personalized", "configurePreset": "vixen-wsl-personalized" },
-    { "name": "vixen-wsl-debug", "configurePreset": "vixen-wsl-debug" }
+    { "name": "vixen-wsl-debug", "configurePreset": "vixen-wsl-debug" },
+    { "name": "vixen-wsl-asan", "configurePreset": "vixen-wsl-asan" },
+    { "name": "vixen-wsl-tsan", "configurePreset": "vixen-wsl-tsan" }
   ]
 }
