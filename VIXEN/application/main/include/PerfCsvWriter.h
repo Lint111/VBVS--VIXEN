@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,7 @@ private:
     std::string path_;
     std::vector<Row> rows_;
     bool flushed_ = false;
+    std::set<std::string> warnedNoSlot_;  // columns already reported as slot-less
 
     // Rolling window for steady-state FPS (matches VulkanApplicationBase's FrameTimer window).
     static constexpr size_t kFpsWindow = 120;
