@@ -60,6 +60,25 @@ endif()
 # application/main so VIXEN_UI_ASSET_SOURCE_DIR's compiled-in fallback and the staged copy agree.
 vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
 
+# GPU fixtures share one Dozen device with up to four queued shards; a producer measured at 32 s idle
+# took 148-180 s under load (T-6127). Timeouts only bound hangs, so scale every producer's idle-tuned
+# limit by this factor instead of tuning each number: -DVIXEN_GPU_FIXTURE_TIMEOUT_FACTOR=1 restores them.
+set(VIXEN_GPU_FIXTURE_TIMEOUT_FACTOR 3 CACHE STRING "Multiplier on GPU capture-producer CTest timeouts")
+function(vixen_gpu_fixture_timeout out_var idle_seconds)
+    math(EXPR _scaled "${idle_seconds} * ${VIXEN_GPU_FIXTURE_TIMEOUT_FACTOR}")
+    set(${out_var} ${_scaled} PARENT_SCOPE)
+endfunction()
+
+# Linux producers delete their own generated PNGs first and require every expected frame afterwards,
+# so a failed run can never leave the previous run's bytes looking like a fresh witness (T-4355).
+# Args: <capture_dir var in the bash snippet> <glob> <frames...>
+function(vixen_fresh_capture_shell out_var glob_pattern)
+    set(_frames ${ARGN})
+    list(JOIN _frames " " _frame_list)
+    set(${out_var}_CLEAN "rm -f \"\${capture_dir}\"/${glob_pattern}*.png" PARENT_SCOPE)
+    set(${out_var}_CHECK "for frame in ${_frame_list}; do test -s \"\${capture_dir}/${glob_pattern}\${frame}.png\" || { echo \"stale or missing capture ${glob_pattern}\${frame}.png in \${capture_dir}: the producer exited without writing it; see its log\" >&2; exit 1; }; done" PARENT_SCOPE)
+endfunction()
+
 # CTest fixtures produce the live editor and main-app captures before their file-assertion cases.
 # The build-tree directories are the non-queue fallback; Linux command wrappers switch each GPU
 # process to UT_QUEUE_CAPTURE_ROOT at run time so documents, logs, and captures stay together.
@@ -79,6 +98,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_editor_capture.cmake.in"
         "${VIXEN_EDITOR_CAPTURE_SCRIPT}" @ONLY)
 
+    vixen_fresh_capture_shell(VIXEN_EDITOR_FRESH editor_capture_ 5 25 45 75 105 115)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_editor_capture_producer
             COMMAND bash -c
@@ -89,15 +109,18 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 mkdir -p \"\${capture_dir}\"
                 cp -- \"${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd\" \"\${document}\"
                 export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
-                exec \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1")
+                ${VIXEN_EDITOR_FRESH_CLEAN}
+                \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1
+                ${VIXEN_EDITOR_FRESH_CHECK}")
     else()
         add_test(NAME vixen_editor_capture_producer
             COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_EDITOR_CAPTURE_SCRIPT}")
     endif()
+    vixen_gpu_fixture_timeout(_editor_timeout 360)
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
-        TIMEOUT 360)
+        TIMEOUT ${_editor_timeout})
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_editor_capture_producer
         TEST_ENVIRONMENT
             # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
@@ -117,12 +140,19 @@ if(BUILD_TESTS AND TARGET VIXEN)
 
     if(VIXEN_FAIL_SCENARIOS)
         set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
-        add_test(NAME vixen_device_loss_recovery
-            COMMAND bash -c
-                "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_test(NAME vixen_device_loss_recovery
+                COMMAND bash -c
+                    "mkdir -p \"$(dirname \"${VIXEN_DEVICE_LOSS_LOG}\")\" && \"$<TARGET_FILE:VIXEN>\" > \"${VIXEN_DEVICE_LOSS_LOG}\" 2>&1 && grep -q 'RECOVERY COMPLETE' \"${VIXEN_DEVICE_LOSS_LOG}\"")
+        else()
+            add_test(NAME vixen_device_loss_recovery
+                COMMAND "${CMAKE_COMMAND}" "-DAPP_EXE=$<TARGET_FILE:VIXEN>" "-DLOG=${VIXEN_DEVICE_LOSS_LOG}"
+                    "-DWORKDIR=$<TARGET_FILE_DIR:VIXEN>" -P "${CMAKE_CURRENT_SOURCE_DIR}/run_device_loss_recovery.cmake")
+        endif()
+        vixen_gpu_fixture_timeout(_device_loss_timeout 180)
         set_tests_properties(vixen_device_loss_recovery PROPERTIES
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-            TIMEOUT 180)
+            TIMEOUT ${_device_loss_timeout})
         vixen_set_suite_properties(RenderGraph GPU TESTS vixen_device_loss_recovery
             TEST_ENVIRONMENT
                 "VIXEN_SIMULATE_DEVICE_LOSS=40"
@@ -138,6 +168,7 @@ endif()
 if(BUILD_TESTS AND TARGET VIXEN)
     set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
     file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
+    vixen_fresh_capture_shell(VIXEN_HUD_FRESH hud_capture_ 5 45 75)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_hud_capture_producer
             COMMAND bash -c
@@ -146,14 +177,17 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 capture_dir=\"\${capture_root}/hud\"
                 mkdir -p \"\${capture_dir}\"
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
-                exec \"$<TARGET_FILE:VIXEN>\"")
+                ${VIXEN_HUD_FRESH_CLEAN}
+                \"$<TARGET_FILE:VIXEN>\"
+                ${VIXEN_HUD_FRESH_CHECK}")
     else()
         add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
     endif()
+    vixen_gpu_fixture_timeout(_hud_timeout 180)
     set_tests_properties(vixen_hud_capture_producer PROPERTIES
         FIXTURES_SETUP VixenHudCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-        TIMEOUT 180)
+        TIMEOUT ${_hud_timeout})
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_hud_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_HUD_SCRIPT=A@30,B@60"
@@ -169,6 +203,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
     # 5 and 45.
     set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/textshader")
     file(MAKE_DIRECTORY "${VIXEN_TEXT_SHADER_CAPTURE_DIR}")
+    vixen_fresh_capture_shell(VIXEN_TEXT_FRESH hud_capture_ 5 45)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_text_shader_capture_producer
             COMMAND bash -c
@@ -177,17 +212,20 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 capture_dir=\"\${capture_root}/textshader\"
                 mkdir -p \"\${capture_dir}\"
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
-                exec \"$<TARGET_FILE:VIXEN>\"")
+                ${VIXEN_TEXT_FRESH_CLEAN}
+                \"$<TARGET_FILE:VIXEN>\"
+                ${VIXEN_TEXT_FRESH_CHECK}")
     else()
         add_test(NAME vixen_text_shader_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
     endif()
+    vixen_gpu_fixture_timeout(_text_timeout 300)
     set_tests_properties(vixen_text_shader_capture_producer PROPERTIES
         FIXTURES_SETUP VixenTextShaderCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         # The translated D3D12 path submits ~700 primary-dispatch chunks per 1920x1080
         # frame; the 55-frame text animation therefore needs a little more than 180s on
         # the headless WSL GPU while retaining the production capture resolution/schedule.
-        TIMEOUT 300)
+        TIMEOUT ${_text_timeout})
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_text_shader_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_TEXT_SHADER_CAPTURE=1"
@@ -209,8 +247,16 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
     file(READ "/proc/sys/kernel/osrelease" _vixen_kernel_release)
     if(_vixen_kernel_release MATCHES "[Mm]icrosoft" AND EXISTS "/tmp/.X11-unix/X0")
         set(VIXEN_NATIVE_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/native")
+        # The helper lives in the repository-root tools/, outside VIXEN/. A VIXEN-only source archive
+        # (e.g. a baseline snapshot) lacks it; say so at configure time instead of failing at launch (T-2904).
+        set(VIXEN_WINDOWED_CAPTURE_HELPER "${VIXEN_ROOT}/../tools/run-vixen-windowed-captures.sh")
+        if(NOT EXISTS "${VIXEN_WINDOWED_CAPTURE_HELPER}")
+            message(WARNING "vixen_wsl_capture_witness will fail: ${VIXEN_WINDOWED_CAPTURE_HELPER} is missing. "
+                "This tree does not contain the repository-root tools/ directory (a VIXEN-only archive?). "
+                "Archive the repository root, or restore tools/ from the same commit, before running the witness.")
+        endif()
         add_test(NAME vixen_wsl_capture_witness
-            COMMAND bash "${VIXEN_ROOT}/../tools/run-vixen-windowed-captures.sh"
+            COMMAND bash "${VIXEN_WINDOWED_CAPTURE_HELPER}"
                 "$<TARGET_FILE_DIR:VIXEN>" "$<TARGET_FILE_NAME:VIXEN>"
                 "$<TARGET_FILE_DIR:vixen_editor>" "$<TARGET_FILE_NAME:vixen_editor>"
                 "${VIXEN_NATIVE_CAPTURE_DIR}")
@@ -234,9 +280,10 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
                 export VIXEN_HUD_CAPTURE_DIR=\"\${capture_dir}\"
                 \"$<TARGET_FILE:VIXEN>\" > \"\${capture_dir}/instancing_demo.log\" 2>&1
                 for frame in 5 45 75; do test -s \"\${capture_dir}/hud_capture_\${frame}.png\"; done")
+        vixen_gpu_fixture_timeout(_instancing_timeout 180)
         set_tests_properties(vixen_instancing_demo_capture_producer PROPERTIES
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
-            TIMEOUT 180)
+            TIMEOUT ${_instancing_timeout})
         vixen_set_suite_properties(RenderGraph GPU TESTS vixen_instancing_demo_capture_producer
             TEST_ENVIRONMENT
                 "DISPLAY=:0"
