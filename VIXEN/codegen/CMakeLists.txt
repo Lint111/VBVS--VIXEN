@@ -693,7 +693,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     endif()
     list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
         -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
-        --output "${_tool_cached_bin_run}")
+        --output "${_tool_cached_bin_run}/")
     if(_codegen_need_wsl_bridge)
         vixen_codegen_build_config("${_tool_config}" "${_tool_cache_run}"
             "${_tool_cached_bin_run}" "${_tool_local_bin_run}" "${_tool_stamp_run}" ${_tool_build_command})
