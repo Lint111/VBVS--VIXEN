@@ -1418,6 +1418,18 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         endif()
     endforeach()
 
+    # One supported refresh for a kernel-pin bump or provider schema change: every *_regen
+    # target (schema JSON -> typed refs -> composition outputs, recipe SIMD, structs, views...)
+    # in dependency order, so stale outputs do not surface one failing *_check at a time.
+    # Follow with `--target vixen_codegen_checks` to verify every golden gate.
+    add_custom_target(vixen_codegen_regen
+        COMMENT "[codegen] regenerated every pinned-kernel artifact; now run target vixen_codegen_checks")
+    foreach(_t IN LISTS _engine_codegen_targets)
+        if(_t MATCHES "_regen$")
+            add_dependencies(vixen_codegen_regen ${_t})
+        endif()
+    endforeach()
+
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
         "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/EmitterSample/EmitterTotals/RecipeEmitterEntry/SparseEmitterEntry/Hud/EditorLayers/AppFlow/ViewNounId golden DRIFT GUARDS DISABLED; the committed generated artifacts "
