@@ -27,5 +27,11 @@ if not exist "%BUILD_DIR%\CTestTestfile.cmake" (
 echo [native-gpu-suite] ctest=%CTEST_EXE%
 echo [native-gpu-suite] build=%BUILD_DIR%
 echo [native-gpu-suite] device test list: label gpu, excluding native and nightly
-"%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --no-tests=error --output-on-failure %*
+REM A lost device leaves every later case hanging until its timeout (T-7061): bound each case, and stop at
+REM the first failure or timeout so the queue slot is released. VIXEN_GPU_STOP_ON_FAILURE=0 keeps going.
+set "CASE_TIMEOUT=%VIXEN_GPU_CASE_TIMEOUT%"
+if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
+set "STOP_ARG=--stop-on-failure"
+if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
+"%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
 exit /b %errorlevel%
