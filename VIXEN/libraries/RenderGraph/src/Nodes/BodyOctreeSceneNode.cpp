@@ -264,6 +264,7 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
     // cascade was the race root cause. Growth is the ONE case that NEEDS it: the ring is sized
     // by CompileImpl's EnsureRingAllocated, so a list that no longer fits the current ring must
     // force a recompile or the per-frame upload silently truncates (see ExecuteImpl's clamp).
+    const int32_t previousInstanceCount = instanceCount_;
     instances_     = std::move(instances);
     instanceCount_ = static_cast<int32_t>(instances_.size());
     RefreshInstanceStreams();
@@ -280,8 +281,11 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                       std::to_string(materialRingCapacity_) + "B) — requesting recompile to grow rings");
         MarkNeedsRecompile();
     }
-    NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
-                  std::to_string(instanceCount_) + " instances staged for next Execute");
+    // Callers re-submit every frame; build the log string only when the count changes.
+    if (instanceCount_ != previousInstanceCount) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
+                      std::to_string(instanceCount_) + " instances staged for next Execute");
+    }
 }
 
 void BodyOctreeSceneNode::RefreshInstanceStreams() {

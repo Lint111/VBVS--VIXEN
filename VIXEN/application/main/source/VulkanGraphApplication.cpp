@@ -1819,80 +1819,30 @@ void VulkanGraphApplication::PostTick() {
     // instead of only 1 of 7 submits being visible. Node names are BuildRenderGraph.cpp's own
     // (see its Phase G / Sampled Lighting Inc3-4 node construction).
     std::vector<PerfCsvWriter::PassSource> passes;
+    const auto addNamedComputeStagePasses = [&](std::initializer_list<const char*> names) {
+        for (const char* name : names) {
+            if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName(name))) {
+                passes.push_back({name, stage->GetGPUPerformanceLogger()});
+            }
+        }
+    };
     if (auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetNodeByName("test_dispatch"))) {
         passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
     }
-    if (auto* directLighting = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("direct_lighting"))) {
-        passes.push_back({"direct_lighting", directLighting->GetGPUPerformanceLogger()});
-    }
-    if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
-        passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
-    }
+    addNamedComputeStagePasses({"direct_lighting", "spatial_reuse"});
     for (const auto& metric : upscalerPerfPasses_) {
         auto* node = static_cast<ComputeStageNode*>(renderGraph->GetInstance(metric.node));
         passes.push_back({metric.columnName, node ? node->GetGPUPerformanceLogger() : nullptr});
     }
-    // W3c-2 / W-LEAN L3: the cell shade (exists only under
-    // VIXEN_HIT_ACCUM_RESOLVE); the composite rides spatial_reuse's own column.
-    if (auto* cellShade = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_cell_shade"))) {
-        passes.push_back({"hit_accum_cell_shade", cellShade->GetGPUPerformanceLogger()});
-    }
-    // W1a: the probe_update megakernel's three split stages, each timed as its
-    // own column — the wave's column is what prices the stale-slot re-trace
-    // waste the fixed-slot queue accepts (measured here before any compaction
-    // scheme is considered; see ProbeUpdateCommon.glsl's slot-addressing note).
-    if (auto* probeGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_gather"))) {
-        passes.push_back({"probe_gather", probeGather->GetGPUPerformanceLogger()});
-    }
-    // W-SPLIT: the re-split accumulate (exists only under VIXEN_HIT_ACCUM;
-    // absent on the default path) — its column is what the wave's own column
-    // (immediately below) is priced AGAINST: the fusion this pass undoes cost
-    // more (+7-8 ms) than the ~2 ms re-read it was meant to save.
-    if (auto* accumulate = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_accumulate"))) {
-        passes.push_back({"hit_accum_accumulate", accumulate->GetGPUPerformanceLogger()});
-    }
-    // C1: both photon passes are in the in-frame FrameCompute lane.  They are
-    // absent entirely when VIXEN_PHOTON_CELLS is off.
-    if (auto* photonDeposit = static_cast<ComputeStageNode*>(
-            renderGraph->GetNodeByName("photon_cell_deposit"))) {
-        passes.push_back({"photon_cell_deposit", photonDeposit->GetGPUPerformanceLogger()});
-    }
-    if (auto* photonFold = static_cast<ComputeStageNode*>(
-            renderGraph->GetNodeByName("photon_cell_fold"))) {
-        passes.push_back({"photon_cell_fold", photonFold->GetGPUPerformanceLogger()});
-    }
-    // W1b: the derived-request shadow wave — its column is what prices moving
-    // the production shadow traces out of the shade megakernel.
-    if (auto* shadowVisWave = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave"))) {
-        passes.push_back({"shadow_visibility_wave", shadowVisWave->GetGPUPerformanceLogger()});
-    }
-    // W2a (reservoir path opt-in; absent on the default path): the fold pass +
-    // the wave's reservoir-phase dispatch.
-    if (auto* srGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse_gather"))) {
-        passes.push_back({"spatial_reuse_gather", srGather->GetGPUPerformanceLogger()});
-    }
-    if (auto* waveRes = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave_reservoir"))) {
-        passes.push_back({"shadow_visibility_wave_reservoir", waveRes->GetGPUPerformanceLogger()});
-    }
-    // W3b (hit-accumulation opt-in; absent on the default path).
-    if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
-        passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});
-    }
-    if (auto* probeApply = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_apply"))) {
-        passes.push_back({"probe_apply", probeApply->GetGPUPerformanceLogger()});
-    }
-    // HDR exposure is optional on the current default path, so include these columns only
-    // when the corresponding graph stages exist. This makes their per-dispatch GPU cost
-    // visible in the same native CSV used to profile the rest of the render graph.
-    if (auto* exposureMeter = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_meter"))) {
-        passes.push_back({"exposure_meter", exposureMeter->GetGPUPerformanceLogger()});
-    }
-    if (auto* exposureReduce = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_reduce"))) {
-        passes.push_back({"exposure_reduce", exposureReduce->GetGPUPerformanceLogger()});
-    }
-    if (auto* exposureTonemap = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("exposure_tonemap"))) {
-        passes.push_back({"exposure_tonemap", exposureTonemap->GetGPUPerformanceLogger()});
-    }
+    // Each name below is a ComputeStageNode that exists only under its own feature flag (hit
+    // accumulation, photon cells, the shadow wave, reservoir reuse, HDR exposure); absent nodes
+    // add no column. A new graph-named timed pass is one more entry here, not one more block.
+    // Order is the CSV column order.
+    addNamedComputeStagePasses({
+        "hit_accum_cell_shade", "probe_gather", "hit_accum_accumulate",
+        "photon_cell_deposit", "photon_cell_fold", "shadow_visibility_wave",
+        "spatial_reuse_gather", "shadow_visibility_wave_reservoir", "shadow_ray_trace",
+        "probe_apply", "exposure_meter", "exposure_reduce", "exposure_tonemap"});
     for (const auto& generated : generatedSystems_.Stages()) {
         if (auto* stage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(generated.stage))) {
             passes.push_back({generated.entry->className, stage->GetGPUPerformanceLogger()});

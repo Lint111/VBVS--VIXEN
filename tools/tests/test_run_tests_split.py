@@ -14,9 +14,9 @@ set_tests_properties(gpu_one PROPERTIES LABELS "gpu;Suite")
 
 
 class SplitRunnerSelectionTests(unittest.TestCase):
-    def run_split(self, *arguments):
+    def run_split(self, *arguments, testfile=TESTFILE):
         with tempfile.TemporaryDirectory() as directory:
-            Path(directory, "CTestTestfile.cmake").write_text(TESTFILE)
+            Path(directory, "CTestTestfile.cmake").write_text(testfile)
             return subprocess.run(
                 ["bash", str(SCRIPT), "--build-dir", directory, "--no-queue", "--label", "Suite", *arguments],
                 capture_output=True, text=True)
@@ -30,6 +30,16 @@ class SplitRunnerSelectionTests(unittest.TestCase):
         result = self.run_split("--regex", "^cpu_one$")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("100% tests passed, 0 tests failed out of 1", result.stdout)
+
+    def test_unbuilt_executable_is_named_before_running(self):
+        testfile = TESTFILE + (
+            'add_test(cpu_missing "/nonexistent/test_unbuilt_exe")\n'
+            'set_tests_properties(cpu_missing PROPERTIES LABELS "cpu;Suite")\n')
+        result = self.run_split(testfile=testfile)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("/nonexistent/test_unbuilt_exe", result.stderr)
+        self.assertIn("--target rendergraph_svo_tests", result.stderr)
+        self.assertNotIn("tests passed", result.stdout)
 
 
 if __name__ == "__main__":

@@ -144,6 +144,21 @@ if (( cpu_selected + gpu_selected == 0 )); then
   exit 2
 fi
 
+# A label gate selects tests whose executables a scoped build (say only vixen_lookdev_capture) never
+# produced; ctest would report them "Not Run" minutes later with no hint. Name them now (T-4693).
+missing_report="$(ctest --test-dir "$build_dir" -N -V "${select_args[@]}" 2>&1 |
+  sed -n 's/^Could not find executable \(.*\)$/  \1/p; s/^ *Test *#[0-9]*: \(.*\)_NOT_BUILT$/  \1 (target not built)/p' | sort -u)"
+if [[ -n "$missing_report" ]]; then
+  {
+    echo "[run-tests-split] selected tests whose executables are not built in $build_dir:"
+    echo "$missing_report"
+    echo "[run-tests-split] why: the build was scoped to other targets, so these executables were never produced."
+    echo "[run-tests-split] fix: build the aggregate gate first: cmake --build $build_dir --target rendergraph_svo_tests"
+    echo "[run-tests-split]      (builds every RenderGraph/SVO/Application suite executable, VIXEN and vixen_editor), or narrow the selection with --label/--regex."
+  } >&2
+  exit 2
+fi
+
 icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
 [[ -z "${VK_ICD_FILENAMES:-}" && -f "$icd" ]] && gpu_env=(VK_ICD_FILENAMES="$icd")

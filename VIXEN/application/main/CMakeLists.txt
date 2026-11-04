@@ -94,16 +94,11 @@ endif()
 # groups compiled into VixenApp above for AddNode<T>(...) call sites (Graph-Derived-Node-Linkage-
 # Spec-2026-07 §2.2). Module interiors must be included so their registered node types are linked.
 # ----------------------------------------------------------------------------
+# Scan every registered app source: adding a module to VIXEN_APP_SOURCES is the only step (T-2859).
 vixen_generate_node_manifest(
     ${CMAKE_BINARY_DIR}/generated/node_manifest.cmake
     SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildInstancingDemoGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildAutoSyncDemoGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildFanInDemoGraph.cpp
+        ${VIXEN_APP_SOURCES}
         # The generated-system runner adds its own nodes (allocations, the sampled-view sampler).
         ${VIXEN_ROOT}/libraries/RenderGraph/include/Nodes/GeneratedSystemStage.h
 )
