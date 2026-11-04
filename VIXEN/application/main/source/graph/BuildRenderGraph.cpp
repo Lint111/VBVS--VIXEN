@@ -11,6 +11,7 @@
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
 #include "ConfiguredOptionalPath.h"
+#include "Core/ShaderSourceDir.h"
 #include "KernelDispatch/TaskExecutor.h"
 #include <array>
 #include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
@@ -205,6 +206,10 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Nodes/WindowNode.h"
 
 namespace {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+std::string ShaderSourceDir() { return Vixen::RenderGraph::ResolveShaderSourceDir(VIXEN_SHADER_SOURCE_DIR); }
+#endif
+
 
 bool envFlagEnabled(const char* name) {
     const char* value = std::getenv(name);
@@ -859,7 +864,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         } else {
             std::vector<std::filesystem::path> manifestPaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                std::string(VIXEN_SHADER_SOURCE_DIR) + "/Generated/GpuSystems.manifest.json",
+                ShaderSourceDir() + "/Generated/GpuSystems.manifest.json",
 #endif
                 "shaders/Generated/GpuSystems.manifest.json",
                 "../shaders/Generated/GpuSystems.manifest.json",
@@ -2122,7 +2127,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             constexpr const char* shaderName = "BodyInstanceRayMarch.comp";
             std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                ShaderSourceDir() + "/" + shaderName,
 #endif
                 std::string("shaders/") + shaderName,
                 std::string("../shaders/") + shaderName,
@@ -2137,7 +2142,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     mainLogger->Error("[BuildRenderGraph] " + std::string(shaderName) + " not found in search paths");
                     mainLogger->Error("[BuildRenderGraph] Current working directory: " + std::filesystem::current_path().string());
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                    mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " VIXEN_SHADER_SOURCE_DIR);
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " + ShaderSourceDir());
 #endif
                 }
                 throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
@@ -2510,7 +2515,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                .AddIncludePath("shaders")
                .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+               .AddIncludePath(ShaderSourceDir())
 #endif
                // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.g.glsl"
                // under libraries/SVO/shaders — a different tree than the paths above.
@@ -2564,7 +2569,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             [this, shaderName]() {
                 std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                    std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                    ShaderSourceDir() + "/" + shaderName,
 #endif
                     std::string("shaders/") + shaderName,
                     std::string("../shaders/") + shaderName,
@@ -2647,7 +2652,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
                    .AddIncludePath("../libraries/SVO/shaders");
@@ -2708,7 +2713,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
                    .AddIncludePath("../libraries/SVO/shaders");
@@ -2743,7 +2748,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                        .AddIncludePath("shaders")
                        .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+                builder.AddIncludePath(ShaderSourceDir());
 #endif
                 return builder;
             });
@@ -2765,7 +2770,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+            builder.AddIncludePath(ShaderSourceDir());
 #endif
             return builder;
         });
@@ -2781,7 +2786,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+            builder.AddIncludePath(ShaderSourceDir());
 #endif
             return builder;
         });
@@ -2853,7 +2858,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
                    .AddIncludePath("../libraries/SVO/shaders");
@@ -2888,7 +2893,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddIncludePath("libraries/SVO/shaders")
                    .AddIncludePath("../libraries/SVO/shaders");
@@ -2913,7 +2918,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             constexpr const char* programName = "RecipeInstanceBucketing";
             std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                ShaderSourceDir() + "/" + shaderName,
 #endif
                 std::string("shaders/") + shaderName,
                 std::string("../shaders/") + shaderName,
@@ -2934,7 +2939,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
             return builder;
@@ -2963,7 +2968,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 [shaderName]() {
                     std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                        std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                        ShaderSourceDir() + "/" + shaderName,
 #endif
                         std::string("shaders/") + shaderName,
                         std::string("../shaders/") + shaderName,
@@ -2996,7 +3001,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                        .AddIncludePath("shaders")
                        .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+                builder.AddIncludePath(ShaderSourceDir());
 #endif
                 return builder;
             });
@@ -3012,7 +3017,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::filesystem::path fragmentPath;
             const std::vector<std::filesystem::path> roots = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                VIXEN_SHADER_SOURCE_DIR,
+                ShaderSourceDir(),
 #endif
                 "shaders", "../shaders"
             };
@@ -3037,7 +3042,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
                    .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
@@ -3050,7 +3055,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::filesystem::path computePath;
             const std::vector<std::filesystem::path> roots = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                VIXEN_SHADER_SOURCE_DIR,
+                ShaderSourceDir(),
 #endif
                 "shaders", "../shaders"
             };
@@ -3074,7 +3079,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(ShaderSourceDir())
 #endif
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      computePath, "main");
@@ -9619,7 +9624,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders");
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            builder.AddIncludePath(VIXEN_SHADER_SOURCE_DIR);
+            builder.AddIncludePath(ShaderSourceDir());
 #endif
             return builder;
         });

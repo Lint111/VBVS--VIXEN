@@ -87,3 +87,25 @@ TEST(ShaderFamily, MembersAreCachedPerCanonicalFeatureSet) {
     auto e = family.Get({"A_FLAG", "B_FLAG", "A_FLAG"});
     EXPECT_EQ(d.get(), e.get());
 }
+
+TEST(ShaderFamily, MemberKeyIncludesTheProvidedSource) {
+    // A source provider whose content changes (environment-controlled splice) must not be
+    // served the member compiled from its previous content.
+    bool withExtra = false;
+    ShaderFamily::Config cfg;
+    cfg.name = "SpliceFamily";
+    cfg.stage = ShaderStage::Compute;
+    ShaderFamily family(cfg, [&] {
+        std::string src = kFamilySource;
+        if (withExtra) src.insert(src.find("void main"), "// spliced\n");
+        if (withExtra) src.replace(src.find("baseData[0] = 1u;"), 17, "baseData[0] = 3u;");
+        return src;
+    });
+    auto first = family.Get({});
+    ASSERT_NE(first, nullptr);
+    withExtra = true;
+    auto second = family.Get({});
+    ASSERT_NE(second, nullptr);
+    EXPECT_NE(first, second) << "same feature set but different source must be a distinct member";
+    EXPECT_EQ(family.Get({}), second) << "unchanged source must still hit the cache";
+}

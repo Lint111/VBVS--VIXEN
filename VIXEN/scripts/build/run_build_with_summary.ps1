@@ -95,6 +95,17 @@ $ErrorActionPreference = 'Continue'
 $buildLog = "$env:TEMP\vixen_build_$BuildId.log"
 $startTime = Get-Date
 
+# Callers sometimes pass a directory (a trailing backslash before the closing quote also
+# leaves a stray '"' in the value), which made "$StatusFile.tmp" an invalid path (T-6540).
+$StatusFile = $StatusFile.Trim().Trim('"')
+if ($StatusFile -match '[\\/]$' -or (Test-Path -LiteralPath $StatusFile -PathType Container)) {
+    $StatusFile = Join-Path $StatusFile.TrimEnd('\', '/') "vixen_build_status.txt"
+}
+$statusDir = Split-Path -Parent $StatusFile
+if ($statusDir -and -not (Test-Path -LiteralPath $statusDir)) {
+    New-Item -ItemType Directory -Path $statusDir -Force | Out-Null
+}
+
 function Write-StatusFile($state, $elapsed, $total, $done, $failed, $lastTarget, $failedTargets) {
     $lines = @(
         "VIXEN_BUILD_STATUS: $state",
@@ -122,7 +133,26 @@ if (-not $SkipLock) {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenBuildLock")
     Write-Host "[build] Waiting for the machine-wide build lock (another build may be running)..."
     $lockWaitStart = Get-Date
-    $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    # Wait in short slices and print a progress line each time so the shared box queue sees
+    # output while another build owns the mutex (it kills a silent job after ~200s; T-4848).
+    # The total wait is still bounded by -LockTimeoutSeconds, so the machine-wide lock is
+    # not weakened: this process still blocks until it owns the mutex or the timeout hits.
+    $waitSliceSeconds = 15
+    $acquired = $false
+    while (-not $acquired) {
+        $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
+        $remaining = $LockTimeoutSeconds - $waited
+        if ($remaining -le 0) { break }
+        try {
+            $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds([Math]::Min($waitSliceSeconds, $remaining)))
+        } catch [System.Threading.AbandonedMutexException] {
+            # The previous owner died holding the lock; the OS handed it to us.
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            Write-Host "[build] still waiting for the build lock ($([int]((Get-Date) - $lockWaitStart).TotalSeconds)s of ${LockTimeoutSeconds}s)..."
+        }
+    }
     if (-not $acquired) {
         $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
         Write-Host "[build] TIMEOUT after $($waited)s waiting for the build lock - another build is still running."
