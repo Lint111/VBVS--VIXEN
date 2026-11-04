@@ -374,7 +374,7 @@ TEST(UberShaderSplice, AuthoredBinary32WordsSurviveGlslCompilation) {
 
 TEST(UberShaderSplice, DISABLED_CompileDiagnosticShaderDirectory) {
     const char* directory = std::getenv("BOUNDSCORE_DIAGNOSTIC_SHADER_DIR");
-    ASSERT_NE(directory, nullptr);
+    ASSERT_NE(directory, nullptr) << "set BOUNDSCORE_DIAGNOSTIC_SHADER_DIR to a directory of .comp files (ctest UberShaderSplice.DiagnosticShaderDirectory declares a scratch fixture)";
     ShaderManagement::ShaderCompiler compiler;
     ShaderManagement::CompilationOptions options;
     for (const auto& entry : std::filesystem::directory_iterator(directory)) {

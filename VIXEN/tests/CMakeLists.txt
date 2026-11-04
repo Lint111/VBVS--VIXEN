@@ -42,6 +42,10 @@ add_test(NAME Provision.GpuEnvironmentScript
     COMMAND "${CMAKE_COMMAND}" "-DCMAKE_CURRENT_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
             -P "${VIXEN_ROOT}/cmake/tests/test_gpu_environment_script.cmake")
 set_tests_properties(Provision.GpuEnvironmentScript PROPERTIES LABELS "cpu")
+add_test(NAME Provision.VulkanNotFoundMessage
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SMOKE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vulkan-not-found"
+            -P "${VIXEN_ROOT}/cmake/tests/test_vulkan_not_found_message.cmake")
+set_tests_properties(Provision.VulkanNotFoundMessage PROPERTIES LABELS "cpu")
 
 add_test(NAME Native.KernelPinOverride
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"

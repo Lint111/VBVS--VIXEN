@@ -802,6 +802,25 @@ set_target_properties(test_uber_shader_splice PROPERTIES FOLDER "Tests/SVO Tests
 
 vixen_gtest_discover_tests(SVO test_uber_shader_splice)
 
+# The disabled UberShaderSplice.DISABLED_CompileDiagnosticShaderDirectory compiles every *.comp in the
+# directory named by BOUNDSCORE_DIAGNOSTIC_SHADER_DIR and writes a .spv beside each. Declare a scratch
+# fixture directory (never the source tree) so the compile path has a supported, explicit CTest job
+# instead of a hand-built CTestTestfile (T-4852). Point the env var at a real diagnostic-shader dir to
+# use the same test on other shaders.
+set(VIXEN_DIAGNOSTIC_SHADER_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/diagnostic-shader-fixture")
+file(MAKE_DIRECTORY "${VIXEN_DIAGNOSTIC_SHADER_FIXTURE_DIR}")
+file(WRITE "${VIXEN_DIAGNOSTIC_SHADER_FIXTURE_DIR}/fixture_noop.comp" "#version 450
+layout(local_size_x = 1) in;
+layout(std430, binding = 0) buffer Out { uint value; } outBuf;
+void main() { outBuf.value = gl_GlobalInvocationID.x; }
+")
+add_test(NAME UberShaderSplice.DiagnosticShaderDirectory
+    COMMAND test_uber_shader_splice --gtest_also_run_disabled_tests
+            --gtest_filter=UberShaderSplice.DISABLED_CompileDiagnosticShaderDirectory)
+set_tests_properties(UberShaderSplice.DiagnosticShaderDirectory PROPERTIES
+    ENVIRONMENT "BOUNDSCORE_DIAGNOSTIC_SHADER_DIR=${VIXEN_DIAGNOSTIC_SHADER_FIXTURE_DIR}"
+    LABELS "cpu" TIMEOUT 120)
+
 # ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
 # ===========================================================================

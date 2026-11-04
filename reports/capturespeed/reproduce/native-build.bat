@@ -12,17 +12,21 @@ set "NATIVE_CACHE_ROOT=%NATIVE_ROOT%\.tmp"
 set "VIXEN_NATIVE_BUILD_DIR=%NATIVE_ROOT%\build\native\%VIXEN_NATIVE_BUILD_KEY%"
 set "READY_FILE=%VIXEN_NATIVE_BUILD_DIR%\.vixendll-build-ready"
 set "UNDERTOW_ID_FILE=%VIXEN_NATIVE_BUILD_DIR%\.undertow-identity"
-if exist "%READY_FILE%" (
-  set /p READY_SHA=<"%READY_FILE%"
-  set "READY_UNDERTOW="
-  if exist "%UNDERTOW_ID_FILE%" set /p READY_UNDERTOW=<"%UNDERTOW_ID_FILE%"
-  if /I "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" if /I "%READY_UNDERTOW%"=="%VIXEN_NATIVE_UNDERTOW_ID%" (
-    echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY% for Undertow schema tree %VIXEN_NATIVE_UNDERTOW_ID%.
-    exit /b 0
-  )
-  echo [vixendll] Native build %VIXEN_NATIVE_BUILD_KEY% not reusable: ready=%READY_SHA% undertow=%READY_UNDERTOW% wanted undertow=%VIXEN_NATIVE_UNDERTOW_ID%; rebuilding.
-  del /q "%READY_FILE%" 2>NUL
-)
+rem Read the marker OUTSIDE any parenthesized block: cmd expands %VAR% for a whole block at parse time,
+rem so a set /p inside "if exist (...)" is never seen by the comparison in the same block (T-4926).
+if not exist "%READY_FILE%" goto :build
+set "READY_SHA="
+set /p READY_SHA=<"%READY_FILE%"
+set "READY_UNDERTOW="
+if exist "%UNDERTOW_ID_FILE%" set /p READY_UNDERTOW=<"%UNDERTOW_ID_FILE%"
+if /I "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" if /I "%READY_UNDERTOW%"=="%VIXEN_NATIVE_UNDERTOW_ID%" goto :reuse
+echo [vixendll] Native build %VIXEN_NATIVE_BUILD_KEY% not reusable: ready=%READY_SHA% undertow=%READY_UNDERTOW% wanted undertow=%VIXEN_NATIVE_UNDERTOW_ID%; rebuilding.
+del /q "%READY_FILE%" 2>NUL
+goto :build
+:reuse
+echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY% for Undertow schema tree %VIXEN_NATIVE_UNDERTOW_ID%.
+exit /b 0
+:build
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b %errorlevel%
 cd /d "%NATIVE_ROOT%"
