@@ -1,6 +1,8 @@
 #include "SpirvInterfaceGenerator.h"
 #include "Logger.h"
+#include "RuntimeCachePaths.h"
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -187,13 +189,12 @@ std::string SpirvInterfaceGenerator::Generate(
         }
 
         // Write to file
-        std::ofstream file(filePath);
-        if (!file.is_open()) {
+        std::string writeError;
+        if (!Vixen::AtomicWriteText(filePath, code, &writeError)) {
+            LOG_ERROR("SDI header write failed (what: " + filePath.string() + ", why: " + writeError +
+                      ", fix: check the SDI output directory is writable)");
             return "";
         }
-
-        file << code;
-        file.close();
 
         return filePath.string();
 
@@ -773,13 +774,12 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
 
         // Write to file
         std::filesystem::path filePath = config_.outputDirectory / (programName + "Names.g.h");
-        std::ofstream file(filePath);
-        if (!file.is_open()) {
+        std::string writeError;
+        if (!Vixen::AtomicWriteText(filePath, code.str(), &writeError)) {
+            LOG_ERROR("SDI names header write failed (what: " + filePath.string() + ", why: " + writeError +
+                      ", fix: check the SDI output directory is writable)");
             return "";
         }
-
-        file << code.str();
-        file.close();
 
         return filePath.string();
 
@@ -1387,16 +1387,15 @@ void SdiFileManager::LoadRegistry() {
 void SdiFileManager::SaveRegistry() {
     std::filesystem::path registryPath = sdiDirectory_ / "sdi_registry.txt";
 
-    std::ofstream file(registryPath);
-    if (!file.is_open()) {
-        return;
-    }
-
+    std::ostringstream out;
     for (const auto& [uuid, filePath] : registeredSdis_) {
-        file << uuid << "=" << filePath.string() << "\n";
+        out << uuid << "=" << filePath.string() << "\n";
     }
-
-    file.close();
+    std::string writeError;
+    if (!Vixen::AtomicWriteText(registryPath, out.str(), &writeError)) {
+        std::cerr << "SDI registry write failed (what: " << registryPath.string() << ", why: " << writeError
+                  << ", fix: check the SDI output directory is writable)\n";
+    }
 }
 
 } // namespace ShaderManagement
