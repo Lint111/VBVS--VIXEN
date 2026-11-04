@@ -150,6 +150,8 @@ include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 # Not cached: a cached root would hide a later YEROKET_ROOT environment value.
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 set(_vixen_tracked_yeroket_kernel_sha "6e3474325d55e14ebfc803c1b816fd805e4ac64c")
+set(VIXEN_KERNEL_YEROKET_KERNEL_TRACKED_SHA "${_vixen_tracked_yeroket_kernel_sha}" CACHE INTERNAL
+    "Tracked Yeroket kernel SHA retained by the codegen cache janitor" FORCE)
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
 vixen_record_kernel_pin("${CMAKE_BINARY_DIR}/vixen-kernel-pin.json"
@@ -602,13 +604,25 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     if(_codegen_need_wsl_bridge)
         set(_tool_materializer_suffix "|wsl-materializer-v1")
     endif()
-    string(SHA256 _tool_key
-        "${YEROKET_KERNEL_SHA}|${CMAKE_HOST_SYSTEM_NAME}|${CMAKE_HOST_SYSTEM_PROCESSOR}|${_codegen_need_wsl_bridge}|${VIXEN_DOTNET}|${_codegen_dotnet_sdk_list}|${_yk_tfm}|Release|invariant|${_build_recipe}|artifacts-v1${_tool_materializer_suffix}")
+    vixen_kernel_codegen_tool_key("${YEROKET_KERNEL_SHA}" "${CMAKE_HOST_SYSTEM_NAME}"
+        "${CMAKE_HOST_SYSTEM_PROCESSOR}" "${_codegen_need_wsl_bridge}" "${VIXEN_DOTNET}"
+        "${_codegen_dotnet_sdk_list}" "${_yk_tfm}" "${_build_recipe}" _tool_key
+        "${_tool_materializer_suffix}")
+    vixen_kernel_codegen_tool_key("${_vixen_tracked_yeroket_kernel_sha}" "${CMAKE_HOST_SYSTEM_NAME}"
+        "${CMAKE_HOST_SYSTEM_PROCESSOR}" "${_codegen_need_wsl_bridge}" "${VIXEN_DOTNET}"
+        "${_codegen_dotnet_sdk_list}" "${_yk_tfm}" "${_build_recipe}" _tracked_tool_key
+        "${_tool_materializer_suffix}")
     set(_tool_cache "${VIXEN_KERNEL_CACHE_DIR}/tools/${_tool_key}")
     set(_tool_cached_bin "${_tool_cache}/bin")
     set(_tool_local_bin "${CMAKE_CURRENT_BINARY_DIR}/tool")
     set(_tool_stamp "${_tool_local_bin}/.complete")
     set(_tool_config "${CMAKE_CURRENT_BINARY_DIR}/tool-build.cmake")
+    if(EXISTS "${_tool_cache}/.build-complete" AND EXISTS "${_tool_cached_bin}/CodegenTool.dll"
+            AND EXISTS "${_tool_cached_bin}/CodegenTool.deps.json"
+            AND EXISTS "${_tool_cached_bin}/CodegenTool.runtimeconfig.json")
+        file(TOUCH_NOCREATE "${_tool_cache}/.build-complete")
+    endif()
+    vixen_kernel_cache_prune_tools("${_tool_key}" "${_tracked_tool_key}")
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_tool_cached_bin}" _tool_cached_bin_run)
         _codegen_to_wsl_path("${_tool_cache}" _tool_cache_run)
