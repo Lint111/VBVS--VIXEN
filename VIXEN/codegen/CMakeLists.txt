@@ -935,6 +935,18 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         if(TARGET ui_shader_spirv_regen)
             add_custom_target(frame_targets_refresh)
             add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen)
+            # Merged SDI headers derive from the shaders just regenerated; without this step
+            # runtime keeps stale layouts (T-5477, T-5585). A separate target, ordered after
+            # the regens, so the standalone sdi_merged_regen keeps no codegen prerequisites.
+            if(TARGET sdi_tool)
+                add_custom_target(frame_targets_sdi_regen
+                    COMMAND sdi_tool merge-variants "${CMAKE_CURRENT_SOURCE_DIR}/../shaders/sdi-variants.json"
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+                    COMMENT "[codegen] regenerate merged SDI headers after shader regeneration"
+                    VERBATIM)
+                add_dependencies(frame_targets_sdi_regen sdi_tool gpu_systems_regen ui_shader_spirv_regen)
+                add_dependencies(frame_targets_refresh frame_targets_sdi_regen)
+            endif()
         endif()
     else()
         message(WARNING
