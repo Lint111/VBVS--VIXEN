@@ -58,3 +58,32 @@ native_require_interop() {
     [[ -x "$exe" ]] || { echo "native: Windows interop executable missing: $exe (is WSL interop/automount enabled? fix: check /etc/wsl.conf [automount] and [interop])" >&2; return 2; }
   done
 }
+
+# Capture routes: capture-routes.tsv is the single declaration of (capture, state) -> CTest regex,
+# state environment variable and cleanup paths; native-capture.ps1 reads the same file.
+native_routes_file="${script_dir}/capture-routes.tsv"
+
+# native_route_lookup <capture> <state>: sets route_regex, route_env, route_cleanup (return 2 if undeclared).
+native_route_lookup() {
+  local capture="$1" state="$2" c s
+  while IFS=$'\t' read -r c s route_regex route_env route_cleanup; do
+    [[ -z "$c" || "$c" == \#* ]] && continue
+    if [[ "$c" == "$capture" && "$s" == "$state" ]]; then
+      [[ "$route_env" == - ]] && route_env=""
+      route_cleanup="${route_cleanup//\{state\}/$state}"
+      return 0
+    fi
+  done < "$native_routes_file"
+  echo "native-capture: no route for capture '$capture' state '$state' in $native_routes_file" >&2
+  echo "native-capture: declared: $(native_route_list "$capture")" >&2
+  return 2
+}
+
+# native_route_list [capture]: declared captures, or the states of one capture, space-separated.
+native_route_list() {
+  local want="${1:-}" c s
+  while IFS=$'\t' read -r c s _; do
+    [[ -z "$c" || "$c" == \#* ]] && continue
+    if [[ -z "$want" ]]; then printf '%s\n' "$c"; elif [[ "$c" == "$want" ]]; then printf '%s\n' "$s"; fi
+  done < "$native_routes_file" | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//'
+}

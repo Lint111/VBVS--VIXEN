@@ -3,9 +3,11 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: native-capture.sh lookdev <state> [--gpu-benchmark]" >&2
-  echo "       native-capture.sh planet <state> [--gpu-benchmark]" >&2
-  echo "       native-capture.sh glyphsdf <latin-carved|latin-embossed|qps-rtl-carved|qps-rtl-embossed|analytic-vs-voxel> [--gpu-benchmark]" >&2
+  local capture
+  echo "usage (captures and states come from capture-routes.tsv):" >&2
+  for capture in $(native_route_list); do
+    echo "       native-capture.sh $capture <$(native_route_list "$capture" | tr ' ' '|')> [--gpu-benchmark]" >&2
+  done
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --all-tests [--gpu-benchmark]" >&2
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
@@ -39,7 +41,7 @@ else
   [[ $# -ge 2 ]] || { usage; exit 2; }
   capture="$1"
   state="$2"
-  [[ "$capture" == lookdev || "$capture" == planet || "$capture" == glyphsdf ]] || { usage; exit 2; }
+  native_route_lookup "$capture" "$state" || { usage; exit 2; }
   shift 2
 fi
 while (($#)); do
