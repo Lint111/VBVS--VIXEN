@@ -2,6 +2,7 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+#include "RunDataPaths.h"  // T-4950: log + calibration roots from run-data/build dir, not cwd
 #include <algorithm>   // std::min for the Tiered-ESVO Inc2 M5 scripted zoom clamp
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
@@ -201,7 +202,7 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("Creating EngineContext (registry + bus + graph + calibration)");
     Vixen::RenderGraph::EngineConfig engineCfg;
     engineCfg.logger = mainLogger.get();
-    engineCfg.calibrationDir = "calibration";
+    engineCfg.calibrationDir = Vixen::App::CalibrationDir(Vixen::App::RunDataDir());
     // M3: nodes self-register into a global manifest (RenderGraphNodes is whole-archived);
     // RegisterAllNodes replays the manifest into this EngineContext's fresh registry. No
     // hand-maintained list — adding a node needs only its own VIXEN_REGISTER_NODE line.
@@ -3551,12 +3552,13 @@ void VulkanGraphApplication::DeInitialize() {
     if (mainLogger && mainLogger->IsEnabled()) {
         try {
             std::string logs = mainLogger->ExtractLogs();
-            // Write logs into the binaries folder so logs are colocated with the build artifacts.
-            std::ofstream logFile("binaries\\vulkan_app_log.txt");
+            // Write logs into the run-data dir (VIXEN_RUN_DATA_DIR, else the executable's build dir).
+            const std::filesystem::path logPath = Vixen::App::AppLogPath(Vixen::App::RunDataDir());
+            std::ofstream logFile(logPath);
             if (logFile.is_open()) {
                 logFile << logs;
                 logFile.close();
-                mainLogger->Info("Logs written to binaries\\vulkan_app_log.txt");
+                mainLogger->Info("Logs written to " + logPath.string());
             }
         } catch (...) {
             // Best-effort: don't throw during cleanup
