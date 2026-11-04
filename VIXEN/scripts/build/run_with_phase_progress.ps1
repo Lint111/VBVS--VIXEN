@@ -72,7 +72,8 @@ while (-not $proc.WaitForExit($HeartbeatSeconds * 1000)) {
     $now = Get-Date
     $tree = Get-TreeCpu $proc.Id
     $elapsed = [int]($now - $start).TotalSeconds
-    if ($tree.Cpu -gt $lastCpu) {
+    # Growth means at least 1% of one core since the last growth; idle-process creep must not revive the heartbeat.
+    if (($tree.Cpu - $lastCpu) -ge (0.01 * ($now - $lastGrowth).TotalSeconds)) {
         $lastCpu = $tree.Cpu
         $lastGrowth = $now
         $suppressed = $false
