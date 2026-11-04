@@ -38,6 +38,12 @@ add_test(NAME Provision.GdbDependencyPackages
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
 set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
 
+add_test(NAME Provision.WindowingFailure
+    COMMAND "${CMAKE_COMMAND}"
+            "-DVIXEN_WINDOWING_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windowing-provisioning"
+            -P "${VIXEN_ROOT}/cmake/tests/test_windowing_provisioning.cmake")
+set_tests_properties(Provision.WindowingFailure PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.KernelPinOverride
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_pin_override.cmake")
