@@ -67,6 +67,14 @@ function(vixen_gtest_discover_tests suite target)
         "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;PROCESSORS;FIXTURES_REQUIRED"
         "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
 
+    # POST_BUILD discovery (CMake's default) runs every test binary at build time, so a parallel
+    # build launches several freshly linked executables at once and a loaded box misses the timeout
+    # (T-6863, T-4349). PRE_TEST defers the --gtest_list_tests call to CTest load time, where it runs
+    # serially; the class stub and GPU-lock scripts already read TEST_LIST at that point.
+    # Pass DISCOVERY_MODE POST_BUILD explicitly to opt back in.
+    if(NOT DEFINED VGT_DISCOVERY_MODE)
+        set(VGT_DISCOVERY_MODE PRE_TEST)
+    endif()
     # CMake's default discovery timeout is 5 s, which a test binary can miss while the box is loaded.
     if(NOT DEFINED VGT_DISCOVERY_TIMEOUT)
         set(VGT_DISCOVERY_TIMEOUT 60)
