@@ -83,6 +83,12 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically)
     message(STATUS "[Application Tests] Added: vixen_lookdev_capture (${_lookdev_state_count} per-state tests of 4 angles, repeat-pixel witness; aggregate under label native)")
 
+    # T-4918: the frame measurement behind the stored-SDF "visible geometry" assertion, on synthetic pixels:
+    # no device, no GPU lock.
+    add_test(NAME Application.LookdevCapture.GeometryEdgeMeasure
+        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" "--gtest_filter=LookdevCaptureGeometryEdges.*")
+    set_tests_properties(Application.LookdevCapture.GeometryEdgeMeasure PROPERTIES LABELS "Application" TIMEOUT 120)
+
     foreach(_depth_case IN ITEMS native reduced-odd fixed-exposure)
         set(_depth_scale 1.0)
         set(_depth_fixed_exposure 0)
@@ -357,4 +363,20 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
+
+    # T-4922: a host-level shadow diagnostic override (VIXEN_SHADOW_CONFIG_*) would reach both the before and
+    # after captures of every case and mask a renderer change. Every capture case clears them explicitly; the
+    # isolation cases name them in their own modification list (unset, then their one override) and are skipped.
+    get_property(_lookdev_all_tests DIRECTORY PROPERTY TESTS)
+    foreach(_test IN LISTS _lookdev_all_tests)
+        if(NOT _test MATCHES "^Application\\.(LookdevCapture|ReconstructionInputs|ExposureTonemapParity)\\.")
+            continue()
+        endif()
+        get_test_property("${_test}" ENVIRONMENT_MODIFICATION _test_environment_modification)
+        if("${_test_environment_modification}" MATCHES "VIXEN_SHADOW_CONFIG_ENABLED")
+            continue()
+        endif()
+        set_property(TEST "${_test}" APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            "VIXEN_SHADOW_CONFIG_ENABLED=unset:" "VIXEN_SHADOW_CONFIG_BIAS_EPSILON=unset:")
+    endforeach()
 endif()

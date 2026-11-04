@@ -2175,6 +2175,11 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     return true;
 }
 
+namespace {
+// Defined with the other frame measurements below; the stored-SDF capture asserts it after rendering.
+bool ValidateVisibleGeometry(const std::filesystem::path& path, std::string& error);
+}  // namespace
+
 TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
     ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
@@ -2271,6 +2276,45 @@ bool ValidateGlyphTextInvariant(const std::filesystem::path& path, bool rtlProof
     return true;
 }
 
+// Counts pixels whose local luma step is a geometry edge. A smooth sky or lighting gradient has none, while a
+// visible silhouette contributes a perimeter of them, so a frame of background alone is told apart without
+// comparing against a golden image.
+std::size_t CountGeometryEdgePixels(const DecodedPng& image) {
+    if (image.width < 3 || image.height < 3 || image.rgba.empty()) return 0;
+    const auto luma = [&](int x, int y) {
+        const std::size_t offset = (static_cast<std::size_t>(y) * image.width + x) * 4u;
+        return 0.2126f * image.rgba[offset] + 0.7152f * image.rgba[offset + 1] +
+               0.0722f * image.rgba[offset + 2];
+    };
+    std::size_t edgePixels = 0;
+    for (int y = 1; y < image.height - 1; ++y) {
+        for (int x = 1; x < image.width - 1; ++x) {
+            const float horizontal = std::abs(luma(x + 1, y) - luma(x - 1, y));
+            const float vertical = std::abs(luma(x, y + 1) - luma(x, y - 1));
+            if (std::max(horizontal, vertical) >= 12.0f) ++edgePixels;
+        }
+    }
+    return edgePixels;
+}
+
+bool ValidateVisibleGeometry(const std::filesystem::path& path, std::string& error) {
+    const DecodedPng image = DecodePng(path);
+    if (image.rgba.empty()) {
+        error = "could not decode stored-SDF capture: " + path.string();
+        return false;
+    }
+    constexpr std::size_t kMinimumGeometryEdgePixels = 200;
+    const std::size_t edgePixels = CountGeometryEdgePixels(image);
+    if (edgePixels < kMinimumGeometryEdgePixels) {
+        error = "stored-SDF capture shows no visible geometry (" + std::to_string(edgePixels) +
+            " edge pixels, need " + std::to_string(kMinimumGeometryEdgePixels) +
+            "): the frame is background only, so the witness is vacuous; check the camera pose "
+            "and the scene bounds against " + path.string();
+        return false;
+    }
+    return true;
+}
+
 float SrgbToLinear(uint8_t code) {
     const float c = static_cast<float>(code) / 255.0f;
     return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
@@ -2358,6 +2402,25 @@ TEST(LookdevCapture, RendersExposureRoomAcceptance) {
     ASSERT_TRUE(CaptureSequence(std::filesystem::path(outputEnv), scenarios, framesPerScenario, error)) << error;
 }
 
+TEST(LookdevCaptureGeometryEdges, UniformFrameHasNoEdgesAndSphereDoes) {
+    DecodedPng frame;
+    frame.width = 128;
+    frame.height = 128;
+    frame.rgba.assign(static_cast<std::size_t>(frame.width) * frame.height * 4u, 90);
+    EXPECT_EQ(CountGeometryEdgePixels(frame), 0u) << "a uniform background carries no edges";
+
+    for (int y = 0; y < frame.height; ++y) {
+        for (int x = 0; x < frame.width; ++x) {
+            const int dx = x - 64, dy = y - 64;
+            if (dx * dx + dy * dy < 30 * 30) {
+                const std::size_t offset = (static_cast<std::size_t>(y) * frame.width + x) * 4u;
+                frame.rgba[offset] = frame.rgba[offset + 1] = frame.rgba[offset + 2] = 200;
+            }
+        }
+    }
+    EXPECT_GT(CountGeometryEdgePixels(frame), 200u) << "a lit sphere silhouette is a perimeter of edges";
+}
+
 TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     ASSERT_NE(std::getenv("VIXEN_GLYPHSDF_SCENE"), nullptr)
         << "CTest must enable the fixed-bucket localized sign scene";
@@ -2411,6 +2474,8 @@ TEST(LookdevCapture, RendersSdfFilterNonText) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+    // T-4918: a stored-SDF capture once passed with a uniform-background frame, which proved nothing.
+    ASSERT_TRUE(ValidateVisibleGeometry(outputDir / scenarios.front().filename, error)) << error;
 }
 
 } // namespace
