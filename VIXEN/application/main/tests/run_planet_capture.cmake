@@ -1,6 +1,10 @@
 if(NOT DEFINED PLANET_CAPTURE_EXE OR NOT DEFINED PLANET_CAPTURE_DIR)
     message(FATAL_ERROR "PLANET_CAPTURE_EXE and PLANET_CAPTURE_DIR are required")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/VixenCaptureRootRuntime.cmake")
+if(DEFINED VIXEN_CAPTURE_DEFAULT_ROOT)
+    vixen_capture_runtime_rebase("${PLANET_CAPTURE_DIR}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" PLANET_CAPTURE_DIR)
+endif()
 
 string(TIMESTAMP _suite_start "%s")
 set(_gtest_filter "--gtest_filter=PlanetCapture.RendersStateDeterministically")

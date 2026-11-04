@@ -24,7 +24,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         add_test(NAME ${_test}
             COMMAND ${CMAKE_COMMAND}
                 "-DPLANET_CAPTURE_EXE=$<TARGET_FILE:vixen_planet_capture>"
-                "-DPLANET_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/planet"
+                "-DVIXEN_CAPTURE_DEFAULT_ROOT=${VIXEN_CAPTURE_DEFAULT_ROOT}"
+                "-DPLANET_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/planet"
                 "-DPLANET_CAPTURE_STATES=${_state}"
                 -P "${CMAKE_CURRENT_LIST_DIR}/run_planet_capture.cmake")
         set_tests_properties(${_test}
@@ -45,7 +46,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_test(NAME Application.PlanetCapture.RendersStatesDeterministically
         COMMAND ${CMAKE_COMMAND}
             "-DPLANET_CAPTURE_EXE=$<TARGET_FILE:vixen_planet_capture>"
-            "-DPLANET_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/planet"
+            "-DVIXEN_CAPTURE_DEFAULT_ROOT=${VIXEN_CAPTURE_DEFAULT_ROOT}"
+                "-DPLANET_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/planet"
             -P "${CMAKE_CURRENT_LIST_DIR}/run_planet_capture.cmake")
     set_tests_properties(Application.PlanetCapture.RendersStatesDeterministically
         PROPERTIES

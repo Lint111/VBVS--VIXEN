@@ -3,6 +3,15 @@ if(NOT BUILD_TESTS)
 endif()
 
 if(TARGET VixenApp AND TARGET GTest::gtest_main)
+    # Registers one direct look-dev capture executable test whose capture and cache paths follow
+    # VIXEN_CAPTURE_ROOT at run time (T-6564); ENVIRONMENT still bakes the build-tree default.
+    function(_vixen_lookdev_add_exe_test name)
+        vixen_capture_command(_command
+            REBASE VIXEN_LOOKDEV_CAPTURE_DIR VIXEN_PERF_CSV VIXEN_CACHE_DIR VIXEN_SHARED_CACHE_DIR
+            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" ${ARGN})
+        add_test(NAME "${name}" COMMAND ${_command})
+    endfunction()
+
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
@@ -27,7 +36,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         add_test(NAME ${_test}
             COMMAND ${CMAKE_COMMAND}
                 "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
-                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev"
+                "-DVIXEN_CAPTURE_DEFAULT_ROOT=${VIXEN_CAPTURE_DEFAULT_ROOT}"
+                "-DLOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/lookdev"
                 "-DLOOKDEV_CAPTURE_STATES=${_state}"
                 -DLOOKDEV_CAPTURE_BUDGET_S=900
                 -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
@@ -50,7 +60,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         add_test(NAME ${_test}
             COMMAND ${CMAKE_COMMAND}
                 "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
-                "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev-presentation"
+                "-DVIXEN_CAPTURE_DEFAULT_ROOT=${VIXEN_CAPTURE_DEFAULT_ROOT}"
+                "-DLOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/lookdev-presentation"
                 "-DLOOKDEV_CAPTURE_STATES=${_state}"
                 -DLOOKDEV_CAPTURE_BUDGET_S=900
                 -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
@@ -96,7 +107,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_test(NAME Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
         COMMAND ${CMAKE_COMMAND}
             "-DLOOKDEV_CAPTURE_EXE=$<TARGET_FILE:vixen_lookdev_capture>"
-            "-DLOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/lookdev"
+            "-DVIXEN_CAPTURE_DEFAULT_ROOT=${VIXEN_CAPTURE_DEFAULT_ROOT}"
+                "-DLOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/lookdev"
             -DLOOKDEV_CAPTURE_BUDGET_S=900
             -P "${CMAKE_CURRENT_LIST_DIR}/run_lookdev_capture.cmake")
     set_tests_properties(Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically
@@ -124,8 +136,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             set(_depth_fixed_exposure 1)
         endif()
         set(_depth_test "Application.ReconstructionInputs.Depth.${_depth_case}")
-        set(_depth_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/${_depth_case}")
-        add_test(NAME "${_depth_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        set(_depth_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/reconstruction/${_depth_case}")
+        _vixen_lookdev_add_exe_test("${_depth_test}"
             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
             "--render-scale=${_depth_scale}" "--upscaler=none")
         set_tests_properties("${_depth_test}" PROPERTIES LABELS "Application" TIMEOUT 900
@@ -135,8 +147,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
 
     set(_temporal_test "Application.ReconstructionInputs.TemporalLifecycle")
-    set(_temporal_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/temporal-lifecycle")
-    add_test(NAME "${_temporal_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+    set(_temporal_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/reconstruction/temporal-lifecycle")
+    _vixen_lookdev_add_exe_test("${_temporal_test}"
         "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
         "--render-scale=0.5" "--upscaler=none")
     set_tests_properties("${_temporal_test}" PROPERTIES LABELS "Application" TIMEOUT 900
@@ -152,8 +164,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endif()
     if(_validation_layer_path)
         set(_validation_test "Application.LookdevCapture.NoNullAccelerationStructure")
-        set(_validation_dir "${CMAKE_BINARY_DIR}/runtime-captures/lookdev-validation")
-        add_test(NAME "${_validation_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        set(_validation_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/lookdev-validation")
+        _vixen_lookdev_add_exe_test("${_validation_test}"
             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
             "--render-scale=1.0" "--upscaler=none")
         set_tests_properties("${_validation_test}" PROPERTIES LABELS "Application" TIMEOUT 900
@@ -164,7 +176,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         # Every ring image the march binds must already be in its descriptor's layout:
         # the first frame of each of the four images is where an undeclared binding fails.
         set(_layout_test "Application.LookdevCapture.StorageImageLayoutsMatchDescriptors")
-        add_test(NAME "${_layout_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_layout_test}"
             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
             "--render-scale=1.0" "--upscaler=none")
         set_tests_properties("${_layout_test}" PROPERTIES LABELS "Application" TIMEOUT 900
@@ -175,8 +187,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
 
     foreach(_jitter_scale IN ITEMS 1.0 0.5)
         set(_jitter_test "Application.ReconstructionInputs.Jitter.${_jitter_scale}")
-        set(_jitter_dir "${CMAKE_BINARY_DIR}/runtime-captures/reconstruction/jitter-${_jitter_scale}")
-        add_test(NAME "${_jitter_test}" COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        set(_jitter_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/reconstruction/jitter-${_jitter_scale}")
+        _vixen_lookdev_add_exe_test("${_jitter_test}"
             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"
             "--render-scale=${_jitter_scale}" "--upscaler=none")
         set_tests_properties("${_jitter_test}" PROPERTIES LABELS "Application" TIMEOUT 900
@@ -192,7 +204,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         foreach(_angle RANGE 0 3)
             foreach(_mode IN ITEMS reference system)
                 set(_test "Application.ExposureTonemapParity.${_mode}.${_state}.angle${_angle}")
-                set(_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/exposure-parity/${_state}-angle-${_angle}/${_mode}")
+                set(_capture_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/exposure-parity/${_state}-angle-${_angle}/${_mode}")
                 set(_mode_environment "")
                 set(_mode_unset "")
                 if(_mode STREQUAL "reference")
@@ -201,8 +213,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
                     # A host-level reference flag must not turn the system capture into a second reference.
                     set(_mode_unset ";VIXEN_EXPOSURE_TONEMAP_REFERENCE=unset:")
                 endif()
-                add_test(NAME "${_test}"
-                    COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+                _vixen_lookdev_add_exe_test("${_test}"
                             "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
                 set_tests_properties("${_test}" PROPERTIES
                     LABELS "Application"
@@ -229,13 +240,12 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         else()
             set(_mode_unset ";VIXEN_EXPOSURE_TONEMAP_REFERENCE=unset:")
         endif()
-        add_test(NAME "${_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>" "--gtest_filter=LookdevCapture.SaturationChannel")
+        _vixen_lookdev_add_exe_test("${_test}" "--gtest_filter=LookdevCapture.SaturationChannel")
         set_tests_properties("${_test}" PROPERTIES
             LABELS "Application"
             TIMEOUT 900
             ENVIRONMENT
-                "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/saturation/${_mode}${_mode_environment}"
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_ANGLE=0;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/saturation/${_mode}${_mode_environment}"
             ENVIRONMENT_MODIFICATION
                 "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:${_mode_unset}")
         vixen_lock_gpu_tests(TESTS "${_test}")
@@ -251,27 +261,25 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             set(_frames 5)
         endif()
         set(_test "Application.LookdevCapture.ExposureRoom.${_room}")
-        add_test(NAME "${_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_test}"
                     "--gtest_filter=LookdevCapture.RendersExposureRoomAcceptance")
         set_tests_properties("${_test}" PROPERTIES
             LABELS "Application"
             TIMEOUT 1200
             ENVIRONMENT
-                "${_lookdev_test_environment};VIXEN_LOOKDEV_EXPOSURE_ROOM=${_room};VIXEN_HDR_EXPOSURE_DT=0.1;VIXEN_LOOKDEV_CAPTURE_FRAMES=${_frames};VIXEN_WINDOW_WIDTH=480;VIXEN_WINDOW_HEIGHT=320;VIXEN_HDR_METER_DEBUG=200;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/exposure-room/${_room}"
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_EXPOSURE_ROOM=${_room};VIXEN_HDR_EXPOSURE_DT=0.1;VIXEN_LOOKDEV_CAPTURE_FRAMES=${_frames};VIXEN_WINDOW_WIDTH=480;VIXEN_WINDOW_HEIGHT=320;VIXEN_HDR_METER_DEBUG=200;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/exposure-room/${_room}"
             ENVIRONMENT_MODIFICATION
                 "VIXEN_TEST_CELSHADE_LAMBERT_GGX=unset:;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_DDGI_CORNELL_MIXED_DEMO=unset:")
         list(APPEND _exposure_room_tests "${_test}")
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_exposure_room_tests})
 
-    set(_glyphsdf_capture_dir "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf")
+    set(_glyphsdf_capture_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/glyphsdf")
     set(_glyphsdf_capture_tests)
     foreach(_variant IN ITEMS latin-carved latin-embossed qps-rtl-carved qps-rtl-embossed)
         set(_test "Application.LookdevCapture.GlyphSdf.${_variant}")
         set(_capture_dir "${_glyphsdf_capture_dir}/${_variant}")
-        add_test(NAME "${_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_test}"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
         set_tests_properties("${_test}" PROPERTIES
             LABELS "Application"
@@ -305,8 +313,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
 
     set(_glyphsdf_rtl_pair_test "Application.LookdevCapture.GlyphSdf.RtlProof.Pair")
     set(_glyphsdf_rtl_pair_dir "${_glyphsdf_capture_dir}/rtl-proof-pair")
-    add_test(NAME "${_glyphsdf_rtl_pair_test}"
-        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+    _vixen_lookdev_add_exe_test("${_glyphsdf_rtl_pair_test}"
                 "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
     set_tests_properties("${_glyphsdf_rtl_pair_test}" PROPERTIES
         LABELS "Application;GlyphSdfProofPair"
@@ -323,8 +330,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel")
         endif()
         set(_glyphsdf_compare_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel-${_resolution}")
-        add_test(NAME "${_glyphsdf_compare_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_glyphsdf_compare_test}"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_compare_test}" PROPERTIES
             LABELS "Application;GlyphSdfText${_resolution}Yaw0"
@@ -337,8 +343,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
 
         set(_glyphsdf_yaw_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel${_resolution}.Yaw30")
         set(_glyphsdf_yaw_dir "${_glyphsdf_capture_dir}/analytic-vs-voxel-${_resolution}-yaw30")
-        add_test(NAME "${_glyphsdf_yaw_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_glyphsdf_yaw_test}"
                     "--gtest_filter=LookdevCapture.RendersGlyphSdfAnalyticVsVoxel")
         set_tests_properties("${_glyphsdf_yaw_test}" PROPERTIES
             LABELS "Application;GlyphSdfText${_resolution}Yaw30"
@@ -352,8 +357,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
 
     set(_stored_sdf_brickmap_test "Application.LookdevCapture.StoredSdf.Brickmap")
     set(_stored_sdf_brickmap_dir "${_glyphsdf_capture_dir}/nontext-brickmap")
-    add_test(NAME "${_stored_sdf_brickmap_test}"
-        COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+    _vixen_lookdev_add_exe_test("${_stored_sdf_brickmap_test}"
                 "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
     set_tests_properties("${_stored_sdf_brickmap_test}" PROPERTIES
         LABELS "Application;StoredSdfBrickmap"
@@ -367,8 +371,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         foreach(_yaw IN ITEMS 0 30)
             set(_sdf_filter_nontext_test "Application.LookdevCapture.SdfFilter.NonText${_resolution}.Yaw${_yaw}")
             set(_sdf_filter_nontext_dir "${_glyphsdf_capture_dir}/sdf-filter-nontext-${_resolution}-yaw${_yaw}")
-            add_test(NAME "${_sdf_filter_nontext_test}"
-                COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+            _vixen_lookdev_add_exe_test("${_sdf_filter_nontext_test}"
                         "--gtest_filter=LookdevCapture.RendersSdfFilterNonText")
             set_tests_properties("${_sdf_filter_nontext_test}" PROPERTIES
                 LABELS "Application;GlyphSdfNonText${_resolution}Yaw${_yaw}"
@@ -399,8 +402,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         else()
             set(_diagnostic_override "VIXEN_SDF_FILTER_NON_TEXT_EXTRA_APRON=set:1")
         endif()
-        add_test(NAME "${_diagnostic_test}"
-            COMMAND "$<TARGET_FILE:vixen_lookdev_capture>"
+        _vixen_lookdev_add_exe_test("${_diagnostic_test}"
                     "--gtest_filter=LookdevCapture.RendersSdfFilterNonText")
         set_tests_properties("${_diagnostic_test}" PROPERTIES
             LABELS "Application;StoredSdfIsolation${_diagnostic}"

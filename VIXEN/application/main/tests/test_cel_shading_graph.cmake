@@ -10,17 +10,24 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     set_target_properties(test_cel_shading_graph PROPERTIES FOLDER "Tests/Application")
 
     set(_celshade_binary "$<TARGET_FILE:test_cel_shading_graph>")
-    set(_celshade_capture_dir "${CMAKE_BINARY_DIR}/celshade-captures")
+    set(_celshade_capture_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/celshade")
     file(MAKE_DIRECTORY "${_celshade_capture_dir}")
     set(_celshade_env ${VIXEN_CTEST_GPU_ENVIRONMENT})
+
+    # Registers a cel capture test whose output prefix follows VIXEN_CAPTURE_ROOT at run time (T-6564).
+    function(_vixen_celshade_add_capture_test name filter)
+        vixen_capture_command(_command
+            REBASE VIXEN_CELSHADE_CAPTURE_PREFIX MKPARENT VIXEN_CELSHADE_CAPTURE_PREFIX
+            COMMAND "$<TARGET_FILE:test_cel_shading_graph>" "--gtest_filter=${filter}")
+        add_test(NAME "${name}" COMMAND ${_command})
+    endfunction()
 
     add_test(NAME CelShading.BandQuantization
         COMMAND ${_celshade_binary} --gtest_filter=CelShading.BandQuantizationMapsNdotLToExpectedBand)
     set_tests_properties(CelShading.BandQuantization PROPERTIES LABELS "Application")
 
     foreach(_band_count 2 3 5)
-        add_test(NAME CelShading.CaptureStarsBands${_band_count}
-            COMMAND ${_celshade_binary} --gtest_filter=CelShading.CaptureBandCount)
+        _vixen_celshade_add_capture_test(CelShading.CaptureStarsBands${_band_count} CelShading.CaptureBandCount)
         set_tests_properties(CelShading.CaptureStarsBands${_band_count} PROPERTIES
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
             ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/stars-${_band_count};VIXEN_CELSHADE_BAND_COUNT=${_band_count}"
@@ -28,16 +35,14 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             LABELS "Application")
     endforeach()
 
-    add_test(NAME CelShading.CaptureCornell
-        COMMAND ${_celshade_binary} --gtest_filter=CelShading.CaptureBandCount)
+    _vixen_celshade_add_capture_test(CelShading.CaptureCornell CelShading.CaptureBandCount)
     set_tests_properties(CelShading.CaptureCornell PROPERTIES
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/cornell;VIXEN_CELSHADE_BAND_COUNT=3"
         ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1"
         LABELS "Application")
 
-    add_test(NAME CelShading.ModeSwitch
-        COMMAND ${_celshade_binary} --gtest_filter=CelShading.ModeSwitchTakesEffectOnTheLiveNode)
+    _vixen_celshade_add_capture_test(CelShading.ModeSwitch CelShading.ModeSwitchTakesEffectOnTheLiveNode)
     set_tests_properties(CelShading.ModeSwitch PROPERTIES
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/mode-switch"

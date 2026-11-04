@@ -142,3 +142,8 @@ set_target_properties(coordinate_system_test PROPERTIES
 )
 
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")
+
+add_test(NAME Native.CaptureRootContract
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CAPTURE_ROOT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/capture-root-contract"
+            -P "${VIXEN_ROOT}/cmake/tests/test_capture_root.cmake")
+set_tests_properties(Native.CaptureRootContract PROPERTIES LABELS "cpu")

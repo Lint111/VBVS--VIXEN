@@ -1,6 +1,10 @@
 if(NOT DEFINED LOOKDEV_CAPTURE_EXE OR NOT DEFINED LOOKDEV_CAPTURE_DIR)
     message(FATAL_ERROR "LOOKDEV_CAPTURE_EXE and LOOKDEV_CAPTURE_DIR are required")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/VixenCaptureRootRuntime.cmake")
+if(DEFINED VIXEN_CAPTURE_DEFAULT_ROOT)
+    vixen_capture_runtime_rebase("${LOOKDEV_CAPTURE_DIR}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" LOOKDEV_CAPTURE_DIR)
+endif()
 
 if(NOT EXISTS "${LOOKDEV_CAPTURE_EXE}")
     # CTest cannot build a target, so a partial build (a --target subset) leaves this missing. Say so

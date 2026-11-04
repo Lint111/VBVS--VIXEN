@@ -81,7 +81,7 @@ endfunction()
 
 # CTest fixtures produce the live editor and main-app captures before their file-assertion cases.
 # The build-tree directories are the non-queue fallback; Linux command wrappers switch each GPU
-# process to UT_QUEUE_CAPTURE_ROOT at run time so documents, logs, and captures stay together.
+# process to VIXEN_CAPTURE_ROOT (else UT_QUEUE_CAPTURE_ROOT) at run time so documents, logs, and captures stay together.
 # The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND TARGET VIXEN)
     # One timeline for the producer, the Windows .bat and the cache gate; the .bat cannot include
@@ -100,7 +100,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 "so the Windows batch producer and the test do not disagree.")
         endif()
     endforeach()
-    set(VIXEN_EDITOR_CAPTURE_ROOT "${CMAKE_BINARY_DIR}/runtime-captures")
+    set(VIXEN_EDITOR_CAPTURE_ROOT "${VIXEN_CAPTURE_DEFAULT_ROOT}")
     set(VIXEN_EDITOR_CAPTURE_DIR "${VIXEN_EDITOR_CAPTURE_ROOT}/editor")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
     # SaveDocument writes beside its input. Give the capture producer a build-tree copy so its
@@ -119,7 +119,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
         add_test(NAME vixen_editor_capture_producer
             COMMAND bash -c
                 "set -eu
-                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
+                capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}}\"
                 capture_dir=\"\${capture_root}/editor\"
                 document=\"\${capture_dir}/sample_tri_layer.vxd\"
                 mkdir -p \"\${capture_dir}\"
@@ -158,7 +158,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
             "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_EDITOR_CAPTURE_EXIT_AFTER_FRAMES}")
 
     if(VIXEN_FAIL_SCENARIOS)
-        set(VIXEN_DEVICE_LOSS_LOG "${CMAKE_BINARY_DIR}/runtime-captures/device_loss_recovery.log")
+        set(VIXEN_DEVICE_LOSS_LOG "${VIXEN_CAPTURE_DEFAULT_ROOT}/device_loss_recovery.log")
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             add_test(NAME vixen_device_loss_recovery
                 COMMAND bash -c
@@ -185,14 +185,14 @@ endif()
 # scene captures intentionally suppress the HUD, so text parity has its own independently queued
 # producer and label on every platform.
 if(BUILD_TESTS AND TARGET VIXEN)
-    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
+    set(VIXEN_HUD_CAPTURE_DIR "${VIXEN_CAPTURE_DEFAULT_ROOT}/hud")
     file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
     vixen_fresh_capture_shell(VIXEN_HUD_FRESH hud_capture_ 5 45 75)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_hud_capture_producer
             COMMAND bash -c
                 "set -eu
-                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_CAPTURE_DEFAULT_ROOT}}}\"
                 capture_dir=\"\${capture_root}/hud\"
                 mkdir -p \"\${capture_dir}\"
                 rm -f \"\${capture_dir}\"/hud_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
@@ -222,14 +222,14 @@ if(BUILD_TESTS AND TARGET VIXEN)
     # Separate opt-in producer for the generated MSDF text shader. Its own directory and label keep
     # the baseline HUD producer byte-stable while native and Dozen runs capture animation at frames
     # 5 and 45.
-    set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/textshader")
+    set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${VIXEN_CAPTURE_DEFAULT_ROOT}/textshader")
     file(MAKE_DIRECTORY "${VIXEN_TEXT_SHADER_CAPTURE_DIR}")
     vixen_fresh_capture_shell(VIXEN_TEXT_FRESH hud_capture_ 5 45)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_text_shader_capture_producer
             COMMAND bash -c
                 "set -eu
-                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_CAPTURE_DEFAULT_ROOT}}}\"
                 capture_dir=\"\${capture_root}/textshader\"
                 mkdir -p \"\${capture_dir}\"
                 rm -f \"\${capture_dir}\"/hud_capture_*.png  # stale PNGs must not satisfy the consumers (T-2982)
@@ -269,7 +269,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
         AND EXISTS "/proc/sys/kernel/osrelease")
     file(READ "/proc/sys/kernel/osrelease" _vixen_kernel_release)
     if(_vixen_kernel_release MATCHES "[Mm]icrosoft" AND EXISTS "/tmp/.X11-unix/X0")
-        set(VIXEN_NATIVE_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/native")
+        set(VIXEN_NATIVE_CAPTURE_DIR "${VIXEN_CAPTURE_DEFAULT_ROOT}/native")
         # The helper lives in the repository-root tools/, outside VIXEN/. A VIXEN-only source archive
         # (e.g. a baseline snapshot) lacks it; say so at configure time instead of failing at launch (T-2904).
         set(VIXEN_WINDOWED_CAPTURE_HELPER "${VIXEN_ROOT}/../tools/run-vixen-windowed-captures.sh")
@@ -296,7 +296,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
         add_test(NAME vixen_instancing_demo_capture_producer
             COMMAND bash -c
                 "set -eu
-                capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${CMAKE_BINARY_DIR}/runtime-captures}\"
+                capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_CAPTURE_DEFAULT_ROOT}}}\"
                 capture_dir=\"\${capture_root}/instancing\"
                 mkdir -p \"\${capture_dir}\"
                 rm -f \"\${capture_dir}\"/hud_capture_*.png
@@ -322,7 +322,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
     add_test(NAME vixen_editor_appflow_channel_gate
         COMMAND bash -c
             "set -eu
-            capture_root=\"\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}\"
+            capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}}\"
             capture_dir=\"\${capture_root}/editor\"
             document=\"\${capture_dir}/sample_tri_layer.vxd\"
             transcript=\"\${capture_dir}/appflow-channel-transcript.json\"
@@ -353,7 +353,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             --app "$<TARGET_FILE:VIXEN>"
             --editor "$<TARGET_FILE:vixen_editor>"
             --document "${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
-            --work-dir "${CMAKE_BINARY_DIR}/runtime-captures/multiinstance")
+            --work-dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/multiinstance")
     set_tests_properties(vixen_multiinstance_cache_gate PROPERTIES TIMEOUT 1200)
     vixen_set_suite_properties(nightly GPU TESTS vixen_multiinstance_cache_gate)
 endif()
