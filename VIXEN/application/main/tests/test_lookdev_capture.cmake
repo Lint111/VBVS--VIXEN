@@ -285,6 +285,24 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
 
     # Both shaped layouts share one graph and frame so the same mixed-script
     # literal can be compared side by side without a second cold pipeline build.
+    # Cold-start bound (T-4541): the fresh-cache latin-carved capture must produce its frame while the
+    # sampled process-tree RSS stays under the cap. Measured cold peak is ~1.1 GiB (was 36-38 GB before
+    # the bounded glyph loops), so 4 GiB leaves headroom but still fails a return of the unbounded shape.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        set(_glyphsdf_cold_dir "${_glyphsdf_capture_dir}/latin-carved")
+        add_test(NAME "Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound"
+            COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/../tools/measure-cold-pipeline.py"
+                    --out "${_glyphsdf_cold_dir}/cold-bound" --cap 4G --timeout 1100
+                    --fresh "${_glyphsdf_cold_dir}" --payload-exe "$<TARGET_FILE:vixen_lookdev_capture>"
+                    --expect-file "${_glyphsdf_cold_dir}/glyphsdf-latin-carved.png"
+                    -- ctest --test-dir "${CMAKE_BINARY_DIR}" -R "^Application.LookdevCapture.GlyphSdf.latin-carved$"
+                    --output-log "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf/cold-bound-ctest.log")
+        set_tests_properties("Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound" PROPERTIES
+            LABELS "Application;GlyphSdfColdBound" TIMEOUT 1200)
+        vixen_lock_gpu_tests(TESTS "Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound")
+    endif()
+
     set(_glyphsdf_rtl_pair_test "Application.LookdevCapture.GlyphSdf.RtlProof.Pair")
     set(_glyphsdf_rtl_pair_dir "${_glyphsdf_capture_dir}/rtl-proof-pair")
     add_test(NAME "${_glyphsdf_rtl_pair_test}"
