@@ -1,25 +1,30 @@
 @echo off
 setlocal
-if "%~2"=="" (
-  echo Usage: native-build.bat ^<40-character VIXEN commit^> ^<UNDERTOW_ROOT^>
+if "%~3"=="" (
+  echo Usage: native-build.bat ^<40-character VIXEN commit^> ^<UNDERTOW_ROOT^> ^<UNDERTOW identity^>
   exit /b 2
 )
 set "VIXEN_NATIVE_BUILD_KEY=%~1"
 set "UNDERTOW_ROOT=%~2"
+set "VIXEN_NATIVE_UNDERTOW_ID=%~3"
 for /f "delims=" %%I in ("%~dp0..\..\..") do set "NATIVE_ROOT=%%~fI"
 set "NATIVE_CACHE_ROOT=%NATIVE_ROOT%\.tmp"
 set "VIXEN_NATIVE_BUILD_DIR=%NATIVE_ROOT%\build\native\%VIXEN_NATIVE_BUILD_KEY%"
 set "READY_FILE=%VIXEN_NATIVE_BUILD_DIR%\.vixendll-build-ready"
+set "UNDERTOW_ID_FILE=%VIXEN_NATIVE_BUILD_DIR%\.undertow-identity"
 if exist "%READY_FILE%" (
   set /p READY_SHA=<"%READY_FILE%"
-  if /I "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" (
-    echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY%.
+  set "READY_UNDERTOW="
+  if exist "%UNDERTOW_ID_FILE%" set /p READY_UNDERTOW=<"%UNDERTOW_ID_FILE%"
+  if /I "%READY_SHA%"=="%VIXEN_NATIVE_BUILD_KEY%" if /I "%READY_UNDERTOW%"=="%VIXEN_NATIVE_UNDERTOW_ID%" (
+    echo [vixendll] Reusing completed native build %VIXEN_NATIVE_BUILD_KEY% for Undertow schema tree %VIXEN_NATIVE_UNDERTOW_ID%.
     exit /b 0
   )
+  echo [vixendll] Native build %VIXEN_NATIVE_BUILD_KEY% not reusable: ready=%READY_SHA% undertow=%READY_UNDERTOW% wanted undertow=%VIXEN_NATIVE_UNDERTOW_ID%; rebuilding.
+  del /q "%READY_FILE%" 2>NUL
 )
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b %errorlevel%
-if not "%~2"=="" set "UNDERTOW_ROOT=%~2"
 cd /d "%NATIVE_ROOT%"
 if errorlevel 1 exit /b %errorlevel%
 set "TEMP=%NATIVE_ROOT%\.tmp\native-temp"
@@ -51,5 +56,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts
 if errorlevel 1 exit /b %errorlevel%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%NATIVE_ROOT%\VIXEN\scripts\build\run_build_with_summary.ps1" -CMakeExe "C:\Program Files\CMake\bin\cmake.exe" -Preset capturespeed-native -BuildDir "%VIXEN_NATIVE_BUILD_DIR%" -Target vixen_planet_capture -BuildId "nativerunner-planet-%VIXEN_NATIVE_BUILD_KEY%" -StatusFile "%TEMP%\build-planet-%VIXEN_NATIVE_BUILD_KEY%.txt" -MaxParallelJobs 4
 if errorlevel 1 exit /b %errorlevel%
+>"%UNDERTOW_ID_FILE%" echo %VIXEN_NATIVE_UNDERTOW_ID%
 >"%READY_FILE%" echo %VIXEN_NATIVE_BUILD_KEY%
 exit /b 0
