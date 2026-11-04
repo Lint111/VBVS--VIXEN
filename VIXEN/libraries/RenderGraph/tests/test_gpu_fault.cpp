@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "Core/GpuFault.h"
+#include "Debug/ReadbackDiagnostics.h"
 #include "Core/NodeType.h"
 #include "Core/RenderGraph.h"
 
@@ -104,4 +105,15 @@ TEST_F(GpuFaultGraphTest, InjectedLossStaysRecoverableButGenuineLossIsTracked) {
     EXPECT_TRUE(graph.RecoverFromDeviceLoss());
     (void)graph.ReportGpuFault("real", VK_ERROR_DEVICE_LOST);
     EXPECT_TRUE(graph.RecoverFromDeviceLoss());  // empty graph has no translated device
+}
+
+TEST(ReadbackDiagnostics, NamesCallResultCauseAndFix) {
+    const auto lost = Vixen::RenderGraph::Debug::DescribeReadbackFailure(
+        "PendingRenderTargetReadback::Poll", "vkMapMemory", VK_ERROR_DEVICE_LOST);
+    EXPECT_NE(lost.find("vkMapMemory failed in PendingRenderTargetReadback::Poll"), std::string::npos);
+    EXPECT_NE(lost.find("VK_ERROR_DEVICE_LOST"), std::string::npos);
+    EXPECT_NE(lost.find("fresh processes"), std::string::npos);
+    const auto other = Vixen::RenderGraph::Debug::DescribeReadbackFailure("w", "c", VK_ERROR_UNKNOWN);
+    EXPECT_NE(other.find("unrecognised VkResult"), std::string::npos);
+    EXPECT_NE(other.find("fix:"), std::string::npos);
 }
