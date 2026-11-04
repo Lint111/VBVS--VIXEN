@@ -37,3 +37,15 @@ expect_packages(alternatives
 
 expect_packages(empty "")
 message(STATUS "gdb dependency package parsing checks passed")
+
+# The launcher exports the provisioned library directories and forwards arguments to the cache's gdb (T-6491).
+set(_cache "${CMAKE_CURRENT_BINARY_DIR}/gdb_launcher_cache")
+file(REMOVE_RECURSE "${_cache}")
+file(MAKE_DIRECTORY "${_cache}/usr/bin")
+file(WRITE "${_cache}/usr/bin/gdb" "#!/bin/sh\necho \"LD=$LD_LIBRARY_PATH ARGS=$*\"\n")
+file(CHMOD "${_cache}/usr/bin/gdb" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+vixen_gdb_write_launcher(_launcher "${_cache}")
+execute_process(COMMAND "${_launcher}" --version RESULT_VARIABLE _rc OUTPUT_VARIABLE _out)
+if(NOT _rc EQUAL 0 OR NOT _out MATCHES "LD=${_cache}/usr/lib/x86_64-linux-gnu:" OR NOT _out MATCHES "ARGS=--version")
+    message(FATAL_ERROR "gdb launcher: rc=${_rc} output='${_out}'")
+endif()

@@ -14,6 +14,9 @@
 # reports "not found") and this falls back to "gdb not found" the same as if auto-provision were
 # off, rather than silently producing a broken debugger.
 #
+# The provisioned gdb runs through <cache>/gdb-launcher.sh, which exports the cache's library directories
+# (LD_LIBRARY_PATH), so VIXEN_GDB_EXECUTABLE is runnable as-is with no manual environment.
+#
 # Adds a convenience target: `cmake --build <preset-build-dir> --target gdb-<exe-target>` runs that
 # target's built executable under the provisioned (or system) gdb.
 #
@@ -101,7 +104,8 @@ else()
 
     # 3) Use the cache if we have it; else no debugger target (build still succeeds).
     if(EXISTS "${_vixen_gdb_cache_bin}")
-        set(VIXEN_GDB_EXECUTABLE "${_vixen_gdb_cache_bin}" CACHE FILEPATH "" FORCE)
+        vixen_gdb_write_launcher(_vixen_gdb_launcher "${VIXEN_GDB_CACHE_DIR}")
+        set(VIXEN_GDB_EXECUTABLE "${_vixen_gdb_launcher}" CACHE FILEPATH "" FORCE)
         message(STATUS "VIXEN: gdb provisioned at ${VIXEN_GDB_EXECUTABLE}")
     elseif(VIXEN_AUTO_PROVISION_GDB)
         message(STATUS "VIXEN: gdb auto-provision failed (or a direct dep was missing on this "

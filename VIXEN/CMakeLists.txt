@@ -688,6 +688,7 @@ add_subdirectory(dependencies)
 # Set CTest's Vulkan loader environment from the same paths configure selected for builds. The
 # suite helpers below apply these values to discovered cases, avoiding caller-side exports.
 vixen_configure_ctest_gpu_environment(VIXEN_CTEST_GPU_ENVIRONMENT)
+vixen_write_gpu_environment_script("${CMAKE_BINARY_DIR}/vixen-gpu-env.sh" ${VIXEN_CTEST_GPU_ENVIRONMENT})
 
 # enable_testing() must precede any add_subdirectory() that calls add_test(),
 # or CMake silently drops those tests from CTest — libraries/ and application/
