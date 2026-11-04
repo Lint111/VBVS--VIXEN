@@ -152,6 +152,8 @@ vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 set(_vixen_tracked_yeroket_kernel_sha "6e3474325d55e14ebfc803c1b816fd805e4ac64c")
 unset(YEROKET_KERNEL_SHA CACHE)
 vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
+vixen_record_kernel_pin("${CMAKE_BINARY_DIR}/vixen-kernel-pin.json"
+    "${_vixen_tracked_yeroket_kernel_sha}" "${YEROKET_KERNEL_SHA}")
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
