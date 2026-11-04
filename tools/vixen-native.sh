@@ -12,6 +12,10 @@
 #   build [ACTION [PRESET [TARGET]]]
 #                              prepare, then build.bat (ACTION defaults to build.bat's own default)
 #   bat RELPATH [ARGS]         prepare, then run a batch file of the checkout (e.g. a direct vcvars64 route)
+#   ps SCRIPT.ps1 [ARGS]       run a PowerShell script through the declared System32 powershell.exe (no PATH needed);
+#                              ps -Command TEXT | ps -Check SCRIPT.ps1 (parse only) also work
+#   rasterize SVG PNG [W H]    render an SVG to a PNG with headless Edge. The SVG must sit on a /mnt/<drive> path
+#                              (it keeps its relative <image> links); paths are converted to C:/... form for Edge
 # --direct skips the native checkout and runs this worktree's own build.bat (it maps the UNC path itself).
 # Environment: VIXEN_NATIVE_ROOT (default /mnt/c/vixen-native), VIXEN_NATIVE_SYSTEM32 (cmd.exe directory
 # override). UNDERTOW_ROOT, YEROKET_ROOT, VIXEN_BINARY_DIR and the other VIXEN_* knobs documented in
@@ -39,6 +43,71 @@ find_cmd() {
 
 need_cmd() {
     cmd_exe="$(find_cmd)" || die "cmd.exe not found (PATH has no Windows entries and no System32 directory was found; set VIXEN_NATIVE_SYSTEM32)"
+}
+
+# Windows executables are found by the same rule as cmd.exe: PATH first (WSL interop), then the
+# declared System32 directory. A bare name from the WSL PATH exits 127 when interop PATH is trimmed.
+find_powershell() {
+    local candidate dir
+    if candidate="$(command -v powershell.exe 2>/dev/null)"; then echo "$candidate"; return 0; fi
+    for dir in "${VIXEN_NATIVE_SYSTEM32:-}" /mnt/c/Windows/System32 /mnt/*/Windows/System32; do
+        if [[ -n "$dir" && -x "$dir/WindowsPowerShell/v1.0/powershell.exe" ]]; then echo "$dir/WindowsPowerShell/v1.0/powershell.exe"; return 0; fi
+    done
+    return 1
+}
+
+find_edge() {
+    local candidate
+    for candidate in "${VIXEN_NATIVE_EDGE:-}" "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
+                     "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe"; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then echo "$candidate"; return 0; fi
+    done
+    return 1
+}
+
+# WSL path -> Windows path (forward slashes, the form Edge and file:// URLs accept). Only drive mounts
+# convert: a WSL-filesystem path hangs or returns ERR_FILE_NOT_FOUND in a Windows process.
+win_path() {
+    [[ "$1" == /mnt/[a-z]/* ]] || die "$1 is not on a Windows drive (/mnt/<drive>/...); copy it under ${native_base} first"
+    wslpath -m "$1"
+}
+
+do_ps() {
+    local ps_exe script win_script check=0
+    ps_exe="$(find_powershell)" || die "powershell.exe not found (PATH has no Windows entries and no System32 directory was found; set VIXEN_NATIVE_SYSTEM32)"
+    case "${1:-}" in
+        -Command) shift; exec "$ps_exe" -NoProfile -ExecutionPolicy Bypass -Command "$@" ;;
+        -Check) check=1; shift ;;
+    esac
+    script="${1:?ps needs a .ps1 path (or -Command TEXT)}"; shift
+    [[ -f "$script" ]] || die "script not found: $script"
+    script="$(readlink -f -- "$script")"
+    # PowerShell (unlike Edge) reads UNC paths, so a script on the WSL filesystem needs no copy.
+    if [[ "$script" == /mnt/[a-z]/* ]]; then win_script="$(wslpath -m "$script")"; else win_script="$(wslpath -w "$script")"; fi
+    if [[ "$check" == 1 ]]; then
+        exec "$ps_exe" -NoProfile -Command "\$e=\$null; [void][System.Management.Automation.Language.Parser]::ParseFile('$win_script',[ref]\$null,[ref]\$e); if (\$e) { \$e | ForEach-Object { Write-Error \$_.Message }; exit 1 }; Write-Output 'parse ok: $win_script'"
+    fi
+    exec "$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$win_script" "$@"
+}
+
+do_rasterize() {
+    local svg png width="${3:-1500}" height="${4:-}" edge shot_dir shot
+    svg="$(readlink -f -- "${1:?rasterize needs SVG PNG [WIDTH HEIGHT]}")"; png="${2:?rasterize needs SVG PNG [WIDTH HEIGHT]}"
+    [[ -f "$svg" ]] || die "svg not found: $svg"
+    edge="$(find_edge)" || die "msedge.exe not found; set VIXEN_NATIVE_EDGE to its path"
+    if [[ -z "$height" ]]; then
+        height="$(sed -n 's/.*<svg[^>]* height="\([0-9.]*\)".*/\1/p' "$svg" | head -1)"
+        [[ -n "$height" ]] || die "no height attribute on <svg> in $svg; pass WIDTH HEIGHT"
+        height="${height%%.*}"
+    fi
+    # Edge writes the screenshot as a Windows process, so it lands on a drive first and is then copied.
+    shot_dir="$native_base/.tmp"; mkdir -p "$shot_dir"
+    shot="$shot_dir/rasterize-$$.png"; rm -f "$shot"
+    timeout 120 "$edge" --headless --disable-gpu --hide-scrollbars --window-size="$width,$height" \
+        --screenshot="$(win_path "$shot")" "file:///$(win_path "$svg")" >/dev/null 2>&1 || true
+    [[ -s "$shot" ]] || die "Edge wrote no screenshot for $svg (window ${width}x${height}); check that the file is readable from Windows and retry with explicit WIDTH HEIGHT"
+    mkdir -p "$(dirname "$png")"; mv "$shot" "$png"
+    say "wrote $png"
 }
 
 native_dir() { echo "$native_base/$lane"; }
@@ -171,7 +240,7 @@ while [[ $# -gt 0 ]]; do
         --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
         --direct) direct=1; shift ;;
         --log) log_file="${2:?--log needs a file}"; shift 2 ;;
-        -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) break ;;
     esac
 done
@@ -183,6 +252,8 @@ fi
 
 case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
+    ps) do_ps "$@" ;;
+    rasterize) do_rasterize "$@" ;;
     checkout) do_checkout ;;
     sync) do_sync ;;
     provision) if [[ "$direct" != 1 ]]; then do_sync; fi; do_provision ;;
