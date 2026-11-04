@@ -170,8 +170,48 @@ do_sync() {
     say "synced $dir to ${tip:0:12} ($branch, tree ${tree_native:0:12} verified)"
 }
 
+# The Windows build cannot probe the WSL layout itself, so export the same roots the Linux route
+# derives (VIXEN/codegen/CMakeLists.txt, tools/with-test-lock.sh): the Undertow lane paired with this
+# worktree's name, else the sibling Undertow checkout; the Yeroket kernel from $HOME/Github, else
+# the projects sibling. Explicit UNDERTOW_ROOT / YEROKET_ROOT always win. run_bat forwards them as paths.
+infer_roots() {
+    local projects_root candidate
+    projects_root="$(cd "$repo_root/../../.." 2>/dev/null && pwd -P)" || return 0
+    if [[ -z "${UNDERTOW_ROOT:-}" ]]; then
+        for candidate in "$projects_root/undertow/.claude-worktrees/$(basename "$repo_root")" "$projects_root/undertow"; do
+            if [[ -f "$candidate/core/src/Undertow.Authoring/Schema/schemas.json" ]]; then
+                export UNDERTOW_ROOT="$(cd "$candidate" && pwd -P)"
+                say "UNDERTOW_ROOT inferred: $UNDERTOW_ROOT"
+                break
+            fi
+        done
+    fi
+    if [[ -z "${YEROKET_ROOT:-}" ]]; then
+        for candidate in "$HOME/Github/Yeroket-Fantasy" "$projects_root/Yeroket-Fantasy"; do
+            if [[ -f "$candidate/Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj" ]]; then
+                export YEROKET_ROOT="$(cd "$candidate" && pwd -P)"
+                say "YEROKET_ROOT inferred: $YEROKET_ROOT"
+                break
+            fi
+        done
+    fi
+}
+
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
+
+# cmd.exe re-parses its command line, so an unquoted `|`, `&`, `<`, `>` in an argument (a CTest -R
+# regex such as A|B) becomes a command separator before the batch file starts. Interop does not
+# quote them, so caret-escape the metacharacters for the command line, and also hand the batch file
+# the exact arguments in VIXEN_NATIVE_ARGS (each double-quoted), which it can expand with
+# `!VIXEN_NATIVE_ARGS!` under delayed expansion without cmd.exe re-parsing them (a `%1`/`%*`
+# expansion is re-parsed and cannot be made safe).
+cmd_escape_arg() { local a="$1"; a="${a//^/^^}"; a="${a//&/^&}"; a="${a//|/^|}"; a="${a//</^<}"; a="${a//>/^>}"; echo "$a"; }
+quote_arg_list() {
+    local out="" a
+    for a in "$@"; do out+="\"${a//\"/\\\"}\" "; done
+    echo "${out% }"
+}
 
 # Runs a batch file with its own directory as the working directory, so the name carries no
 # Windows path (a path with spaces or backslashes is mangled by interop) and cmd.exe never
@@ -190,22 +230,31 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
-    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    infer_roots
+    # Build status and per-build logs go to the lane's own checkout, not the machine-wide Windows
+    # TEMP shared by every concurrent build; queue tickets keep TEMP because build_queue.ps1 reads it.
+    if [[ -z "${VIXEN_BUILD_LOG_DIR:-}" && -z "${VIXEN_QUEUE_TICKET_ID:-}" && "$direct" != 1 ]]; then
+        export VIXEN_BUILD_LOG_DIR="$(native_dir)/.tmp/native-build"
+    fi
+    local cmd_args=() a
+    for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
+    export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
     # Lane builds share ws memory and must not fetch into another lane's cache: default the four-job
     # cap and a checkout-local FetchContent cache here (T-2955); an explicit value still wins.
     export VIXEN_MAX_BUILD_JOBS="${VIXEN_MAX_BUILD_JOBS:-4}"
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
-    say "running: cmd.exe /c $win_arg $* (log: $log_file)"
+    say "running: cmd.exe /c $win_arg ${cmd_args[*]:-} (log: $log_file)"
     # The last link/stage step of a native build is silent and uses almost no WSL-side CPU, which
     # the queue's idle watchdog reads as a stall (T-6207). Say that the Windows process is alive.
     local heartbeat_pid started=$SECONDS
     (while sleep "${VIXEN_NATIVE_HEARTBEAT_S:-30}"; do echo "[vixen-native] heartbeat: $bat_name running $((SECONDS - started))s"; done) &
     heartbeat_pid=$!
     set +e
-    "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"
+    "$cmd_exe" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"
     rc="${PIPESTATUS[0]}"
     set -e
     kill "$heartbeat_pid" 2>/dev/null || true

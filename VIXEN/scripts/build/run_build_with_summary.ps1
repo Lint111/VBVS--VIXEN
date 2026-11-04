@@ -18,7 +18,7 @@
 # builds on one machine contend for the same CPU/IO and make ALL of them slower, not faster —
 # observed directly this session running concurrent verification builds.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-BuildDir <path>] [-StatusFile <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>] [-BuildId <id>]
+# Usage: powershell -ExecutionPolicy Bypass -File run_build_with_summary.ps1 -CMakeExe <path> -Preset <name> [-BuildDir <path>] [-StatusFile <path>] [-LogDir <path>] [-LockTimeoutSeconds N] [-SkipLock] [-MaxParallelJobs N] [-Target <cmake-target-name>] [-BuildId <id>]
 #
 # -Target scopes the build to a single CMake target (`cmake --build ... --target <name>`)
 # instead of the full default graph - e.g. just `VixenApp` or a single test binary, so an
@@ -51,7 +51,8 @@ param(
     [Parameter(Mandatory=$true)][string]$CMakeExe,
     [Parameter(Mandatory=$true)][string]$Preset,
     [string]$BuildDir = "",
-    [string]$StatusFile = "$env:TEMP\vixen_build_status.txt",
+    [string]$StatusFile = "",
+    [string]$LogDir = "",
     [int]$LockTimeoutSeconds = 1800,
     [switch]$SkipLock,
     [int]$MaxParallelJobs = 0,
@@ -65,6 +66,17 @@ param(
 # Inherit Windows' non-interactive error mode into the build process tree so a
 # missing runtime DLL fails the build instead of opening a modal system dialog.
 . "$PSScriptRoot\SetWindowsChildErrorMode.ps1"
+
+# Artifact root for the status file and the per-build log: -LogDir, else $env:VIXEN_BUILD_LOG_DIR
+# (tools/vixen-native.sh sets it to the lane's own native checkout), else Windows TEMP as before.
+# An explicit -StatusFile still wins for the status file.
+if (-not $LogDir) { $LogDir = $env:VIXEN_BUILD_LOG_DIR }
+if (-not $LogDir) { $LogDir = $env:TEMP }
+if (-not (Test-Path -LiteralPath $LogDir)) {
+    try { New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null }
+    catch { Write-Host "[build] ERROR: cannot create the build log directory '$LogDir' ($($_.Exception.Message)); pass a writable -LogDir or unset VIXEN_BUILD_LOG_DIR"; exit 2 }
+}
+if (-not $StatusFile) { $StatusFile = Join-Path $LogDir "vixen_build_status.txt" }
 
 # Auto-generate if the caller didn't supply one. Sanitize a caller-supplied ID to safe
 # filename/log characters so it can't break the log path or the status-file format.
@@ -92,7 +104,7 @@ if ($MaxParallelJobs -le 0) {
 }
 
 $ErrorActionPreference = 'Continue'
-$buildLog = "$env:TEMP\vixen_build_$BuildId.log"
+$buildLog = Join-Path $LogDir "vixen_build_$BuildId.log"
 $startTime = Get-Date
 
 # Callers sometimes pass a directory (a trailing backslash before the closing quote also
@@ -339,7 +351,7 @@ exit $buildExitCode
         # -Status through to completion. Best-effort - never let a logging failure mask the
         # real build exit code.
         try {
-            $resultLogDir = "$env:TEMP\vixen_build_queue_results"
+            $resultLogDir = Join-Path $LogDir "vixen_build_queue_results"
             if (-not (Test-Path $resultLogDir)) { New-Item -ItemType Directory -Path $resultLogDir -Force | Out-Null }
             $resultLines = @(
                 "TicketId: $QueueTicketId",

@@ -1993,10 +1993,32 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
         std::uint32_t tapeVersusRuntimeWords = 0;
     };
     std::vector<ProgramResult> results;
+    // A batch compiles one shader whose value and position storage is sized by its deepest program, so
+    // mixing a 64-value program with a 64-position one makes every program pay for both (the native AMD
+    // compile of such a batch ran 14 minutes without finishing). Cut contiguous batches where the
+    // allocator-reported depth class changes; every program is kept and results stay in corpus order.
     constexpr std::size_t kBatch = 8;
+    const auto depthClass = [](std::uint32_t depth) {
+        std::uint32_t bucket = 8;
+        while (bucket < depth) bucket *= 2;
+        return bucket;
+    };
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> programClasses;
+    for (const auto& entry : corpus) {
+        std::vector<SdfInstruction> closed;
+        std::string error;
+        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(entry.program.data(),
+            static_cast<std::uint32_t>(entry.program.size()), registry, closed, error)) << entry.name << ": " << error;
+        TapeStorageCounts depths;
+        PackAllocatedGpuTape(closed, depths);
+        programClasses.emplace_back(depthClass(depths.values), depthClass(depths.positions));
+    }
     const std::string wordPattern = "uintBitsToFloat(";
-    for (std::size_t first = 0; first < corpus.size(); first += kBatch) {
-        const std::size_t count = std::min(kBatch, corpus.size() - first);
+    for (std::size_t first = 0, batchSize = 0; first < corpus.size(); first += batchSize) {
+        batchSize = 1;
+        while (batchSize < kBatch && first + batchSize < corpus.size() &&
+               programClasses[first + batchSize] == programClasses[first]) ++batchSize;
+        const std::size_t count = batchSize;
         TapeStorageCounts tapeCounts;
         std::vector<GpuRecipeTapeInstruction> tape;
         std::array<TileTapeRange, 64> ranges{};

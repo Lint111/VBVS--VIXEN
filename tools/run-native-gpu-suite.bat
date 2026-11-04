@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 REM Run the comparable correctness GPU list from a Windows-native checkout.
 REM Overrides: VIXEN_NATIVE_BUILD_DIR (configured tree), VIXEN_NATIVE_CTEST (full ctest.exe path).
 REM The build is intentionally separate: run build.bat all vixen-ninja-release first.
@@ -33,5 +33,9 @@ set "CASE_TIMEOUT=%VIXEN_GPU_CASE_TIMEOUT%"
 if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
-"%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
+if defined VIXEN_NATIVE_ARGS (
+    "%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
+) else (
+    "%CTEST_EXE%" --test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" -j 1 --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
+)
 exit /b %errorlevel%
