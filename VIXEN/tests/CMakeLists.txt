@@ -68,6 +68,10 @@ add_test(NAME Native.KernelSnapshotPublish
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_publish.cmake")
 set_tests_properties(Native.KernelSnapshotPublish PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.KernelCacheEnv
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_kernel_cache_env.cmake")
+set_tests_properties(Native.KernelCacheEnv PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.YeroketRootOrder
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_YEROKET_ROOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/yeroket-root-order"
             -P "${VIXEN_ROOT}/cmake/tests/test_yeroket_root_order.cmake")
