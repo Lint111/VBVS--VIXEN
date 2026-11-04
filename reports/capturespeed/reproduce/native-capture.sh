@@ -9,11 +9,14 @@ usage() {
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --all-tests [--gpu-benchmark]" >&2
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
+  echo "any form: --source-commit <rev> builds and captures that commit's own tree instead of HEAD" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 source "$script_dir/native-common.sh"
+native_source_dispatch "$0" "$@"
+set -- ${native_args[@]+"${native_args[@]}"}
 repo_commit="$(native_resolve_commit)"
 queue=/home/liory/.local/bin/with-test-lock.sh
 powershell_exe="$native_powershell_exe"

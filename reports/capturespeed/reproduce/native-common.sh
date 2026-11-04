@@ -58,3 +58,61 @@ native_require_interop() {
     [[ -x "$exe" ]] || { echo "native: Windows interop executable missing: $exe (is WSL interop/automount enabled? fix: check /etc/wsl.conf [automount] and [interop])" >&2; return 2; }
   done
 }
+
+# Historical source: `--source-commit <rev>` (or VIXEN_NATIVE_SOURCE_COMMIT) builds and captures that exact
+# commit instead of HEAD. A detached worktree of <rev> is created under build/native-source, the script is
+# re-run from that tree so it builds with and captures through the tree's own runner scripts (not this
+# tree's), then the artifacts are copied back to build/native-captures/<sha> here and the worktree is
+# removed (VIXEN_NATIVE_KEEP_SOURCE=1 keeps it). Call as: native_source_dispatch "$0" "$@"; it exits when
+# it dispatched, otherwise it leaves the remaining arguments in the native_args array.
+native_args=()
+native_source_dispatch() {
+  local script="$1" rev="${VIXEN_NATIVE_SOURCE_COMMIT:-}"
+  shift
+  native_args=()
+  while (($#)); do
+    case "$1" in
+      --source-commit)
+        [[ $# -ge 2 ]] || { echo "native: --source-commit needs a revision" >&2; exit 2; }
+        rev="$2"; shift 2 ;;
+      --source-commit=*) rev="${1#--source-commit=}"; shift ;;
+      *) native_args+=("$1"); shift ;;
+    esac
+  done
+  if [[ -n "${VIXEN_NATIVE_SOURCE_ACTIVE:-}" ]]; then rev=""; fi
+  [[ -n "$rev" ]] || return 0
+
+  local sha tree rc=0 relscript out
+  sha="$(git -C "$repo_root" rev-parse --verify --quiet "${rev}^{commit}")" || {
+    echo "native: --source-commit '$rev' is not a commit in $repo_root" >&2; exit 2; }
+  tree="$repo_root/build/native-source/$sha"
+  relscript="reports/capturespeed/reproduce/$(basename "$script")"
+  if [[ ! -d "$tree" ]]; then
+    mkdir -p "$(dirname "$tree")"
+    git -C "$repo_root" worktree add --detach "$tree" "$sha" >&2
+  fi
+  [[ "$(git -C "$tree" rev-parse HEAD)" == "$sha" ]] || {
+    echo "native: $tree is not at $sha" >&2; exit 2; }
+  # The repo checks out sparsely; the runner scripts must exist in the historical tree.
+  if [[ ! -f "$tree/$relscript" ]]; then
+    git -C "$tree" sparse-checkout add "/reports/capturespeed/reproduce" >/dev/null 2>&1 || true
+  fi
+  [[ -f "$tree/$relscript" ]] || {
+    echo "native: $sha has no $relscript; that commit predates the native runner" >&2; exit 2; }
+  echo "native: --source-commit $sha: running $tree/$relscript" >&2
+
+  VIXEN_NATIVE_SOURCE_ACTIVE=1 VIXEN_NATIVE_SOURCE_COMMIT= \
+    VIXEN_NATIVE_LANE="$native_lane_id" VIXEN_NATIVE_ROOT="$native_root" \
+    bash "$tree/$relscript" ${native_args[@]+"${native_args[@]}"} || rc=$?
+
+  out="$tree/build/native-captures/$sha"
+  if [[ -d "$out" ]]; then
+    mkdir -p "$repo_root/build/native-captures"
+    rm -rf "$repo_root/build/native-captures/$sha"
+    cp -a "$out" "$repo_root/build/native-captures/$sha"
+  fi
+  if [[ "${VIXEN_NATIVE_KEEP_SOURCE:-}" != 1 ]]; then
+    git -C "$repo_root" worktree remove --force "$tree" >&2 || true
+  fi
+  exit "$rc"
+}
