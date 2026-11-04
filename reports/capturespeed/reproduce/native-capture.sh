@@ -9,6 +9,7 @@ usage() {
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --all-tests [--gpu-benchmark]" >&2
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
+  echo "  --cache-seed <sha|rev|native-build-dir>  copy that build's runtime caches into this commit's build first" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +23,7 @@ capture=""
 state=""
 ctest_label=""
 benchmark=false
+cache_seed=""
 
 if [[ "${1:-}" == --negative-missing-dll ]]; then
   mode=negative-dll
@@ -44,10 +46,30 @@ fi
 while (($#)); do
   case "$1" in
     --gpu-benchmark) benchmark=true ;;
+    --cache-seed)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      cache_seed="$2"
+      shift
+      ;;
     *) usage; exit 2 ;;
   esac
   shift
 done
+
+if [[ -n "$cache_seed" ]]; then
+  if [[ "$mode" == negative-dll ]]; then
+    echo "native-capture: --cache-seed does not apply to --negative-missing-dll (it runs no capture)" >&2
+    exit 2
+  fi
+  if [[ -d "$cache_seed" ]]; then
+    cache_seed="$(wslpath -w "$(cd "$cache_seed" && pwd)")"
+  elif seed_sha="$(git -C "$repo_root" rev-parse --verify --quiet "$cache_seed^{commit}")"; then
+    cache_seed="$seed_sha"
+  else
+    echo "native-capture: --cache-seed '$cache_seed' is neither a directory nor a commit in $repo_root; pass a native build directory, a 40-hex SHA or a git revision" >&2
+    exit 2
+  fi
+fi
 
 if [[ ! -f "$native_root/build/native/$repo_commit/.vixendll-build-ready" ]]; then
   bash "$script_dir/native-build.sh"
@@ -61,16 +83,19 @@ queue_args=(--agent vixendll --resource "$resource" \
   --label "vixendll:native-${capture:-${mode}}-${state:-${ctest_label:-missing-dll}}")
 if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 
+seed_args=()
+if [[ -n "$cache_seed" ]]; then seed_args=(-CacheSeed "$cache_seed"); fi
+
 capture_rc=0
 if [[ "$mode" == state ]]; then
   bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" || capture_rc=$?
+    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" "${seed_args[@]}" || capture_rc=$?
 else
   if [[ "$mode" == label ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" || capture_rc=$?
+      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" "${seed_args[@]}" || capture_rc=$?
   elif [[ "$mode" == negative-dll ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
@@ -78,7 +103,7 @@ else
   else
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode all-tests || capture_rc=$?
+      -Commit "$repo_commit" -Mode all-tests "${seed_args[@]}" || capture_rc=$?
   fi
 fi
 
