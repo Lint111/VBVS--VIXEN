@@ -2,6 +2,16 @@ if(NOT DEFINED LOOKDEV_CAPTURE_EXE OR NOT DEFINED LOOKDEV_CAPTURE_DIR)
     message(FATAL_ERROR "LOOKDEV_CAPTURE_EXE and LOOKDEV_CAPTURE_DIR are required")
 endif()
 
+if(NOT EXISTS "${LOOKDEV_CAPTURE_EXE}")
+    # CTest cannot build a target, so a partial build (a --target subset) leaves this missing. Say so
+    # before the first execute_process fails with a bare "no such file" (T-6421).
+    message(FATAL_ERROR
+        "Look-dev capture executable is missing: ${LOOKDEV_CAPTURE_EXE}\n"
+        "Why: the build did not include the vixen_lookdev_capture target (CTest runs it but does not build it).\n"
+        "Fix: build it first, queued: ./build-wsl.sh --target vixen_lookdev_capture -j4 "
+        "(or cmake --build <build-dir> --target vixen_lookdev_capture), then rerun this test.")
+endif()
+
 if(NOT DEFINED LOOKDEV_CAPTURE_BUDGET_S)
     set(LOOKDEV_CAPTURE_BUDGET_S 900)
 endif()

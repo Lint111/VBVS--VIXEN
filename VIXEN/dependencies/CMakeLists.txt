@@ -6,6 +6,12 @@
 
 include(FetchContent)
 
+# One CRT for every target, including fetched libraries that honour CMAKE_MSVC_RUNTIME_LIBRARY: VIXEN
+# is /MD (/MDd in Debug). A library that picks its own runtime (msdfgen below) is wired from this value.
+if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
 # Native loader dependencies are shared with VIXEN_NATIVE_DEPENDENCIES_ONLY.
 add_subdirectory(native)
 
@@ -263,11 +269,15 @@ set(MSDFGEN_INSTALL          OFF CACHE BOOL "Do not install msdfgen" FORCE)
 set(MSDFGEN_USE_SKIA         OFF CACHE BOOL "Do not build the Skia extension" FORCE)
 set(MSDFGEN_USE_OPENMP       OFF CACHE BOOL "Keep glyph generation single-threaded" FORCE)
 if(MSVC)
-    # VIXEN's Windows targets use the dynamic CRT (/MD). msdfgen defaults to
-    # the static CRT (/MT), which makes any final executable linking Text fail
-    # with LNK2038 even though msdfgen-core itself compiles successfully.
-    set(MSDFGEN_DYNAMIC_RUNTIME ON CACHE BOOL
-        "Use the same dynamic MSVC runtime as VIXEN" FORCE)
+    # msdfgen defaults to the static CRT (/MT) and sets MSVC_RUNTIME_LIBRARY per target from its own
+    # option, so the consumer's CMAKE_MSVC_RUNTIME_LIBRARY is ignored; derive the option from it
+    # (T-6884). Static only when the consumer explicitly selected a MultiThreaded (non-DLL) runtime.
+    set(_vixen_dynamic_crt ON)
+    if(NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
+        set(_vixen_dynamic_crt OFF)
+    endif()
+    set(MSDFGEN_DYNAMIC_RUNTIME ${_vixen_dynamic_crt} CACHE BOOL
+        "Match the consumer MSVC runtime" FORCE)
 endif()
 FetchContent_MakeAvailable(msdfgen)
 if(TARGET msdfgen-core)
