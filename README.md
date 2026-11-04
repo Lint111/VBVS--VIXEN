@@ -78,6 +78,8 @@ cmake --build build --config Debug --parallel 16      # or --config Release
 
 Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN/`, its binary tree is `build/wsl`) is wrapped by one command: `./build-wsl.sh --target VIXEN -j4` (configure, then build; any `cmake --build` args pass through).
 
+Historical or matched-capture builds use `tools/configure-detached.sh [--kernel-sha <sha>] <sha>`: it creates a detached worktree at the commit and configures it with `VIXEN_VULKAN_CACHE_DIR`, `VIXEN_SCHEMA_CATALOG`, `YEROKET_ROOT` and `FETCHCONTENT_BASE_DIR` derived from the paired lane worktrees and shared caches (`--dry-run` prints them; env vars override). Never reuse another commit's build tree.
+
 Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=ON`.
 
 ### Visual Studio
