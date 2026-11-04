@@ -65,6 +65,8 @@ param(
 # Inherit Windows' non-interactive error mode into the build process tree so a
 # missing runtime DLL fails the build instead of opening a modal system dialog.
 . "$PSScriptRoot\SetWindowsChildErrorMode.ps1"
+. "$PSScriptRoot\NamedMutex.ps1"
+. "$PSScriptRoot\Register-NativeRunRoot.ps1"
 
 # Auto-generate if the caller didn't supply one. Sanitize a caller-supplied ID to safe
 # filename/log characters so it can't break the log path or the status-file format.
@@ -122,7 +124,7 @@ if (-not $SkipLock) {
     $mutex = New-Object System.Threading.Mutex($false, "Global\VixenBuildLock")
     Write-Host "[build] Waiting for the machine-wide build lock (another build may be running)..."
     $lockWaitStart = Get-Date
-    $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+    $acquired = Wait-VixenMutex -Mutex $mutex -TimeoutSeconds $LockTimeoutSeconds -Name 'Global\VixenBuildLock' -Tag '[build]'
     if (-not $acquired) {
         $waited = [int]((Get-Date) - $lockWaitStart).TotalSeconds
         Write-Host "[build] TIMEOUT after $($waited)s waiting for the build lock - another build is still running."

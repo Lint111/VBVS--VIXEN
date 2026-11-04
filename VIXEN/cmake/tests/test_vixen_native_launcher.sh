@@ -25,9 +25,23 @@ echo "$*" >> "$FAKE_CALLS"
 pwd > "$FAKE_CWD"
 printf '%s\n' "${WSLENV-}" > "$FAKE_WSLENV"
 echo "fake cmd output"
+if [[ -n "${FAKE_HANG-}" ]]; then
+    # Stands in for the build tree: registers its PID like Register-NativeRunRoot.ps1, then blocks.
+    echo "$$" > "$VIXEN_NATIVE_PIDFILE"
+    : > "$FAKE_STARTED"
+    while true; do sleep 0.1; done
+fi
 exit "${FAKE_RC:-0}"
 STUB
 chmod +x "$fake/cmd.exe"
+cat > "$fake/taskkill.exe" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE_TASKKILL"
+[[ "$1" == /PID ]] && kill -9 "$2" 2>/dev/null
+exit 0
+STUB
+chmod +x "$fake/taskkill.exe"
+export FAKE_TASKKILL="$scratch/taskkill.txt" FAKE_STARTED="$scratch/started.flag"
 export FAKE_ARGV="$scratch/argv.txt" FAKE_CWD="$scratch/cwd.txt" FAKE_CALLS="$scratch/calls.txt"
 export FAKE_WSLENV="$scratch/wslenv.txt"
 export VIXEN_NATIVE_SYSTEM32="$fake"
@@ -92,5 +106,25 @@ check "build output is kept in the log" \
     bash -c 'log="$1/build.log"; "$0" --log "$log" build >/dev/null; grep -q "fake cmd output" "$log"' "$launcher" "$scratch"
 check "a provisioning stop (exit 20) stops the build before build.bat runs" \
     bash -c 'rm -rf "$1/lane-a/VIXEN/.win-native-toolchain"; : > "$FAKE_CALLS"; FAKE_RC=20 "$0" build all >/dev/null; rc=$?; test $rc = 20 && test "$(wc -l < "$FAKE_CALLS")" = 1 && grep -q "build.bat provision" "$FAKE_CALLS"' "$launcher" "$native"
+
+# Cancellation (T-4910): SIGTERM must taskkill the registered Windows tree and exit 128+15.
+cancel_case() {
+    local sig="$1" want="$2" lpid i rc
+    rm -f "$FAKE_TASKKILL" "$FAKE_STARTED"
+    FAKE_HANG=1 "$launcher" --log "$scratch/cancel.log" bat build.bat >/dev/null 2>&1 &
+    lpid=$!
+    for i in $(seq 1 100); do [[ -e "$FAKE_STARTED" ]] && break; sleep 0.1; done
+    [[ -e "$FAKE_STARTED" ]] || { kill -9 "$lpid" 2>/dev/null; return 1; }
+    kill -"$sig" "$lpid"
+    for i in $(seq 1 100); do kill -0 "$lpid" 2>/dev/null || break; sleep 0.1; done
+    kill -0 "$lpid" 2>/dev/null && { kill -9 "$lpid"; return 1; }
+    wait "$lpid"; rc=$?
+    [[ "$rc" == "$want" ]] && grep -qE '^/PID [0-9]+ /T /F$' "$FAKE_TASKKILL"
+}
+check "SIGTERM kills the registered Windows process tree and exits 143" cancel_case TERM 143
+# (SIGINT is not testable here: a backgrounded non-interactive shell ignores it.)
+check "SIGHUP kills the registered Windows process tree and exits 129" cancel_case HUP 129
+check "a finished run leaves no process-tree PID file behind" \
+    bash -c '"$0" --log "$1/pid.log" bat build.bat >/dev/null; ! ls "$1"/.native-root-*.pid >/dev/null 2>&1' "$launcher" "$scratch"
 
 exit "$failures"

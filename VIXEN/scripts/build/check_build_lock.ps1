@@ -14,7 +14,13 @@
 #   Exit 1 + "HELD"  if a build is currently running.
 
 $mutex = New-Object System.Threading.Mutex($false, "Global\VixenBuildLock")
-$acquired = $mutex.WaitOne(0)
+# A holder killed by a cancelled queue job leaves the mutex abandoned; WaitOne(0) then throws
+# AbandonedMutexException but the caller owns it, so the lock is free (T-4910).
+try {
+    $acquired = $mutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    $acquired = $true
+}
 if ($acquired) {
     Write-Host "[build-lock] FREE (no build currently running)"
     $mutex.ReleaseMutex()

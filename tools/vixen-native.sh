@@ -24,6 +24,10 @@ lane="$(basename "$repo_root")"
 branch=""
 direct=0
 log_file=""
+cancelled=""
+cancelled_signo=0
+run_pid=""
+pid_file=""
 
 die() { echo "[vixen-native] ERROR: $*" >&2; exit 2; }
 say() { echo "[vixen-native] $*"; }
@@ -111,16 +115,56 @@ run_bat() {
         [[ "$win_arg" != *" "* ]] || die "$win_arg contains spaces; use the native checkout (drop --direct)"
         cd "$(dirname "$cmd_exe")/../.."
     fi
-    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID"
+    local forward="UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
+    # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
+    # cancel can kill the whole tree and release Global\VixenBuildLock / Global\VixenConfigureLock.
+    pid_file="$(dirname "$log_file")/.native-root-$$.pid"
+    rm -f "$pid_file"
+    export VIXEN_NATIVE_PIDFILE="$pid_file"
     say "running: cmd.exe /c $win_arg $* (log: $log_file)"
+    # Background + wait so a SIGTERM/SIGINT/SIGHUP reaches the trap at once; bash defers traps
+    # until a foreground pipeline ends, and the interop client exiting does not stop the
+    # Windows children (T-4910).
+    ( "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"; exit "${PIPESTATUS[0]}" ) &
+    run_pid=$!
+    trap 'cancel_native TERM' TERM
+    trap 'cancel_native INT' INT
+    trap 'cancel_native HUP' HUP
     set +e
-    "$cmd_exe" /c "$win_arg" "$@" 2>&1 | tee "$log_file"
-    rc="${PIPESTATUS[0]}"
+    wait "$run_pid"
+    rc=$?
+    # A trapped signal interrupts the first wait; the second collects the real status.
+    if [[ -n "$cancelled" ]]; then wait "$run_pid" 2>/dev/null; rc=$((128 + cancelled_signo)); fi
     set -e
+    trap - TERM INT HUP
+    rm -f "$pid_file"
     say "exit code $rc"
     return "$rc"
+}
+
+# Stops the Windows process tree of the running build (cmake, ninja, cl.exe and the lock-holding
+# PowerShell) and then the local relay, so a cancelled queue job leaves no build lock behind.
+cancel_native() {
+    local sig="$1" root taskkill
+    cancelled="$sig"
+    case "$sig" in HUP) cancelled_signo=1 ;; INT) cancelled_signo=2 ;; *) cancelled_signo=15 ;; esac
+    say "received SIG$sig; stopping the Windows build process tree"
+    taskkill="$(dirname "$cmd_exe")/taskkill.exe"
+    root=""
+    [[ -s "$pid_file" ]] && root="$(tr -dc '0-9' < "$pid_file")"
+    if [[ -z "$root" ]]; then
+        say "WARNING: no Windows process tree was registered ($pid_file missing), so it cannot be killed from here." \
+            "If Global\\VixenBuildLock stays held: taskkill /PID <the stuck cmd.exe or powershell.exe> /T /F"
+    elif [[ ! -x "$taskkill" ]]; then
+        say "WARNING: $taskkill not found; run 'taskkill /PID $root /T /F' on Windows to release the build lock"
+    elif "$taskkill" /PID "$root" /T /F >/dev/null 2>&1; then
+        say "killed Windows process tree rooted at PID $root"
+    else
+        say "taskkill /PID $root /T /F failed or the tree had already exited"
+    fi
+    kill "$run_pid" 2>/dev/null || true
 }
 
 do_provision() {
