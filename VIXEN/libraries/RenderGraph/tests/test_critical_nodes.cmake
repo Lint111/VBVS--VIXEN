@@ -806,7 +806,7 @@ add_custom_command(
             --target-env=vulkan1.3
             ${_recipebucketing_src}
             -o ${_recipebucketing_spv}
-    DEPENDS ${_recipebucketing_src}
+    DEPENDS ${_recipebucketing_src} "${_brm_shader_dir}/BodyInstanceRecord.glsl"
     COMMENT "Compiling RecipeInstanceBucketing.comp -> SPIR-V (bundled glslc)"
     VERBATIM)
 add_custom_target(recipe_instance_bucketing_spv DEPENDS ${_recipebucketing_spv})
@@ -1060,7 +1060,7 @@ if(VIXEN_GLSLC)
                 --target-env=vulkan1.2
                 ${_cull_src}
                 -o ${_cull_spv}
-        DEPENDS ${_cull_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
+        DEPENDS ${_cull_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl" "${_brm_shader_dir}/BodyInstanceRecord.glsl"
         COMMENT "Compiling InstanceOcclusionCull.comp -> SPIR-V (B1 M3)"
         VERBATIM)
     add_custom_target(instance_occlusion_cull_spv DEPENDS ${_cull_spv})
@@ -1100,7 +1100,7 @@ if(VIXEN_GLSLC)
                 --target-env=vulkan1.3
                 ${_proxy_interval_comp_src}
                 -o ${_proxy_interval_comp_spv}
-        DEPENDS ${_proxy_interval_comp_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
+        DEPENDS ${_proxy_interval_comp_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl" "${_brm_shader_dir}/BodyInstanceRecord.glsl"
         COMMENT "Compiling ProxyIntervalPrepass.comp -> SPIR-V (B2 compute-writer parity)"
         VERBATIM)
     add_custom_target(proxy_interval_prepass_spv

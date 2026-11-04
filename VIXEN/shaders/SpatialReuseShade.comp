@@ -215,13 +215,7 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
 
 #ifndef VIXEN_SHADOW_DBG
 #if defined(VIXEN_SRS_CELL_RESOLVE) || defined(VIXEN_MINING_BEAM)
-struct BodyInstance {
-    vec3  color;
-    uint  octreeIndex;
-    uint  providerKind;
-    uint  recipeId;
-    float recipeParams[6];
-};
+#include "BodyInstanceRecord.glsl"
 #endif
 #endif
 
