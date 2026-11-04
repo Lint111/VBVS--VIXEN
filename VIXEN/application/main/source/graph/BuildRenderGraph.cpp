@@ -557,7 +557,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
-    const bool exposureReference = envFlagEnabled("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
+    // Explicit 0 selects the system tone map (same contract as VIXEN_HDR_EXPOSURE), not the reference.
+    const bool exposureReference = envFlagEnabledOrDefault("VIXEN_EXPOSURE_TONEMAP_REFERENCE", false);
 #else
     constexpr bool exposureReference = false;
 #endif
