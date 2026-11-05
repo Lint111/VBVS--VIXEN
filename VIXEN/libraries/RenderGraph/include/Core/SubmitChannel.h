@@ -150,19 +150,22 @@ struct SubmitRecord {
         const auto* values = static_cast<const VkTimelineSemaphoreSubmitInfo*>(si.pNext);
         if (values && values->sType != VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO) values = nullptr;
         for (uint32_t i = 0; i < si.waitSemaphoreCount; ++i) {
-            VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+            VkSemaphoreSubmitInfo wait{};
+            wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             wait.semaphore = si.pWaitSemaphores[i];
             wait.value = values && i < values->waitSemaphoreValueCount ? values->pWaitSemaphoreValues[i] : 0;
             wait.stageMask = si.pWaitDstStageMask ? si.pWaitDstStageMask[i] : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
             r.waits.push_back(wait);
         }
         for (uint32_t i = 0; i < si.commandBufferCount; ++i) {
-            VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+            VkCommandBufferSubmitInfo command{};
+            command.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
             command.commandBuffer = si.pCommandBuffers[i];
             r.commandBuffers.push_back(command);
         }
         for (uint32_t i = 0; i < si.signalSemaphoreCount; ++i) {
-            VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+            VkSemaphoreSubmitInfo signal{};
+            signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             signal.semaphore = si.pSignalSemaphores[i];
             signal.value = values && i < values->signalSemaphoreValueCount ? values->pSignalSemaphoreValues[i] : 0;
             signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;

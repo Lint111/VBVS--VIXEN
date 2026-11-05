@@ -22,7 +22,8 @@ namespace Vixen::RenderGraph::SwapchainBarriers {
 inline void TransitionImageToGeneralBarrier2(Vixen::Vulkan::Resources::VulkanDevice* device,
                                               VkCommandBuffer cmd, VkImage image,
                                               VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED) {
-    VkImageMemoryBarrier2 ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    VkImageMemoryBarrier2 ib{};
+    ib.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     // A known prior layout may have been produced by any graph pass, including a render pass.
     ib.srcStageMask = oldLayout == VK_IMAGE_LAYOUT_UNDEFINED
         ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -35,7 +36,8 @@ inline void TransitionImageToGeneralBarrier2(Vixen::Vulkan::Resources::VulkanDev
     ib.srcQueueFamilyIndex = ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     ib.image = image;
     ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    VkDependencyInfo dep{};
+    dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers = &ib;
     device->fpCmdPipelineBarrier2(cmd, &dep);
@@ -43,7 +45,8 @@ inline void TransitionImageToGeneralBarrier2(Vixen::Vulkan::Resources::VulkanDev
 
 // Restore a blit source to the graph's stable storage-image boundary layout.
 inline VkImageMemoryBarrier2 MakeRenderTargetPostBlitBarrier(VkImage image) {
-    VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    VkImageMemoryBarrier2 b{};
+    b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     b.srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
     b.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
     b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -58,7 +61,8 @@ inline VkImageMemoryBarrier2 MakeRenderTargetPostBlitBarrier(VkImage image) {
 
 inline void TransitionImageToPresentBarrier2(Vixen::Vulkan::Resources::VulkanDevice* device,
                                               VkCommandBuffer cmd, VkImage image) {
-    VkImageMemoryBarrier2 ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    VkImageMemoryBarrier2 ib{};
+    ib.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     ib.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
     ib.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
     ib.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -68,7 +72,8 @@ inline void TransitionImageToPresentBarrier2(Vixen::Vulkan::Resources::VulkanDev
     ib.srcQueueFamilyIndex = ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     ib.image = image;
     ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    VkDependencyInfo dep{};
+    dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 1;
     dep.pImageMemoryBarriers = &ib;
     device->fpCmdPipelineBarrier2(cmd, &dep);
@@ -104,7 +109,8 @@ inline void BlitRenderTargetToSwapchain(
     entry[1].srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
     entry[1].srcAccessMask = VK_ACCESS_2_NONE;
     entry[1].dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    VkDependencyInfo dep{};
+    dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dep.imageMemoryBarrierCount = 2;
     dep.pImageMemoryBarriers = entry;
     device->fpCmdPipelineBarrier2(cmd, &dep);

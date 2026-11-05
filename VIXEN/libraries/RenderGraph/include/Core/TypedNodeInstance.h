@@ -554,7 +554,7 @@ protected:
      *
      * @param ctx Setup context (no I/O access)
      */
-    virtual void TypedSetupImpl(TypedSetupContext& ctx) {}
+    virtual void TypedSetupImpl([[maybe_unused]] TypedSetupContext& ctx) {}
 
     /**
      * @brief TypedCompileImpl with TypedCompileContext - override this in derived classes
@@ -563,7 +563,7 @@ protected:
      *
      * @param ctx Compile context with typed slot accessors
      */
-    virtual void TypedCompileImpl(TypedCompileContext& ctx) {}
+    virtual void TypedCompileImpl([[maybe_unused]] TypedCompileContext& ctx) {}
 
     /**
      * @brief TypedExecuteImpl with TypedExecuteContext - override this in derived classes
@@ -585,7 +585,7 @@ protected:
      *
      * @param ctx Execute context with typed slot accessors
      */
-    virtual void TypedExecuteImpl(TypedExecuteContext& ctx) {
+    virtual void TypedExecuteImpl([[maybe_unused]] TypedExecuteContext& ctx) {
         // Default: no-op (VariadicTypedNode and concrete nodes provide override)
     }
 
@@ -602,13 +602,13 @@ protected:
      *
      * @param ctx Cleanup context (no I/O access)
      */
-    virtual void TypedCleanupImpl(TypedCleanupContext& ctx) {}
+    virtual void TypedCleanupImpl([[maybe_unused]] TypedCleanupContext& ctx) {}
 
     /// @brief Device-child state kept across recompiles; runs on device loss and shutdown.
-    virtual void TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {}
+    virtual void TypedDeviceReleaseImpl([[maybe_unused]] TypedCleanupContext& ctx) {}
 
     /// @brief State that outlives the device; runs on final teardown only.
-    virtual void TypedShutdownImpl(TypedCleanupContext& ctx) {}
+    virtual void TypedShutdownImpl([[maybe_unused]] TypedCleanupContext& ctx) {}
 
     // Task orchestration is handled at NodeInstance level
     // TypedNode only provides Typed*Impl(Context&) virtual methods for downstream nodes
