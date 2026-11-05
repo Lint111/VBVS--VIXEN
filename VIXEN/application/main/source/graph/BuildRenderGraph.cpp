@@ -35,6 +35,7 @@
 #include "graph/ReconstructionExposure.h"
 #include "graph/ReconstructionHistory.h"
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
+#include "BuildRenderGraphFingerprint.h"  // generated: content hash of this file (the bake driver)
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
 #include "Nodes/SdiStageSynthesis.h"    // Semantic-wiring S2 synthesis: gatherer/descSet/pipeline plumbing from merged SDI
@@ -6259,6 +6260,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // boot should reach file-load speed, not just skip the GaiaVoxelWorld bake).
             const glm::vec3 kNoHalfExtent(0.0f);
             Vixen::SVO::BakeArtifactKeyBuilder keyBuilder;
+            // The store is shared across build trees: also key on the code that drives the bake
+            // (this file), the SVO fingerprint is already in the builder.
+            keyBuilder.addBytes(Vixen::kBuildRenderGraphFingerprint, sizeof(Vixen::kBuildRenderGraphFingerprint) - 1);
             auto addBodyKeyInputs = [&](const CornellWorldSpaceBody& b, int n, int subdiv, glm::vec3 halfExtent) {
                 keyBuilder.addProgram(std::span<const SdfInstruction>(b.prog.data(), b.prog.size()));
                 keyBuilder.addVec3(b.worldCenter);
