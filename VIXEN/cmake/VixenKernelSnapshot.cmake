@@ -27,6 +27,7 @@ set(VIXEN_KERNEL_CACHE_RETENTION_DAYS 7 CACHE STRING
 
 set(_vixen_kernel_codegen_paths
     Directory.Build.props
+    tools/unity-analyzer-stamp.py
     Packages/com.yeroket.utility.kernel-framework/Directory.Build.props
     Packages/com.yeroket.utility.kernel-framework/RoslynVersions.g.props
     Packages/com.yeroket.utility.kernel-framework/CodegenTool~
