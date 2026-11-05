@@ -71,6 +71,7 @@ public:
         std::chrono::milliseconds sdiGenTime{0};
         std::chrono::milliseconds totalTime{0};
         bool usedCache = false;
+        bool reflectionFromCache = false;  // reflection + descriptor layout restored, not recomputed
 
         operator bool() const { return success; }
 

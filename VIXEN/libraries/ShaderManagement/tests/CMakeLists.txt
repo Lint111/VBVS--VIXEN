@@ -20,6 +20,7 @@ enable_testing()
 add_executable(ShaderManagementTests
     test_shader_compiler.cpp
     test_shader_cache_manager.cpp
+    test_shader_reflection_cache.cpp
     test_sdi_lifecycle.cpp
     test_shader_preprocessor.cpp
     # Temporarily disabled - need API updates
