@@ -427,6 +427,7 @@ inline f32 rsqrt_lanes(f32 x) noexcept { alignas(16) float v[4]; x.store_unalign
 template<class F> inline f32 unary_f32(f32 x, F fn) noexcept { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=fn(v[i]); return f32::from_lanes(v); }
 inline f32 sin(f32 x) noexcept { return unary_f32(x, [](float v){return std::sin(v);}); }
 inline f32 cos(f32 x) noexcept { return unary_f32(x, [](float v){return std::cos(v);}); }
+inline f32 atan(f32 x) noexcept { return unary_f32(x, [](float v){return std::atan(v);}); }
 inline f32 exp(f32 x) noexcept { return unary_f32(x, [](float v){return std::exp(v);}); }
 inline f32 log(f32 x) noexcept { return unary_f32(x, [](float v){return std::log(std::max(v,1e-30f));}); }
 inline f32 log2(f32 x) noexcept { return unary_f32(x, [](float v){return std::log2(std::max(v,1e-30f));}); }
