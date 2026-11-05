@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "d644ecb90dfc13b32b4fdc7b5a14b34cd4ebc44e")
+set(_vixen_tracked_yeroket_kernel_sha "8ba217fe5e61ae80cc83b516e6603234e0aaecf4")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -232,6 +232,18 @@ if(_undertow_root_cmake)
 elseif(_schema_catalog_source)
     get_filename_component(_undertow_schema_dir "${_schema_catalog_source}" DIRECTORY)
     get_filename_component(_undertow_core_src "${_undertow_schema_dir}/../.." ABSOLUTE)
+endif()
+set(_frame_targets_campaign_lineage "")
+set(_frame_targets_pending_migrations "")
+if(_undertow_core_src)
+    set(_candidate_campaign_lineage "${_undertow_core_src}/Undertow.Sim/SaveHistory/lineage.json")
+    if(EXISTS "${_candidate_campaign_lineage}")
+        set(_frame_targets_campaign_lineage "${_candidate_campaign_lineage}")
+    endif()
+    set(_candidate_pending_migrations "${_undertow_core_src}/Undertow.Content/Migrations/Pending")
+    if(IS_DIRECTORY "${_candidate_pending_migrations}")
+        set(_frame_targets_pending_migrations "${_candidate_pending_migrations}")
+    endif()
 endif()
 set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
 set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
@@ -296,6 +308,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     if(WIN32 AND (VIXEN_DOTNET MATCHES "wsl" OR YEROKET_ROOT MATCHES "wsl"))
         set(_codegen_need_wsl_bridge TRUE)
     endif()
+    set(_frame_targets_campaign_lineage_run "${_frame_targets_campaign_lineage}")
+    set(_frame_targets_pending_migrations_run "${_frame_targets_pending_migrations}")
 
     if(_codegen_need_wsl_bridge)
         find_program(WSL_EXE NAMES wsl wsl.exe)
@@ -395,6 +409,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_sim_framework_run "")
         if(_undertow_core_src)
             _codegen_to_wsl_path("${_schema_sim_framework}" _schema_sim_framework_run)
+        endif()
+        set(_frame_targets_campaign_lineage_run "")
+        if(_frame_targets_campaign_lineage)
+            _codegen_to_wsl_path("${_frame_targets_campaign_lineage}" _frame_targets_campaign_lineage_run)
+        endif()
+        set(_frame_targets_pending_migrations_run "")
+        if(_frame_targets_pending_migrations)
+            _codegen_to_wsl_path("${_frame_targets_pending_migrations}" _frame_targets_pending_migrations_run)
         endif()
         _codegen_to_wsl_path("${_out_gpu_schema_json}" _out_gpu_schema_json_run)
         _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
@@ -945,6 +967,20 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             "${_schema_gpu_source}/*.cs")
         list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
 
+        # Keep the FrameTargets source closure independent of Undertow's full core/src tree, but
+        # make the paired campaign inputs explicit. If a future closure adds a runtime-state row,
+        # this check must consume the same generated campaign lineage and pending R418 claims as
+        # Undertow's source gate; relying on a staged-source default silently drops those sidecars.
+        set(_frame_targets_lineage_inputs)
+        if(_frame_targets_campaign_lineage)
+            list(APPEND _frame_targets_lineage_inputs "${_frame_targets_campaign_lineage}")
+        endif()
+        if(_frame_targets_pending_migrations)
+            file(GLOB_RECURSE _frame_targets_pending_sources CONFIGURE_DEPENDS
+                "${_frame_targets_pending_migrations}/*.cs")
+            list(APPEND _frame_targets_lineage_inputs ${_frame_targets_pending_sources})
+        endif()
+
         add_custom_target(frame_targets_schema_source_stage
             COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_schema_gpu_staged}"
             COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_schema_gpu_source}" "${_schema_gpu_staged}"
@@ -958,10 +994,18 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             --schema-kernel-source "${_schema_kernel_schema_run}"
             --schema-closure-root "Vixen.Codegen.Gpu.FrameTargets"
             --out-json "${_out_gpu_schema_json_run}")
+        if(_frame_targets_campaign_lineage_run)
+            list(APPEND _frame_targets_schema_args
+                --campaign-save-lineage "${_frame_targets_campaign_lineage_run}")
+        endif()
+        if(_frame_targets_pending_migrations_run)
+            list(APPEND _frame_targets_schema_args
+                --pending-migrations "${_frame_targets_pending_migrations_run}")
+        endif()
         vixen_add_checked_target(frame_targets_schema_check ALL
             COMMAND ${_CODEGEN_RUNNER} ${_frame_targets_schema_args} --check
             DEPENDS "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool
-                ${_gpu_schema_source_files}
+                ${_gpu_schema_source_files} ${_frame_targets_lineage_inputs}
             COMMENT "[frame_targets_schema_check] FrameTargets schema JSON matches ${_schema_gpu_source}${_frame_targets_undertow_note}${_frame_targets_pin_note} (on drift: cmake --build <build-dir> --target frame_targets_refresh regenerates schema JSON, typed refs, composition outputs and UI SPIR-V together)"
             JOB_POOL vixen_codegen
             VERBATIM)
