@@ -942,13 +942,18 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
         set(_gpu_schema_source_files)
         file(GLOB_RECURSE _vixen_gpu_schema_sources CONFIGURE_DEPENDS
-            "${_schema_gpu_source}/*.cs")
+            "${_schema_gpu_source}/*.cs"
+            "${_schema_gpu_source}/*.json")
         list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
 
+        set(_gpu_schema_stage_script "${_cg}/StageGpuSchemaSource.cmake")
         add_custom_target(frame_targets_schema_source_stage
-            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_schema_gpu_staged}"
-            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_schema_gpu_source}" "${_schema_gpu_staged}"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DSOURCE_ROOT=${_schema_gpu_source}"
+                "-DOUTPUT_ROOT=${_schema_gpu_staged}"
+                -P "${_gpu_schema_stage_script}"
             DEPENDS ${_gpu_schema_source_files}
+                "${_gpu_schema_stage_script}"
             COMMENT "[codegen] stage VIXEN FrameTargets schema source from ${_schema_gpu_source}"
             VERBATIM)
 
