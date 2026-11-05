@@ -130,7 +130,7 @@ void DescriptorResourceGathererNode::VariadicCompileImpl(VariadicCompileContext&
     ValidateTentativeSlotsAgainstShader(ctx, shaderBundle);
 
     // Call base validation (type checks, null checks)
-    if (!ValidateVariadicInputsImpl(ctx)) {
+    if (!ValidateCompileVariadicInputs(ctx)) {
         NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " + GetInstanceName());
         return;
     }
@@ -393,7 +393,7 @@ void DescriptorResourceGathererNode::DiscoverDescriptors(VariadicCompileContext&
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::DiscoverDescriptors] DEPRECATED: Use CompileImpl validation instead");
 }
 
-bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext& ctx) {
+bool DescriptorResourceGathererNode::ValidateCompileVariadicInputs(VariadicCompileContext& ctx) {
     // NOTE: Base class ValidateVariadicInputsImpl is only available for ExecuteContext
     // Since we're validating at Compile time, we do our own validation here
     // All bundle access goes through context - bundle index handled automatically
@@ -401,7 +401,7 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
     size_t inputCount = ctx.InVariadicCount();
     bool allValid = true;
 
-    NODE_LOG_DEBUG("[ValidateVariadicInputsImpl] Checking " + std::to_string(inputCount) + " slots for " + GetInstanceName());
+    NODE_LOG_DEBUG("[ValidateCompileVariadicInputs] Checking " + std::to_string(inputCount) + " slots for " + GetInstanceName());
     for (size_t i = 0; i < inputCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
         NODE_LOG_DEBUG("  slot[" + std::to_string(i) + "]: binding=" + std::to_string(slotInfo ? slotInfo->binding : UINT32_MAX)

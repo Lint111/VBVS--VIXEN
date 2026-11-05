@@ -97,11 +97,11 @@ protected:
     void VariadicCleanupImpl(VariadicCleanupContext& ctx) override;
 
     // Variadic validation - shader metadata-specific validation at Compile time
-    // NOTE: Not an override - base class ValidateVariadicInputsImpl only exists for ExecuteContext
+    // Distinct from the base ValidateVariadicInputsImpl(Context&, size_t) so it hides nothing (R331)
     // Context automatically handles bundle access via taskIndex
-    bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx);
+    bool ValidateCompileVariadicInputs(VariadicCompileContext& ctx);
 
-    // Single input validation helpers (extracted from ValidateVariadicInputsImpl)
+    // Single input validation helpers (extracted from ValidateCompileVariadicInputs)
     bool ValidateSingleInput(VariadicCompileContext& ctx, size_t slotIndex);
     bool ShouldSkipTransientSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex);
     bool ShouldSkipFieldExtractionSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex);

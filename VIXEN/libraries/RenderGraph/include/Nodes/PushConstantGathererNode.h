@@ -93,7 +93,7 @@ protected:
     void VariadicCleanupImpl(VariadicCleanupContext& ctx) override;
 
     // Variadic validation - validates against shader metadata at Compile time
-    bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx);
+    bool ValidateCompileVariadicInputs(VariadicCompileContext& ctx);
 
 private:
     // Discovered push constant metadata from shader

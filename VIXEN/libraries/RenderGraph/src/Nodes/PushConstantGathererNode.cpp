@@ -282,7 +282,7 @@ void PushConstantGathererNode::VariadicCompileImpl(VariadicCompileContext& ctx) 
     }
 
     // Validate that all variadic inputs are connected
-    if (!ValidateVariadicInputsImpl(ctx)) {
+    if (!ValidateCompileVariadicInputs(ctx)) {
         return;
     }
 
@@ -392,7 +392,7 @@ void PushConstantGathererNode::DiscoverPushConstants(VariadicCompileContext& ctx
     }
 }
 
-bool PushConstantGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext& ctx) {
+bool PushConstantGathererNode::ValidateCompileVariadicInputs(VariadicCompileContext& ctx) {
     // Variadic inputs are OPTIONAL - allow partial connections
     // Missing fields will use default values (zero-initialized)
     size_t variadicCount = ctx.InVariadicCount();
