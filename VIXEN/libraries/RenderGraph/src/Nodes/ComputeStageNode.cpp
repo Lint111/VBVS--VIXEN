@@ -369,6 +369,11 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout layout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
+    if (pipeline == VK_NULL_HANDLE || layout == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] stage '" + GetInstanceName() +
+                                 "' has no compute pipeline/layout wired and no external command recorder; "
+                                 "wire it through SynthesizeComputeStage or call SetExternalCommandRecorder");
+    }
 
     // Descriptor SET OBJECTS are frame-indexed by DescriptorSetNode (set ring at flight depth,
     // set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired, else set[imageIndex]. Bind the
