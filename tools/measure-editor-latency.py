@@ -159,6 +159,15 @@ def analyse(directory):
             "frame_spans_ms": {str(tick): frame["ms"] for tick, frame in frames.items()}}
 
 
+def check_fixture(command, working_directory):
+    """Fail before launching if the editor executable or staged document is missing."""
+    base = Path(working_directory)
+    for role, entry in zip(("editor executable", "editor document"), command):
+        path = base / entry
+        if not path.is_file():
+            raise FileNotFoundError(f"{role} not found: {entry} (resolved {path}, cwd {base})")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, default=REPO / "VIXEN/build")
@@ -177,6 +186,7 @@ def main():
         fixture = next(test for test in catalogue["tests"] if test["name"] == "vixen_editor_capture_producer")
         properties = {prop["name"]: prop["value"] for prop in fixture["properties"]}
         command = shlex.split(fixture["command"][-1])[1:3]  # executable + staged document
+        check_fixture(command, properties["WORKING_DIRECTORY"])
     report = {}
     names = args.case or ([name for name in CASES if (output / name / "run.log").exists()]
         if args.analyse_only else CASES)
