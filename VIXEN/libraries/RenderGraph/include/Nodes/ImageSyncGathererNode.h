@@ -58,7 +58,7 @@ public:
      * @brief Pre-register `count` variadic image slots.
      *
      * Call during graph construction, before Setup, so batch.Connect(...,
-     * gatherer, /*index*\/ i) has a slot to land on. Mirrors
+     * gatherer, i) (i = slot index) has a slot to land on. Mirrors
      * BufferSyncGathererNode::PreRegisterBufferSlots exactly.
      */
     void PreRegisterImageSlots(size_t count);

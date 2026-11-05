@@ -64,7 +64,7 @@ public:
      * @brief Pre-register `count` variadic buffer slots.
      *
      * Call during graph construction, before Setup, so batch.Connect(...,
-     * gatherer, /*index*\/ i) has a slot to land on. Mirrors
+     * gatherer, i) (i = slot index) has a slot to land on. Mirrors
      * DescriptorResourceGathererNode::PreRegisterVariadicSlots's own
      * "call before Setup" contract, simplified: no binding/descriptor-type
      * metadata needed, just a count.
