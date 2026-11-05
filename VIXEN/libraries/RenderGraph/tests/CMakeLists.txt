@@ -350,6 +350,9 @@ if(TARGET GTest::gtest_main)
         GTest::gtest_main
         RenderGraph
     )
+    target_include_directories(test_sdi_stage_wiring PRIVATE ${VIXEN_ROOT}/generated/sdi)
+    target_compile_definitions(test_sdi_stage_wiring PRIVATE
+        VIXEN_GENERATED_TONEMAP_COMP="${VIXEN_ROOT}/shaders/Generated/ExposureTonemapSystem.comp")
     set_target_properties(test_sdi_stage_wiring PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_sdi_stage_wiring)
     message(STATUS "✓ test_sdi_stage_wiring configured (Semantic Wiring S2)")
