@@ -15,11 +15,13 @@ import re
 import shlex
 import struct
 import subprocess
+import sys
 import zlib
 
 
 REPO = Path(__file__).resolve().parents[1]
 QUEUE = "/home/liory/.local/bin/with-test-lock.sh"
+PRIVATE_DISPLAY = REPO / "tools/private-x11-display.sh"
 CASES = {
     "toggle": "toggle:2@30,toggle:2@60,undo@90,redo@120",
     "parameter": ",".join(["parameter_up:0@30"] * 4 + ["undo@60"] * 4 + ["redo@90"] * 4),
@@ -51,6 +53,18 @@ def contact_sheet(paths, output, load=pixels.decode_png):
     output.write_bytes(pixels.PNG_SIGNATURE
         + chunk(b"IHDR", struct.pack(">IIBBBBB", width * len(images), height, 8, 6, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def start_private_display(state):
+    """Start the worktree-local authenticated Xvfb; returns the DISPLAY/XAUTHORITY it serves."""
+    lines = subprocess.check_output(["bash", str(PRIVATE_DISPLAY), "start", str(state)],
+        text=True, stdin=subprocess.DEVNULL, timeout=600).split()
+    return dict(item.split("=", 1) for item in lines if "=" in item and item != "export")
+
+
+def stop_private_display(state):
+    subprocess.run(["bash", str(PRIVATE_DISPLAY), "stop", str(state)],
+        stdin=subprocess.DEVNULL, check=False, timeout=60)
 
 
 def analyse(directory):
@@ -168,9 +182,28 @@ def main():
     parser.add_argument("--analyse-only", action="store_true")
     parser.add_argument("--windowed", action="store_true")
     parser.add_argument("--display", default=":0", help="X11 display for the windowed witness")
+    parser.add_argument("--private-display", action="store_true",
+        help="run the windowed witness on a private authenticated Xvfb (implies --windowed), "
+             "so no foreign live X11 input reaches the editor")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    if args.private_display:
+        args.windowed = True
+        if args.analyse_only:
+            parser.error("--private-display needs a capture run")
+        state = REPO / ".tmp/private-x11" / output.name
+        display = start_private_display(state)
+        try:
+            args.display = display["DISPLAY"]
+            os.environ["XAUTHORITY"] = display["XAUTHORITY"]
+            return run(args, output)
+        finally:
+            stop_private_display(state)
+    return run(args, output)
+
+
+def run(args, output):
     if not args.analyse_only:
         catalogue = json.loads(subprocess.check_output(
             ["ctest", "--test-dir", str(args.build_dir.resolve()), "--show-only=json-v1"], text=True))

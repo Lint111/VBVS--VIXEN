@@ -91,10 +91,17 @@ DISPLAY="${DISPLAY:-:0}"
 export DISPLAY
 unset WAYLAND_DISPLAY
 
+# A private display from tools/private-x11-display.sh is TCP-only (host:N plus XAUTHORITY); the
+# shared WSLg display is a local unix socket.
 display_number="${DISPLAY#*:}"
 display_number="${display_number%%.*}"
-if [[ ! "$display_number" =~ ^[0-9]+$ || ! -S "/tmp/.X11-unix/X${display_number}" ]]; then
-    echo "No local X11 socket is available for DISPLAY=$DISPLAY" >&2
+if [[ "$DISPLAY" == :* ]]; then
+    if [[ ! "$display_number" =~ ^[0-9]+$ || ! -S "/tmp/.X11-unix/X${display_number}" ]]; then
+        echo "No local X11 socket is available for DISPLAY=$DISPLAY" >&2
+        exit 2
+    fi
+elif [[ ! "$display_number" =~ ^[0-9]+$ ]]; then
+    echo "DISPLAY=$DISPLAY is not a valid X11 display" >&2
     exit 2
 fi
 
