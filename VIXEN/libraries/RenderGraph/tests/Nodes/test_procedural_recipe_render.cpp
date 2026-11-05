@@ -27,6 +27,7 @@
  * Output: /tmp/glsl_recipe_procedural.png (512x512 RGBA8, procedural peanut sphere-trace).
  */
 
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
 
 #include "Recipe/SdfRecipeCodegen.h"
@@ -192,7 +193,7 @@ protected:
         // explicit. The parity precedent remains real-GPU-only via IsRealGpu in
         // test_recipe_glsl_numerical_parity.cpp.
 #if defined(__linux__)
-        ::setenv("VIXEN_ALLOW_SOFTWARE_VULKAN", "1", /*overwrite=*/1);
+        Vixen::Core::Env::Set("VIXEN_ALLOW_SOFTWARE_VULKAN", "1");
 #endif
         VixenSelectWslGpuIcd();
 

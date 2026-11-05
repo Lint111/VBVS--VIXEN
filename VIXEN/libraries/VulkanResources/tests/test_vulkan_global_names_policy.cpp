@@ -1,3 +1,4 @@
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
 
 #include "VulkanGlobalNames.h"
@@ -21,14 +22,14 @@ public:
 
     ~ScopedEnvironment() {
         if (hadValue_) {
-            ::setenv(name_, value_.c_str(), /*overwrite=*/1);
+            Vixen::Core::Env::Set(name_, value_);
         } else {
-            ::unsetenv(name_);
+            Vixen::Core::Env::Unset(name_);
         }
     }
 
-    void Unset() { ::unsetenv(name_); }
-    void Set(const char* value) { ::setenv(name_, value, /*overwrite=*/1); }
+    void Unset() { Vixen::Core::Env::Unset(name_); }
+    void Set(const char* value) { Vixen::Core::Env::Set(name_, value); }
 
 private:
     const char* name_;
