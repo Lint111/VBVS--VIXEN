@@ -3860,7 +3860,13 @@ void VulkanGraphApplication::DeInitialize() {
     // then poll the completed capture handles before teardown can discard their staging buffers.
     if (renderGraph && (!pendingHudCapturePath_.empty() || pendingHudCapture_ ||
                         !pendingOffscreenCaptures_.empty())) {
-        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+        // Offscreen captures were begun on offscreenDeviceNode_ (CaptureOffscreenFrameToPng); a graph
+        // whose device is not named main_device (the offscreen UI graph's ui_device) must still flush.
+        auto* deviceInst = pendingOffscreenCaptures_.empty()
+            ? nullptr
+            : static_cast<DeviceNode*>(renderGraph->GetInstance(offscreenDeviceNode_));
+        if (!deviceInst) deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+        if (deviceInst) {
             if (auto* device = deviceInst->GetVulkanDevice()) {
                 const auto waited = renderGraph->FlushSubmittedWork(device);
                 PollPendingCaptures();
