@@ -5,6 +5,6 @@
 # Same flat form as undertow's toolchain/providers/*.pin: 'sha:', 'branch:' and 'remote:' lines,
 # '#' comments ignored. VIXEN's CMake reads this file; undertow and the kernel keep a byte-identical
 # copy at toolchain/providers/gaia.pin. Change all three in one batch.
-sha: 9bd57eb6792bc52f2927667984df2d2d29071ff1
+sha: d5b0a9201f9638df542d9b8d4caecb9c3658e9df
 branch: lane-gaiaf0
 remote: https://github.com/Lint111/gaia-ecs.git
