@@ -7,27 +7,32 @@ param(
     [string]$LodMode = 'fixed',
     [ValidateSet('all', '500', '1080')]
     [string]$Extent = 'all',
-    [int]$Round = 0
+    [int]$Round = 0,
+    # One FSR 1 capture per profile (500/1080 extents, fixed and coupled LOD) for per-stage
+    # input-AA/EASU/RCAS cost; steady frames are 33-64 of each yaw. No A/B/A controls.
+    [switch]$StageCost,
+    [string]$BuildDir = 'build\stage1-merged-native'
 )
 
 $ErrorActionPreference = 'Stop'
-$exe = Join-Path $RepoRoot 'build\stage1-merged-native\application\main\vixen_lookdev_capture.exe'
+$exe = Join-Path $RepoRoot (Join-Path $BuildDir 'application\main\vixen_lookdev_capture.exe')
 if (-not (Test-Path $exe)) { throw "Capture executable not found: $exe" }
 $vulkanSdk = 'C:\VulkanSDK\1.4.350.0'
 if (Test-Path $vulkanSdk) {
     $env:VULKAN_SDK = $vulkanSdk
     $env:PATH = (Join-Path $vulkanSdk 'Bin') + ';' + $env:PATH
 }
-$runtimeRoot = Join-Path $RepoRoot 'build\stage1-merged-native'
+$runtimeRoot = Join-Path $RepoRoot $BuildDir
 $runtimeDirs = @(Get-ChildItem $runtimeRoot -Directory -ErrorAction SilentlyContinue |
     Where-Object { Test-Path (Join-Path $_.FullName 'tbb12.dll') } |
     Select-Object -ExpandProperty FullName)
 if ($runtimeDirs.Count) {
     $env:PATH = ($runtimeDirs -join ';') + ';' + $env:PATH
 }
-if ($Rounds -lt 3) { throw 'At least three A/B/A rounds are required.' }
+if (-not $StageCost -and $Rounds -lt 3) { throw 'At least three A/B/A rounds are required.' }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $OutputRoot = Join-Path $RepoRoot ('reports\upscalestage1\paired-native\' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $LodMode)
+    $leaf = if ($StageCost) { 'stage-cost' } else { $LodMode }
+    $OutputRoot = Join-Path $RepoRoot ('reports\upscalestage1\paired-native\' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $leaf)
 }
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 
@@ -42,13 +47,37 @@ $configs = @(
 if ($LodMode -eq 'coupled') {
     $configs = @($configs | Where-Object { $_.Scale -ne '1.0' })
 }
+$stageCostCases = @(
+    [pscustomobject]@{ Name = 'fixed-500-scale1'; Width = 500; Height = 500; Scale = '1.0'; Lod = 'fixed' },
+    [pscustomobject]@{ Name = 'fixed-500-scale-2-3'; Width = 500; Height = 500; Scale = '0.6666667'; Lod = 'fixed' },
+    [pscustomobject]@{ Name = 'fixed-500-scale-1-2'; Width = 500; Height = 500; Scale = '0.5'; Lod = 'fixed' },
+    [pscustomobject]@{ Name = 'coupled-500-scale-2-3'; Width = 500; Height = 500; Scale = '0.6666667'; Lod = 'coupled' },
+    [pscustomobject]@{ Name = 'coupled-500-scale-1-2'; Width = 500; Height = 500; Scale = '0.5'; Lod = 'coupled' },
+    [pscustomobject]@{ Name = 'fixed-1080-scale1'; Width = 1920; Height = 1080; Scale = '1.0'; Lod = 'fixed' },
+    [pscustomobject]@{ Name = 'fixed-1080-scale-2-3'; Width = 1920; Height = 1080; Scale = '0.6666667'; Lod = 'fixed' },
+    [pscustomobject]@{ Name = 'fixed-1080-scale-1-2'; Width = 1920; Height = 1080; Scale = '0.5'; Lod = 'fixed' }
+)
+if ($StageCost -and $Extent -ne 'all') {
+    $stageCostCases = @($stageCostCases | Where-Object { ($Extent -eq '500') -eq ($_.Width -eq 500) })
+}
 $testFilter = '--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically'
 $telemetryPath = Join-Path $OutputRoot 'gpu-telemetry.csv'
 $telemetryNote = Join-Path $OutputRoot 'gpu-telemetry-availability.txt'
 $manifestPath = Join-Path $OutputRoot 'run-manifest.txt'
 $counterPaths = @()
 
-if (-not (Test-Path $manifestPath)) {
+if ($StageCost) {
+    @(
+        "repo=$RepoRoot"
+        "executable=$exe"
+        'sequence=one FSR 1 capture per profile; four midday yaws; this sweep reports stage costs, not A/B/A gate results'
+        'camera=orbit center (5,5,5); distance 14; FOV 45 degrees; pitch 0.45 radians; yaws 0/90/180/270 degrees'
+        'fixed_exposure=VIXEN_HDR_EXPOSURE=1; VIXEN_HDR_EXPOSURE_FIXED=1'
+        'recipe=static authored LookdevSceneDefinition; no per-run RNG; sky_seed=0x5a17f13d'
+        'steady_cost_samples=frames 33-64 per yaw (128 samples)'
+        "profiles=$(($stageCostCases | ForEach-Object { $_.Name }) -join ',')"
+    ) | Set-Content -Path $manifestPath -Encoding UTF8
+} elseif (-not (Test-Path $manifestPath)) {
     @(
         "repo=$RepoRoot"
         "executable=$exe"
@@ -118,10 +147,16 @@ function Invoke-Capture(
     [string]$ConfigName,
     [string]$Role,
     [string]$Scale,
-    [string]$Upscaler
+    [string]$Upscaler,
+    [string]$Lod = $LodMode,
+    [string]$RunDirOverride = ''
 ) {
     $runLabel = "${Width}x${Height}-round-$Round-$ConfigName-$Role"
     $runDir = Join-Path $OutputRoot (Join-Path "${Width}x${Height}" (Join-Path "round-$Round" (Join-Path $ConfigName $Role)))
+    if ($RunDirOverride) {
+        $runLabel = $ConfigName
+        $runDir = $RunDirOverride
+    }
     New-Item -ItemType Directory -Path $runDir -Force | Out-Null
     $csv = Join-Path $runDir 'perf.csv'
     $captureDir = Join-Path $runDir 'captures'
@@ -135,7 +170,7 @@ function Invoke-Capture(
     $env:VIXEN_HDR_EXPOSURE = '1'
     $env:VIXEN_HDR_EXPOSURE_FIXED = '1'
     $env:VIXEN_HUD_SUPPRESS = '1'
-    if ($LodMode -eq 'fixed') {
+    if ($Lod -eq 'fixed') {
         $env:VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE = '0.00165685425'
     } else {
         Remove-Item Env:VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE -ErrorAction SilentlyContinue
@@ -181,6 +216,14 @@ function Invoke-Capture(
     Write-Host "DONE at_utc=$runCompletedAtUtc elapsed_ms=$elapsedMs $runLabel"
 }
 
+if ($StageCost) {
+    foreach ($case in $stageCostCases) {
+        Invoke-Capture $case.Width $case.Height 1 $case.Name 'stage-cost' $case.Scale 'fsr1' $case.Lod (Join-Path $OutputRoot $case.Name)
+    }
+    Add-Content -Path $manifestPath -Value "completed=$($stageCostCases.Count)-fsr-stage-cost-profiles" -Encoding UTF8
+    Write-Host "COMPLETE stage-cost extent=$Extent output=$OutputRoot"
+    return
+}
 if ($Round -lt 0 -or $Round -gt $Rounds) { throw "Round must be 0 (all) or 1..$Rounds." }
 $extents = @(
     [pscustomobject]@{ Width = 500; Height = 500 },
