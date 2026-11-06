@@ -3,16 +3,16 @@ using Yeroket.Util.KernelFramework;
 namespace Vixen.Codegen.Gpu
 {
     /// <summary>The pair-target WILDCARD marker (query generic → ::gaia::ecs::All).</summary>
-    public readonly struct All
+    public readonly struct ALL
     {
         public const string SchemaKind = "all";
-        public static implicit operator All(global::Undertow.Modding.KindRef<All> _) => default;
-        public static bool operator ==(All path, All target) => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        public static bool operator !=(All path, All target) => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public static implicit operator ALL(global::Undertow.Modding.KindRef<ALL> _) => default;
+        public static bool operator ==(ALL path, ALL target) => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        public static bool operator !=(ALL path, ALL target) => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public override bool Equals(object obj) => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public override int GetHashCode() => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
-        public static implicit operator All(FrameTargetsRef _) => default;
-        public static implicit operator All(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
+        public static implicit operator ALL(FrameTargetsRef _) => default;
+        public static implicit operator ALL(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
     }
 
     /// <summary>Schema path for frame_targets; lowered before native dispatch.</summary>
