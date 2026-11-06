@@ -23,6 +23,7 @@ add_library(SVO STATIC
     include/Recipe/LodSelection.h  # Recipe LOD ladder and CPU transition contract (Wave A)
     include/Recipe/MultiBodyRenderer.h  # Multi-body placement, per-body LOD, and draw ordering
     include/Recipe/RecipeComposition.h  # Recipe composition blocks and LOD resolution (Wave B)
+    include/Recipe/RecipeServices.h  # R841 fixed kernel-service consumer boundary
     include/SceneGenerator.h  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     include/BulkMaterialization.h
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API

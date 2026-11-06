@@ -1,8 +1,8 @@
 #include "BulkMaterialization.h"
 
 #include "MipBake.h"
+#include "Recipe/RecipeServices.h"
 #include "SdfBake.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -40,12 +40,20 @@ void hashTypedVector(uint64_t& hash, std::span<const T> values) {
     hashBytes(hash, values.data(), values.size_bytes());
 }
 
-class SimdRecipeBatchEvaluator {
+class CpuServiceRecipeBatchEvaluator {
 public:
-    SimdRecipeBatchEvaluator(const Recipe::LoweredRecipeProgram& program,
+    CpuServiceRecipeBatchEvaluator(const YkRecipeRuntimeApi& api,
+                                   YkRecipeProgram* program,
                              const glm::vec3& center,
                              std::stop_token stopToken)
-        : m_program(program), m_center(center), m_stopToken(stopToken) {}
+        : m_api(api), m_program(program), m_center(center), m_stopToken(stopToken) {}
+
+    ~CpuServiceRecipeBatchEvaluator() {
+        if (m_program != nullptr) m_api.release(m_program);
+    }
+
+    CpuServiceRecipeBatchEvaluator(const CpuServiceRecipeBatchEvaluator&) = delete;
+    CpuServiceRecipeBatchEvaluator& operator=(const CpuServiceRecipeBatchEvaluator&) = delete;
 
     void eval4(const glm::vec3* points, std::size_t count, float* values) const {
         if (m_stopToken.stop_requested()) {
@@ -56,11 +64,16 @@ public:
             local[lane] = points[lane] - m_center;
         for (std::size_t lane = count; lane < 4; ++lane)
             local[lane] = local[count - 1];
-        m_program.Evaluate4(local, values);
+        YkRecipeDiagnostic diagnostic{};
+        const auto status = m_api.evaluate4(
+            m_program, reinterpret_cast<const float*>(local), values, nullptr, &diagnostic);
+        if (status != YK_RECIPE_OK)
+            throw std::invalid_argument(std::string("CPU recipe service evaluation failed: ") + diagnostic.message);
     }
 
 private:
-    const Recipe::LoweredRecipeProgram& m_program;
+    const YkRecipeRuntimeApi& m_api;
+    YkRecipeProgram* m_program;
     glm::vec3 m_center;
     std::stop_token m_stopToken;
 };
@@ -89,13 +102,21 @@ SerializedOctree CpuRecipeMaterializer::materialize(
         throw MaterializationCancelled{};
     }
 
-    Recipe::LoweredRecipeProgram lowered;
-    std::string loweringError;
-    if (!lowered.Lower(request.recipe.data(), static_cast<uint32_t>(request.recipe.size()),
-                       request.parameters, loweringError)) {
-        throw std::invalid_argument("CPU recipe SIMD lowering failed: " + loweringError);
-    }
-    SimdRecipeBatchEvaluator evaluator(lowered, request.center, stopToken);
+    const auto& services = Recipe::GetRecipeServiceApis();
+    if (!services.available || services.cpu.lower == nullptr)
+        throw std::invalid_argument("CPU recipe service is unavailable");
+    YkRecipeProgram* program = nullptr;
+    YkRecipeDiagnostic diagnostic{};
+    const auto lowerStatus = services.cpu.lower(
+        YK_RECIPE_PROFILE_CPU_SIMD4_STRICT,
+        reinterpret_cast<const YkRecipeInstruction*>(request.recipe.data()),
+        static_cast<uint32_t>(request.recipe.size()),
+        request.parameters.empty() ? nullptr : request.parameters.data(),
+        static_cast<uint32_t>(request.parameters.size()), &program, &diagnostic);
+    if (lowerStatus != YK_RECIPE_OK || program == nullptr)
+        throw std::invalid_argument(std::string("CPU recipe service lowering failed: ") + diagnostic.message);
+
+    CpuServiceRecipeBatchEvaluator evaluator(services.cpu, program, request.center, stopToken);
     auto baked = BakeSdfWorld(
         evaluator,
         request.center,

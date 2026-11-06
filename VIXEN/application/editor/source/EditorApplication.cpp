@@ -6,7 +6,7 @@
 // them, or robin_hood's Table<> instantiations fail with "std::hash<T> has no operator()".
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
-#include "Recipe/RecipeBounds.h"
+#include "Recipe/RecipeServices.h"
 #include "SdfRecipes.h"
 #include "EditorDocumentFraming.h"
 #include "ShellOctreeGpu.h"
@@ -286,12 +286,12 @@ void AppendPngBytes(void* context, void* data, int size) {
 void ApplyEditorPreviewBounds(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
                               const Vixen::Editor::EditorDocumentModel& document) {
     const auto maxima = ParameterRangeMaxima(document);
-    const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), maxima);
-    if (derived.ok && std::isfinite(derived.radius) && derived.radius > 0.0f) {
-        entry.boundCenter = derived.center;
-        entry.boundRadius = derived.radius;
-    } else {
+    const auto originalParameters = entry.parameterValues;
+    if (entry.parameterValues.empty()) entry.parameterValues.assign(maxima.begin(), maxima.end());
+    const auto analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+        entry, /*defaultBoundRadius=*/64.0f * 0.86602540378f, /*defaultStepRelaxation=*/0.9f);
+    entry.parameterValues = originalParameters;
+    if (analysis.boundSource == Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::EngineDefault) {
         // Non-whitelisted recipes use the finite editor bake domain as a conservative preview
         // envelope. The camera still frames the document rather than assuming a golden fixture.
         constexpr float kBakeResolution = 64.0f;

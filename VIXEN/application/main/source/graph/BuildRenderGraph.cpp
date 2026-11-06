@@ -4131,7 +4131,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // — see PreTick's "Recipe-Parameterization M3 Task 8" block). recipeId = 2+n is the
             // next free id after the N structurally-varied bodies just registered above.
             // ReadParam/MathSub are deliberately NOT on the Lipschitz occupancy-grid whitelist
-            // (RecipeOccupancy.h) — DeriveOccupancyGrid declines gracefully (occupancyGridDim=0,
+            // (kernel recipe analysis) — unavailable occupancy leaves occupancyGridDim=0,
             // documented non-hazard), and are NOT on DeriveConservativeBounds's whitelist either,
             // so boundCenter/boundRadius are authored explicitly here (must cover the full sweep
             // range, not just the base radius) rather than left for derivation to guess wrong.

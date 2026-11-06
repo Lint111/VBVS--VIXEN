@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 
 namespace Vixen::SVO::Recipe {
@@ -101,17 +102,20 @@ inline std::string SpliceProceduralRecipesIntoSource(
         // Register() already guarantees a non-null, non-empty bytecode for every id in Ids() —
         // defensive only, mirrors the assert-not-throw discipline the CPU emitter itself uses.
         if (!entry) continue;
-        out << EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
-                                               static_cast<uint32_t>(entry->bytecode.size()),
-                                               id,
-                                               usesDeclarePosition(entry),
-                                               &registry,
-                                               entry->glyphInstances,
-                                               /*glyphInstanceBase=*/0,
-                                               entry->pathInstances,
-                                               /*readInstructionOperands=*/false,
-                                               /*useBoundedGlyphOutline=*/true)
-            << "\n";
+        const bool declaredPosition = usesDeclarePosition(entry);
+        std::string field = RecipeGpuField(entry->bytecode, id, declaredPosition,
+                                           entry->pathInstances, /*glyphInstanceBase=*/0,
+                                           /*boundedGlyph=*/true);
+        if (field.empty()) {
+            // Keep the old emitter as an explicit oracle/failsafe while the provider is being
+            // rolled through the remaining consumers. Normal builds take the service branch.
+            field = EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
+                                                    static_cast<uint32_t>(entry->bytecode.size()),
+                                                    id, declaredPosition, &registry,
+                                                    entry->glyphInstances, 0, entry->pathInstances,
+                                                    false, true);
+        }
+        out << field << "\n";
     }
 
     if (outConcatenatedGlyphInstances) {

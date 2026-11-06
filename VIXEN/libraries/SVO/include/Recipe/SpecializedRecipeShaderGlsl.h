@@ -1,5 +1,6 @@
 #pragma once
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include <cstdint>
 #include <cstdlib>
@@ -229,9 +230,13 @@ inline std::string EmitSpecializedRecipeComputeShader(
     std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
-        fieldFn = EmitProceduralFieldFunctionGlsl(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
-            false, nullptr, entry.glyphInstances, glyphInstanceBase, entry.pathInstances);
+        fieldFn = RecipeGpuField(entry.bytecode, recipeId, false, entry.pathInstances, glyphInstanceBase);
+        if (fieldFn.empty()) {
+            // Old emission remains the parity oracle/failsafe until every consumer is migrated.
+            fieldFn = EmitProceduralFieldFunctionGlsl(
+                entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
+                false, nullptr, entry.glyphInstances, glyphInstanceBase, entry.pathInstances);
+        }
     }
     std::cout << "[RecipeBucketedDispatch] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
@@ -396,9 +401,13 @@ inline std::string EmitSpecializedRecipeShadeShader(
     std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
     const bool kernelEmitted = !fieldFn.empty();
     if (!kernelEmitted) {
-        fieldFn = EmitProceduralFieldFunctionGlsl(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
-            false, nullptr, entry.glyphInstances, glyphInstanceBase, entry.pathInstances);
+        fieldFn = RecipeGpuField(entry.bytecode, recipeId, false, entry.pathInstances, glyphInstanceBase);
+        if (fieldFn.empty()) {
+            // Old emission remains the parity oracle/failsafe until every consumer is migrated.
+            fieldFn = EmitProceduralFieldFunctionGlsl(
+                entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId,
+                false, nullptr, entry.glyphInstances, glyphInstanceBase, entry.pathInstances);
+        }
     }
     std::cout << "[BucketShade] recipeId=" << recipeId << " field function: "
                << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
