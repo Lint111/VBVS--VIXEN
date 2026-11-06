@@ -8,11 +8,13 @@
 #include "YkRecipeRuntime.h"
 
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/generated/RecipeGlslLiterals.g.h"
 
 #include <array>
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,6 +25,21 @@ struct RecipeServiceApis {
     YkRecipeGpuApi gpu{};
     YkRecipeAnalysisApi analysis{};
     bool available = false;
+};
+
+struct RecipeCpuEvaluation4 {
+    std::array<float, 4> distances{};
+    std::array<float, 12> declaredPositions{};
+    std::uint32_t status = YK_RECIPE_INVALID_ARGUMENT;
+    std::string diagnostic;
+};
+
+struct RecipeGpuTapeResult {
+    std::vector<YkRecipeGpuTapeInstruction> instructions;
+    std::uint32_t valueCount = 0u;
+    std::uint32_t positionCount = 0u;
+    std::uint32_t status = YK_RECIPE_GPU_INVALID_ARGUMENT;
+    std::string diagnostic;
 };
 
 [[nodiscard]] inline const RecipeServiceApis& GetRecipeServiceApis() noexcept {
@@ -57,11 +74,55 @@ struct RecipeServiceApis {
     return status == YK_RECIPE_OK ? std::string(digest) : std::string{};
 }
 
+// CPU evaluation is owned by the fixed runtime ABI.  Keep the lane packing here so callers do
+// not need the retired generated SIMD lowering type: the service ABI is four interleaved xyz
+// positions and four scalar results.
+[[nodiscard]] inline RecipeCpuEvaluation4 EvaluateRecipe4(
+    std::span<const SdfInstruction> instructions,
+    std::span<const glm::vec3> positions,
+    std::span<const float> parameters = {},
+    bool captureDeclaredPositions = false) {
+    RecipeCpuEvaluation4 output;
+    if (positions.size() != 4u) return output;
+    const auto& services = GetRecipeServiceApis();
+    if (!services.available || services.cpu.lower == nullptr || services.cpu.evaluate4 == nullptr) return output;
+
+    YkRecipeProgram* program = nullptr;
+    YkRecipeDiagnostic diagnostic{};
+    output.status = services.cpu.lower(
+        YK_RECIPE_PROFILE_CPU_SIMD4_STRICT,
+        reinterpret_cast<const YkRecipeInstruction*>(instructions.data()),
+        static_cast<std::uint32_t>(instructions.size()),
+        parameters.empty() ? nullptr : parameters.data(),
+        static_cast<std::uint32_t>(parameters.size()), &program, &diagnostic);
+    if (output.status != YK_RECIPE_OK || program == nullptr) {
+        output.diagnostic = diagnostic.message;
+        return output;
+    }
+
+    std::array<float, 12> packedPositions{};
+    for (std::size_t lane = 0; lane < positions.size(); ++lane) {
+        packedPositions[lane * 3u + 0u] = positions[lane].x;
+        packedPositions[lane * 3u + 1u] = positions[lane].y;
+        packedPositions[lane * 3u + 2u] = positions[lane].z;
+    }
+    output.status = services.cpu.evaluate4(
+        program, packedPositions.data(), output.distances.data(),
+        captureDeclaredPositions ? output.declaredPositions.data() : nullptr, &diagnostic);
+    if (output.status != YK_RECIPE_OK) output.diagnostic = diagnostic.message;
+    services.cpu.release(program);
+    return output;
+}
+
 struct RecipeRegistrationAnalysis {
     enum class BoundSource { Authored, Derived, EngineDefault };
 
     BoundSource boundSource = BoundSource::EngineDefault;
     bool occupancyAvailable = false;
+    std::uint64_t occupancySampledPoints = 0u;
+    std::uint64_t occupancySkippedPoints = 0u;
+    std::uint32_t occupancyExactCells = 0u;
+    std::uint32_t occupancySampledCells = 0u;
     std::uint32_t status = YK_RECIPE_ANALYSIS_OK;
     std::string diagnostic;
 };
@@ -72,7 +133,9 @@ struct RecipeRegistrationAnalysis {
 [[nodiscard]] inline RecipeRegistrationAnalysis AnalyzeRecipeRegistration(
     RecipeRegistry::RecipeEntry& entry,
     float defaultBoundRadius,
-    float defaultStepRelaxation) {
+    float defaultStepRelaxation,
+    std::uint32_t occupancyDense = 64u,
+    std::uint32_t occupancyCoarse = 16u) {
     RecipeRegistrationAnalysis summary;
     const auto& services = GetRecipeServiceApis();
     if (!services.available || services.analysis.analyze == nullptr) {
@@ -93,8 +156,8 @@ struct RecipeRegistrationAnalysis {
     request.boundCenter[1] = entry.boundCenter.y;
     request.boundCenter[2] = entry.boundCenter.z;
     request.boundRadius = entry.boundRadius;
-    request.occupancyDense = 64u;
-    request.occupancyCoarse = 16u;
+    request.occupancyDense = occupancyDense;
+    request.occupancyCoarse = occupancyCoarse;
 
     YkRecipeAnalysisResult* result = nullptr;
     YkRecipeAnalysisDiagnostic diagnostic{};
@@ -136,6 +199,10 @@ struct RecipeRegistrationAnalysis {
     occupancy.structSize = sizeof(occupancy);
     if (services.analysis.occupancy(result, &occupancy, nullptr, 0u) == YK_RECIPE_ANALYSIS_OK &&
         occupancy.available != 0u && occupancy.valueCount != 0u) {
+        summary.occupancySampledPoints = occupancy.sampledPoints;
+        summary.occupancySkippedPoints = occupancy.skippedPoints;
+        summary.occupancyExactCells = occupancy.exactCells;
+        summary.occupancySampledCells = occupancy.sampledCells;
         std::vector<float> values(occupancy.valueCount);
         const auto occupancyStatus = services.analysis.occupancy(
             result, &occupancy, values.data(), static_cast<std::uint32_t>(values.size()));
@@ -272,6 +339,104 @@ struct RecipeSceneAnalysis {
     }
     services.gpu.release(module);
     return field;
+}
+
+[[nodiscard]] inline RecipeGpuTapeResult RecipeGpuTape(
+    std::span<const SdfInstruction> instructions) {
+    RecipeGpuTapeResult output;
+    const auto& services = GetRecipeServiceApis();
+    if (!services.available || services.gpu.lower == nullptr || services.gpu.tape == nullptr) return output;
+
+    YkRecipeGpuRequest request{};
+    request.structSize = sizeof(request);
+    request.backend = YK_RECIPE_GPU_BACKEND_GLSL_TAPE;
+    YkRecipeGpuModule* module = nullptr;
+    YkRecipeGpuDiagnostic diagnostic{};
+    output.status = services.gpu.lower(
+        &request,
+        reinterpret_cast<const YkRecipeGpuInstruction*>(instructions.data()),
+        static_cast<std::uint32_t>(instructions.size()), nullptr, 0u, 0u, &module, &diagnostic);
+    if (output.status != YK_RECIPE_GPU_OK || module == nullptr) {
+        output.diagnostic = diagnostic.message;
+        return output;
+    }
+
+    std::uint32_t count = 0u;
+    output.status = services.gpu.tape(module, nullptr, 0u, &count,
+                                      &output.valueCount, &output.positionCount);
+    if (output.status == YK_RECIPE_GPU_OK && count != 0u) {
+        output.instructions.resize(count);
+        output.status = services.gpu.tape(module, output.instructions.data(), count, &count,
+                                          &output.valueCount, &output.positionCount);
+        if (output.status == YK_RECIPE_GPU_OK) output.instructions.resize(count);
+        else output.instructions.clear();
+    }
+    services.gpu.release(module);
+    return output;
+}
+
+inline std::string WithGlyphOutlineBuffer(const std::string& source, std::uint32_t binding,
+                                          std::uint32_t set = 0u) {
+    constexpr std::string_view marker = "#endif // GLYPHOUTLINEINSTANCE_GLSL\n";
+    const auto at = source.find(marker);
+    if (at == std::string::npos) return source;
+    std::string output = source;
+    output.insert(at + marker.size(),
+        "layout(set = " + std::to_string(set) + ", std430, binding = " + std::to_string(binding) +
+        ") readonly buffer GlyphOutlineBuffer {\n"
+        "    GlyphOutlineInstance glyphOutlineInstances[];\n"
+        "};\n");
+    return output;
+}
+
+inline std::string WithPathInstanceBuffer(const std::string& source, std::uint32_t binding,
+                                          std::uint32_t set = 0u) {
+    constexpr std::string_view marker = "#endif // PATHINSTANCE_GLSL\n";
+    const auto at = source.find(marker);
+    if (at == std::string::npos) return source;
+    std::string output = source;
+    output.insert(at + marker.size(),
+        "layout(set = " + std::to_string(set) + ", std430, binding = " + std::to_string(binding) +
+        ") readonly buffer PathInstanceBuffer {\n"
+        "    PathInstance pathInstances[];\n"
+        "};\n");
+    return output;
+}
+
+inline std::string WithoutGlyphOutlineKernel(const std::string& source) {
+    constexpr std::string_view signature = "float SdfCore_GlyphOutline(";
+    const auto begin = source.find(signature);
+    if (begin == std::string::npos) return source;
+    const auto open = source.find('{', begin);
+    if (open == std::string::npos) return source;
+    int depth = 0;
+    std::size_t end = open;
+    for (; end < source.size(); ++end) {
+        if (source[end] == '{') ++depth;
+        else if (source[end] == '}' && --depth == 0) { ++end; break; }
+    }
+    std::string output = source;
+    output.erase(begin, end - begin);
+    return output;
+}
+
+// Pointer/count spelling for existing shader-test call sites.  The retired emitter accepted
+// this shape; keeping only this thin service adapter lets those tests migrate without exposing
+// any old lowering implementation or generated type.
+[[nodiscard]] inline std::string RecipeGpuField(
+    const SdfInstruction* instructions,
+    std::uint32_t count,
+    std::uint32_t recipeId,
+    bool declaredPositionOutParam = false,
+    const RecipeRegistry* /*registry*/ = nullptr,
+    std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> /*glyphInstances*/ = {},
+    std::uint32_t glyphIndexBase = 0u,
+    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {},
+    bool /*readInstructionOperands*/ = false,
+    bool boundedGlyph = false) {
+    return RecipeGpuField(
+        std::span<const SdfInstruction>(instructions, count), recipeId, declaredPositionOutParam,
+        pathRows, glyphIndexBase, boundedGlyph);
 }
 
 } // namespace Vixen::SVO::Recipe

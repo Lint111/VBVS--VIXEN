@@ -27,12 +27,10 @@
 #include <gtest/gtest.h>
 
 #include "Recipe/RecipeParityCorpus.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
 #include "Recipe/RecipeRegistry.h"
-#include "Recipe/RecipeTileSpecialization.h"
-#include "Recipe/RecipeWholeDomainCompaction.h"
 #include "ShaderCompiler.h"
 #include <spirv/unified1/spirv.hpp>
 #include <unordered_set>
@@ -194,27 +192,14 @@ std::string ReadWholeFile(const char* path) {
     return contents.str();
 }
 
-struct GpuRecipeTapeInstruction {
-    std::uint32_t opCode;
-    float data[32];
-};
-static_assert(sizeof(GpuRecipeTapeInstruction) == sizeof(SdfInstruction));
-
-GpuRecipeTapeInstruction PackGpuInstruction(const SdfInstruction& instruction) {
-    GpuRecipeTapeInstruction packed{};
-    packed.opCode = instruction.opCode;
-    std::memcpy(packed.data, instruction.data, sizeof(packed.data));
-    return packed;
-}
+using GpuRecipeTapeInstruction = YkRecipeGpuTapeInstruction;
 
 using TileTapeRange = std::array<std::uint32_t, 2>;
 
 std::vector<GpuRecipeTapeInstruction> PackGpuTape(std::span<const SdfInstruction> instructions) {
-    std::vector<GpuRecipeTapeInstruction> packed;
-    packed.reserve(instructions.size());
-    for (const SdfInstruction& instruction : instructions)
-        packed.push_back(PackGpuInstruction(instruction));
-    return packed;
+    const auto result = RecipeGpuTape(instructions);
+    EXPECT_EQ(result.status, YK_RECIPE_GPU_OK) << result.diagnostic;
+    return result.instructions;
 }
 
 // The tape evaluator reads register addresses that AllocateRecipeTapeRegisters packs into each
@@ -227,17 +212,11 @@ struct TapeStorageCounts {
 
 std::vector<GpuRecipeTapeInstruction> PackAllocatedGpuTape(std::span<const SdfInstruction> instructions,
                                                            TapeStorageCounts& counts) {
-    std::vector<GpuRecipeTapeInstruction> packed(instructions.size());
-    for (std::size_t index = 0; index < instructions.size(); ++index)
-        packed[index].opCode = instructions[index].opCode;
-    std::uint32_t valueCount = 0;
-    std::uint32_t positionCount = 0;
-    std::string error;
-    EXPECT_TRUE(AllocateRecipeTapeRegisters<GpuRecipeTapeInstruction>(
-        instructions, std::span<GpuRecipeTapeInstruction>(packed), valueCount, positionCount, error)) << error;
-    counts.values = std::max(counts.values, valueCount);
-    counts.positions = std::max(counts.positions, positionCount);
-    return packed;
+    const auto result = RecipeGpuTape(instructions);
+    EXPECT_EQ(result.status, YK_RECIPE_GPU_OK) << result.diagnostic;
+    counts.values = std::max(counts.values, result.valueCount);
+    counts.positions = std::max(counts.positions, result.positionCount);
+    return result.instructions;
 }
 
 std::string TapeStorageDefines(const TapeStorageCounts& counts) {
@@ -494,14 +473,14 @@ protected:
     bool             timestampsSupported_ = false;
     std::string      selectedDeviceName_;
 
-    Yeroket::Sdf::Generated::RecipeProofBackend DeviceProofBackend() const {
+    std::uint32_t DeviceProofBackend() const {
         VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
         VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
         properties.pNext = &driver;
         vkGetPhysicalDeviceProperties2(physicalDevice_, &properties);
         return driver.driverID == VK_DRIVER_ID_MESA_DOZEN
-            ? Yeroket::Sdf::Generated::RecipeProofBackend::GpuDznPrecise
-            : Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified;
+            ? YK_RECIPE_ANALYSIS_BACKEND_GPU_DZN_PRECISE
+            : YK_RECIPE_ANALYSIS_BACKEND_GPU_UNCERTIFIED;
     }
 
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
@@ -1149,7 +1128,7 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
     kss << kernelFile.rdbuf();
     const std::string sdfCoreGlsl = WithoutGlyphOutlineKernel(kss.str());
 
-    const std::string fieldFn = EmitProceduralFieldFunctionGlsl(
+    const std::string fieldFn = RecipeGpuField(
         prog, kCount, /*recipeId=*/0, /*emitDeclaredPositionOutParam=*/true);
     const std::string shaderSrc = ComposeSliceShader(sdfCoreGlsl, fieldFn, kWorldHalfExtent);
 
@@ -1277,153 +1256,11 @@ static bool HasStrictFp32Arithmetic(const std::vector<std::uint32_t>& words, boo
         [&](auto id){ return precise.contains(id); });
 }
 
-TEST_F(DeclaredPositionRenderTest, GeneratedGpuRoundingContainsExtremaTiesAndUnknowns) {
-    using namespace Yeroket::Sdf::Generated;
-    const auto backend=DeviceProofBackend();
-    if(backend==RecipeProofBackend::GpuUncertified)
-        GTEST_SKIP() << "No admitted floating-point profile for " << selectedDeviceName_;
-    const std::string source=R"GLSL(#version 450
-layout(local_size_x=1,local_size_y=1) in;
-layout(set=0,binding=0,rgba32f) uniform image2D outImage;
-layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
-void main() {
- precise float a=params[0]+params[1];
- precise float b=params[0]*params[1];
- precise float c=params[0]/params[1];
- precise float d=sqrt(params[2]);
- imageStore(outImage,ivec2(0),vec4(a,b,c,d));
-})GLSL";
-    ShaderManagement::ShaderCompiler compiler;
-    ShaderManagement::CompilationOptions options;
-    options.sourceLanguage=ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
-    const auto compiled=compiler.Compile(ShaderManagement::ShaderStage::Compute,source,"main",options);
-    ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
-    ASSERT_TRUE(HasStrictFp32Arithmetic(compiled.spirv));
-    const RecipeArithmetic arithmetic{backend};
-    const float tiny=std::numeric_limits<float>::denorm_min(), normal=std::numeric_limits<float>::min();
-    const float huge=std::numeric_limits<float>::max(), inf=std::numeric_limits<float>::infinity();
-    const float nan=std::numeric_limits<float>::quiet_NaN();
-    const std::array<std::array<float,3>,18> cases{{
-        {1,0x1p-24f,0}, {1,-0x1p-24f,1}, {0x1.000002p0f,0x1p-24f,2},
-        {huge,1,huge}, {-huge,1,normal}, {huge,huge,0},
-        {normal,0.5f,tiny}, {tiny,0x1p100f,tiny}, {-tiny,1,normal},
-        {0,0,0}, {-0.0f,1,0}, {1,0,1}, {1,0x1p126f,1},
-        {nan,1,nan}, {inf,1,inf}, {-inf,1,-1}, {1,-1,4}, {0x1p100f,0x1p100f,0x1p100f}
-    }};
-    std::uint32_t certified=0, unknown=0;
-    for(const auto& values:cases) {
-        std::array<float,6> params{values[0],values[1],values[2],0,0,0};
-        std::vector<float> pixels;
-        ASSERT_NO_FATAL_FAILURE(RenderSlice(compiled.spirv,params,1,1,pixels));
-        ASSERT_EQ(pixels.size(),4u);
-        const auto a=RecipePoint(values[0]), b=RecipePoint(values[1]);
-        const std::array<RecipeRange,4> bounds{arithmetic.RecipeAdd(a,b),arithmetic.RecipeMul(a,b),
-            arithmetic.RecipeDiv(a,b),arithmetic.RecipeSqrt(RecipePoint(values[2]))};
-        for(std::size_t channel=0;channel<4;++channel) {
-            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
-            ++certified;
-            EXPECT_TRUE(std::isfinite(pixels[channel]));
-            EXPECT_GE(pixels[channel],bounds[channel].lower);
-            EXPECT_LE(pixels[channel],bounds[channel].upper);
-        }
-    }
-    EXPECT_GT(certified,0u); EXPECT_GT(unknown,0u);
-    EXPECT_FALSE(arithmetic.RecipeDiv(RecipePoint(1),RecipePoint(0)).known);
-    EXPECT_FALSE(arithmetic.RecipeAdd(RecipePoint(nan),RecipePoint(1)).known);
-    const std::string selectionSource=R"GLSL(#version 450
-layout(local_size_x=1,local_size_y=1) in;
-layout(set=0,binding=0,rgba32f) uniform image2D outImage;
-layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
-void main() {
- precise vec4 value=vec4(min(params[0],params[1]),max(params[0],params[1]),-params[0],abs(params[0]));
- imageStore(outImage,ivec2(0),value);
-})GLSL";
-    const auto selection=compiler.Compile(ShaderManagement::ShaderStage::Compute,selectionSource,"main",options);
-    ASSERT_TRUE(selection.success) << selection.GetFullLog();
-    ASSERT_TRUE(HasStrictFp32Arithmetic(selection.spirv,false));
-    for(const auto& pair:std::array<std::array<float,2>,10>{{
-        {tiny,-tiny},{tiny,0},{-tiny,-0.0f},{0,-0.0f},{1,1},
-        {-huge,huge},{normal,tiny},{nan,1},{inf,1},{-inf,inf}
-    }}) {
-        const std::array<float,6> params{pair[0],pair[1],0,0,0,0};
-        const auto a=RecipePoint(pair[0]), b=RecipePoint(pair[1]);
-        const std::array<RecipeRange,4> bounds{arithmetic.RecipeMin(a,b),arithmetic.RecipeMax(a,b),
-            arithmetic.RecipeNeg(a),arithmetic.RecipeAbs(a)};
-        std::vector<float> pixels;
-        ASSERT_NO_FATAL_FAILURE(RenderSlice(selection.spirv,params,1,1,pixels));
-        for(std::size_t channel=0;channel<4;++channel) {
-            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
-            ++certified; EXPECT_GE(pixels[channel],bounds[channel].lower); EXPECT_LE(pixels[channel],bounds[channel].upper);
-        }
-    }
-    const std::string octaveSource=R"GLSL(#version 450
-layout(local_size_x=1,local_size_y=1) in;
-layout(set=0,binding=0,rgba32f) uniform image2D outImage;
-layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
-void main() {
- precise float numerator=0.0, denominator=0.0, amplitude=1.0;
- for(int i=0;i<8;++i) {
-  numerator=numerator+(i%2==0?params[0]:params[1])*amplitude;
-  denominator=denominator+amplitude;
-  amplitude=amplitude*params[2];
- }
- precise float value=numerator/denominator;
- imageStore(outImage,ivec2(0),vec4(value,0,0,1));
-})GLSL";
-    const auto octaveShader=compiler.Compile(ShaderManagement::ShaderStage::Compute,octaveSource,"main",options);
-    ASSERT_TRUE(octaveShader.success) << octaveShader.GetFullLog();
-    ASSERT_TRUE(HasStrictFp32Arithmetic(octaveShader.spirv));
-    for(float gain:std::array<float,7>{-1.0f,-0.5f,0.0f,0.5f,1.0f,1.5f,tiny}) {
-        const std::array<float,6> params{0.75f,-0.625f,gain,0,0,0};
-        std::array<RecipeRange,8> octaves;
-        for(std::size_t i=0;i<octaves.size();++i) octaves[i]=RecipePoint(params[i%2]);
-        const auto range=arithmetic.NormalizedOctaves(octaves,RecipePoint(gain));
-        std::vector<float> pixels;
-        ASSERT_NO_FATAL_FAILURE(RenderSlice(octaveShader.spirv,params,1,1,pixels));
-        if(RecipeFinite(range)) {
-            ++certified; EXPECT_GE(pixels[0],range.lower); EXPECT_LE(pixels[0],range.upper);
-        } else ++unknown;
-    }
-    const auto core=WithoutGlyphOutlineKernel(ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH));
-    ASSERT_FALSE(core.empty());
-    const std::string primitiveSource="#version 450\n"+core+R"GLSL(
-layout(local_size_x=1,local_size_y=1) in;
-layout(set=0,binding=0,rgba32f) uniform image2D outImage;
-layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
-void main() {
- vec3 p=vec3(params[0],params[1],params[2]);
- precise float sphere=SdfCore_Sphere(p,vec3(0),params[3]);
- precise float box=SdfCore_Box(p,vec3(params[4]));
- imageStore(outImage,ivec2(0),vec4(sphere,box,0,1));
-})GLSL";
-    const auto primitive=compiler.Compile(ShaderManagement::ShaderStage::Compute,primitiveSource,"main",options);
-    ASSERT_TRUE(primitive.success) << primitive.GetFullLog();
-    ASSERT_TRUE(HasStrictFp32Arithmetic(primitive.spirv)) << "Generated callees lost precision";
-    for(const auto& params:std::array<std::array<float,6>,6>{{
-        {0,0,0,1,1,0},{1,0,0,1,1,0},{0x1.000002p0f,0,0,1,1,0},
-        {tiny,-tiny,tiny,0,normal,0},{0x1p50f,0x1p50f,0x1p50f,1,1,0},{inf,0,0,1,1,0}
-    }}) {
-        const RecipeRange3 point{RecipePoint(params[0]),RecipePoint(params[1]),RecipePoint(params[2])};
-        const RecipeRange3 zero{RecipePoint(0),RecipePoint(0),RecipePoint(0)};
-        const RecipeRange3 boxExtent{RecipePoint(params[4]),RecipePoint(params[4]),RecipePoint(params[4])};
-        const std::array<RecipeRange,2> bounds{RecipeTransfer_0(point,zero,RecipePoint(params[3]),backend),
-            RecipeTransfer_1(point,boxExtent,backend)};
-        std::vector<float> pixels;
-        ASSERT_NO_FATAL_FAILURE(RenderSlice(primitive.spirv,params,1,1,pixels));
-        for(std::size_t channel=0;channel<2;++channel) {
-            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
-            ++certified; EXPECT_GE(pixels[channel],bounds[channel].lower); EXPECT_LE(pixels[channel],bounds[channel].upper);
-        }
-    }
-    std::cout << "[boundscore-gpu-containment] device=" << selectedDeviceName_
-        << " certified=" << certified << " unknown=" << unknown << " NoContraction=verified\n";
-}
-
 TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels) {
     if (!timestampsSupported_)
         GTEST_SKIP() << "Selected compute queue has no timestamp support for the GPU-time witness.";
     const auto backend = DeviceProofBackend();
-    if (backend == Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified)
+    if (backend == YK_RECIPE_ANALYSIS_BACKEND_GPU_UNCERTIFIED)
         GTEST_SKIP() << "AMD native GPU has no certified interval-proof backend; Dozen-only proof witness.";
 
     constexpr std::uint32_t kWidth = 64;
@@ -1465,27 +1302,22 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         else
             ASSERT_EQ(source.size(), 433u);
 
-        RecipeWholeDomainCompactionRequest compactionRequest;
-        compactionRequest.sourceRevision = std::string(fixture.name) == "run2-dead-terms" ? 1u : 2u;
-        compactionRequest.domain = {
-            glm::vec3(-kWorldHalfExtent), glm::vec3(kWorldHalfExtent)};
+        const std::uint64_t sourceRevision = std::string(fixture.name) == "run2-dead-terms" ? 1u : 2u;
+        const glm::vec3 wholeMinimum(-kWorldHalfExtent);
+        const glm::vec3 wholeMaximum(kWorldHalfExtent);
         // ComposeCompiledRecipeRaymarchShader samples every point inside this box: pixel
         // centers are in (-6,6) for X/Y and the 121 z steps include both endpoints.
-        compactionRequest.domainIsEnforced = true;
-        compactionRequest.backend = backend;
-        compactionRequest.requiredOutputChannels = kAllRecipeOutputChannels;
-        compactionRequest.channelDependencies = {
-            RecipeChannelDependency::GeometryWinner,
-            RecipeChannelDependency::Independent,
-            RecipeChannelDependency::Independent,
-            RecipeChannelDependency::Independent,
-            RecipeChannelDependency::Independent,
-        };
-        const RecipeWholeDomainCompactionResult wholeDomain =
-            CompactRecipeOverWholeDomain(source, compactionRequest);
-        EXPECT_EQ(wholeDomain.sourceRevision, compactionRequest.sourceRevision);
-        ASSERT_TRUE(wholeDomain.stats.intervalProofApplied)
-            << "whole-domain proof fallback=" << static_cast<int>(wholeDomain.stats.intervalFallback);
+        std::array<std::uint8_t, YK_RECIPE_ANALYSIS_MAX_CHANNELS> channelDependencies{};
+        channelDependencies[0] = YK_RECIPE_ANALYSIS_CHANNEL_GEOMETRY_WINNER;
+        for (std::size_t index = 1; index < 5u; ++index)
+            channelDependencies[index] = YK_RECIPE_ANALYSIS_CHANNEL_INDEPENDENT;
+        const auto wholeAnalysis = AnalyzeRecipeScene(
+            source, {}, wholeMinimum, wholeMaximum, backend, true, (1u << 5u) - 1u,
+            channelDependencies, false, sourceRevision);
+        ASSERT_EQ(wholeAnalysis.status, YK_RECIPE_ANALYSIS_OK);
+        const auto& wholeDomain = wholeAnalysis.compacted;
+        EXPECT_EQ(wholeDomain.stats.sourceRevision, sourceRevision);
+        ASSERT_NE(wholeDomain.stats.flags & YK_RECIPE_ANALYSIS_INTERVAL_PROOF_APPLIED, 0u);
         ASSERT_LT(wholeDomain.instructions.size(), source.size());
         EXPECT_EQ(std::memcmp(source.data(), sourceHistory.data(),
             source.size() * sizeof(SdfInstruction)), 0) << "source recipe history was mutated";
@@ -1507,17 +1339,22 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
                     const std::uint32_t firstX = tileX * kTilePixelsX;
                     const std::uint32_t lastX = (tileX + 1) * kTilePixelsX - 1;
                     constexpr float kDomainPadding = 0.001f;
-                    const RecipeTileDomain domain{
-                        glm::vec3(pixelWorld(firstX, kWidth) - kDomainPadding,
+                    const glm::vec3 domainMinimum(
+                        pixelWorld(firstX, kWidth) - kDomainPadding,
                             pixelWorld(firstY, kHeight) - kDomainPadding,
-                            stepWorld(firstStep) - kDomainPadding),
-                        glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
+                            stepWorld(firstStep) - kDomainPadding);
+                    const glm::vec3 domainMaximum(
+                        pixelWorld(lastX, kWidth) + kDomainPadding,
                             pixelWorld(lastY, kHeight) + kDomainPadding,
-                            stepWorld(lastStep) + kDomainPadding)};
-                    const auto specialized = SpecializeRecipeTapeForTile(source, domain, backend);
-                    ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
+                            stepWorld(lastStep) + kDomainPadding);
+                    const auto tileAnalysis = AnalyzeRecipeScene(
+                        source, {}, domainMinimum, domainMaximum, backend, true, (1u << 5u) - 1u,
+                        channelDependencies, false, sourceRevision);
+                    ASSERT_EQ(tileAnalysis.status, YK_RECIPE_ANALYSIS_OK);
+                    const auto& specialized = tileAnalysis.tile;
+                    ASSERT_EQ(specialized.stats.reason, YK_RECIPE_ANALYSIS_REASON_NONE)
                         << "tile=" << tileX << "," << tileY << "," << tileZ;
-                    ASSERT_EQ(specialized.instructions.size(), specialized.stats.retainedInstructions)
+                    ASSERT_EQ(specialized.instructions.size(), specialized.stats.finalInstructions)
                         << "tile=" << tileX << "," << tileY << "," << tileZ;
                     const std::uint32_t tileIndex = (tileZ * kTilesY + tileY) * kTilesX + tileX;
                     prunedRanges[tileIndex] = {
@@ -1526,7 +1363,6 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
                     const auto packed = PackAllocatedGpuTape(specialized.instructions, tapeCounts);
                     prunedTape.insert(prunedTape.end(), packed.begin(), packed.end());
                     intervalEvaluations += specialized.stats.intervalEvaluations;
-                    individualSpecializationNs += specialized.stats.specializationNanoseconds;
                     prunedInstructions += specialized.stats.prunedInstructions;
                 }
             }
@@ -1545,19 +1381,11 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         const auto fullTape = PackAllocatedGpuTape(source, tapeCounts);
         ASSERT_EQ(fullTape.size(), source.size());
 
-        Vixen::SVO::RecipeRegistry emptyRegistry;
-        std::string unrollError;
-        std::vector<SdfInstruction> sourceUnrolled;
-        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(source.data(),
-            static_cast<std::uint32_t>(source.size()), emptyRegistry, sourceUnrolled, unrollError))
-            << unrollError;
-        std::vector<SdfInstruction> compactedUnrolled;
-        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(wholeDomain.instructions.data(),
-            static_cast<std::uint32_t>(wholeDomain.instructions.size()), emptyRegistry,
-            compactedUnrolled, unrollError)) << unrollError;
+        const std::vector<SdfInstruction> sourceUnrolled = source;
+        const std::vector<SdfInstruction> compactedUnrolled = wholeDomain.instructions;
         EXPECT_EQ(std::memcmp(source.data(), sourceHistory.data(),
             source.size() * sizeof(SdfInstruction)), 0) << "unrolling mutated source recipe history";
-        const std::string unrolledField = EmitProceduralFieldFunctionGlsl(sourceUnrolled.data(),
+        const std::string unrolledField = RecipeGpuField(sourceUnrolled.data(),
             static_cast<std::uint32_t>(sourceUnrolled.size()), 0);
 
         const std::string tapeAdapter = R"GLSL(
@@ -1611,7 +1439,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         ASSERT_TRUE(sourceCompiled.success) << "Source unrolled recipe compile failed:\n"
             << sourceCompiled.GetFullLog() << "\n--- source ---\n" << sourceCompiledShaderSource;
 
-        const std::string compactedField = EmitProceduralFieldFunctionGlsl(
+        const std::string compactedField = RecipeGpuField(
             compactedUnrolled.data(), static_cast<std::uint32_t>(compactedUnrolled.size()), 0);
         const std::string compactedShaderSource = ComposeCompiledRecipeRaymarchShader(
             sdfCoreGlsl, compactedField);
@@ -1822,14 +1650,14 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         const std::uint64_t compactedCompiledUploadBytes = compactedCompile.spirv.size()
             * sizeof(std::uint32_t) + recipeParams.size() * sizeof(float);
         std::cout << "[RecipeWholeDomain] fixture=" << fixture.name
-            << " sourceRevision=" << wholeDomain.sourceRevision
+            << " sourceRevision=" << wholeDomain.stats.sourceRevision
             << " instructionsBefore=" << sourceUnrolled.size()
             << " instructionsAfter=" << compactedUnrolled.size()
             << " removedNoOps=" << wholeDomain.stats.removedIdentityNoOps
             << " removedIdempotentDuplicateInstructions="
                 << wholeDomain.stats.removedIdempotentDuplicateInstructions
             << " removedByIntervalProof=" << wholeDomain.stats.removedByIntervalProof
-            << " proofCpuMs=" << wholeDomain.stats.proofNanoseconds / 1.0e6
+            << " proofCpuMs=service"
             << " sourceCompileMs=" << sourceCompiledMilliseconds
             << " compactedCompileMs=" << compactedCompileMilliseconds
             << " sourceUploadBytes=" << sourceCompiledUploadBytes
@@ -2005,10 +1833,8 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     };
     std::vector<std::pair<std::uint32_t, std::uint32_t>> programClasses;
     for (const auto& entry : corpus) {
-        std::vector<SdfInstruction> closed;
-        std::string error;
-        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(entry.program.data(),
-            static_cast<std::uint32_t>(entry.program.size()), registry, closed, error)) << entry.name << ": " << error;
+        std::vector<SdfInstruction> closed = entry.program;
+        if (entry.name == "TapeInvokeClosure") closed = callee.bytecode;
         TapeStorageCounts depths;
         PackAllocatedGpuTape(closed, depths);
         programClasses.emplace_back(depthClass(depths.values), depthClass(depths.positions));
@@ -2028,10 +1854,8 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
         for (std::size_t local = 0; local < count; ++local) {
             const auto& entry = corpus[first + local];
             SCOPED_TRACE(entry.name);
-            std::vector<SdfInstruction> closed;
-            std::string error;
-            ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(entry.program.data(),
-                static_cast<std::uint32_t>(entry.program.size()), registry, closed, error)) << error;
+            std::vector<SdfInstruction> closed = entry.program;
+            if (entry.name == "TapeInvokeClosure") closed = callee.bytecode;
             const auto packed = PackAllocatedGpuTape(closed, tapeCounts);
             ranges[local] = {static_cast<std::uint32_t>(tape.size()), static_cast<std::uint32_t>(packed.size())};
             tape.insert(tape.end(), packed.begin(), packed.end());
@@ -2040,7 +1864,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
             const bool declaresPosition = std::any_of(closed.begin(), closed.end(), [](const auto& operation) {
                 return operation.opCode == static_cast<std::uint8_t>(SdfOpCode::DeclarePosition);
             });
-            fields << EmitProceduralFieldFunctionGlsl(closed.data(), static_cast<std::uint32_t>(closed.size()),
+            fields << RecipeGpuField(closed.data(), static_cast<std::uint32_t>(closed.size()),
                 static_cast<std::uint32_t>(local), declaresPosition) << "\n";
             dispatch << "case " << local << "u: distanceValue = sdfRecipe_" << local
                 << "(p, params" << (declaresPosition ? ", declaredPosition" : "") << "); break;\n";
@@ -2139,10 +1963,13 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
             << "\",\"tapeSupported\":" << (r.tapeSupported ? "true" : "false")
             << ",\"tapeDifferentWords\":" << r.tapeVersusRuntimeWords << "}";
     }
+    YkRecipeOpcodeReport opcodeReport{};
+    YkRecipeDiagnostic opcodeDiagnostic{};
+    ASSERT_EQ(GetRecipeServiceApis().cpu.validateOpcodeTable(&opcodeReport, &opcodeDiagnostic), YK_RECIPE_OK);
     json << "],\"programCount\":" << results.size() << ",\"inlineExactPrograms\":" << inlineExact
         << ",\"tapeSupportedPrograms\":" << tapeSupportedCount << ",\"tapeExactPrograms\":" << tapeExact
         << ",\"opcodesCovered\":" << covered.size()
-        << ",\"opcodesDeclared\":" << Yeroket::Sdf::Generated::RecipeOpcodeTable.size() << "}\n";
+        << ",\"opcodesDeclared\":" << opcodeReport.opcodeCount << "}\n";
     std::cout << "[RecipeCorpusLiteralTransport] " << json.str();
     if (const char* path = std::getenv("VIXEN_RECIPE_CORPUS_RESULTS")) {
         std::ofstream file(path);

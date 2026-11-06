@@ -20,8 +20,7 @@
 
 #include "EmitterSampling.h"
 #include "MipBake.h"
-#include "Recipe/RecipeBounds.h"
-#include "Recipe/RecipeOccupancy.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/RecipeRegistry.h"
 #include "SdfBake.h"
 #include "SdfRecipes.h"
@@ -72,17 +71,9 @@ RecipeRegistry MakeRegistry() {
     {
         RecipeRegistry::RecipeEntry e;
         e.bytecode = {SphereInstr(kGridRadius)};
-        const auto bounds = DeriveConservativeBounds(e.bytecode.data(), static_cast<uint32_t>(e.bytecode.size()));
-        EXPECT_TRUE(bounds.ok);
-        e.boundCenter = bounds.center;
-        e.boundRadius = bounds.radius;
-        const auto grid = DeriveOccupancyGrid(e.bytecode.data(), static_cast<uint32_t>(e.bytecode.size()),
-                                              bounds.center, bounds.radius);
-        EXPECT_TRUE(grid.ok);
-        e.occupancyGridValues = grid.values;
-        e.occupancyGridDim = grid.dim;
-        e.occupancyGridAabbMin = grid.aabbMin;
-        e.occupancyGridCellSize = grid.cellSize;
+        const auto analysis = AnalyzeRecipeRegistration(e, 24.0f, 0.9f);
+        EXPECT_EQ(analysis.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+        EXPECT_TRUE(analysis.occupancyAvailable);
         EXPECT_EQ(reg.Register(kGridRecipe, e), RecipeRegistry::RegisterResult::Ok);
     }
     {

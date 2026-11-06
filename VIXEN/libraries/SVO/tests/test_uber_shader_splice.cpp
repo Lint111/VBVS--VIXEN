@@ -329,7 +329,7 @@ TEST(UberShaderSplice, AuthoredBinary32WordsSurviveGlslCompilation) {
         SdfInstruction instruction{};
         instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::PushParam);
         instruction.data[0] = std::bit_cast<float>(words[i]);
-        source += EmitProceduralFieldFunctionGlsl(&instruction, 1, static_cast<std::uint32_t>(i));
+        source += RecipeGpuField(&instruction, 1, static_cast<std::uint32_t>(i));
     }
     source += "void main() { float params[6];\n";
     for (std::size_t i = 0; i < words.size(); ++i)

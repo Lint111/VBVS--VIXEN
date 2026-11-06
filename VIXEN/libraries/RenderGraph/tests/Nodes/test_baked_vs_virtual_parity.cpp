@@ -42,7 +42,7 @@
  *
  * CORPUS: 4 recipes — (1) plain sphere (occupancy-grid-eligible), (2) sphere+box SmoothUnion
  * CSG (occupancy-grid-eligible, exercises Task 13's grid on a composite field), (3) a
- * Twist-modified sphere (NOT occupancy-grid-eligible — RecipeOccupancy.h's Lipschitz
+ * Twist-modified sphere (NOT occupancy-grid-eligible — the analysis service's Lipschitz
  * whitelist excludes domain warps — the class most likely to break step-relaxation, per this
  * milestone's explicit scope note; proves the parity gate still holds with NO grid fast-path),
  * and (4) a ReadParam-driven sphere whose bake and virtual parameter snapshots intentionally
@@ -106,8 +106,7 @@
 #include "MipBake.h"
 #include "SdfBake.h"
 #include "Recipe/RecipeRegistry.h"
-#include "Recipe/RecipeBounds.h"
-#include "Recipe/RecipeOccupancy.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/UberShaderSplice.h"
 #include "Recipe/SdfInstruction.h"
 #include "ShaderBundleBuilder.h"
@@ -394,11 +393,12 @@ SdfInstruction boxAt(glm::vec3 he) {
     return in;
 }
 // RoundedBox — UNLIKE plain Box, carries its own position field (data[4..6]) — see
-// RecipeBounds.h's "data[0..2]=halfExtents, data[3]=rounding, data[4..6]=position" comment.
+// The rounded-box operand contract is data[0..2]=halfExtents, data[3]=rounding,
+// data[4..6]=position.
 // Used instead of boxAt() wherever a program needs to place a box-ish primitive at a
 // non-origin position WITHOUT wrapping it in a Transform (which would make the whole
-// program non-whitelisted for occupancy-grid derivation — RecipeOccupancy.h's Lipschitz
-// whitelist excludes Transform, same set RecipeBounds.h itself excludes it for).
+// program non-whitelisted for occupancy-grid derivation — the analysis service's Lipschitz
+// whitelist excludes Transform.
 SdfInstruction roundedBoxAt(glm::vec3 c, glm::vec3 he, float rounding) {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::RoundedBox;
     in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z; in.data[3] = rounding;
@@ -519,7 +519,7 @@ std::vector<ParityRecipe> BuildCorpus() {
     }
 
     // (3) Twist-modified sphere — domain modifier, NOT occupancy-grid-eligible
-    // (RecipeOccupancy.h's Lipschitz whitelist excludes Twist/RestorePos): the class most
+    // (the analysis service's Lipschitz whitelist excludes Twist/RestorePos): the class most
     // likely to break step-relaxation, per this milestone's plan. Proves the parity gate
     // holds even with zero grid fast-path assistance.
     {
@@ -566,7 +566,7 @@ std::vector<ParityRecipe> BuildCorpus() {
     // SPECIFIC snapshotted param value (M1/M3 Task 10's params argument to
     // BakeRecipeInstructionsToSdfWorld) and rendered virtual with recipeParams[] set to the
     // equivalent value in world units. ReadParam/MathSub are outside both
-    // DeriveConservativeBounds' and RecipeOccupancy.h's Lipschitz whitelists (same as Twist
+    // analysis service's bound and occupancy whitelists (same as Twist
     // above) -> occupancy grid not expected, bound authored explicitly and MUST cover the
     // full baseRadius+snapshot extent, mirroring BuildRenderGraph.cpp's own margin comment.
     {
@@ -1454,17 +1454,13 @@ protected:
             entry.boundCenter = r.authoredBoundCenter;
             entry.boundRadius = r.authoredBoundRadius;
         }
-        auto boundsResult = Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(entry, 24.0f, 0.9f);
-        (void)boundsResult;
-        auto occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
-            entry.bytecode.data(), uint32_t(entry.bytecode.size()), entry.boundCenter, entry.boundRadius);
-        EXPECT_EQ(occGrid.ok, r.expectOccupancyGrid)
+        entry.parameterValues = r.worldParamSnapshot;
+        const auto boundsResult = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(entry, 24.0f, 0.9f);
+        EXPECT_EQ(boundsResult.occupancyAvailable, r.expectOccupancyGrid)
             << "recipe '" << r.name << "': occupancy grid eligibility mismatch vs corpus expectation";
-        if (occGrid.ok && useOccupancyGrid) {
-            entry.occupancyGridValues   = std::move(occGrid.values);
-            entry.occupancyGridDim      = occGrid.dim;
-            entry.occupancyGridAabbMin  = occGrid.aabbMin;
-            entry.occupancyGridCellSize = occGrid.cellSize;
+        if (!useOccupancyGrid) {
+            entry.occupancyGridValues.clear();
+            entry.occupancyGridDim = 0u;
         }
         constexpr uint32_t kRecipeId = 2u;
         ASSERT_EQ(registry.Register(kRecipeId, entry), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
@@ -1664,21 +1660,23 @@ TEST_F(BakedVsVirtualParityTest, RimleakSlabSphereMatchesAnalyticAndOccupancyOra
     // bound radius is fitted with 45-degree vertical FOV and 1.15 padding, then the capture
     // harness places the orbit camera at yaw=0, pitch=1.45 radians. FitEditorCameraToBounds
     // uses the flattened recipe's authored units directly for the procedural preview.
-    const auto cameraBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        recipe.worldSpaceProgram.data(), static_cast<uint32_t>(recipe.worldSpaceProgram.size()));
-    ASSERT_TRUE(cameraBounds.ok);
+    Vixen::SVO::RecipeRegistry::RecipeEntry cameraEntry;
+    cameraEntry.bytecode = recipe.worldSpaceProgram;
+    const auto cameraAnalysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(cameraEntry, 24.0f, 0.9f);
+    ASSERT_EQ(cameraAnalysis.boundSource,
+              Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Derived);
     constexpr float kVerticalFovDegrees = 45.0f;
     constexpr float kCameraPadding = 1.15f;
     constexpr float kCameraPitch = 1.45f;
     constexpr float kCameraYaw = 0.0f;
     const float halfFov = glm::radians(kVerticalFovDegrees * 0.5f);
-    const float cameraDistance = cameraBounds.radius / std::sin(halfFov) * kCameraPadding;
+    const float cameraDistance = cameraEntry.boundRadius / std::sin(halfFov) * kCameraPadding;
     const glm::vec3 orbitOffset(
         cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
         cameraDistance * std::sin(kCameraPitch),
         cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
-    PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
-                                  cameraBounds.center, kW, kH, 1);
+    PushConstants pc = MakeCamera(cameraEntry.boundCenter + orbitOffset,
+                                  cameraEntry.boundCenter, kW, kH, 1);
     pc.raySizeCoef = 2.0f * std::tan(glm::radians(pc.fov * 0.5f) / float(kH));
     std::vector<uint8_t> guardedRgba, unguardedRgba;
     std::vector<HitRecordCpu> guardedHits, unguardedHits;
@@ -1927,25 +1925,27 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
     // then FitEditorCameraToBounds uses recipe units, 45-degree FOV and 1.15 padding.
     std::array<float, 6> parameterMaxima{};
     parameterMaxima[0] = 1.5f;
-    const auto cameraBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        recipe.worldSpaceProgram.data(), static_cast<uint32_t>(recipe.worldSpaceProgram.size()),
-        parameterMaxima);
-    ASSERT_TRUE(cameraBounds.ok);
-    recipe.authoredBoundCenter = cameraBounds.center;
-    recipe.authoredBoundRadius = cameraBounds.radius;
+    Vixen::SVO::RecipeRegistry::RecipeEntry cameraEntry;
+    cameraEntry.bytecode = recipe.worldSpaceProgram;
+    cameraEntry.parameterValues.assign(parameterMaxima.begin(), parameterMaxima.end());
+    const auto cameraAnalysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(cameraEntry, 24.0f, 0.9f);
+    ASSERT_EQ(cameraAnalysis.boundSource,
+              Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Derived);
+    recipe.authoredBoundCenter = cameraEntry.boundCenter;
+    recipe.authoredBoundRadius = cameraEntry.boundRadius;
 
     constexpr float kVerticalFovDegrees = 45.0f;
     constexpr float kCameraPadding = 1.15f;
     constexpr float kCameraPitch = 1.45f;
     constexpr float kCameraYaw = 0.0f;
     const float halfFov = glm::radians(kVerticalFovDegrees * 0.5f);
-    const float cameraDistance = cameraBounds.radius / std::sin(halfFov) * kCameraPadding;
+    const float cameraDistance = cameraEntry.boundRadius / std::sin(halfFov) * kCameraPadding;
     const glm::vec3 orbitOffset(
         cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
         cameraDistance * std::sin(kCameraPitch),
         cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
-    PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
-                                  cameraBounds.center, kW, kH, 1);
+    PushConstants pc = MakeCamera(cameraEntry.boundCenter + orbitOffset,
+                                  cameraEntry.boundCenter, kW, kH, 1);
     // Match RaySizeCoefNode's vertical pixel cone: 2*tan(halfFov/screenHeight).
     pc.raySizeCoef = 2.0f * std::tan(glm::radians(pc.fov * 0.5f) / float(kH));
 
@@ -2040,7 +2040,7 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
     std::printf("[R464_EDITOR_ANALYTIC] opening=%zu cylinderWall=%zu trueEscape=%zu total=%u "
                 "boundsRadius=%.9g cameraDistance=%.9g occupancyGrid=none\n",
                 openingPixels, cavityWallPixels, throughEscapePixels, kW * kH,
-                cameraBounds.radius, cameraDistance);
+                cameraEntry.boundRadius, cameraDistance);
     std::printf("[R464_EDITOR_MASK] analyticMismatches=%zu guardedMisses=%zu guardedFalseHits=%zu "
                 "falseHitSdf=[%.9g,%.9g] guardVsOraclePixels=%zu rgbaPixelDifferences=%zu "
                 "hitRecordFieldDifferences=%zu averageSteps=%.6g maximumSteps=%u\n",

@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeServices.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
 
 namespace Vixen::SVO::Recipe {
 
@@ -14,7 +14,7 @@ namespace Vixen::SVO::Recipe {
 // "// VIXEN_UBER_RECIPE_SPLICE_MARKER" line:
 //   1. #define VIXEN_UBER_RECIPE_SPLICED (gates the recipeId>=2 branch in main(), so an
 //      unspliced source — zero registrations — never references an undeclared identifier)
-//   2. one EmitProceduralFieldFunctionGlsl-emitted sdfRecipe_<id>(vec3) per registered recipe
+//   2. one kernel-service-emitted sdfRecipe_<id>(vec3) per registered recipe
 //   3. a generated evalRecipeField(uint recipeId, vec3 p) switch dispatching to those functions
 //   4. a generated getRecipeBoundSphere(uint recipeId, out vec3 center, out float radius,
 //      out float relaxation) switch — each case's bound/relaxation are baked as GLSL float
@@ -79,7 +79,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
 
     // Recipe-Diversity-Stress-Scene Inc6 M2: a recipe containing DeclarePosition (M1's
     // spatial-contract opcode) MUST be emitted with emitDeclaredPositionOutParam=true —
-    // EmitProceduralFieldFunctionGlsl's DeclarePosition case unconditionally writes
+    // The kernel service's DeclarePosition lowering writes
     // `declaredPos = vec3(...)`, which only compiles when the function signature actually
     // declares that out-param (asserted in Debug, a raw GLSL compile error in Release either
     // way). Every OTHER recipe (the overwhelming majority — every pre-Inc6 demo, and every
@@ -107,13 +107,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                            entry->pathInstances, /*glyphInstanceBase=*/0,
                                            /*boundedGlyph=*/true);
         if (field.empty()) {
-            // Keep the old emitter as an explicit oracle/failsafe while the provider is being
-            // rolled through the remaining consumers. Normal builds take the service branch.
-            field = EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
-                                                    static_cast<uint32_t>(entry->bytecode.size()),
-                                                    id, declaredPosition, &registry,
-                                                    entry->glyphInstances, 0, entry->pathInstances,
-                                                    false, true);
+            throw std::runtime_error("SpliceProceduralRecipesIntoSource: recipe GPU service returned no field");
         }
         out << field << "\n";
     }

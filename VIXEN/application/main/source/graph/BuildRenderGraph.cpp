@@ -4304,19 +4304,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // prototype closed. Every generated shape instruction below is therefore authored
             // in BODY-LOCAL space (center at the origin), consistent with DeclarePosition's
             // eval-time translation (curPos -= declaredPos) applying BEFORE the resolve segment
-            // walks -- see SdfRecipeCodegenGlsl.h's DeclarePosition case / SdfRecipeEval.h's
-            // mirror.
+            // walks -- see the RecipeServices GPU lowerer's DeclarePosition handling and
+            // SdfRecipeEval.h's mirror.
             //
             // NOTE on the production wiring gap M1 left open: UberShaderSplice.h's
             // SpliceProceduralRecipesIntoSource (the actual production emitter this demo's
             // recipes go through, via BodyInstanceRayMarch.comp's VIXEN_UBER_RECIPE_SPLICE_MARKER)
-            // used to call EmitProceduralFieldFunctionGlsl with emitDeclaredPositionOutParam
-            // always false — M1's out-param plumbing was only proven in a standalone test shader
+            // used to call the retired local GLSL emitter without a declared-position out-param
+            // — M1's out-param plumbing was only proven in a standalone test shader
             // (test_recipe_declared_position_render.cpp / test_recipe_glsl_numerical_parity.cpp's
             // own ComposeComputeShaderWithDeclaredPosition), not the real evalRecipeField() switch
             // TraceWorld.glsl actually calls; a DeclarePosition-using recipe would have failed
-            // EmitProceduralFieldFunctionGlsl's own assert (Debug) or emitted GLSL referencing an
-            // undeclared `declaredPos` identifier (Release). Fixed centrally in
+            // lowerer's own validation or emitted GLSL referencing an undeclared `declaredPos`
+            // identifier (Release). Fixed centrally in
             // UberShaderSplice.h (not here): SpliceProceduralRecipesIntoSource now detects
             // per-recipe whether its bytecode contains DeclarePosition and, only for those
             // recipes, emits with emitDeclaredPositionOutParam=true and supplies a throwaway

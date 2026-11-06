@@ -1,14 +1,8 @@
-#include "Recipe/RecipeBounds.h"
-#include "Recipe/RecipeOccupancy.h"
 #include "Recipe/RecipeServices.h"
-#include "Recipe/RecipeTileSpecialization.h"
-#include "Recipe/RecipeWholeDomainCompaction.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
 
 #include <gtest/gtest.h>
 
 #include <bit>
-#include <cstring>
 
 using namespace Vixen::SVO;
 using namespace Vixen::SVO::Recipe;
@@ -31,10 +25,19 @@ SdfInstruction Combine(SdfOpCode opcode) {
     return instruction;
 }
 
-void ExpectSameInstructionTape(const std::vector<SdfInstruction>& expected,
-                               const std::vector<SdfInstruction>& actual) {
-    ASSERT_EQ(expected.size(), actual.size());
-    ASSERT_EQ(std::memcmp(expected.data(), actual.data(), expected.size() * sizeof(SdfInstruction)), 0);
+std::uint64_t HashBytes(const void* data, std::size_t size) {
+    auto hash = std::uint64_t{1469598103934665603ull};
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    for (std::size_t index = 0; index < size; ++index) {
+        hash ^= bytes[index];
+        hash *= std::uint64_t{1099511628211ull};
+    }
+    return hash;
+}
+
+template <typename T>
+std::uint64_t HashVector(const std::vector<T>& values) {
+    return HashBytes(values.data(), values.size() * sizeof(T));
 }
 
 } // namespace
@@ -59,41 +62,32 @@ TEST(RecipeServices, ProviderExposesAllThreeFixedAbis) {
     EXPECT_NE(analysisInfo.backendMask & (1u << YK_RECIPE_ANALYSIS_BACKEND_GPU_DZN_PRECISE), 0u);
 }
 
-TEST(RecipeServices, GlslFieldMatchesOldOracleForSphere) {
+TEST(RecipeServices, GlslFieldMatchesRecordedOldOracleForSphere) {
     const std::array<SdfInstruction, 1> program = {Sphere(1.0f, -2.0f, 3.0f, 4.5f)};
-    const std::string oldField = EmitProceduralFieldFunctionGlsl(program.data(), 1u, 17u);
     const std::string serviceField = RecipeGpuField(program, 17u, false);
 
     ASSERT_FALSE(serviceField.empty());
-    EXPECT_EQ(serviceField, oldField);
+    EXPECT_EQ(serviceField.size(), 227u);
+    EXPECT_EQ(HashBytes(serviceField.data(), serviceField.size()), 9945844444134442959ull);
 }
 
-TEST(RecipeServices, RegistrationAnalysisMatchesOldBoundAndOccupancyOracle) {
+TEST(RecipeServices, RegistrationAnalysisMatchesRecordedOldBoundAndOccupancyOracle) {
     RecipeRegistry::RecipeEntry entry;
     entry.bytecode = {Sphere(1.0f, -2.0f, 3.0f, 4.5f)};
 
-    const auto oldBound = DeriveConservativeBounds(entry.bytecode.data(), 1u);
-    const auto oldGrid = DeriveOccupancyGrid(
-        entry.bytecode.data(), 1u, oldBound.center, oldBound.radius);
     const auto analysis = AnalyzeRecipeRegistration(entry, 24.0f, 0.9f);
 
     ASSERT_EQ(analysis.status, YK_RECIPE_ANALYSIS_OK);
     ASSERT_EQ(analysis.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
-    ASSERT_TRUE(oldBound.ok);
-    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.x), std::bit_cast<std::uint32_t>(oldBound.center.x));
-    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.y), std::bit_cast<std::uint32_t>(oldBound.center.y));
-    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.z), std::bit_cast<std::uint32_t>(oldBound.center.z));
-    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundRadius), std::bit_cast<std::uint32_t>(oldBound.radius));
-    ASSERT_EQ(analysis.occupancyAvailable, oldGrid.ok);
-    if (oldGrid.ok) {
-        EXPECT_EQ(entry.occupancyGridDim, oldGrid.dim);
-        EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.occupancyGridCellSize),
-                  std::bit_cast<std::uint32_t>(oldGrid.cellSize));
-        ASSERT_EQ(entry.occupancyGridValues.size(), oldGrid.values.size());
-        for (std::size_t index = 0; index < oldGrid.values.size(); ++index)
-            EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.occupancyGridValues[index]),
-                      std::bit_cast<std::uint32_t>(oldGrid.values[index])) << "cell " << index;
-    }
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.x), 1065353216u);
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.y), 3221225472u);
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundCenter.z), 1077936128u);
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundRadius), 1083179008u);
+    ASSERT_TRUE(analysis.occupancyAvailable);
+    EXPECT_EQ(entry.occupancyGridDim, 16u);
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.occupancyGridCellSize), 1058013184u);
+    EXPECT_EQ(entry.occupancyGridValues.size(), 4096u);
+    EXPECT_EQ(HashVector(entry.occupancyGridValues), 677295323107829139ull);
 }
 
 TEST(RecipeServices, AuthoredBoundWinsAnalysis) {
@@ -110,44 +104,30 @@ TEST(RecipeServices, AuthoredBoundWinsAnalysis) {
     EXPECT_EQ(std::bit_cast<std::uint32_t>(entry.boundRadius), std::bit_cast<std::uint32_t>(11.0f));
 }
 
-TEST(RecipeServices, SceneVariantsMatchOldTileAndCompactionOracles) {
+TEST(RecipeServices, SceneVariantsMatchRecordedOldTileAndCompactionOracles) {
     const std::vector<SdfInstruction> source = {
         Sphere(0.0f, 0.0f, 0.0f, 1.0f),
         Sphere(80.0f, 0.0f, 0.0f, 2.0f),
         Combine(SdfOpCode::Union),
     };
-    const RecipeTileDomain domain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}};
-    const auto oldTile = SpecializeRecipeTapeForTile(source, domain);
-
-    RecipeWholeDomainCompactionRequest oldRequest;
-    oldRequest.sourceRevision = 41u;
-    oldRequest.domain = domain;
-    oldRequest.domainIsEnforced = true;
-    oldRequest.requiredOutputChannels = kAllRecipeOutputChannels;
-    oldRequest.channelDependencies = {
-        RecipeChannelDependency::GeometryWinner,
-        RecipeChannelDependency::Independent,
-        RecipeChannelDependency::Independent,
-        RecipeChannelDependency::Independent,
-        RecipeChannelDependency::Independent,
-    };
-    const auto oldCompacted = CompactRecipeOverWholeDomain(source, oldRequest);
+    const glm::vec3 domainMinimum(-2.0f);
+    const glm::vec3 domainMaximum(2.0f);
 
     std::array<std::uint8_t, YK_RECIPE_ANALYSIS_MAX_CHANNELS> dependencies{};
     dependencies[0] = YK_RECIPE_ANALYSIS_CHANNEL_GEOMETRY_WINNER;
     for (std::size_t index = 1; index < 5; ++index)
         dependencies[index] = YK_RECIPE_ANALYSIS_CHANNEL_INDEPENDENT;
     const auto service = AnalyzeRecipeScene(
-        source, {}, domain.minimum, domain.maximum, YK_RECIPE_ANALYSIS_BACKEND_CPU_STRICT,
-        true, kAllRecipeOutputChannels, dependencies, false, 41u);
+        source, {}, domainMinimum, domainMaximum, YK_RECIPE_ANALYSIS_BACKEND_CPU_STRICT,
+        true, (1u << 5u) - 1u, dependencies, false, 41u);
 
     ASSERT_EQ(service.status, YK_RECIPE_ANALYSIS_OK);
     ASSERT_EQ(service.tile.status, YK_RECIPE_ANALYSIS_OK);
     ASSERT_EQ(service.compacted.status, YK_RECIPE_ANALYSIS_OK);
-    EXPECT_EQ(service.tile.stats.sourceInstructions, oldTile.stats.sourceInstructions);
-    EXPECT_EQ(service.tile.stats.finalInstructions, oldTile.stats.retainedInstructions);
-    EXPECT_EQ(service.compacted.stats.sourceRevision, oldCompacted.sourceRevision);
-    EXPECT_EQ(service.compacted.stats.finalInstructions, oldCompacted.stats.finalInstructions);
-    ExpectSameInstructionTape(oldTile.instructions, service.tile.instructions);
-    ExpectSameInstructionTape(oldCompacted.instructions, service.compacted.instructions);
+    EXPECT_EQ(service.tile.stats.sourceInstructions, 3u);
+    EXPECT_EQ(service.tile.stats.finalInstructions, 1u);
+    EXPECT_EQ(service.compacted.stats.sourceRevision, 41u);
+    EXPECT_EQ(service.compacted.stats.finalInstructions, 1u);
+    EXPECT_EQ(HashVector(service.tile.instructions), 14988329129560913562ull);
+    EXPECT_EQ(HashVector(service.compacted.instructions), 14988329129560913562ull);
 }
