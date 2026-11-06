@@ -52,6 +52,10 @@ target_compile_definitions(VulkanResources PUBLIC
 set(VIXEN_APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationLifecycle.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationTeardown.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationCapture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationRecipes.cpp
     # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
