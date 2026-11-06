@@ -111,8 +111,7 @@
 #include "Recipe/UberShaderSplice.h"
 #include "Recipe/SdfInstruction.h"
 #include "ShaderBundleBuilder.h"
-#include "TestVkValidation.h"
-#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "RenderGraphHeavyTestFixtures.h"
 #include "Generated/LightingConfig.g.h"  // Sampled Lighting Inc0 M3: real default light content
                                           // (a zeroed LightingConfig has lightCount=0 -> pure
                                           // black shaded output -> invisible to this test's own
@@ -766,19 +765,11 @@ bool RayEntersCylinderOpening(const glm::vec3& origin, const glm::vec3& directio
 // compiles clean) instead of loading a build-time .spv, and (b) reuses the mip-fallback
 // harness's device selection / pool setup / dispatch / readback for BOTH paths.
 // ---------------------------------------------------------------------------
-class BakedVsVirtualParityTest : public ::testing::Test {
+class BakedVsVirtualParityTest
+    : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
-    VkInstance       instance_       = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
-    VkQueue          queue_          = VK_NULL_HANDLE;
-    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
-    uint32_t         queueFamily_    = 0;
     uint32_t         timestampValidBits_ = 0;
     double           timestampPeriodNs_ = 0.0;
-    bool             deviceConfirmed_ = false;
-    std::string      selectedDeviceName_;
-    std::unique_ptr<VulkanDevice> deviceShell_;
 
     static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
         return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
@@ -794,16 +785,7 @@ protected:
     }
 
     void SetUp() override {
-        VixenSelectWslGpuIcd();
-        VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        ai.pApplicationName = "test_baked_vs_virtual_parity"; ai.apiVersion = VK_API_VERSION_1_3;
-        const auto layers = EnabledValidationLayers();
-        const char* exts[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-        VkInstanceCreateInfo ci{}; ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        ci.pApplicationInfo = &ai;
-        ci.enabledLayerCount = uint32_t(layers.size()); ci.ppEnabledLayerNames = layers.empty() ? nullptr : layers.data();
-        ci.enabledExtensionCount = 1; ci.ppEnabledExtensionNames = exts;
-        ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
+        BeginVulkanTest("test_baked_vs_virtual_parity");
         ASSERT_NO_FATAL_FAILURE(PickUsableDevice());
         ASSERT_TRUE(deviceConfirmed_);
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
@@ -812,12 +794,7 @@ protected:
         deviceShell_->device = logicalDevice_;
     }
 
-    void TearDown() override {
-        if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
-        if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-        if (logicalDevice_ != VK_NULL_HANDLE) vkDestroyDevice(logicalDevice_, nullptr);
-        if (instance_     != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
-    }
+    void TearDown() override { EndVulkanTest(); }
 
     void PickUsableDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);

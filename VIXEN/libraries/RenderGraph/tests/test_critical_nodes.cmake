@@ -55,6 +55,16 @@ if(TARGET ShaderManagement)
     list(APPEND RENDERGRAPH_TEST_COMMON_LIBS ShaderManagement)
 endif()
 
+# Shared bring-up for the heavy standalone GPU gates.  Keeping Vulkan instance/device lifetime
+# and command-pool construction in one implementation unit leaves each assertion TU focused on
+# its recipe/shader family, while preserving the existing per-target discovery and GPU locks.
+add_library(RenderGraphHeavyTestFixtures STATIC
+    Nodes/RenderGraphHeavyTestFixtures.cpp
+)
+target_link_libraries(RenderGraphHeavyTestFixtures PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_include_directories(RenderGraphHeavyTestFixtures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Nodes)
+set_target_properties(RenderGraphHeavyTestFixtures PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
 # ===========================================================================
 # Group 1: test_rendergraph_criticalnodes_infra1 — bare link surface, default
 # discovery. DeviceNode / WindowNode / CommandPoolNode / SwapChainNode /
@@ -447,6 +457,7 @@ add_executable(test_baked_vs_virtual_parity
     Nodes/test_baked_vs_virtual_parity.cpp
 )
 target_link_libraries(test_baked_vs_virtual_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_baked_vs_virtual_parity PRIVATE RenderGraphHeavyTestFixtures)
 if(TARGET SVO)
     target_link_libraries(test_baked_vs_virtual_parity PRIVATE SVO)
 endif()
@@ -535,6 +546,7 @@ add_executable(test_rendergraph_criticalnodes_gpurender2b
 )
 add_dependencies(test_rendergraph_criticalnodes_gpurender2b body_instance_raymarch_spv)
 target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE RenderGraphHeavyTestFixtures)
 if(TARGET SVO)
     target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE SVO)
 endif()
@@ -696,6 +708,7 @@ add_executable(test_procedural_recipe_render
 )
 
 target_link_libraries(test_procedural_recipe_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_procedural_recipe_render PRIVATE RenderGraphHeavyTestFixtures)
 # Optional explicit SVO link (no-op at this scope, transitive via RENDERGRAPH_TEST_COMMON_LIBS).
 if(TARGET SVO)
     target_link_libraries(test_procedural_recipe_render PRIVATE SVO)
@@ -890,6 +903,7 @@ add_executable(test_recipe_multi_bucket_compositing
 )
 add_dependencies(test_recipe_multi_bucket_compositing recipe_instance_bucketing_spv)
 target_link_libraries(test_recipe_multi_bucket_compositing PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_recipe_multi_bucket_compositing PRIVATE RenderGraphHeavyTestFixtures)
 if(TARGET SVO)
     target_link_libraries(test_recipe_multi_bucket_compositing PRIVATE SVO)
 endif()
@@ -927,6 +941,7 @@ add_executable(test_recipe_bucketing_perf
 )
 add_dependencies(test_recipe_bucketing_perf recipe_instance_bucketing_spv)
 target_link_libraries(test_recipe_bucketing_perf PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_recipe_bucketing_perf PRIVATE RenderGraphHeavyTestFixtures)
 if(TARGET SVO)
     target_link_libraries(test_recipe_bucketing_perf PRIVATE SVO)
 endif()
@@ -963,6 +978,7 @@ add_executable(test_switch_cost_isolation
     Nodes/test_switch_cost_isolation.cpp
 )
 target_link_libraries(test_switch_cost_isolation PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_switch_cost_isolation PRIVATE RenderGraphHeavyTestFixtures)
 if(TARGET SVO)
     target_link_libraries(test_switch_cost_isolation PRIVATE SVO)
 endif()
