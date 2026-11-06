@@ -279,7 +279,7 @@ inline dual& operator+=(dual& a, dual b) { a = a + b; return a; } inline dual& o
 inline dual& operator-=(dual& a, dual b) { a = a - b; return a; } inline dual& operator-=(dual& a, float b) { a = a - b; return a; }
 inline dual& operator*=(dual& a, dual b) { a = a * b; return a; } inline dual& operator*=(dual& a, float b) { a = a * b; return a; }
 inline dual& operator/=(dual& a, dual b) { a = a / b; return a; } inline dual& operator/=(dual& a, float b) { a = a / b; return a; }
-template<class F, class D> inline dual unary(dual x, F valueFn, D derivativeFn) {
+template<class F, class D> inline dual unary(dual x, F valueFn, D derivativeFn) noexcept {
     alignas(16) float v[4],xg[4],yg[4],zg[4],out[4],gx[4],gy[4],gz[4];
     x.value.store_unaligned(v); x.gx.store_unaligned(xg); x.gy.store_unaligned(yg); x.gz.store_unaligned(zg);
     for (int i=0;i<4;++i) { out[i]=valueFn(v[i]); float d=derivativeFn(v[i]); gx[i]=d*xg[i]; gy[i]=d*yg[i]; gz[i]=d*zg[i]; }
@@ -326,21 +326,21 @@ inline dual select(float whenFalse, float whenTrue, mask c) noexcept { return se
 
 struct dual2 { dual x,y;
     dual2()=default;
-    dual2(dual a,dual b):x(a),y(b){}
-    dual2(dual a,float b):x(a),y(b){}
-    dual2(float a,dual b):x(a),y(b){}
-    dual2(float a,float b):x(a),y(b){}
+    dual2(dual a,dual b) noexcept:x(a),y(b){}
+    dual2(dual a,float b) noexcept:x(a),y(b){}
+    dual2(float a,dual b) noexcept:x(a),y(b){}
+    dual2(float a,float b) noexcept:x(a),y(b){}
 };
 struct dual3 { dual x,y,z;
     dual3()=default;
-    dual3(dual a,dual b,dual c):x(a),y(b),z(c){}
-    dual3(dual a,dual b,float c):x(a),y(b),z(c){}
-    dual3(dual a,float b,dual c):x(a),y(b),z(c){}
-    dual3(float a,dual b,dual c):x(a),y(b),z(c){}
-    dual3(dual a,float b,float c):x(a),y(b),z(c){}
-    dual3(float a,dual b,float c):x(a),y(b),z(c){}
-    dual3(float a,float b,dual c):x(a),y(b),z(c){}
-    dual3(float a,float b,float c):x(a),y(b),z(c){}
+    dual3(dual a,dual b,dual c) noexcept:x(a),y(b),z(c){}
+    dual3(dual a,dual b,float c) noexcept:x(a),y(b),z(c){}
+    dual3(dual a,float b,dual c) noexcept:x(a),y(b),z(c){}
+    dual3(float a,dual b,dual c) noexcept:x(a),y(b),z(c){}
+    dual3(dual a,float b,float c) noexcept:x(a),y(b),z(c){}
+    dual3(float a,dual b,float c) noexcept:x(a),y(b),z(c){}
+    dual3(float a,float b,dual c) noexcept:x(a),y(b),z(c){}
+    dual3(float a,float b,float c) noexcept:x(a),y(b),z(c){}
 };
 inline dual2 operator+(dual2 a,dual2 b) noexcept{return {a.x+b.x,a.y+b.y};} inline dual2 operator-(dual2 a,dual2 b) noexcept{return {a.x-b.x,a.y-b.y};}
 inline dual2 operator*(dual2 a,dual2 b) noexcept{return {a.x*b.x,a.y*b.y};} inline dual2 operator*(dual2 a,dual b) noexcept{return {a.x*b,a.y*b};} inline dual2 operator*(dual a,dual2 b) noexcept{return b*a;}
