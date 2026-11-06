@@ -6,6 +6,23 @@
 #include <iomanip>
 #include <cstdint>
 
+#if defined(HAS_OPENSSL)
+#include <openssl/sha.h>
+#elif defined(HAS_STBRUMME_HASH)
+#if defined(__has_include)
+#  if __has_include("sha256.h")
+#    include "sha256.h"
+#    define SHADER_HAVE_STBRUMME_SHA256 1
+#  elif __has_include(<sha256.h>)
+#    include <sha256.h>
+#    define SHADER_HAVE_STBRUMME_SHA256 1
+#  elif __has_include("hash/sha256.h")
+#    include "hash/sha256.h"
+#    define SHADER_HAVE_STBRUMME_SHA256 1
+#  endif
+#endif
+#endif
+
 // Project-wide hash abstraction. Use OpenSSL when available, otherwise try a
 // header-only hash library fetched by CMake, else fall back to a deterministic
 // non-cryptographic hash. This header is intentionally small and header-only.
@@ -51,8 +68,6 @@ inline std::string ToHex(const unsigned char* bytes, size_t len) {
 }
 
 #if defined(HAS_OPENSSL)
-#include <openssl/sha.h>
-
 inline std::string ComputeSHA256Hex(const void* data, size_t len) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256(reinterpret_cast<const unsigned char*>(data), len, hash);
@@ -60,33 +75,10 @@ inline std::string ComputeSHA256Hex(const void* data, size_t len) {
 }
 
 #elif defined(HAS_STBRUMME_HASH)
-#if defined(__has_include)
-#  if __has_include("sha256.h")
-#    include "sha256.h"
-#    define SHADER_HAVE_STBRUMME_SHA256 1
-#  elif __has_include(<sha256.h>)
-#    include <sha256.h>
-#    define SHADER_HAVE_STBRUMME_SHA256 1
-#  elif __has_include("hash/sha256.h")
-#    include "hash/sha256.h"
-#    define SHADER_HAVE_STBRUMME_SHA256 1
-#  endif
-#endif
-
 #if defined(SHADER_HAVE_STBRUMME_SHA256)
 inline std::string ComputeSHA256Hex(const void* data, size_t len) {
-    unsigned char hash[32];
-    // Best-effort call to stbrumme header's expected API; if unavailable,
-    // fall back to deterministic FNV expansion below.
-#if defined(sha256)
-    sha256(reinterpret_cast<const unsigned char*>(data), static_cast<size_t>(len), hash);
-#else
-    uint64_t h = 1469598103934665603ull;
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(data);
-    for (size_t i = 0; i < len; ++i) { h ^= static_cast<uint64_t>(p[i]); h *= 1099511628211ull; }
-    for (int i = 0; i < 32; ++i) hash[i] = static_cast<unsigned char>((h >> ((i % 8) * 8)) & 0xFF);
-#endif
-    return ToHex(hash, 32);
+    ::SHA256 sha256;
+    return sha256(data, static_cast<size_t>(len));
 }
 #else
 inline std::string ComputeSHA256Hex(const void* data, size_t len) {

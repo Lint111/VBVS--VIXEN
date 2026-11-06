@@ -8,3 +8,9 @@ target_link_libraries(test_nostall_primitives PRIVATE GTest::gtest_main Threads:
 set_target_properties(test_nostall_primitives PROPERTIES FOLDER "Tests/Core Tests")
 include(GoogleTest)
 vixen_gtest_discover_tests(Core test_nostall_primitives)
+
+add_executable(test_runtime_input_bundle test_runtime_input_bundle.cpp)
+target_include_directories(test_runtime_input_bundle PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(test_runtime_input_bundle PRIVATE GTest::gtest_main Core::Core)
+set_target_properties(test_runtime_input_bundle PROPERTIES FOLDER "Tests/Core Tests")
+vixen_gtest_discover_tests(Core test_runtime_input_bundle)

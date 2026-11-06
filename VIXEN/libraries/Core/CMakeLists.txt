@@ -9,6 +9,7 @@ project(Core VERSION 1.0.0 LANGUAGES CXX)
 add_library(Core STATIC
     src/MortonEncoding.cpp
     src/RuntimeCachePaths.cpp
+    src/RuntimeInputBundle.cpp
     src/CacheEnvelope.cpp
 )
 
@@ -31,6 +32,8 @@ target_include_directories(Core
 target_link_libraries(Core
     PUBLIC
         glm::glm
+        nlohmann_json::nlohmann_json
+        ProjectHash
 )
 
 # C++23 standard
