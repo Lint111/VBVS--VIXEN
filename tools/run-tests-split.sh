@@ -226,7 +226,8 @@ run_gpu_shards() {
   fi
   local counts
   counts="$(python3 "$root/tools/shard-ctest-tests.py" \
-      --json "$shard_dir/tests.json" --out-dir "$shard_dir" --shards "$gpu_jobs")" || {
+      --json "$shard_dir/tests.json" --out-dir "$shard_dir" --shards "$gpu_jobs" \
+      --cost-data "$build_dir/Testing/Temporary/CTestCostData.txt")" || {
     echo "[run-tests-split] could not shard GPU tests" >&2
     echo "2 $((SECONDS - started))" >"$out_dir/gpu.status"
     return 2
