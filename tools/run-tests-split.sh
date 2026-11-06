@@ -42,7 +42,7 @@ agent="$(basename "$root")"
 cpu_jobs="$(( $(nproc) / 2 ))"
 (( cpu_jobs < 1 )) && cpu_jobs=1
 (( cpu_jobs > 8 )) && cpu_jobs=8
-gpu_jobs=6
+gpu_jobs=""   # empty = derive from the device (tools/derive-gpu-slots.py), R837.7
 out_dir=""
 witness=0
 use_queue=1
@@ -320,6 +320,12 @@ run_part() {
   return "$status"
 }
 
+if [[ -z "$gpu_jobs" ]]; then
+  gpu_jobs="$(env ${gpu_env[@]+"${gpu_env[@]}"} python3 "$root/tools/derive-gpu-slots.py" --print-jobs \
+      ${VIXEN_GPU_PEAK_MIB:+--default-peak-mib "$VIXEN_GPU_PEAK_MIB"} 2>"$out_dir/gpu-slots.txt")" || gpu_jobs=""
+  [[ "$gpu_jobs" =~ ^[0-9]+$ ]] || { echo "[run-tests-split] could not derive GPU slots from the device ($(tail -n 1 "$out_dir/gpu-slots.txt" 2>/dev/null)); using 2" >&2; gpu_jobs=2; }
+  grep derive-gpu-slots "$out_dir/gpu-slots.txt" 2>/dev/null
+fi
 echo "[run-tests-split] build=$build_dir label='${suite_label:-<all correctness labels>}' regex='${regex:-<all>}' exclude-labels='${exclude_labels:-<none>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
 echo "[run-tests-split] cpu: $cpu_selected   gpu: $gpu_selected"
 for label in "${suite_labels[@]}"; do
