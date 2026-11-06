@@ -196,10 +196,10 @@ if(MSVC)
 endif()
 
 if(USE_PRECOMPILED_HEADERS)
-    # Headers.h moved to libraries/Core (AR#3/#4 header-leak severance); VixenApp gets it via
-    # Core::Core (transitively linked through RenderGraph/VulkanResources/CashSystem).
-    target_precompile_headers(VixenApp PRIVATE "${VIXEN_ROOT}/libraries/Core/include/Headers.h")
-    message(STATUS "VixenApp: Precompiled headers enabled (using Core/Headers.h)")
+    # Keep the application PCH owned by this domain. Core/Headers.h is a broad
+    # library header and must not be the application's public compilation seam.
+    target_precompile_headers(VixenApp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/VixenAppPch.h")
+    message(STATUS "VixenApp: Precompiled headers enabled (using VixenAppPch.h)")
 endif()
 
 if(WIN32)

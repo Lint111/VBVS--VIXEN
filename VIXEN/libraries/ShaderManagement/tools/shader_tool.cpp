@@ -1453,7 +1453,8 @@ Register-ArgumentCompleter -CommandName sdi_tool -Native -ScriptBlock {
  *
  * Compiles every enumerated feature variant of each program, reflects each,
  * merges them into ONE interface where every member carries its feature
- * predicate, and emits <sdiDir>/<Program>-SDI.g.h.
+ * predicate, and emits <sdiDir>/<Program>-SDI.g.h plus the validation-only
+ * <sdiDir>/<Program>-SDI.layout.g.h companion.
  *
  * Manifest JSON (all paths relative to the manifest file; sdiDir REQUIRED so
  * the gate never depends on the caller's cwd):
@@ -1584,13 +1585,16 @@ int CommandMergeVariants(const ToolOptions& options) {
 
         SpirvInterfaceGenerator generator(options.sdiConfig);
         const std::string code =
-            generator.GenerateMergedToString(mergeResult.merged);
-        if (code.empty()) {
+            generator.GenerateMergedDeclarationToString(mergeResult.merged);
+        const std::string layoutCode =
+            generator.GenerateMergedLayoutToString(mergeResult.merged);
+        if (code.empty() || layoutCode.empty()) {
             std::cerr << "Error: merged emission failed for " << name << "\n";
             return ExitCode::IOError;
         }
 
         const fs::path outPath = sdiDir / (name + "-SDI.g.h");
+        const fs::path layoutPath = sdiDir / (name + "-SDI.layout.g.h");
         if (options.checkMode) {
             std::string committed;
             if (fs::exists(outPath)) {
@@ -1609,6 +1613,23 @@ int CommandMergeVariants(const ToolOptions& options) {
             } else if (options.shouldPrintVerbose()) {
                 std::cout << "OK: " << outPath << "\n";
             }
+            committed.clear();
+            if (fs::exists(layoutPath)) {
+                std::ifstream in(layoutPath);
+                std::stringstream buf;
+                buf << in.rdbuf();
+                committed = buf.str();
+            }
+            if (committed != layoutCode) {
+                drifted.push_back(layoutPath.string());
+                if (options.shouldPrint()) {
+                    std::cerr << "DRIFT: " << layoutPath
+                              << (committed.empty() ? " (missing)" : " (stale)")
+                              << "\n";
+                }
+            } else if (options.shouldPrintVerbose()) {
+                std::cout << "OK: " << layoutPath << "\n";
+            }
         } else {
             fs::create_directories(sdiDir);
             std::ofstream out(outPath, std::ios::binary);
@@ -1617,6 +1638,12 @@ int CommandMergeVariants(const ToolOptions& options) {
                 return ExitCode::IOError;
             }
             out << code;
+            std::ofstream layoutOut(layoutPath, std::ios::binary);
+            if (!layoutOut) {
+                std::cerr << "Error: cannot write " << layoutPath << "\n";
+                return ExitCode::IOError;
+            }
+            layoutOut << layoutCode;
             ++written;
             if (options.shouldPrint()) {
                 size_t gated = 0;

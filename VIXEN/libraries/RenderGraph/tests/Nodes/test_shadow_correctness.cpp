@@ -34,7 +34,7 @@
 #include "Generated/PrevCameraConfig.g.h"
 #include <gtest/gtest.h>
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
-#include "merged/SpatialReuseShade-SDI.g.h"
+#include "merged/SpatialReuseShade-SDI.layout.g.h"
 
 #include "Core/NodeContext.h"
 #include "Data/Core/CompileTimeResourceSystem.h"

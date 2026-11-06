@@ -32,7 +32,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
