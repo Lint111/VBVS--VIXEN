@@ -32,6 +32,7 @@
  * Output: /tmp/editor_document_render_{with,without}_cut.png (512x512 RGBA8).
  */
 
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
 
@@ -228,7 +229,7 @@ protected:
         // explicit. The parity precedent remains real-GPU-only via IsRealGpu in
         // test_recipe_glsl_numerical_parity.cpp.
 #if defined(__linux__)
-        ::setenv("VIXEN_ALLOW_SOFTWARE_VULKAN", "1", /*overwrite=*/1);
+        Vixen::Core::Env::Set("VIXEN_ALLOW_SOFTWARE_VULKAN", "1");
 #endif
         VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;

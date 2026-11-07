@@ -2,6 +2,7 @@
 // pure function over VkPipelineCacheHeaderVersionOne — no VkDevice needed, just hand-built
 // 32-byte headers.
 
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
 #include <PipelineCacher.h>
 #include <SharedPipelineCacheStore.h>
@@ -101,11 +102,7 @@ struct SharedStoreSandbox {
 };
 
 void SetEnvironment(const char* name, const char* value) {
-#ifdef _WIN32
-    _putenv_s(name, value);
-#else
-    setenv(name, value, 1);
-#endif
+    Vixen::Core::Env::Set(name, value);
 }
 
 }  // namespace
