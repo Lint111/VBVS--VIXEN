@@ -1,6 +1,8 @@
 #include "Core/ImageUsage.h"
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
+#include "KernelDispatch/FramePipeline.h"
+#include "Core/CalibrationStore.h"
 #include "Data/Core/ResourceConfig.h"
 #include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
@@ -163,6 +165,19 @@ RenderGraph::RenderGraph(
 
     // Sprint 6.5: Initialize profile registry with built-in factories
     taskProfileRegistry_.Init();
+}
+
+size_t RenderGraph::LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
+    calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
+    calibrationStore_->SetGPU(gpu);
+    auto result = calibrationStore_->Load(taskProfileRegistry_);
+    return result.profileCount;
+}
+
+bool RenderGraph::SaveCalibration() {
+    if (!calibrationStore_) return false;
+    auto result = calibrationStore_->Save(taskProfileRegistry_);
+    return result.success;
 }
 
 RenderGraph::~RenderGraph() {

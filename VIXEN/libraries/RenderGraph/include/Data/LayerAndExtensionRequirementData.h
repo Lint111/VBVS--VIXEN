@@ -1,6 +1,9 @@
 #pragma once
 
-#include "Headers.h"
+#include "GlmConfig.h"  // formerly via Headers.h: keeps the glm clip-control config position
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 

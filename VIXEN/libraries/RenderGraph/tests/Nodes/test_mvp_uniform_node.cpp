@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "Nodes/MvpUniformNode.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include "Data/Nodes/MvpUniformNodeConfig.h"
 
 // Centralized Vulkan global name definitions (avoids duplicate strong symbols across TUs)

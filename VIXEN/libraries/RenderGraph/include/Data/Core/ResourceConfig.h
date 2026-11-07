@@ -1,6 +1,9 @@
 #pragma once
 
-#include "Headers.h"
+#include "GlmConfig.h"  // formerly via Headers.h: keeps the glm clip-control config position
+#include <vulkan/vulkan.h>
+#include <any>
+#include <vector>
 
 #include "Data/Core/ResourceTypes.h"
 #include "Core/BarrierTypes.h"  // For AccessKind (auto-sync P3)

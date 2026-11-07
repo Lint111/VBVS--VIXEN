@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 #include "Core/ITaskProfile.h"
+#include <nlohmann/json.hpp>
 #include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "Core/TaskProfiles/ResolutionTaskProfile.h"
 #include "Core/TaskProfileRegistry.h"
