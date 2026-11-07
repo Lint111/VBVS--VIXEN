@@ -4,11 +4,17 @@ param(
   [string]$Capture,
   [string]$State,
   [string]$CtestLabel,
-  [string]$Root = 'C:\vixen-native\nativerunner-textshader'
+  [string]$Root = 'C:\vixen-native\nativerunner-textshader',
+  [string]$EnvOverrides = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $Root 'VIXEN\scripts\build\SetWindowsChildErrorMode.ps1')
 . (Join-Path $PSScriptRoot 'native-routes.ps1')
+. (Join-Path $PSScriptRoot 'native-capture-env.ps1')
+$overrides = ConvertTo-NativeCaptureOverrides $EnvOverrides
+if ($overrides.Count -and $Mode -notin @('state', 'label')) {
+  throw "environment overrides apply only to state and label captures, not $Mode"
+}
 $buildDir = Join-Path $Root "build\native\$Commit"
 $readyFile = Join-Path $buildDir '.vixendll-build-ready'
 if (-not (Test-Path $readyFile) -or (Get-Content -Raw $readyFile).Trim() -ne $Commit) {
@@ -128,12 +134,19 @@ if ($Mode -eq 'state') {
   throw "Unsupported native capture mode: $Mode"
 }
 $sw = [Diagnostics.Stopwatch]::StartNew()
-# CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
-# cancelled run cannot leave capture executables behind (T-4916, T-4917).
 . (Join-Path $PSScriptRoot 'native-process.ps1')
-$exitCode = Invoke-NativeJobProcess -FilePath $ctest -ArgumentList $ctestArgs -LogPath $log -Description 'ctest'
+if ($overrides.Count) {
+  # CTest's ENVIRONMENT properties beat the process environment, so an override has to be applied to
+  # the test command itself. Same exe, working directory and registered environment, override last.
+  $selector = if ($Mode -eq 'state') { @('-R', $testRegex) } else { @('-L', $CtestLabel) }
+  $exitCode = Invoke-CTestDirect -Ctest $ctest -BuildDir $buildDir -Selector $selector -Overrides $overrides -Log $log
+} else {
+  # CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
+  # cancelled run cannot leave capture executables behind (T-4916, T-4917).
+  $exitCode = Invoke-NativeJobProcess -FilePath $ctest -ArgumentList $ctestArgs -LogPath $log -Description 'ctest'
+}
 $sw.Stop()
-$result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
+$result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel env=$EnvOverrides exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
 $result | Tee-Object -FilePath "$log.result.txt"
 
 if ($Mode -eq 'all-tests') {

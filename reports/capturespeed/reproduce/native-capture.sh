@@ -11,6 +11,7 @@ usage() {
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --all-tests [--gpu-benchmark]" >&2
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
+  echo "options: --env VIXEN_NAME=value  per-run override (repeatable; state and --label runs only)" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +26,7 @@ capture=""
 state=""
 ctest_label=""
 benchmark=false
+env_overrides=""
 
 if [[ "${1:-}" == --negative-missing-dll ]]; then
   mode=negative-dll
@@ -47,10 +49,21 @@ fi
 while (($#)); do
   case "$1" in
     --gpu-benchmark) benchmark=true ;;
+    --env)
+      [[ $# -ge 2 && "$2" =~ ^VIXEN_[A-Za-z0-9_]+=[^\;]*$ ]] || {
+        echo "native-capture: --env takes VIXEN_NAME=value without ';'" >&2; exit 2; }
+      env_overrides+="${env_overrides:+;}$2"
+      shift
+      ;;
     *) usage; exit 2 ;;
   esac
   shift
 done
+
+if [[ -n "$env_overrides" && "$mode" != state && "$mode" != label ]]; then
+  echo "native-capture: --env applies only to state and --label captures" >&2
+  exit 2
+fi
 
 # A build is reusable only for the same VIXEN commit and the same paired Undertow schema tree.
 need_build=false
@@ -69,6 +82,9 @@ if [[ "$need_build" == true ]]; then
   bash "$script_dir/native-build.sh"
 fi
 
+env_args=()
+if [[ -n "$env_overrides" ]]; then env_args=(-EnvOverrides "$env_overrides"); fi
+
 native_ps="$native_root/reports/capturespeed/reproduce/native-capture.ps1"
 native_ps_win="$(wslpath -w "$native_ps")"
 native_root_win="$(wslpath -w "$native_root")"
@@ -81,12 +97,12 @@ capture_rc=0
 if [[ "$mode" == state ]]; then
   bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" || capture_rc=$?
+    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" "${env_args[@]}" || capture_rc=$?
 else
   if [[ "$mode" == label ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" || capture_rc=$?
+      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" "${env_args[@]}" || capture_rc=$?
   elif [[ "$mode" == negative-dll ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
