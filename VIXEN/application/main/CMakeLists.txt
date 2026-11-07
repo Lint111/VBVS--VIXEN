@@ -59,6 +59,10 @@ set(VIXEN_APP_SOURCES
     # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRecipeSvoGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraphDiagnostics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildPresentationGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildLightingShadowGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
@@ -99,7 +103,8 @@ include("${VIXEN_ROOT}/cmake/VixenSourceFingerprint.cmake")
 vixen_source_fingerprint(BuildRenderGraphFingerprint
     HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildRenderGraphFingerprint.h"
     CONSTANT Vixen::kBuildRenderGraphFingerprint
-    FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp")
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRecipeSvoGraph.cpp")
 # BakeArtifactCache.h (SVO) includes the SVO fingerprint header, so order it before this target too.
 add_dependencies(VixenApp BuildRenderGraphFingerprint SvoGeneratorFingerprint)
 target_include_directories(VixenApp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
