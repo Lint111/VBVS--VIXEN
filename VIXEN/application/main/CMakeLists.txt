@@ -89,6 +89,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
                    SKIP_PRECOMPILE_HEADERS ON)
 endif()
 
+# The shared bake-artifact store is keyed on the code that drives the bake: BuildRenderGraph.cpp
+# (the SVO side is fingerprinted by SVO itself). See cmake/VixenSourceFingerprint.cmake.
+include("${VIXEN_ROOT}/cmake/VixenSourceFingerprint.cmake")
+vixen_source_fingerprint(BuildRenderGraphFingerprint
+    HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildRenderGraphFingerprint.h"
+    CONSTANT Vixen::kBuildRenderGraphFingerprint
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp")
+# BakeArtifactCache.h (SVO) includes the SVO fingerprint header, so order it before this target too.
+add_dependencies(VixenApp BuildRenderGraphFingerprint SvoGeneratorFingerprint)
+target_include_directories(VixenApp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # ----------------------------------------------------------------------------
 # M3: generate the node-usage manifest by scanning the graph-builder TUs and registered module
 # groups compiled into VixenApp above for AddNode<T>(...) call sites (Graph-Derived-Node-Linkage-
