@@ -21,7 +21,7 @@ Evidence: `/home/liory/codeman-cases/undertow/reports/cl-lookdevfast1-evidence/`
 - **Not proven:**
   - A before/after for the whole `-L gpu` wall time. The full tree is not built, and both sharded lookdev runs I attempted were stopped (see MEASURED and REDS).
   - A per-test speedup. There is none yet.
-- **Best unmeasured lead:** per-frame wall (about 3.0 s) is well above GPU time (about 1.75 s). Each frame is split into 81 yield-tile submissions at a 2 ms budget, while measured tiles take 21-25 ms. A tile-edge experiment (`VIXEN_GPUYIELD_EDGE`, queued as `cl-lookdevfast1:tile-edge`) was still waiting on queue admission when this report was written; see STOPs.
+- **Best unmeasured lead:** per-frame wall (about 3.0 s) is well above GPU time (about 1.75 s). Each frame is split into 81 yield-tile submissions at a 2 ms budget, while measured tiles take 21-25 ms. A tile-edge experiment (`VIXEN_GPUYIELD_EDGE`, script `edge/run.sh`) never got admitted and was cancelled; see STOPs.
 
 ## WHERE THE TIME GOES
 
@@ -171,7 +171,7 @@ Caveats on what landed:
 1. **`velocity-1` merge conflicts with `origin/wave/authoring-convergence`** in `VIXEN/codegen/CMakeLists.txt` (the kernel pin line). The rule says report, do not resolve. I aborted the merge; this branch is **not** on the velocity tip.
 2. **Owner or controller decisions, none made here:**
    - (a) Runtime budgets. 900 s per look-dev suite run and the 900 s guard idle limit assume serial speed. Parallel shards need either a per-shard-width budget or a budget based on frames rather than wall seconds. Weakening them is not mine to do.
-   - (b) GPU-yield tiling in captures. Each 500×500 frame is 81 tiles at a 2 ms budget; measured tiles are 21-25 ms; wall per frame exceeds GPU time by about 1.2 s. `VIXEN_GPUYIELD_EDGE` pins the tile edge ("a diagnostic, not a production control"). Whether captures may pin a larger edge, and whether that is byte-identical, is **unmeasured**: job `cl-lookdevfast1:tile-edge` (script `edge/run.sh`: edge default / 32 / 16 / default, same PNG hash check) was queued behind CPU pressure the whole time I could wait. If it landed, its output is in `edge/run.log` and not in this report.
+   - (b) GPU-yield tiling in captures. Each 500×500 frame is 81 tiles at a 2 ms budget; measured tiles are 21-25 ms; wall per frame exceeds GPU time by about 1.2 s. `VIXEN_GPUYIELD_EDGE` pins the tile edge ("a diagnostic, not a production control"). Whether captures may pin a larger edge, and whether that is byte-identical, is **unmeasured**: job `cl-lookdevfast1:tile-edge` (script `edge/run.sh`: edge default / 32 / 16 / default, same PNG hash check) was queued behind CPU pressure for about 32 min and I cancelled it before it was admitted, so there is **no result**. Rerun `edge/run.sh` through the queue to get it.
    - (c) Drain frames. `exitAfterFrames = frames + 2` renders two full extra 1080p frames (about 36 s of 103 s in the 1-frame glyph tests, about 5 s in a State process). Making them cheap would change the readback handoff the comment says is deliberately exercised.
    - (d) The 776 s `native` duplicates and the 1096 s `PlanetCapture.RendersStatesDeterministically` aggregate: lanes should use `tools/run-tests-split.sh`, which excludes `native`, not a bare `ctest -L gpu`. The lane-rules wording ("ctest ... through the queue") does not say this.
 3. **Queue wait dominated my session**: every GPU job waited 15-45 min for admission (CPU pressure, load average 45-50 on 32 cores), which is why several experiments are incomplete.
