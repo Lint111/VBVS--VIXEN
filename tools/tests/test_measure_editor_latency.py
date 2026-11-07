@@ -20,6 +20,15 @@ def image(path, value):
 
 
 class LatencyWitnessTests(unittest.TestCase):
+    def test_fixture_preflight_names_missing_document(self):
+        with tempfile.TemporaryDirectory(dir=measure.REPO / ".tmp") as scratch:
+            (Path(scratch) / "editor").write_text("")
+            with self.assertRaisesRegex(FileNotFoundError, "editor document not found: BuiltAssets/x.vxd"):
+                measure.check_fixture(["editor", "BuiltAssets/x.vxd"], scratch)
+            (Path(scratch) / "BuiltAssets").mkdir()
+            (Path(scratch) / "BuiltAssets/x.vxd").write_text("")
+            measure.check_fixture(["editor", "BuiltAssets/x.vxd"], scratch)
+
     def fixture(self, directory, changed_tick):
         lines = []
         def event(phase, edge, wall, tick=None):
