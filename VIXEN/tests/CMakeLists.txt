@@ -29,6 +29,12 @@ add_test(NAME Native.WslDozenHostGate
             -P "${VIXEN_ROOT}/cmake/tests/test_wsl_dozen_host_gate.cmake")
 set_tests_properties(Native.WslDozenHostGate PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.LookdevCaptureWrapperArgs
+    COMMAND "${CMAKE_COMMAND}" "-DLOOKDEV_ARGS_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/lookdev-wrapper-args"
+            "-DLOOKDEV_WRAPPER=${VIXEN_ROOT}/application/main/tests/run_lookdev_capture.cmake"
+            -P "${VIXEN_ROOT}/cmake/tests/test_run_lookdev_capture_args.cmake")
+set_tests_properties(Native.LookdevCaptureWrapperArgs PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.WindowsGitTrust
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_GIT_TRUST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windows-git-trust"
             -P "${VIXEN_ROOT}/cmake/tests/test_windows_git_trust.cmake")
