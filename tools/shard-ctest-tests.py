@@ -4,7 +4,8 @@
 CTest's RESOURCE_LOCK is scoped to one CTest invocation.  The GPU suite therefore
 needs separate invocations when the outer queue is the resource arbiter.  Cases that
 declare a fixture or dependency stay together in shard zero; the remaining cases are
-spread round-robin so one unusually long capture does not leave the other shards idle.
+placed longest-first onto the least loaded shard by their COST property (seconds; an unset cost
+counts as one second), so a few multi-minute captures do not pile onto one shard while the others idle.
 """
 
 from __future__ import annotations
@@ -26,6 +27,13 @@ def is_dependent(test: dict) -> bool:
     ))
 
 
+def cost_of(test: dict) -> float:
+    try:
+        return float(properties(test).get("COST") or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def regex_for(names: list[str]) -> str:
     # CTest uses its own regex dialect and does not support Python's
     # non-capturing-group syntax.
@@ -44,15 +52,19 @@ def main() -> int:
     listing = json.loads(args.json.read_text(encoding="utf-8"))
     tests = [test for test in listing.get("tests", []) if test.get("name")]
     groups: list[list[str]] = [[] for _ in range(args.shards)]
+    loads = [0.0] * args.shards
     independent = []
     for test in tests:
         name = str(test["name"])
         if is_dependent(test):
             groups[0].append(name)
+            loads[0] += cost_of(test)
         else:
-            independent.append(name)
-    for index, name in enumerate(independent):
-        groups[index % args.shards].append(name)
+            independent.append(test)
+    for test in sorted(independent, key=cost_of, reverse=True):
+        lightest = loads.index(min(loads))
+        groups[lightest].append(str(test["name"]))
+        loads[lightest] += cost_of(test)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for index, names in enumerate(groups):

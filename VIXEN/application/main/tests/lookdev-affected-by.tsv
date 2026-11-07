@@ -1,0 +1,28 @@
+# Which look-dev capture families a source change can affect (CTest labels lookdev-*; see test_lookdev_capture.cmake).
+# source prefix (relative to VIXEN/)<TAB>comma-separated families
+# A lane selects: ctest -L '^(<family>|<family>)$' -L '^gpu$' for every row whose prefix matches a path of `git diff --name-only`.
+# A changed path matching no row, or the row "*", means the whole look-dev set (the shared renderer: any family can change).
+# Keep rows narrow: a prefix names the sources only those families exercise. Maintained by hand until the selector
+# is generated from the capture process's loaded shader and library closure (not built; see reports/cl-lookdevfast1.md).
+libraries/Text/	lookdev-glyphsdf
+libraries/SVO/include/Recipe/generated/GlyphOutline	lookdev-glyphsdf
+shaders/RecipeGlyphBindings.glsl	lookdev-glyphsdf
+libraries/SVO/include/SdfBake.h	lookdev-glyphsdf,lookdev-sdf-bake
+libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp	lookdev-glyphsdf,lookdev-sdf-bake
+shaders/ExposureHistogram.glsl	lookdev-exposure,lookdev-tonemap
+shaders/ExposureMeter.comp	lookdev-exposure,lookdev-tonemap
+shaders/ExposureReduce.comp	lookdev-exposure,lookdev-tonemap
+shaders/Reference/ExposureTonemapReference.comp	lookdev-tonemap
+libraries/RenderGraph/include/Nodes/ExposureMeterNode.h	lookdev-exposure,lookdev-tonemap
+shaders/Reconstruction	lookdev-presentation,lookdev-reconstruction
+shaders/FsrInputAA.comp	lookdev-presentation,lookdev-reconstruction
+libraries/RenderGraph/include/Data/Reconstruction	lookdev-presentation,lookdev-reconstruction
+libraries/RenderGraph/src/Nodes/ReconstructionHistoryStateNode.cpp	lookdev-presentation,lookdev-reconstruction
+application/main/source/graph/ReconstructionHistory.cpp	lookdev-presentation,lookdev-reconstruction
+shaders/Shadow	lookdev-states,lookdev-presentation,lookdev-sdf-bake
+libraries/RenderGraph/src/Nodes/ShadowConfigNode.cpp	lookdev-states,lookdev-presentation,lookdev-sdf-bake
+application/main/tests/test_lookdev_capture	*
+shaders/BodyInstanceRayMarch.comp	*
+shaders/DirectLighting.comp	*
+shaders/ESVO	*
+application/main/source/graph/BuildRenderGraph.cpp	*

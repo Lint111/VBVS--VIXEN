@@ -416,6 +416,73 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
 
+    # Scheduling cost and selection family of every look-dev capture. COST is the serial wall time in
+    # seconds measured on Dozen (cl-glmdepth1 ctest -L gpu, 2026-11-07); it is a relative weight, not a
+    # timing claim. The GPU shard planner (tools/shard-ctest-tests.py) packs longest-first by it, so the
+    # multi-minute captures land on different shards. The family labels let a lane select the captures a
+    # change can affect (ctest -L lookdev-glyphsdf); lookdev-sources.tsv maps source paths to families.
+    set(_lookdev_family_rules
+        "^Application\\.LookdevCapture\\.(State|SinglePass)\\.@lookdev-states"
+        "^Application\\.LookdevCapture\\.RendersFourStates@lookdev-states"
+        "^Application\\.LookdevCapture\\.Presentation\\.@lookdev-presentation"
+        "^Application\\.(LookdevCapture\\.SaturationChannel|ExposureTonemapParity)\\.@lookdev-tonemap"
+        "^Application\\.LookdevCapture\\.ExposureRoom\\.@lookdev-exposure"
+        "^Application\\.LookdevCapture\\.GlyphSdf\\.@lookdev-glyphsdf"
+        "^Application\\.LookdevCapture\\.(StoredSdf|SdfFilter)\\.@lookdev-sdf-bake"
+        "^Application\\.(ReconstructionInputs\\.|LookdevCapture\\.(NoNullAcceleration|StorageImageLayouts))@lookdev-reconstruction")
+    set(_lookdev_costs
+        "Application.LookdevCapture.Presentation.night-service=526"
+        "Application.LookdevCapture.Presentation.late-afternoon=444"
+        "Application.LookdevCapture.Presentation.overcast=434"
+        "Application.LookdevCapture.Presentation.midday=434"
+        "Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically=522"
+        "Application.LookdevCapture.GlyphSdf.RtlProof.Pair=220"
+        "Application.LookdevCapture.ExposureRoom.walk=181"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel.Yaw30=171"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel=158"
+        "Application.LookdevCapture.State.night-service=141"
+        "Application.LookdevCapture.State.overcast=124"
+        "Application.LookdevCapture.State.late-afternoon=118"
+        "Application.LookdevCapture.State.midday=117"
+        "Application.LookdevCapture.GlyphSdf.qps-rtl-embossed=112"
+        "Application.LookdevCapture.GlyphSdf.qps-rtl-carved=111"
+        "Application.LookdevCapture.GlyphSdf.latin-embossed=109"
+        "Application.LookdevCapture.GlyphSdf.latin-carved=101"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel128=84"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel128.Yaw30=80"
+        "Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound=76"
+        "Application.LookdevCapture.SinglePass.night-service=74"
+        "Application.LookdevCapture.StoredSdf.Brickmap=68"
+        "Application.LookdevCapture.SdfFilter.NonText256.Yaw30=63"
+        "Application.LookdevCapture.SinglePass.midday=61"
+        "Application.LookdevCapture.SdfFilter.NonText128.Yaw30=61"
+        "Application.LookdevCapture.SdfFilter.NonText256.Yaw0=61"
+        "Application.LookdevCapture.SinglePass.late-afternoon=59"
+        "Application.LookdevCapture.SinglePass.overcast=59"
+        "Application.LookdevCapture.SdfFilter.NonText128.Yaw0=58"
+        "Application.LookdevCapture.StoredSdf.Isolation.StoredNormals=55"
+        "Application.LookdevCapture.StoredSdf.Isolation.ShadowBiasOneVoxel=52"
+        "Application.LookdevCapture.StoredSdf.Isolation.ShadowOff=50"
+        "Application.LookdevCapture.ExposureRoom.door=48"
+        "Application.LookdevCapture.ExposureRoom.window=47")
+    foreach(_entry IN LISTS _lookdev_costs)
+        string(REGEX REPLACE "=.*$" "" _name "${_entry}")
+        string(REGEX REPLACE "^.*=" "" _seconds "${_entry}")
+        if(TEST "${_name}")
+            set_tests_properties("${_name}" PROPERTIES COST ${_seconds})
+        endif()
+    endforeach()
+    get_property(_lookdev_registered DIRECTORY PROPERTY TESTS)
+    foreach(_test IN LISTS _lookdev_registered)
+        foreach(_rule IN LISTS _lookdev_family_rules)
+            string(REGEX REPLACE "@[^@]*$" "" _pattern "${_rule}")
+            string(REGEX REPLACE "^.*@" "" _family "${_rule}")
+            if(_test MATCHES "${_pattern}")
+                set_property(TEST "${_test}" APPEND PROPERTY LABELS "${_family}")
+            endif()
+        endforeach()
+    endforeach()
+
     # T-4922: a host-level shadow diagnostic override (VIXEN_SHADOW_CONFIG_*) would reach both the before and
     # after captures of every case and mask a renderer change. Every capture case clears them explicitly; the
     # isolation cases name them in their own modification list (unset, then their one override) and are skipped.
