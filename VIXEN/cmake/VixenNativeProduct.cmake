@@ -30,10 +30,28 @@ function(vixen_native_product_install)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
+    # Install each oneTBB library under its SONAME (libtbb.so.12, libtbbmalloc.so.2) as a regular
+    # file: a consumer's DT_NEEDED entry names the SONAME, so the unversioned development name
+    # alone leaves the product's own link unresolved at run time.
     foreach(_target IN LISTS _vixen_binary_targets)
         install(FILES "$<TARGET_FILE:${_target}>"
             DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        install(FILES "$<TARGET_SONAME_FILE:${_target}>"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endforeach()
+
+    # KernelDispatch/TaskExecutor.h includes <oneapi/tbb/...>; the product must carry that root.
+    if(DEFINED TBB_SOURCE_DIR AND EXISTS "${TBB_SOURCE_DIR}/include/oneapi/tbb.h")
+        install(DIRECTORY "${TBB_SOURCE_DIR}/include/"
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl")
+    else()
+        message(FATAL_ERROR "VIXEN native product install: the oneTBB headers are missing "
+            "(TBB_SOURCE_DIR='${TBB_SOURCE_DIR}'); KernelDispatch/TaskExecutor.h includes "
+            "<oneapi/tbb/...>. A system TBB (find_package) is not "
+            "product-owned; configure so VIXEN/dependencies/native fetches oneTBB, which sets "
+            "TBB_SOURCE_DIR.")
+    endif()
 
     install(DIRECTORY "${VIXEN_ROOT}/libraries/KernelDispatch/include/"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
