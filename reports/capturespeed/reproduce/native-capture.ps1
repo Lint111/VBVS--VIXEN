@@ -4,6 +4,7 @@ param(
   [string]$Capture,
   [string]$State,
   [string]$CtestLabel,
+  [string]$CtestIndex,   # optional ctest -I range for a resumed slice, e.g. '3031,3056' (one string, split by ctest)
   [string]$Root = 'C:\vixen-native\nativerunner-textshader',
   [string]$EnvOverrides = ''
 )
@@ -133,12 +134,16 @@ if ($Mode -eq 'state') {
 } elseif ($Mode -ne 'all-tests') {
   throw "Unsupported native capture mode: $Mode"
 }
+if ($CtestIndex) { $ctestArgs += @('-I', $CtestIndex) }
+$junit = Join-Path $logDir ("ctest-$Commit-$logKey-" + (Get-Date -Format 'yyyyMMddTHHmmssfff') + '.junit.xml')
+$ctestArgs += @('--output-junit', $junit)
 $sw = [Diagnostics.Stopwatch]::StartNew()
 . (Join-Path $PSScriptRoot 'native-process.ps1')
 if ($overrides.Count) {
   # CTest's ENVIRONMENT properties beat the process environment, so an override has to be applied to
   # the test command itself. Same exe, working directory and registered environment, override last.
   $selector = if ($Mode -eq 'state') { @('-R', $testRegex) } else { @('-L', $CtestLabel) }
+  if ($CtestIndex) { $selector += @('-I', $CtestIndex) }
   $exitCode = Invoke-CTestDirect -Ctest $ctest -BuildDir $buildDir -Selector $selector -Overrides $overrides -Log $log
 } else {
   # CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
@@ -152,42 +157,12 @@ $result | Tee-Object -FilePath "$log.result.txt"
 if ($Mode -eq 'all-tests') {
   $inventoryJson = & $ctest --test-dir $buildDir --show-only=json-v1
   if ($LASTEXITCODE -ne 0) { throw "CTest executable inventory failed with exit $LASTEXITCODE" }
-  $inventory = ($inventoryJson -join "`n") | ConvertFrom-Json
-  $testsByExecutable = @{}
-  foreach ($test in $inventory.tests) {
-    if (-not $test.command -or -not ([string]$test.command[0]).EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-      continue
-    }
-    $executablePath = [System.IO.Path]::GetFullPath([string]$test.command[0])
-    $key = $executablePath.ToLowerInvariant()
-    if (-not $testsByExecutable.ContainsKey($key)) { $testsByExecutable[$key] = [System.Collections.Generic.List[string]]::new() }
-    $testsByExecutable[$key].Add([string]$test.name)
-  }
-
-  $failedTestNames = @()
-  if (Test-Path -LiteralPath $log) {
-    $logText = Get-Content -LiteralPath $log -Raw
-    $failedMatches = [regex]::Matches($logText, '(?m)^\s*\d+\s+-\s+(.+?)\s+\(Failed\)\s*$')
-    foreach ($match in $failedMatches) { $failedTestNames += $match.Groups[1].Value }
-  }
+  $inventoryPath = Join-Path $logDir "ctest-$Commit-inventory.json"
+  Set-Content -LiteralPath $inventoryPath -Value ($inventoryJson -join "`n") -Encoding utf8
+  # Every all-tests slice for this commit (first run plus resumed -I slices) feeds the manifest.
+  $junitFiles = @(Get-ChildItem -LiteralPath $logDir -Filter "ctest-$Commit-all-tests-*.junit.xml" | ForEach-Object { $_.FullName })
   $manifest = Join-Path $logDir "native-executable-smokes-$Commit.tsv"
-  $manifestLines = @("executable`tregistered_ctest_cases`tresult")
-  foreach ($executable in (Get-ChildItem -Path $buildDir -Filter '*.exe' -File -Recurse | Sort-Object FullName)) {
-    $key = $executable.FullName.ToLowerInvariant()
-    $cases = @()
-    if ($testsByExecutable.ContainsKey($key)) { $cases = @($testsByExecutable[$key]) }
-    if ($exitCode -eq 0) {
-      $status = if ($cases.Count) { 'PASS' } else { 'NO_REGISTERED_CTEST_SMOKE' }
-    } elseif (@($cases | Where-Object { $_ -in $failedTestNames }).Count -gt 0) {
-      $status = 'FAIL'
-    } elseif ($cases.Count) {
-      $status = 'PASS; suite has failures in other executables'
-    } else {
-      $status = 'NO_REGISTERED_CTEST_SMOKE; suite failed'
-    }
-    $manifestLines += "$($executable.FullName)`t$($cases.Count)`t$status"
-  }
-  Set-Content -LiteralPath $manifest -Value $manifestLines -Encoding utf8
+  & (Join-Path $PSScriptRoot 'ctest-manifest.ps1') -InventoryJsonPath $inventoryPath -JunitPath $junitFiles -BuildDir $buildDir -ManifestPath $manifest
   Write-Output "[NATIVE_EXECUTABLE_SMOKE_MANIFEST] $manifest"
 }
 exit $exitCode
