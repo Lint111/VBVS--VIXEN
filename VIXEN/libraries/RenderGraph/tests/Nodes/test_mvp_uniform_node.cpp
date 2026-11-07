@@ -137,7 +137,7 @@ TEST_F(MvpUniformNodeConfigTest, TypeNameIsMvpUniform) {
 // Documented contract (MvpUniformNodeConfig.h): the node bakes mvp = proj * view
 // where proj = glm::perspective(radians(fov), aspect, near, far) and
 // view = translate(I, {0,0,-cameraDistance}). The model matrix is applied
-// per-instance in the shader and Draw.vert performs the Y-flip / Z remap itself,
+// per-instance in the shader and Draw.vert performs the Y-flip itself,
 // so this node bakes the *unmodified* proj*view. These tests assert that
 // documented composition directly (a tiny recomputation of the contract, NOT a
 // reach into node internals — the actual upload happens device-side in
@@ -156,6 +156,17 @@ glm::mat4 MvpForParams(float fovDegrees, float aspect, float nearZ, float farZ, 
 TEST(MvpUniformMath, BufferSizeIsSingleMat4) {
     // The UBO holds exactly one mat4 (64 bytes) — binding 0 `bufferVals { mat4 mvp; }`.
     EXPECT_EQ(sizeof(glm::mat4), 64u);
+}
+
+TEST(MvpUniformMath, DepthRangeIsZeroToOne) {
+    // Vulkan's native clip depth: the near plane maps to z/w = 0 and the far plane to z/w = 1
+    // (Draw.vert applies no Z remap on top).
+    const float n = 0.1f, f = 100.0f;
+    const glm::mat4 mvp = MvpForParams(45.0f, 1.7777778f, n, f, 0.0f);
+    const glm::vec4 nearClip = mvp * glm::vec4(0.0f, 0.0f, -n, 1.0f);
+    const glm::vec4 farClip  = mvp * glm::vec4(0.0f, 0.0f, -f, 1.0f);
+    EXPECT_NEAR(nearClip.z / nearClip.w, 0.0f, 1e-5f);
+    EXPECT_NEAR(farClip.z / farClip.w, 1.0f, 1e-5f);
 }
 
 TEST(MvpUniformMath, MvpEqualsProjTimesView) {

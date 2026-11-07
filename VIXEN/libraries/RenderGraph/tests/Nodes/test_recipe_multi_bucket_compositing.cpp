@@ -67,7 +67,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
+#include "Headers.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "Data/DispatchPass.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"

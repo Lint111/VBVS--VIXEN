@@ -18,7 +18,7 @@ void main() {
     outUV = inUV;
     gl_Position = myBufferVals.mvp * instances.model[gl_InstanceIndex] * pos;
 
-    // Flip Y and move Z to [0, 1] for Vulkan
+    // Flip Y for Vulkan. mvp is already a [0, 1] depth projection (GLM_FORCE_DEPTH_ZERO_TO_ONE),
+    // so no Z remap here.
     gl_Position.y = -gl_Position.y;
-    gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
 }

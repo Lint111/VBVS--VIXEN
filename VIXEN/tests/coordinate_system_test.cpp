@@ -8,9 +8,7 @@
 #include <iostream>
 #include <iomanip>
 
-// GLM Configuration for Vulkan
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE  // Critical for Vulkan [0,1] depth
+// GLM configuration for Vulkan (radians, [0,1] depth) comes from the glm target's compile definitions.
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>

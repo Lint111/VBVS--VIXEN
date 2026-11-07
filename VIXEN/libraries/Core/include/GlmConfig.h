@@ -1,8 +1,10 @@
 #pragma once
 
-// GLM configuration split out of Headers.h. glm latches these macros at its FIRST include in a
-// translation unit (setup.hpp is include-guarded), so the position of this include relative to the
-// first glm header is behaviour: a header that formerly included Headers.h includes this at the same
-// place so every translation unit keeps the clip-control configuration it had before the split.
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE  // Vulkan uses [0,1] depth range
+// glm's clip convention is set once, by the build: GLM_FORCE_DEPTH_ZERO_TO_ONE and GLM_FORCE_RADIANS
+// are INTERFACE compile definitions of the glm targets (dependencies/native/CMakeLists.txt). glm
+// latches its configuration at the first include, so a source-level #define would make the convention
+// depend on include order. This header only verifies the result; never #define the macros here.
+#include <glm/detail/setup.hpp>
+
+static_assert((GLM_CONFIG_CLIP_CONTROL & GLM_CLIP_CONTROL_ZO_BIT) != 0,
+              "glm must use Vulkan's 0..1 depth range: link glm::glm (it carries GLM_FORCE_DEPTH_ZERO_TO_ONE)");
