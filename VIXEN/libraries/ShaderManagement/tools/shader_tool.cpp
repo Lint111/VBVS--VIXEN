@@ -1635,7 +1635,9 @@ int CommandMergeVariants(const ToolOptions& options) {
     if (options.checkMode) {
         if (!drifted.empty()) {
             std::cerr << drifted.size() << " merged SDI header(s) out of date — "
-                      << "run: sdi_tool merge-variants " << manifestPath << "\n";
+                      << "run: sdi_tool merge-variants " << manifestPath
+                      << " (or build target sdi_merged_regen; configure with "
+                         "-DVIXEN_SDI_MERGED_AUTO_REGEN=ON to regenerate in the build)\n";
             return ExitCode::DriftDetected;
         }
         if (options.shouldPrint()) {
