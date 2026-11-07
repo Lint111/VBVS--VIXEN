@@ -6,7 +6,8 @@ param(
   [string]$CtestLabel,
   [string]$CtestIndex,   # optional ctest -I range for a resumed slice, e.g. '3031,3056' (one string, split by ctest)
   [string]$Root = 'C:\vixen-native\nativerunner-textshader',
-  [string]$EnvOverrides = ''
+  [string]$EnvOverrides = '',
+  [string]$CacheSeed
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $Root 'VIXEN\scripts\build\SetWindowsChildErrorMode.ps1')
@@ -41,6 +42,13 @@ if ($route) {
     $path = Join-Path $captureRoot $relative
     if (Test-Path $path) { Remove-Item -Recurse -Force $path }
   }
+}
+
+$cacheSeedBuildDir = $null
+if ($CacheSeed) {
+  if ($Mode -notin @('state', 'label', 'all-tests')) { throw "-CacheSeed applies to state, label and all-tests runs, not $Mode" }
+  . (Join-Path $PSScriptRoot 'native-capture-cache.ps1')
+  $cacheSeedBuildDir = Resolve-NativeCacheSeedBuildDir -Seed $CacheSeed -Root $Root -BuildDir $buildDir
 }
 
 $temp = Join-Path $Root '.tmp\native-temp'
@@ -114,6 +122,14 @@ if ($Mode -eq 'missing-dll') {
     $env:PATH = $originalPath
   }
   exit 0
+}
+
+if ($cacheSeedBuildDir) {
+  # After the state cleanup above, which removes a state's capture directory together with its cache.
+  $seeded = Copy-NativeCacheSeed -SeedBuildDir $cacheSeedBuildDir -BuildDir $buildDir
+  $seedLine = "[NATIVE_CACHE_SEED] from=$cacheSeedBuildDir files=$($seeded.Files) mb=$([math]::Round($seeded.Bytes / 1MB, 1)) trees=$($seeded.Trees) (copied; the runtime still rejects blobs from another device or driver)"
+  Add-Content -LiteralPath $log -Value $seedLine
+  Write-Output $seedLine
 }
 
 # CTest's test properties provide the capture environment. Strip inherited VIXEN and Dozen

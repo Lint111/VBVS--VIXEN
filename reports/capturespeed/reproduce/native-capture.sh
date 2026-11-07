@@ -13,6 +13,7 @@ usage() {
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
   echo "options: --env VIXEN_NAME=value  per-run override (repeatable; state and --label runs only)" >&2
   echo "any form: --source-commit <rev> builds and captures that commit's own tree instead of HEAD" >&2
+  echo "  --cache-seed <sha|rev|native-build-dir>  copy that build's runtime caches into this commit's build first" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +31,7 @@ state=""
 ctest_label=""
 benchmark=false
 env_overrides=""
+cache_seed=""
 
 if [[ "${1:-}" == --negative-missing-dll ]]; then
   mode=negative-dll
@@ -58,6 +60,11 @@ while (($#)); do
       env_overrides+="${env_overrides:+;}$2"
       shift
       ;;
+    --cache-seed)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      cache_seed="$2"
+      shift
+      ;;
     *) usage; exit 2 ;;
   esac
   shift
@@ -65,6 +72,10 @@ done
 
 if [[ -n "$env_overrides" && "$mode" != state && "$mode" != label ]]; then
   echo "native-capture: --env applies only to state and --label captures" >&2
+  exit 2
+fi
+if [[ -n "$cache_seed" && "$mode" == negative-dll ]]; then
+  echo "native-capture: --cache-seed does not apply to --negative-missing-dll (it runs no capture)" >&2
   exit 2
 fi
 
@@ -79,6 +90,16 @@ elif [[ -n "${UNDERTOW_ROOT:-}" && -d "${UNDERTOW_ROOT}/core/src/Undertow.Author
   if [[ "$want_id" != "$have_id" ]]; then
     echo "native-capture: build for $repo_commit used Undertow schema tree '${have_id:-unknown}', UNDERTOW_ROOT is '$want_id'; rebuilding" >&2
     need_build=true
+  fi
+fi
+if [[ -n "$cache_seed" ]]; then
+  if [[ -d "$cache_seed" ]]; then
+    cache_seed="$(wslpath -w "$(cd "$cache_seed" && pwd)")"
+  elif seed_sha="$(git -C "$repo_root" rev-parse --verify --quiet "$cache_seed^{commit}")"; then
+    cache_seed="$seed_sha"
+  else
+    echo "native-capture: --cache-seed '$cache_seed' is neither a directory nor a commit in $repo_root; pass a native build directory, a 40-hex SHA or a git revision" >&2
+    exit 2
   fi
 fi
 if [[ "$need_build" == true ]]; then
@@ -99,17 +120,19 @@ if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 # VIXEN_NATIVE_CTEST_INDEX="start,end" resumes an all-tests run; the manifest merges every slice.
 ctest_index_args=()
 if [[ -n "${VIXEN_NATIVE_CTEST_INDEX:-}" ]]; then ctest_index_args=(-CtestIndex "$VIXEN_NATIVE_CTEST_INDEX"); fi
+seed_args=()
+if [[ -n "$cache_seed" ]]; then seed_args=(-CacheSeed "$cache_seed"); fi
 
 capture_rc=0
 if [[ "$mode" == state ]]; then
   bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" "${env_args[@]}" || capture_rc=$?
+    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" "${env_args[@]}" "${seed_args[@]}" || capture_rc=$?
 else
   if [[ "$mode" == label ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" "${env_args[@]}" || capture_rc=$?
+      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" "${env_args[@]}" "${seed_args[@]}" || capture_rc=$?
   elif [[ "$mode" == negative-dll ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
@@ -117,7 +140,7 @@ else
   else
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode all-tests "${ctest_index_args[@]}" || capture_rc=$?
+      -Commit "$repo_commit" -Mode all-tests "${ctest_index_args[@]}" "${seed_args[@]}" || capture_rc=$?
   fi
 fi
 
