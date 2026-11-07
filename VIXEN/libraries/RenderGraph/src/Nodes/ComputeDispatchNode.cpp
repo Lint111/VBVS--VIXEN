@@ -402,7 +402,8 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
 void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
     if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
-        double totalMs = 0, maximumMs = 0;
+        double totalMs = 0, maximumMs = 0, fullTileMs = 0;
+        uint32_t fullTiles = 0;
         for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
             const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
@@ -417,10 +418,16 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             }
             totalMs += ms;
             if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
+                if (tileWorkGroupCounts_[frameIndex][i] == tileNominalWorkGroupCounts_[frameIndex]) {
+                    fullTileMs += ms;
+                    ++fullTiles;
+                }
                 chunkCost_.Observe(tileWorkGroupCounts_[frameIndex][i],
                     tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
             }
         }
+        if (fullTiles)
+            chunkCost_.ObserveScale(tileNominalWorkGroupCounts_[frameIndex], fullTileMs * 1.0e6 / fullTiles);
         // R503: publish the learned envelope to the task profile; CalibrationStore
         // persists it per device at shutdown, keyed by this flight's extent.
         if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
@@ -449,6 +456,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             " total_gpu_ms=" + std::to_string(totalMs) +
             " max_submission_ms=" + std::to_string(maximumMs) +
             " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
+            " launch_latency_ms=" + std::to_string(chunkCost_.LaunchLatencyNs() / 1.0e6) +
             " device_class=" + GpuDeviceClassName(*vulkanDevice));
     }
 
@@ -558,7 +566,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
             vulkanDevice, 1, tileQueryCapacities_[frameIndex] * 4);
     }
     tileCounts_[frameIndex] = count;
-    tileBudgets_[frameIndex] = budgetNs;
+    tileBudgets_[frameIndex] = chunkCost_.SubmissionBudgetNs(budgetNs);
     tileWorkGroupCounts_[frameIndex].clear();
     auto& tileQuery = *tileQueries_[frameIndex];
     // Begin command buffer recording

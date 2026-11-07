@@ -713,6 +713,39 @@ TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
     EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
 }
 
+TEST(GpuChunkCost, MeasuredLaunchLatencyRaisesAnUnattainableBudgetOnly) {
+    // Dozen: cost(w) = 5.4 ms + 0.32 ms * w. A 49-workgroup tile costs 21 ms against a 2 ms budget, so
+    // splitting to the cold launch pays 5.4 ms of latency per command for nothing.
+    GpuChunkCost dozen;
+    dozen.Observe(49, 49, 21'000'000);
+    EXPECT_EQ(dozen.LaunchLatencyNs(), 0.0);
+    EXPECT_EQ(dozen.Edge(2'000'000, 63, 7), 14u);                 // probe a second scale
+    dozen.ObserveScale(49, 21'000'000);
+    dozen.ObserveScale(196, 68'000'000);                          // 5.4 + 0.32 * 196 ~= 68 ms
+    EXPECT_NEAR(dozen.LaunchLatencyNs(), 5.4e6, 0.6e6);
+    EXPECT_GT(dozen.SubmissionBudgetNs(2'000'000), 80'000'000u);
+    EXPECT_LE(dozen.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    dozen.Observe(196, 196, 68'000'000);
+    EXPECT_GT(dozen.Edge(2'000'000, 63, 7), 9u);
+    // Native: 30 us of latency is nowhere near the budget; nothing moves.
+    GpuChunkCost native;
+    native.Observe(49, 49, 900'000);
+    native.ObserveScale(49, 900'000);
+    native.ObserveScale(196, 3'520'000);
+    EXPECT_LT(native.LaunchLatencyNs(), 100'000.0);
+    EXPECT_EQ(native.SubmissionBudgetNs(2'000'000), 2'000'000u);
+    // A stalled measurement cannot request an unbounded submission.
+    GpuChunkCost stalled;
+    stalled.ObserveScale(49, 1.0e9);
+    stalled.ObserveScale(196, 1.5e9);
+    EXPECT_EQ(stalled.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    // Two scales closer than 2x are not enough to separate latency from throughput.
+    GpuChunkCost close;
+    close.ObserveScale(49, 20e6);
+    close.ObserveScale(64, 25e6);
+    EXPECT_EQ(close.LaunchLatencyNs(), 0.0);
+}
+
 TEST(GpuChunkCost, ImportedEnvelopeStartsWarmAndRejectsEmptyState) {
     // R503: a persisted envelope reproduces the learned launch; an empty or invalid
     // record leaves the model cold.
@@ -737,7 +770,8 @@ TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {
     EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
     cost.Observe(49, 49, 1'000'000);
     cost.Observe(49, 49, 50'000'000);
-    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    // Over budget at the cold launch with no latency measured: one probe scale up, never below the launch.
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 14u);
     EXPECT_EQ(cost.Edge(2'000'000, 5, 7), 5u);
     EXPECT_GE(cost.Estimate(49), 55'000'000u);
 }
