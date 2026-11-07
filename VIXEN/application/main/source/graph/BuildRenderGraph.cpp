@@ -9118,8 +9118,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
         sceneProviders.Provide("meter", exposureMeterBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
-        sceneProviders.Provide("meterBlock", exposureMeterBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
     }
     // Legacy march interface remains registered for the flag-off/identity path;
     // the HDR seam has a distinct name in SpatialReuseShade.
@@ -9144,8 +9142,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     sceneProviders.Provide("PolicyStencilTileBuffer", policyStencilTileBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
-                           LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
-    sceneProviders.Provide("LightingConfigSSBOBlock", lightingConfigNode,
                            LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
     sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
