@@ -94,6 +94,7 @@
 #include <gtest/gtest.h>
 #include "SdfTraceProbe.h"
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Core/TimelineCapacityTracker.h"

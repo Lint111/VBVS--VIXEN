@@ -34,7 +34,7 @@
 
 #include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
-#include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
