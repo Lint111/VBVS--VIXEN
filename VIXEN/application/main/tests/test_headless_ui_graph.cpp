@@ -89,6 +89,10 @@ public:
         const bool utTextCapture = std::getenv("VIXEN_HEADLESS_UT_TEXT_CAPTURE") != nullptr;
         if (!utTextCapture) {
             BuildUIGraph();
+            // BuildUIGraph is a moduleless graph entry point. The production env route records
+            // the native provider immediately after entering it; keep the direct test route's
+            // provider state identical so Prepare's post-compile candidate check is valid.
+            SelectNativeUpscalerForModulelessGraph();
             return;
         }
 
