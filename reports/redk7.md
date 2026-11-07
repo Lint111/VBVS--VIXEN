@@ -2,7 +2,7 @@
 
 ## SUMMARY
 
-Fixed the five `EditorToggleUndoCapture` dzn reds and the headless upscaler-provider red on base `be4dcfaa`. The exact editor/headless repro is green by name: 10/10 tests passed. The five localized glyph captures plus the RTL proof pair also passed by name. The cold-bound glyph wrapper was repaired so its expected-file path follows the queue capture root; its post-fix witness is queued under `cx-redk7:cold-bound-fixed`.
+Fixed the five `EditorToggleUndoCapture` dzn reds and the headless upscaler-provider red on base `be4dcfaa`. The exact editor/headless repro is green by name: 10/10 tests passed. The five localized glyph captures plus the RTL proof pair also passed by name. The cold-bound glyph wrapper was repaired so its expected-file path follows the queue capture root; its post-fix witness remained blocked by GPU admission and was externally terminated before payload start.
 
 ## PER RED
 
@@ -17,7 +17,7 @@ Fixed the five `EditorToggleUndoCapture` dzn reds and the headless upscaler-prov
 - `Application.LookdevCapture.GlyphSdf.qps-rtl-carved` — same; green in `cx-redk7:glyph-dzn-repro`.
 - `Application.LookdevCapture.GlyphSdf.qps-rtl-embossed` — same; green in `cx-redk7:glyph-dzn-repro`.
 - `Application.LookdevCapture.GlyphSdf.RtlProof.Pair` — same; green in `cx-redk7:glyph-dzn-repro`.
-- `Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound` — the nested capture passed but the direct registration checked a baked build-tree `--expect-file` while the queue rebased captures elsewhere. Routed registration through `vixen_capture_command`; post-fix witness is queued as `cx-redk7:cold-bound-fixed`.
+- `Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound` — the nested capture passed but the direct registration checked a baked build-tree `--expect-file` while the queue rebased captures elsewhere. Routed registration through `vixen_capture_command`; post-fix witness `cx-redk7:cold-bound-fixed` remained GPU-admission blocked for 4,199 seconds and ended with exit 143 before payload start.
 
 ## IMAGES
 
@@ -31,21 +31,22 @@ Read before/after captures; no golden was re-baselined.
 - Changed files: `VIXEN/application/editor/CMakeLists.txt`, `VIXEN/application/main/tests/test_headless_ui_graph.cpp`, `VIXEN/application/main/tests/test_lookdev_capture.cmake`, and `VIXEN/cmake/run_with_capture_root.cmake`.
 - Fresh queued target build passed: `cx-redk7:fix-target-build`, `/tmp/cx-redk7-fix-target-build.log`.
 - Exact dzn editor/headless repro passed 10/10: `cx-redk7:fix-dzn-repro`, `/tmp/cx-redk7-fix-dzn-repro.log`.
-- Glyph named repro passed 5/5 regular cases plus RTL pair in `cx-redk7:glyph-dzn-repro`, `/tmp/cx-redk7-glyph-dzn-repro.log`; the cold-bound entry was the only initial additional red and has a queued fix witness.
+- Glyph named repro passed 5/5 regular cases plus RTL pair in `cx-redk7:glyph-dzn-repro`, `/tmp/cx-redk7-glyph-dzn-repro.log`; the cold-bound entry was the only initial additional red and its fix is committed in `ff12b2f5`.
+- Commit: `ff12b2f5` (`Fix dzn editor and headless capture reds`).
 
 ## REDS
 
-- `Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound` — post-fix dzn witness is still queued, blocked by the live queue's `gpu-suite` admission state; initial failure was the baked expected-file path mismatch described above.
+- `Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound` — post-fix dzn witness did not run: queue status showed `gpu-device sharing=on shared-holders=0/2`, `gpu-admission admitted=0`, and `blocked=gpu-suite`; the wrapper ended with exit 143 after 4,199 seconds without a payload result. Initial failure was the baked expected-file path mismatch described above.
 
 ## STOPs
 
 - `velocity-1` merge was attempted once before semantic edits and aborted because `VIXEN/codegen/CMakeLists.txt` conflicted. It was not retried or hand-resolved.
 - Initial configure was red because auto-derived `/home/liory/projects/undertow` lacked `transpiled/textshader`; recovery used the paired generated provider `/home/liory/projects/undertow/.claude-worktrees/pair-kernel-858f41b873` through the queue.
-- Full VIXEN suite was not run; lane rules require the named GPU cases only. The required editor/headless scope is green; cold-bound verification remains queue-blocked.
+- Full VIXEN suite was not run; lane rules require the named GPU cases only. The required editor/headless scope is green. The cold-bound verification could not establish a result because the authorized GPU queue route never admitted the payload; no claim of green is made.
 
 ## STATUS
 
-Implementation is complete for the dispatched editor/headless and glyph generator reds. Commit is pending the queued cold-bound witness; if the queue remains blocked, commit the verified fixes with that exact red retained above.
+Implementation is complete and committed in `ff12b2f5` for the dispatched editor/headless and glyph generator reds. The exact cold-bound red remains unverified because its authorized GPU witness was admission-blocked and terminated before payload start.
 
 ## CONSOLIDATION ISSUES
 
