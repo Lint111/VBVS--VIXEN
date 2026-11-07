@@ -85,8 +85,7 @@
 #include "Recipe/SpecializedRecipeShaderGlsl.h"
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "ShaderCompiler.h"
-#include "TestVkValidation.h"
-#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "RenderGraphHeavyTestFixtures.h"
 #include "VulkanDevice.h"
 
 #include <vulkan/vulkan.h>
@@ -391,19 +390,9 @@ bool MultiRecipeCpuOracle(const std::vector<SyntheticRecipe>& recipes,
 
 }  // namespace
 
-class RecipeMultiBucketCompositingTest : public ::testing::Test {
+class RecipeMultiBucketCompositingTest
+    : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
-    VkInstance       instance_       = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
-    VkQueue          queue_          = VK_NULL_HANDLE;
-    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
-    uint32_t         queueFamily_    = 0;
-    std::string      selectedDeviceName_;
-    bool             deviceConfirmed_ = false;
-
-    std::unique_ptr<VulkanDevice> deviceShell_;
-
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
         return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
                props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
@@ -420,34 +409,16 @@ protected:
     }
 
     void SetUp() override {
-        VixenSelectWslGpuIcd();
-
-        VkApplicationInfo appInfo{};
-        appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "test_recipe_multi_bucket_compositing";
-        appInfo.apiVersion       = VK_API_VERSION_1_3;
-
-        const auto  enabledLayers = EnabledValidationLayers();
-        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-
-        VkInstanceCreateInfo instInfo{};
-        instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
-        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
-        instInfo.enabledExtensionCount   = 1;
-        instInfo.ppEnabledExtensionNames = extensions;
-
-        ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is a Vulkan device available?";
+        BeginVulkanTest("test_recipe_multi_bucket_compositing");
 
         ASSERT_NO_FATAL_FAILURE(PickPhysicalDevice());
         ASSERT_TRUE(deviceConfirmed_)
             << "Refusing to run: no usable Vulkan device found; nearest was '"
             << selectedDeviceName_ << "'.";
 
-        ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
-        ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
+        CreateTestLogicalDevice(/*enableSynchronization2=*/true,
+                                /*enableStorageImageWriteWithoutFormat=*/false);
+        CreateTestCommandPool();
 
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
         deviceShell_->device = logicalDevice_;
@@ -465,15 +436,7 @@ protected:
                "being requested as a device extension";
     }
 
-    void TearDown() override {
-        if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
-        if (commandPool_ != VK_NULL_HANDLE && logicalDevice_ != VK_NULL_HANDLE) {
-            vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-            commandPool_ = VK_NULL_HANDLE;
-        }
-        if (logicalDevice_ != VK_NULL_HANDLE) { vkDestroyDevice(logicalDevice_, nullptr); logicalDevice_ = VK_NULL_HANDLE; }
-        if (instance_ != VK_NULL_HANDLE) { vkDestroyInstance(instance_, nullptr); instance_ = VK_NULL_HANDLE; }
-    }
+    void TearDown() override { EndVulkanTest(); }
 
     void PickPhysicalDevice() {
         uint32_t count = 0;
@@ -501,57 +464,6 @@ protected:
         vkGetPhysicalDeviceProperties(devices[0], &props);
         selectedDeviceName_ = props.deviceName;
         deviceConfirmed_    = false;
-    }
-
-    void CreateLogicalDevice() {
-        uint32_t qfCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCount, nullptr);
-        ASSERT_GT(qfCount, 0u);
-        std::vector<VkQueueFamilyProperties> qfs(qfCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCount, qfs.data());
-        bool found = false;
-        for (uint32_t i = 0; i < qfCount; ++i) {
-            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { queueFamily_ = i; found = true; break; }
-        }
-        ASSERT_TRUE(found) << "No compute queue family on the selected device";
-
-        float priority = 1.0f;
-        VkDeviceQueueCreateInfo qInfo{};
-        qInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        qInfo.queueFamilyIndex = queueFamily_; qInfo.queueCount = 1; qInfo.pQueuePriorities = &priority;
-
-        // Request VK_KHR_synchronization2: MultiDispatchNode's autoBarriers_ path (the DEFAULT
-        // this milestone's plan requires never be disabled) calls through
-        // VulkanDevice::fpCmdPipelineBarrier2, a per-device function pointer resolved via
-        // vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier2KHR") — see VulkanDevice.cpp's own
-        // CreateDevice(). This test builds its VkDevice by hand (not through VulkanDevice's own
-        // device-creating constructor) and wraps it afterward, so that resolution must be done
-        // here explicitly or fpCmdPipelineBarrier2 stays null — calling through a null function
-        // pointer inside InsertAutoBarrier is exactly what caused a real SEH 0xc0000005 crash the
-        // first time this test exercised a REAL MultiDispatchNode with 2+ queued passes (M2's
-        // test never hit this: it hand-rolls legacy vkCmdPipelineBarrier directly and never
-        // drives MultiDispatchNode's own barrier path at all).
-        VkPhysicalDeviceSynchronization2Features sync2Features{};
-        sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        sync2Features.synchronization2 = VK_TRUE;
-
-        const char* deviceExtensions[] = {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME};
-
-        VkDeviceCreateInfo dInfo{};
-        dInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        dInfo.pNext = &sync2Features;
-        dInfo.queueCreateInfoCount = 1; dInfo.pQueueCreateInfos = &qInfo;
-        dInfo.enabledExtensionCount = 1; dInfo.ppEnabledExtensionNames = deviceExtensions;
-        ASSERT_EQ(vkCreateDevice(physicalDevice_, &dInfo, nullptr, &logicalDevice_), VK_SUCCESS);
-        vkGetDeviceQueue(logicalDevice_, queueFamily_, 0, &queue_);
-    }
-
-    void CreateCommandPool() {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = queueFamily_;
-        ASSERT_EQ(vkCreateCommandPool(logicalDevice_, &poolInfo, nullptr, &commandPool_), VK_SUCCESS);
     }
 
     template<typename T>
