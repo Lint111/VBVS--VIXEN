@@ -36,8 +36,9 @@ function(vixen_native_product_install)
     foreach(_target IN LISTS _vixen_binary_targets)
         install(FILES "$<TARGET_FILE:${_target}>"
             DESTINATION ${CMAKE_INSTALL_LIBDIR})
-        install(FILES "$<TARGET_SONAME_FILE:${_target}>"
-            DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        install(FILES "$<TARGET_FILE:${_target}>"
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RENAME "$<TARGET_SONAME_FILE_NAME:${_target}>")
     endforeach()
 
     # KernelDispatch/TaskExecutor.h includes <oneapi/tbb/...>; the product must carry that root.
