@@ -27,16 +27,28 @@ if(NOT DEFINED ENV{UNDERTOW_ROOT} AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
     get_filename_component(_vixen_projects_root "${_vixen_provider_repo}" DIRECTORY)
     set(_undertow_lane_candidate
         "${_vixen_projects_root}/undertow/.claude-worktrees/${_vixen_lane_name}")
-    foreach(_undertow_candidate
+    set(_undertow_candidates
         "${_undertow_lane_candidate}"
         "${_vixen_projects_root}/undertow")
-        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json")
+    # A checkout with the schema catalogue is not sufficient for the Text consumer: it also
+    # needs the paired text shader interface. If the exact lane is not generated yet, choose a
+    # complete provider from a sibling worktree instead of silently exporting an unusable root.
+    file(GLOB _undertow_sibling_candidates LIST_DIRECTORIES true
+        "${_vixen_projects_root}/undertow/.claude-worktrees/*")
+    list(SORT _undertow_sibling_candidates)
+    list(APPEND _undertow_candidates ${_undertow_sibling_candidates})
+    foreach(_undertow_candidate IN LISTS _undertow_candidates)
+        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/Text.g.h"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/text.g.glsl")
             get_filename_component(_undertow_root_derived "${_undertow_candidate}" REALPATH)
             set(ENV{UNDERTOW_ROOT} "${_undertow_root_derived}")
             if("${_undertow_candidate}" STREQUAL "${_undertow_lane_candidate}")
                 message(STATUS "[vixen] using paired Undertow lane: ${_undertow_root_derived}")
+            elseif("${_undertow_candidate}" MATCHES "/undertow$" OR "${_undertow_candidate}" MATCHES "\\\\undertow$")
+                message(STATUS "[vixen] using Undertow sibling with generated text shader interface: ${_undertow_root_derived}")
             else()
-                message(STATUS "[vixen] using Undertow sibling for pinned VIXEN provider: ${_undertow_root_derived}")
+                message(STATUS "[vixen] using Undertow provider worktree with generated text shader interface: ${_undertow_root_derived}")
             endif()
             break()
         endif()
