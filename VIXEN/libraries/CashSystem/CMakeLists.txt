@@ -51,6 +51,19 @@ else()
     target_link_libraries(CashSystem PUBLIC Vulkan::Vulkan)
 endif()
 
+# Shared voxel-scene store: the directory name carries a content hash of this cacher's own sources
+# (the SVO-side hash comes from SVO). See cmake/VixenSourceFingerprint.cmake.
+include("${VIXEN_ROOT}/cmake/VixenSourceFingerprint.cmake")
+vixen_source_fingerprint(VoxelSceneCacherFingerprint
+    HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/VoxelSceneCacherFingerprint.h"
+    CONSTANT CashSystem::kVoxelSceneCacherFingerprint
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/VoxelSceneCacher.cpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/include/VoxelSceneCacher.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/include/CacheCodec.h")
+# SVO's header is included here too; a static-library link alone does not order its generation first.
+add_dependencies(CashSystem VoxelSceneCacherFingerprint SvoGeneratorFingerprint)
+target_include_directories(CashSystem PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>")
+
 # Link ProjectHash so CashSystem uses the same hash provider includes/links
 target_link_libraries(CashSystem PRIVATE ProjectHash)
 

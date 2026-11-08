@@ -4,6 +4,7 @@
 #include "SdiRegistryManager.h"
 #include <filesystem>
 #include <fstream>
+#include <unistd.h>
 
 using namespace ShaderManagement;
 
@@ -21,7 +22,11 @@ using namespace ShaderManagement;
 class SdiLifecycleTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "sdi_lifecycle_test";
+        // Per-process + per-test: each gtest case is its own ctest process, and a shared fixed
+        // directory made them delete each other's SDI output under ctest -j.
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        testDir = std::filesystem::temp_directory_path() /
+                  ("sdi_lifecycle_test_" + std::to_string(::getpid()) + "_" + info->name());
         sdiOutputDir = testDir / "generated" / "sdi";
         cacheDir = testDir / "cache";
 

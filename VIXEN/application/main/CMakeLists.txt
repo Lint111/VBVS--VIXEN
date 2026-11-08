@@ -52,9 +52,17 @@ target_compile_definitions(VulkanResources PUBLIC
 set(VIXEN_APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationLifecycle.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationTeardown.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationCapture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationRecipes.cpp
     # M4: per-subgraph construction TUs (extracted from VulkanGraphApplication.cpp so a
     # node-config edit recompiles only the subgraph that wires it, not the lifecycle code).
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRecipeSvoGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraphDiagnostics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildPresentationGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildLightingShadowGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/UpscalerModules.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/ReconstructionHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildUIGraph.cpp
@@ -88,6 +96,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CONFIG:Debug>>:-O1>"
                    SKIP_PRECOMPILE_HEADERS ON)
 endif()
+
+# The shared bake-artifact store is keyed on the code that drives the bake: BuildRenderGraph.cpp
+# (the SVO side is fingerprinted by SVO itself). See cmake/VixenSourceFingerprint.cmake.
+include("${VIXEN_ROOT}/cmake/VixenSourceFingerprint.cmake")
+vixen_source_fingerprint(BuildRenderGraphFingerprint
+    HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildRenderGraphFingerprint.h"
+    CONSTANT Vixen::kBuildRenderGraphFingerprint
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRenderGraph.cpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/source/graph/BuildRecipeSvoGraph.cpp")
+# BakeArtifactCache.h (SVO) includes the SVO fingerprint header, so order it before this target too.
+add_dependencies(VixenApp BuildRenderGraphFingerprint SvoGeneratorFingerprint)
+target_include_directories(VixenApp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # ----------------------------------------------------------------------------
 # M3: generate the node-usage manifest by scanning the graph-builder TUs and registered module
@@ -196,10 +216,10 @@ if(MSVC)
 endif()
 
 if(USE_PRECOMPILED_HEADERS)
-    # Headers.h moved to libraries/Core (AR#3/#4 header-leak severance); VixenApp gets it via
-    # Core::Core (transitively linked through RenderGraph/VulkanResources/CashSystem).
-    target_precompile_headers(VixenApp PRIVATE "${VIXEN_ROOT}/libraries/Core/include/Headers.h")
-    message(STATUS "VixenApp: Precompiled headers enabled (using Core/Headers.h)")
+    # Keep the application PCH owned by this domain. Core/Headers.h is a broad
+    # library header and must not be the application's public compilation seam.
+    target_precompile_headers(VixenApp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/VixenAppPch.h")
+    message(STATUS "VixenApp: Precompiled headers enabled (using VixenAppPch.h)")
 endif()
 
 if(WIN32)

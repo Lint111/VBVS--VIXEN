@@ -1,3 +1,4 @@
+#include "ScopedEnvironment.h"
 #include "VulkanGraphApplication.h"
 #include "graph/PlanetSceneDefinition.h"
 #include "Nodes/CameraNode.h"
@@ -102,11 +103,7 @@ double ProcessBudgetMs() {
 }
 
 void SetEnvironment(const char* key, const std::string& value) {
-#ifdef _WIN32
-    _putenv_s(key, value.c_str());
-#else
-    setenv(key, value.c_str(), 1);
-#endif
+    Vixen::Core::Env::Set(key, value);
 }
 
 class PlanetCaptureApplication final : public VulkanGraphApplication {

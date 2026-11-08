@@ -15,7 +15,10 @@
 #include "Connection/SdiStageWiring.h"
 #include "Connection/ShaderFeature.h"
 #include "CapabilityGraph.h"
+#include "merged/ExposureTonemapReference-SDI.g.h"
 
+#include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -297,4 +300,32 @@ TEST(SdiHazardCensus, OpaqueMembersAreReportedNotDerived) {
     EXPECT_TRUE(DeriveHazardEdges(census).empty());
     ASSERT_EQ(census.OpaqueMembers().size(), 1u);
     EXPECT_EQ(census.OpaqueMembers()[0].memberName, "cameraPos");
+}
+
+// The generated tone-map system names each storage block instance by its binding, exactly as the
+// hand-written reference's SDI does, so one provider registration per binding name serves both and
+// the graph needs no `<name>Block` alias.
+TEST(SdiStageWiring, GeneratedToneMapSystemSharesReferenceBindingNames) {
+    namespace Ref = ShaderInterface::ExposureTonemapReference;
+    std::ifstream in(VIXEN_GENERATED_TONEMAP_COMP);
+    ASSERT_TRUE(in.is_open()) << VIXEN_GENERATED_TONEMAP_COMP;
+    std::stringstream text;
+    text << in.rdbuf();
+    const std::string source = text.str();
+
+    for (const char* storage : {"meter", "LightingConfigSSBO"}) {
+        bool inReference = false;
+        for (const auto& m : Ref::MEMBERS) inReference = inReference || std::string(m.name) == storage;
+        EXPECT_TRUE(inReference) << storage;
+        EXPECT_NE(source.find(std::string("} ") + storage + ";"), std::string::npos)
+            << storage << " is not the generated block instance name";
+    }
+
+    auto plan = BuildSdiWirePlan<Ref::Metadata, Ref::MEMBERS>(
+        /*activeFeatures=*/{},
+        Providers({"sceneRadianceHistoryOutput", "outputImage", "meter", "LightingConfigSSBO"}));
+    EXPECT_EQ(plan.entries.size(), 4u);
+    const auto* meter = Find(plan, "meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->targetSlot, 2u);
 }

@@ -27,13 +27,13 @@
  * Output: /tmp/glsl_recipe_procedural.png (512x512 RGBA8, procedural peanut sphere-trace).
  */
 
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
 
 #include "Recipe/SdfRecipeCodegen.h"
 #include "Recipe/SdfInstruction.h"
 #include "ShaderCompiler.h"
-#include "TestVkValidation.h"
-#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "RenderGraphHeavyTestFixtures.h"
 
 #include <vulkan/vulkan.h>
 
@@ -158,17 +158,9 @@ static Vixen::SVO::Recipe::SdfInstruction makeSubtract() {
 // Lavapipe render fixture — minimal: 1 binding (storage image) + push constants.
 // Device/instance/pool bring-up mirrors test_body_instance_raymarch_render.cpp.
 // ---------------------------------------------------------------------------
-class ProceduralRecipeRenderTest : public ::testing::Test {
+class ProceduralRecipeRenderTest
+    : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
-    VkInstance       instance_       = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
-    VkQueue          queue_          = VK_NULL_HANDLE;
-    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
-    uint32_t         queueFamily_    = 0;
-    bool             softwareConfirmed_ = false;
-    std::string      selectedDeviceName_;
-
     // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
     // fallback when no real GPU is visible.
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
@@ -192,30 +184,9 @@ protected:
         // explicit. The parity precedent remains real-GPU-only via IsRealGpu in
         // test_recipe_glsl_numerical_parity.cpp.
 #if defined(__linux__)
-        ::setenv("VIXEN_ALLOW_SOFTWARE_VULKAN", "1", /*overwrite=*/1);
+        Vixen::Core::Env::Set("VIXEN_ALLOW_SOFTWARE_VULKAN", "1");
 #endif
-        VixenSelectWslGpuIcd();
-
-        VkApplicationInfo appInfo{};
-        appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "test_procedural_recipe_render";
-        // Vulkan 1.3 instance — required so the SPIR-V 1.6 module is accepted.
-        appInfo.apiVersion       = VK_API_VERSION_1_3;
-
-        // ponytail: validation is a debug aid — only enabled when the SDK layer is installed
-        const auto  enabledLayers = EnabledValidationLayers();
-        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-
-        VkInstanceCreateInfo instInfo{};
-        instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
-        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
-        instInfo.enabledExtensionCount   = 1;
-        instInfo.ppEnabledExtensionNames = extensions;
-
-        ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is a Vulkan device available?";
+        BeginVulkanTest("test_procedural_recipe_render");
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
@@ -227,20 +198,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateCommandPool());
     }
 
-    void TearDown() override {
-        if (commandPool_ != VK_NULL_HANDLE && logicalDevice_ != VK_NULL_HANDLE) {
-            vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-            commandPool_ = VK_NULL_HANDLE;
-        }
-        if (logicalDevice_ != VK_NULL_HANDLE) {
-            vkDestroyDevice(logicalDevice_, nullptr);
-            logicalDevice_ = VK_NULL_HANDLE;
-        }
-        if (instance_ != VK_NULL_HANDLE) {
-            vkDestroyInstance(instance_, nullptr);
-            instance_ = VK_NULL_HANDLE;
-        }
-    }
+    void TearDown() override { EndVulkanTest(); }
 
     void PickSoftwarePhysicalDevice() {
         uint32_t count = 0;

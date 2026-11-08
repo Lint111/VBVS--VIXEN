@@ -1,17 +1,19 @@
 if(NOT DEFINED SOURCE_ROOT OR NOT IS_DIRECTORY "${SOURCE_ROOT}")
     message(FATAL_ERROR "GPU schema source root is missing: ${SOURCE_ROOT}")
 endif()
-if(NOT DEFINED LOCAL_ROOT OR NOT IS_DIRECTORY "${LOCAL_ROOT}")
-    message(FATAL_ERROR "VIXEN GPU schema source root is missing: ${LOCAL_ROOT}")
-endif()
 if(NOT DEFINED OUTPUT_ROOT)
     message(FATAL_ERROR "OUTPUT_ROOT is required")
 endif()
 
-file(REMOVE_RECURSE "${OUTPUT_ROOT}")
 file(MAKE_DIRECTORY "${OUTPUT_ROOT}")
 
-foreach(_root IN ITEMS "${SOURCE_ROOT}" "${LOCAL_ROOT}")
+set(_roots "${SOURCE_ROOT}")
+if(DEFINED LOCAL_ROOT AND IS_DIRECTORY "${LOCAL_ROOT}")
+    list(APPEND _roots "${LOCAL_ROOT}")
+endif()
+
+set(_expected_outputs)
+foreach(_root IN LISTS _roots)
     # The GPU schema reader consumes SaveHistory/lineage.json alongside the C#
     # declarations. Keep JSON sidecars in the staged source tree so the
     # generator sees the same inputs as the source checkout.
@@ -35,8 +37,22 @@ foreach(_root IN ITEMS "${SOURCE_ROOT}" "${LOCAL_ROOT}")
         endif()
         file(RELATIVE_PATH _relative "${_root}" "${_source}")
         set(_destination "${OUTPUT_ROOT}/${_relative}")
+        list(APPEND _expected_outputs "${_destination}")
         get_filename_component(_destination_dir "${_destination}" DIRECTORY)
         file(MAKE_DIRECTORY "${_destination_dir}")
+        # configure_file(COPYONLY) preserves the destination mtime when the
+        # source bytes are unchanged. Do not remove the tree first: the staged
+        # directory is a dependency input to the schema/codegen checks.
         configure_file("${_source}" "${_destination}" COPYONLY)
     endforeach()
+endforeach()
+
+# Remove files whose source declaration was deleted, without touching files
+# that are still byte-identical. Empty directories are harmless to the reader.
+file(GLOB_RECURSE _staged_outputs LIST_DIRECTORIES false "${OUTPUT_ROOT}/*")
+foreach(_staged_output IN LISTS _staged_outputs)
+    list(FIND _expected_outputs "${_staged_output}" _expected_index)
+    if(_expected_index EQUAL -1)
+        file(REMOVE "${_staged_output}")
+    endif()
 endforeach()
