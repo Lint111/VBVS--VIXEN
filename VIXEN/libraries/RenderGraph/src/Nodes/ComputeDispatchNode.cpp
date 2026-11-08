@@ -402,7 +402,8 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
 void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
     if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
-        double totalMs = 0, maximumMs = 0;
+        double totalMs = 0, maximumMs = 0, fullTileMs = 0;
+        uint32_t fullTiles = 0;
         for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
             const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
@@ -417,10 +418,16 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             }
             totalMs += ms;
             if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
+                if (tileWorkGroupCounts_[frameIndex][i] == tileNominalWorkGroupCounts_[frameIndex]) {
+                    fullTileMs += ms;
+                    ++fullTiles;
+                }
                 chunkCost_.Observe(tileWorkGroupCounts_[frameIndex][i],
                     tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
             }
         }
+        if (fullTiles)
+            chunkCost_.ObserveScale(tileNominalWorkGroupCounts_[frameIndex], fullTileMs * 1.0e6 / fullTiles);
         // R503: publish the learned envelope to the task profile; CalibrationStore
         // persists it per device at shutdown, keyed by this flight's extent.
         if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
@@ -449,6 +456,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             " total_gpu_ms=" + std::to_string(totalMs) +
             " max_submission_ms=" + std::to_string(maximumMs) +
             " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
+            " launch_latency_ms=" + std::to_string(chunkCost_.LaunchLatencyNs() / 1.0e6) +
             " device_class=" + GpuDeviceClassName(*vulkanDevice));
     }
 
@@ -503,14 +511,30 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     const std::string extentKey = std::to_string(dispatchX) + "x" + std::to_string(dispatchY);
     if (extentKey != chunkCalibrationKey_) {
         chunkCalibrationKey_ = extentKey;
+        // Seed order: this extent's persisted envelope, then this process's envelope from the previous
+        // extent, then the nearest persisted extent. Per-workgroup cost belongs to the device, so a
+        // known device never restarts from the cold floor (frames before the first ring readback).
+        const GpuChunkCost previous = chunkCost_;
         chunkCost_ = {};
+        std::string seed = "cold";
         if (chunkProfile_) {
             if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
                 chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs);
+                seed = "persisted";
+            }
+        }
+        if (!chunkCost_.Calibrated() && previous.Calibrated()) {
+            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs());
+            seed = "previous-extent";
+        }
+        if (!chunkCost_.Calibrated() && chunkProfile_) {
+            if (const auto near = chunkProfile_->NearestChunkCalibration(extentKey)) {
+                chunkCost_.Import(near->anchorUnits, near->unitNs, near->fixedNs);
+                seed = "nearest-persisted";
             }
         }
         NODE_LOG_INFO("[GPUYIELD_CALIBRATION] node=" + GetInstanceName() + " extent=" + extentKey +
-            (chunkCost_.Calibrated() ? " start=warm anchor_units=" + std::to_string(chunkCost_.AnchorUnits()) +
+            (chunkCost_.Calibrated() ? " start=warm seed=" + seed + " anchor_units=" + std::to_string(chunkCost_.AnchorUnits()) +
                 " unit_ns=" + std::to_string(chunkCost_.UnitNs()) + " fixed_ns=" + std::to_string(chunkCost_.FixedNs())
                 : std::string(" start=cold")));
     }
@@ -564,7 +588,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
             vulkanDevice, 1, tileQueryCapacities_[frameIndex] * 4);
     }
     tileCounts_[frameIndex] = count;
-    tileBudgets_[frameIndex] = budgetNs;
+    tileBudgets_[frameIndex] = chunkCost_.SubmissionBudgetNs(budgetNs);
     tileWorkGroupCounts_[frameIndex].clear();
     auto& tileQuery = *tileQueries_[frameIndex];
     // Begin command buffer recording

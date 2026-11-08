@@ -19,6 +19,8 @@
  */
 
 #include "Core/ITaskProfile.h"
+#include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <iomanip>
 #include <map>
@@ -197,6 +199,26 @@ public:
         const auto it = chunkCalibration_.find(extent);
         if (it == chunkCalibration_.end()) return std::nullopt;
         return it->second;
+    }
+
+    // Envelope learned at the extent whose pixel count is closest to `extent` ("WxH"), excluding
+    // `extent` itself. Per-workgroup cost is a property of the device and pipeline, so a new
+    // resolution can start from it instead of from the cold floor.
+    [[nodiscard]] std::optional<ChunkCalibration> NearestChunkCalibration(const std::string& extent) const {
+        const auto area = [](const std::string& key) -> double {
+            const auto x = key.find('x');
+            if (x == std::string::npos) return 0.0;
+            return std::atof(key.substr(0, x).c_str()) * std::atof(key.substr(x + 1).c_str());
+        };
+        const double target = area(extent);
+        std::optional<ChunkCalibration> best;
+        double bestGap = 0;
+        for (const auto& [key, calibration] : chunkCalibration_) {
+            if (key == extent) continue;
+            const double gap = std::abs(area(key) - target);
+            if (!best || gap < bestGap) { best = calibration; bestGap = gap; }
+        }
+        return best;
     }
 
     // =========================================================================

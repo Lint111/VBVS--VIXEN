@@ -289,6 +289,19 @@ TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     EXPECT_TRUE(rejected.GetChunkCalibration("63x63").has_value());
 }
 
+TEST_F(SimpleTaskProfileTest, NearestChunkCalibrationSeedsANewExtent) {
+    EXPECT_FALSE(profile->NearestChunkCalibration("240x135").has_value());
+    profile->SetChunkCalibration("63x63", {3969, 90.0, 0.0});
+    profile->SetChunkCalibration("160x90", {14400, 80.0, 0.0});
+    const auto seed = profile->NearestChunkCalibration("200x112");
+    ASSERT_TRUE(seed.has_value());
+    EXPECT_EQ(seed->anchorUnits, 14400u);
+    // The extent itself is never its own seed.
+    const auto other = profile->NearestChunkCalibration("160x90");
+    ASSERT_TRUE(other.has_value());
+    EXPECT_EQ(other->anchorUnits, 3969u);
+}
+
 // ============================================================================
 // RESOLUTION TASK PROFILE TESTS
 // ============================================================================

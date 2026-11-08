@@ -416,6 +416,119 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
 
+    # Scheduling cost and selection family of every look-dev capture. COST is the serial wall time in
+    # seconds measured on Dozen (cl-glmdepth1 ctest -L gpu, 2026-11-07); it is a relative weight, not a
+    # timing claim. The GPU shard planner (tools/shard-ctest-tests.py) packs longest-first by it, so the
+    # multi-minute captures land on different shards. The family labels let a lane select the captures a
+    # change can affect (ctest -L lookdev-glyphsdf); the generated lookdev-affected-by.tsv (target lookdev_affected_manifest) maps
+    # source paths to families from what each family's capture processes actually opened.
+    set(_lookdev_family_rules
+        "^Application\\.LookdevCapture\\.(State|SinglePass)\\.@lookdev-states"
+        "^Application\\.LookdevCapture\\.RendersFourStates@lookdev-states"
+        "^Application\\.LookdevCapture\\.Presentation\\.@lookdev-presentation"
+        "^Application\\.(LookdevCapture\\.SaturationChannel|ExposureTonemapParity)\\.@lookdev-tonemap"
+        "^Application\\.LookdevCapture\\.ExposureRoom\\.@lookdev-exposure"
+        "^Application\\.LookdevCapture\\.GlyphSdf\\.@lookdev-glyphsdf"
+        "^Application\\.LookdevCapture\\.(StoredSdf|SdfFilter)\\.@lookdev-sdf-bake"
+        "^Application\\.(ReconstructionInputs\\.|LookdevCapture\\.(NoNullAcceleration|StorageImageLayouts))@lookdev-reconstruction")
+    set(_lookdev_costs
+        "Application.LookdevCapture.Presentation.night-service=526"
+        "Application.LookdevCapture.Presentation.late-afternoon=444"
+        "Application.LookdevCapture.Presentation.overcast=434"
+        "Application.LookdevCapture.Presentation.midday=434"
+        "Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically=522"
+        "Application.LookdevCapture.GlyphSdf.RtlProof.Pair=220"
+        "Application.LookdevCapture.ExposureRoom.walk=181"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel.Yaw30=171"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel=158"
+        "Application.LookdevCapture.State.night-service=141"
+        "Application.LookdevCapture.State.overcast=124"
+        "Application.LookdevCapture.State.late-afternoon=118"
+        "Application.LookdevCapture.State.midday=117"
+        "Application.LookdevCapture.GlyphSdf.qps-rtl-embossed=112"
+        "Application.LookdevCapture.GlyphSdf.qps-rtl-carved=111"
+        "Application.LookdevCapture.GlyphSdf.latin-embossed=109"
+        "Application.LookdevCapture.GlyphSdf.latin-carved=101"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel128=84"
+        "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel128.Yaw30=80"
+        "Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound=76"
+        "Application.LookdevCapture.SinglePass.night-service=74"
+        "Application.LookdevCapture.StoredSdf.Brickmap=68"
+        "Application.LookdevCapture.SdfFilter.NonText256.Yaw30=63"
+        "Application.LookdevCapture.SinglePass.midday=61"
+        "Application.LookdevCapture.SdfFilter.NonText128.Yaw30=61"
+        "Application.LookdevCapture.SdfFilter.NonText256.Yaw0=61"
+        "Application.LookdevCapture.SinglePass.late-afternoon=59"
+        "Application.LookdevCapture.SinglePass.overcast=59"
+        "Application.LookdevCapture.SdfFilter.NonText128.Yaw0=58"
+        "Application.LookdevCapture.StoredSdf.Isolation.StoredNormals=55"
+        "Application.LookdevCapture.StoredSdf.Isolation.ShadowBiasOneVoxel=52"
+        "Application.LookdevCapture.StoredSdf.Isolation.ShadowOff=50"
+        "Application.LookdevCapture.ExposureRoom.door=48"
+        "Application.LookdevCapture.ExposureRoom.window=47")
+    foreach(_entry IN LISTS _lookdev_costs)
+        string(REGEX REPLACE "=.*$" "" _name "${_entry}")
+        string(REGEX REPLACE "^.*=" "" _seconds "${_entry}")
+        if(TEST "${_name}")
+            set_tests_properties("${_name}" PROPERTIES COST ${_seconds})
+        endif()
+    endforeach()
+    get_property(_lookdev_registered DIRECTORY PROPERTY TESTS)
+    foreach(_test IN LISTS _lookdev_registered)
+        foreach(_rule IN LISTS _lookdev_family_rules)
+            string(REGEX REPLACE "@[^@]*$" "" _pattern "${_rule}")
+            string(REGEX REPLACE "^.*@" "" _family "${_rule}")
+            if(_test MATCHES "${_pattern}")
+                set_property(TEST "${_test}" APPEND PROPERTY LABELS "${_family}")
+            endif()
+        endforeach()
+    endforeach()
+
+    # R812.15: the affected-test manifest is derived, not declared. Each family's input closure is recorded
+    # from its own capture processes (open_recorder preloaded, tools/closure) and mapped through the build
+    # graph to source files; closure_manifest merges the closures into ${CMAKE_BINARY_DIR}/generated/lookdev-affected-by.tsv.
+    # Order and parallelism come from the OUTPUT/DEPENDS edges. Each lookdev_closure_<family> target drives
+    # GPU captures: build it as its own queued GPU job (cmake --build <dir> --target lookdev_closure_<family>).
+    add_library(vixen_open_recorder SHARED ${VIXEN_ROOT}/tools/closure/open_recorder.cpp)
+    target_link_libraries(vixen_open_recorder PRIVATE ${CMAKE_DL_LIBS})
+    add_executable(closure_manifest ${VIXEN_ROOT}/tools/closure/closure_manifest.cpp)
+    add_executable(test_closure_manifest ${VIXEN_ROOT}/tools/closure/test_closure_manifest.cpp)
+    target_link_libraries(test_closure_manifest PRIVATE GTest::gtest_main)
+    add_test(NAME Application.LookdevClosure.Manifest COMMAND test_closure_manifest)
+    set_tests_properties(Application.LookdevClosure.Manifest PROPERTIES LABELS "Application" TIMEOUT 60)
+    set(_closure_dir "${CMAKE_BINARY_DIR}/lookdev-closure")
+    set(_closure_families)
+    set(_closure_stamps)
+    set(_closure_arguments)
+    foreach(_rule IN LISTS _lookdev_family_rules)
+        string(REGEX REPLACE "^.*@" "" _family "${_rule}")
+        if(_family IN_LIST _closure_families)
+            continue()
+        endif()
+        list(APPEND _closure_families "${_family}")
+        set(_stamp "${_closure_dir}/${_family}.stamp")
+        add_custom_command(OUTPUT "${_stamp}"
+            COMMAND ${CMAKE_COMMAND} -DCLOSURE_FAMILY=${_family}
+                "-DCLOSURE_RECORDER=$<TARGET_FILE:vixen_open_recorder>"
+                -DCLOSURE_OUT=${_closure_dir}/${_family} -DCLOSURE_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DCLOSURE_STAMP=${_stamp} -P ${CMAKE_CURRENT_LIST_DIR}/record_lookdev_closure.cmake
+            DEPENDS vixen_lookdev_capture vixen_open_recorder ${CMAKE_CURRENT_LIST_DIR}/record_lookdev_closure.cmake
+            COMMENT "Recording the ${_family} capture closure"
+            VERBATIM)
+        add_custom_target(lookdev_closure_${_family} DEPENDS "${_stamp}")
+        list(APPEND _closure_stamps "${_stamp}")
+        list(APPEND _closure_arguments "${_family}=${_closure_dir}/${_family}")
+    endforeach()
+    set(_closure_manifest "${CMAKE_BINARY_DIR}/generated/lookdev-affected-by.tsv")
+    add_custom_command(OUTPUT "${_closure_manifest}"
+        COMMAND closure_manifest merge --repo "${VIXEN_ROOT}/.." --build "${CMAKE_BINARY_DIR}"
+            --exe application/main/vixen_lookdev_capture --out "${_closure_manifest}"
+            --detail "${_closure_dir}/closure-detail.tsv" ${_closure_arguments}
+        DEPENDS closure_manifest ${_closure_stamps}
+        COMMENT "Merging the look-dev capture closures into lookdev-affected-by.tsv"
+        VERBATIM)
+    add_custom_target(lookdev_affected_manifest DEPENDS "${_closure_manifest}")
+
     # T-4922: a host-level shadow diagnostic override (VIXEN_SHADOW_CONFIG_*) would reach both the before and
     # after captures of every case and mask a renderer change. Every capture case clears them explicitly; the
     # isolation cases name them in their own modification list (unset, then their one override) and are skipped.
