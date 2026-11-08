@@ -63,9 +63,13 @@ add_library(SVO STATIC
 # ------------------------------------------------------------------------------
 
 target_compile_features(SVO PUBLIC cxx_std_23)
-# Kernel-owned generated headers retain their golden gate, while diagnostics in
-# them follow the same system-header policy as other imported providers.
-target_include_directories(SVO SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/Recipe/generated")
+# RecipeSimd.g.hpp is generated into the build tree from the pinned kernel. Keep
+# build-generated include roots first; the source tree still owns the other recipe
+# generated headers consumed by SVO.
+target_include_directories(SVO SYSTEM PUBLIC
+    "${CMAKE_BINARY_DIR}/generated/include/Recipe/generated"
+    "${CMAKE_BINARY_DIR}/generated/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/Recipe/generated")
 if(MSVC)
     # BodyInstanceGpu is over-aligned. stable_sort's temporary storage must honor
     # that alignment rather than MSVC's historical max_align_t compatibility ABI.
