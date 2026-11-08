@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 TOOL = Path(__file__).parents[1] / "compare-capture-pixels.py"
 spec = importlib.util.spec_from_file_location("compare_capture_pixels", TOOL)
@@ -90,6 +91,24 @@ class CompareCapturePixelsTests(unittest.TestCase):
             width, height, _ = tool.decode_png(sheet)
             self.assertEqual((width, height), (40 * 20 // 30 * 3 + 4, 20 * 2 + 4))
             self.assertIn("rows=2", text)
+
+    def test_translated_device_record_is_smoke_only_never_a_pass(self):
+        base = solid(4, 4, (1, 2, 3, 255))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for side, klass in (("before", "integrated"), ("after", "translated")):
+                write(root / side / "a.png", base)
+                (root / side / "capture-device.json").write_text(json.dumps({"device_class": klass}))
+            self.assertEqual(tool.device_class(root / "before"), "integrated")
+            self.assertEqual(tool.device_class(root / "after"), "translated")
+            argv = ["compare", str(root / "before"), str(root / "after")]
+            with unittest.mock.patch.object(sys, "argv", argv), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(tool.main(), tool.EXIT_SMOKE_ONLY)
+            (root / "after" / "capture-device.json").write_text(json.dumps({"device_class": "integrated"}))
+            with unittest.mock.patch.object(sys, "argv", argv), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(tool.main(), 0)
 
     def test_size_mismatch_fails_without_a_crop_or_sheet_row(self):
         with tempfile.TemporaryDirectory() as directory:
