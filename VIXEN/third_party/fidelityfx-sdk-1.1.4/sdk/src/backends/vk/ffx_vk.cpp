@@ -342,7 +342,13 @@ FfxErrorCode ffxGetInterfaceVK(
     backendInterface->fpBreadcrumbsWrite = BreadcrumbsWriteVK;
     backendInterface->fpBreadcrumbsPrintDeviceInfo = BreadcrumbsPrintDeviceInfoVK;
     backendInterface->fpRegisterConstantBufferAllocator = RegisterConstantBufferAllocatorVK;
+#ifdef FFX_VK_NO_FRAME_GENERATION
+    // Upscaler-only builds do not link the frame-generation integration that implements the callback;
+    // leave it unset (only frame-interpolation contexts consume it).
+    backendInterface->fpSwapChainConfigureFrameGeneration = nullptr;
+#else
     backendInterface->fpSwapChainConfigureFrameGeneration = ffxSetFrameGenerationConfigToSwapchainVK;
+#endif
 
     // Memory assignments
     backendInterface->scratchBuffer = scratchBuffer;

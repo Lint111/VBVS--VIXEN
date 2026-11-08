@@ -34,7 +34,7 @@
 #include "Generated/PrevCameraConfig.g.h"
 #include <gtest/gtest.h>
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
-#include "merged/SpatialReuseShade-SDI.g.h"
+#include "merged/SpatialReuseShade-SDI.layout.g.h"
 
 #include "Core/NodeContext.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
@@ -45,9 +45,8 @@
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
-#include "TestVkValidation.h"
+#include "RenderGraphHeavyTestFixtures.h"
 #include "TestVulkanDeviceShell.h"
-#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 #include "Generated/LightingConfig.g.h"
 #include "Recipe/UberShaderSplice.h"
 #include <sstream>
@@ -266,20 +265,10 @@ bool ReferenceOccluded(const glm::vec3& surfacePoint, const glm::vec3& normal,
 
 }  // namespace
 
-class ShadowCorrectnessTest : public ::testing::Test {
+class ShadowCorrectnessTest
+    : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
     void VerifyDirectionalShadow(bool registeredRecipes);
-
-    VkInstance       instance_       = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
-    VkQueue          queue_          = VK_NULL_HANDLE;
-    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
-    uint32_t         queueFamily_    = 0;
-    std::string      selectedDeviceName_;
-    bool             softwareConfirmed_ = false;
-
-    std::unique_ptr<VulkanDevice> deviceShell_;
     std::unique_ptr<TestQueueOwner> submitOwner_;
 
     template <typename T>
@@ -348,26 +337,7 @@ protected:
     }
 
     void SetUp() override {
-        VixenSelectWslGpuIcd();
-
-        VkApplicationInfo appInfo{};
-        appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "test_shadow_correctness";
-        appInfo.apiVersion       = VK_API_VERSION_1_3;
-
-        const auto  enabledLayers = EnabledValidationLayers();
-        const char* extensions[]  = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-
-        VkInstanceCreateInfo instInfo{};
-        instInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        instInfo.pApplicationInfo        = &appInfo;
-        instInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
-        instInfo.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
-        instInfo.enabledExtensionCount   = 1;
-        instInfo.ppEnabledExtensionNames = extensions;
-
-        ASSERT_EQ(vkCreateInstance(&instInfo, nullptr, &instance_), VK_SUCCESS)
-            << "vkCreateInstance failed — is a Vulkan device available?";
+        BeginVulkanTest("test_shadow_correctness");
 
         ASSERT_NO_FATAL_FAILURE(PickSoftwarePhysicalDevice());
         ASSERT_TRUE(softwareConfirmed_)
@@ -382,15 +352,7 @@ protected:
         submitOwner_->Attach(*deviceShell_);
     }
 
-    void TearDown() override {
-        if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
-        if (commandPool_ != VK_NULL_HANDLE && logicalDevice_ != VK_NULL_HANDLE) {
-            vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-            commandPool_ = VK_NULL_HANDLE;
-        }
-        if (logicalDevice_ != VK_NULL_HANDLE) { vkDestroyDevice(logicalDevice_, nullptr); logicalDevice_ = VK_NULL_HANDLE; }
-        if (instance_ != VK_NULL_HANDLE) { vkDestroyInstance(instance_, nullptr); instance_ = VK_NULL_HANDLE; }
-    }
+    void TearDown() override { EndVulkanTest(); }
 
     void PickSoftwarePhysicalDevice() {
         uint32_t count = 0;

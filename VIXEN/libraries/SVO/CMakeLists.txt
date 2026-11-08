@@ -156,6 +156,33 @@ else()
     message(FATAL_ERROR "Core::Core target not found - ensure libraries/Core is built before SVO")
 endif()
 
+# Generator fingerprint: content hash of every source that shapes baked/generated octree data.
+# Shared content-keyed stores (BakeArtifactCache, CashSystem's voxel-scene store) fold it into their
+# key so identical generator code in another build tree hits, and different code can never be served.
+include("${VIXEN_ROOT}/cmake/VixenSourceFingerprint.cmake")
+set(_svo_fingerprint_dirs
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${VIXEN_ROOT}/libraries/GaiaVoxelWorld/src" "${VIXEN_ROOT}/libraries/GaiaVoxelWorld/include"
+    "${VIXEN_ROOT}/libraries/VoxelData/src" "${VIXEN_ROOT}/libraries/VoxelData/include")
+set(_svo_fingerprint_existing_dirs "")
+foreach(_dir IN LISTS _svo_fingerprint_dirs)
+    if(IS_DIRECTORY "${_dir}")
+        list(APPEND _svo_fingerprint_existing_dirs "${_dir}")
+    endif()
+endforeach()
+vixen_source_fingerprint(SvoGeneratorFingerprint
+    HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/SvoGeneratorFingerprint.h"
+    CONSTANT Vixen::SVO::kSvoGeneratorFingerprint
+    DIRS ${_svo_fingerprint_existing_dirs})
+add_dependencies(SVO SvoGeneratorFingerprint)
+add_test(NAME SVO.SourceFingerprint
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSCRIPT=${VIXEN_ROOT}/cmake/VixenSourceFingerprintScript.cmake"
+        "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/source-fingerprint-test"
+        -P "${VIXEN_ROOT}/cmake/tests/test_source_fingerprint.cmake")
+set_tests_properties(SVO.SourceFingerprint PROPERTIES LABELS "cpu")
+target_include_directories(SVO PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # GLM for math (fetched by dependencies/CMakeLists.txt)
 if(TARGET glm)
     target_link_libraries(SVO PUBLIC glm)

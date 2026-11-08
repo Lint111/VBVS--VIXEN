@@ -1,9 +1,11 @@
 """Test the witness's frame correlation and nested CPU span accounting."""
 import importlib.util
 from pathlib import Path
+import subprocess
 import struct
 import tempfile
 import unittest
+from unittest import mock
 import zlib
 
 spec = importlib.util.spec_from_file_location("measure", Path(__file__).parents[1] / "measure-editor-latency.py")
@@ -20,6 +22,15 @@ def image(path, value):
 
 
 class LatencyWitnessTests(unittest.TestCase):
+    def test_fixture_preflight_names_missing_document(self):
+        with tempfile.TemporaryDirectory(dir=measure.REPO / ".tmp") as scratch:
+            (Path(scratch) / "editor").write_text("")
+            with self.assertRaisesRegex(FileNotFoundError, "editor document not found: BuiltAssets/x.vxd"):
+                measure.check_fixture(["editor", "BuiltAssets/x.vxd"], scratch)
+            (Path(scratch) / "BuiltAssets").mkdir()
+            (Path(scratch) / "BuiltAssets/x.vxd").write_text("")
+            measure.check_fixture(["editor", "BuiltAssets/x.vxd"], scratch)
+
     def fixture(self, directory, changed_tick):
         lines = []
         def event(phase, edge, wall, tick=None):
@@ -111,6 +122,38 @@ class LatencyWitnessTests(unittest.TestCase):
             result = measure.analyse(directory)["edits"][0]
             self.assertEqual(result["presented_frames_to_change"], 1)
             self.assertEqual(result["settled_match_frames"], 2)
+
+
+class PrivateDisplayTests(unittest.TestCase):
+    script = measure.PRIVATE_DISPLAY
+
+    def test_start_output_is_parsed_into_display_and_authority(self):
+        output = "export DISPLAY=127.0.0.1:90 XAUTHORITY=/w/.tmp/x/xauthority\n"
+        with mock.patch.object(measure.subprocess, "check_output", return_value=output):
+            self.assertEqual(measure.start_private_display(Path("/w/.tmp/x")),
+                {"DISPLAY": "127.0.0.1:90", "XAUTHORITY": "/w/.tmp/x/xauthority"})
+
+    def test_private_display_is_stopped_even_when_the_run_fails(self):
+        arguments = ["--output", "/tmp/unused-latency-out", "--private-display"]
+        with mock.patch.object(measure, "start_private_display",
+                return_value={"DISPLAY": "127.0.0.1:90", "XAUTHORITY": "/x"}), \
+             mock.patch.object(measure, "stop_private_display") as stop, \
+             mock.patch.object(measure, "run", side_effect=RuntimeError("boom")), \
+             mock.patch.object(measure.sys, "argv", ["measure", *arguments]), \
+             mock.patch.object(Path, "mkdir"):
+            with self.assertRaises(RuntimeError):
+                measure.main()
+        stop.assert_called_once()
+
+    def test_stop_without_start_is_a_no_op(self):
+        with tempfile.TemporaryDirectory(dir=measure.REPO / ".tmp") as scratch:
+            subprocess.run(["bash", str(self.script), "stop", scratch], check=True, stdin=subprocess.DEVNULL)
+
+    def test_script_rejects_unknown_actions(self):
+        with tempfile.TemporaryDirectory(dir=measure.REPO / ".tmp") as scratch:
+            result = subprocess.run(["bash", str(self.script), "bogus", scratch], stdin=subprocess.DEVNULL,
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
 
 
 if __name__ == "__main__":

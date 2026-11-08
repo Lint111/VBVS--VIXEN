@@ -1,193 +1,71 @@
 // ============================================================================
-// Feature-Tagged Merged SDI (Semantic Shader Wiring S0)
+// Compact merged SDI declarations (graph-facing ABI)
 // ============================================================================
 //
 // Program: InstanceOcclusionCull
-// Feature axis: (none — single-variant interface)
-//
-// Merged across compiled feature variants: every member carries the
-// feature conjunction under which it exists (empty = unconditional).
-//
-// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.
+// Generated from the merged shader reflection; do not edit.
+// Layout mirrors live in InstanceOcclusionCull-SDI.layout.g.h.
 //
 // ============================================================================
 
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <unordered_set>
-#include <vector>
-#include <vulkan/vulkan.h>
-#include <glm/glm.hpp>
 
 namespace ShaderInterface {
 namespace InstanceOcclusionCull {
 
-// Per-binding access mode, from SPIR-V decorations (storage kinds)
-// or the descriptor kind's inherent read-only nature. Feeds the
-// derived hazard/sync sets (semantic-wiring S3).
 enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
-
-/**
- * @brief BodyInstanceBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
- */
-struct BodyInstanceBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "BodyInstance";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 48;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief OctreeConfigsSSBO
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xaf0b4419476a6289 (for runtime discovery)
- */
-struct OctreeConfigsSSBO {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xaf0b4419476a6289ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "OctreeConfig";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 432;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief InstanceSkipMaskBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xc1cb627b00db3a9e (for runtime discovery)
- */
-struct InstanceSkipMaskBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xc1cb627b00db3a9eULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BodyInstanceTransformBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
- */
-struct BodyInstanceTransformBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "BodyInstanceTransform";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 96;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
 
 namespace Set0 {
 
-    /**
-     * @brief BodyInstanceBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding0 {
         static constexpr const char* NAME = "BodyInstanceBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 0;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BodyInstanceBuffer;
     };
 
-    /**
-     * @brief OctreeConfigsSSBO
-     * Type: STORAGE_BUFFER
-     */
     struct Binding1 {
         static constexpr const char* NAME = "OctreeConfigsSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 1;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = OctreeConfigsSSBO;
     };
 
-    /**
-     * @brief tileMaxImage
-     * Type: STORAGE_IMAGE
-     */
     struct Binding2 {
         static constexpr const char* NAME = "tileMaxImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 2;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    /**
-     * @brief InstanceSkipMaskBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding3 {
         static constexpr const char* NAME = "InstanceSkipMaskBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 3;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = InstanceSkipMaskBuffer;
     };
 
-    /**
-     * @brief BodyInstanceTransformBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding4 {
         static constexpr const char* NAME = "BodyInstanceTransformBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 4;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BodyInstanceTransformBuffer;
     };
 
 } // namespace Set0
 
-// Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
 using BodyInstanceBuffer = Set0::Binding0;
 using OctreeConfigsSSBO = Set0::Binding1;
@@ -226,28 +104,13 @@ namespace Push {
 
 } // namespace Push
 
-struct PushBlock {
-    uint8_t prevViewProj[64];
-    glm::vec4 prevCamPos;
-    glm::uvec4 dims;
-};
-
-static_assert(offsetof(PushBlock, prevViewProj) == Push::prevViewProj::OFFSET, "PushBlock.prevViewProj is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, prevCamPos) == Push::prevCamPos::OFFSET, "PushBlock.prevCamPos is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, dims) == Push::dims::OFFSET, "PushBlock.dims is not at its SDI OFFSET");
-static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
-
-// ============================================================================
-// Member table (bindings + push members) for the semantic connect walk
-// ============================================================================
-
 struct MemberInfo {
     const char* name;
     bool isPushMember;
-    uint32_t set;      // descriptor members only
-    uint32_t binding;  // descriptor members only
-    uint32_t offset;   // push members only
-    Access access;     // push members: ReadOnly by nature
+    uint32_t set;
+    uint32_t binding;
+    uint32_t offset;
+    Access access;
     uint32_t featureCount;
     const char* const* features;
 };
@@ -263,23 +126,6 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"prevCamPos", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
     {"dims", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
 };
-
-/**
- * @brief Members present under the given active feature set
- */
-inline std::vector<MemberInfo> Members(
-    const std::unordered_set<std::string>& activeFeatures
-) {
-    std::vector<MemberInfo> out;
-    for (const auto& m : MEMBERS) {
-        bool present = true;
-        for (uint32_t i = 0; i < m.featureCount; ++i) {
-            if (activeFeatures.count(m.features[i]) == 0) { present = false; break; }
-        }
-        if (present) out.push_back(m);
-    }
-    return out;
-}
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "InstanceOcclusionCull";

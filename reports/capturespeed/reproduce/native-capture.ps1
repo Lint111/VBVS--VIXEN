@@ -1,13 +1,22 @@
 param(
   [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$Commit,
   [Parameter(Mandatory=$true)][ValidateSet('state', 'label', 'all-tests', 'missing-dll')][string]$Mode,
-  [ValidateSet('lookdev', 'planet', 'glyphsdf')][string]$Capture,
+  [string]$Capture,
   [string]$State,
   [string]$CtestLabel,
-  [string]$Root = 'C:\vixen-native\nativerunner-textshader'
+  [string]$CtestIndex,   # optional ctest -I range for a resumed slice, e.g. '3031,3056' (one string, split by ctest)
+  [string]$Root = 'C:\vixen-native\nativerunner-textshader',
+  [string]$EnvOverrides = '',
+  [string]$CacheSeed
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $Root 'VIXEN\scripts\build\SetWindowsChildErrorMode.ps1')
+. (Join-Path $PSScriptRoot 'native-routes.ps1')
+. (Join-Path $PSScriptRoot 'native-capture-env.ps1')
+$overrides = ConvertTo-NativeCaptureOverrides $EnvOverrides
+if ($overrides.Count -and $Mode -notin @('state', 'label')) {
+  throw "environment overrides apply only to state and label captures, not $Mode"
+}
 $buildDir = Join-Path $Root "build\native\$Commit"
 $readyFile = Join-Path $buildDir '.vixendll-build-ready'
 if (-not (Test-Path $readyFile) -or (Get-Content -Raw $readyFile).Trim() -ne $Commit) {
@@ -17,52 +26,29 @@ $ctest = 'C:\Program Files\CMake\bin\ctest.exe'
 if (-not (Test-Path $ctest)) { throw "CTest was not found: $ctest" }
 
 $testRegex = ''
+$route = $null
 if ($Mode -eq 'state') {
   if (-not $State) { throw 'State is required in state mode' }
-  if ($Capture -eq 'lookdev') {
-    if ($State -notin @('midday', 'late-afternoon', 'overcast', 'night-service')) {
-      throw "unsupported look-dev capture state: $State"
-    }
-    $testRegex = '^Application\.LookdevCapture\.RendersFourStatesAtFourAnglesDeterministically$'
-  } elseif ($Capture -eq 'planet') {
-    if ($State -notin @('C1', 'C1-epic', 'C2', 'C2-term', 'C4a', 'C4b', 'C4c', 'C5a-moon', 'C7', 'C7-60', 'C7-60-1p5au', 'C9')) {
-      throw "unsupported planet capture state: $State"
-    }
-    $testRegex = '^Application\.PlanetCapture\.' + [regex]::Escape($State) + '$'
-  } elseif ($Capture -eq 'glyphsdf') {
-    if ($State -in @('latin-carved', 'latin-embossed', 'qps-rtl-carved', 'qps-rtl-embossed')) {
-      $testRegex = '^Application\.LookdevCapture\.GlyphSdf\.' + [regex]::Escape($State) + '$'
-    } elseif ($State -eq 'analytic-vs-voxel') {
-      $testRegex = '^Application\.LookdevCapture\.GlyphSdf\.AnalyticVsVoxel$'
-    } else {
-      throw "unsupported glyph SDF capture state: $State"
-    }
-  } else {
-    throw 'Capture must be lookdev, planet, or glyphsdf in state mode'
-  }
+  if (-not $Capture) { throw 'Capture is required in state mode' }
+  $route = Get-NativeCaptureRoute -Capture $Capture -State $State
+  $testRegex = $route.Regex
 } elseif ($Mode -eq 'label' -and -not $CtestLabel) {
   throw 'CtestLabel is required in label mode'
 }
 
 $captureRoot = Join-Path $buildDir 'runtime-captures'
-if ($Mode -eq 'state') {
-  if ($Capture -eq 'lookdev') {
-    foreach ($path in @((Join-Path $captureRoot "lookdev\$State"), (Join-Path $captureRoot "lookdev\.repeat\$State"))) {
-      if (Test-Path $path) { Remove-Item -Recurse -Force $path }
-    }
-  } elseif ($Capture -eq 'glyphsdf') {
-    foreach ($path in @((Join-Path $captureRoot "glyphsdf\$State"),
-                        (Join-Path $captureRoot "glyphsdf\.repeat\$State"))) {
-      if (Test-Path $path) { Remove-Item -Recurse -Force $path }
-    }
-  } else {
-    foreach ($suffix in @('.png', '.hits.bin', '.lighting.bin', '.meter.bin', '.scene.json')) {
-      foreach ($base in @((Join-Path $captureRoot 'planet'), (Join-Path $captureRoot 'planet\.repeat'))) {
-        $path = Join-Path $base "$State$suffix"
-        if (Test-Path $path) { Remove-Item -Force $path }
-      }
-    }
+if ($route) {
+  foreach ($relative in $route.Cleanup) {
+    $path = Join-Path $captureRoot $relative
+    if (Test-Path $path) { Remove-Item -Recurse -Force $path }
   }
+}
+
+$cacheSeedBuildDir = $null
+if ($CacheSeed) {
+  if ($Mode -notin @('state', 'label', 'all-tests')) { throw "-CacheSeed applies to state, label and all-tests runs, not $Mode" }
+  . (Join-Path $PSScriptRoot 'native-capture-cache.ps1')
+  $cacheSeedBuildDir = Resolve-NativeCacheSeedBuildDir -Seed $CacheSeed -Root $Root -BuildDir $buildDir
 }
 
 $temp = Join-Path $Root '.tmp\native-temp'
@@ -138,12 +124,20 @@ if ($Mode -eq 'missing-dll') {
   exit 0
 }
 
+if ($cacheSeedBuildDir) {
+  # After the state cleanup above, which removes a state's capture directory together with its cache.
+  $seeded = Copy-NativeCacheSeed -SeedBuildDir $cacheSeedBuildDir -BuildDir $buildDir
+  $seedLine = "[NATIVE_CACHE_SEED] from=$cacheSeedBuildDir files=$($seeded.Files) mb=$([math]::Round($seeded.Bytes / 1MB, 1)) trees=$($seeded.Trees) (copied; the runtime still rejects blobs from another device or driver)"
+  Add-Content -LiteralPath $log -Value $seedLine
+  Write-Output $seedLine
+}
+
 # CTest's test properties provide the capture environment. Strip inherited VIXEN and Dozen
 # overrides so the Windows run uses the native Vulkan driver and only the registered settings.
 Get-ChildItem Env: | Where-Object { $_.Name -like 'VIXEN_*' -or $_.Name -in @('VK_ICD_FILENAMES', 'VK_LAYER_PATH') } |
   ForEach-Object { Remove-Item "Env:$($_.Name)" }
 $env:VIXEN_PHASE_TIMING = '1'
-if ($Capture -eq 'lookdev') { $env:VIXEN_LOOKDEV_CAPTURE_STATE = $State }
+if ($route -and $route.StateEnv) { Set-Item -Path "Env:$($route.StateEnv)" -Value $State }
 $env:TEMP = $temp
 $env:TMP = $temp
 $env:VULKAN_SDK = 'C:\VulkanSDK\1.4.350.0'
@@ -156,54 +150,35 @@ if ($Mode -eq 'state') {
 } elseif ($Mode -ne 'all-tests') {
   throw "Unsupported native capture mode: $Mode"
 }
+if ($CtestIndex) { $ctestArgs += @('-I', $CtestIndex) }
+$junit = Join-Path $logDir ("ctest-$Commit-$logKey-" + (Get-Date -Format 'yyyyMMddTHHmmssfff') + '.junit.xml')
+$ctestArgs += @('--output-junit', $junit)
 $sw = [Diagnostics.Stopwatch]::StartNew()
-# CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
-# cancelled run cannot leave capture executables behind (T-4916, T-4917).
 . (Join-Path $PSScriptRoot 'native-process.ps1')
-$exitCode = Invoke-NativeJobProcess -FilePath $ctest -ArgumentList $ctestArgs -LogPath $log -Description 'ctest'
+if ($overrides.Count) {
+  # CTest's ENVIRONMENT properties beat the process environment, so an override has to be applied to
+  # the test command itself. Same exe, working directory and registered environment, override last.
+  $selector = if ($Mode -eq 'state') { @('-R', $testRegex) } else { @('-L', $CtestLabel) }
+  if ($CtestIndex) { $selector += @('-I', $CtestIndex) }
+  $exitCode = Invoke-CTestDirect -Ctest $ctest -BuildDir $buildDir -Selector $selector -Overrides $overrides -Log $log
+} else {
+  # CTest runs under a job object with a heartbeat so a silent driver call is not read as a stall and a
+  # cancelled run cannot leave capture executables behind (T-4916, T-4917).
+  $exitCode = Invoke-NativeJobProcess -FilePath $ctest -ArgumentList $ctestArgs -LogPath $log -Description 'ctest'
+}
 $sw.Stop()
-$result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
+$result = "[NATIVE_CAPTURE_RESULT] commit=$Commit mode=$Mode capture=$Capture state=$State label=$CtestLabel env=$EnvOverrides exit=$exitCode wall_s=$([math]::Round($sw.Elapsed.TotalSeconds,2)) artifacts=$captureRoot"
 $result | Tee-Object -FilePath "$log.result.txt"
 
 if ($Mode -eq 'all-tests') {
   $inventoryJson = & $ctest --test-dir $buildDir --show-only=json-v1
   if ($LASTEXITCODE -ne 0) { throw "CTest executable inventory failed with exit $LASTEXITCODE" }
-  $inventory = ($inventoryJson -join "`n") | ConvertFrom-Json
-  $testsByExecutable = @{}
-  foreach ($test in $inventory.tests) {
-    if (-not $test.command -or -not ([string]$test.command[0]).EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-      continue
-    }
-    $executablePath = [System.IO.Path]::GetFullPath([string]$test.command[0])
-    $key = $executablePath.ToLowerInvariant()
-    if (-not $testsByExecutable.ContainsKey($key)) { $testsByExecutable[$key] = [System.Collections.Generic.List[string]]::new() }
-    $testsByExecutable[$key].Add([string]$test.name)
-  }
-
-  $failedTestNames = @()
-  if (Test-Path -LiteralPath $log) {
-    $logText = Get-Content -LiteralPath $log -Raw
-    $failedMatches = [regex]::Matches($logText, '(?m)^\s*\d+\s+-\s+(.+?)\s+\(Failed\)\s*$')
-    foreach ($match in $failedMatches) { $failedTestNames += $match.Groups[1].Value }
-  }
+  $inventoryPath = Join-Path $logDir "ctest-$Commit-inventory.json"
+  Set-Content -LiteralPath $inventoryPath -Value ($inventoryJson -join "`n") -Encoding utf8
+  # Every all-tests slice for this commit (first run plus resumed -I slices) feeds the manifest.
+  $junitFiles = @(Get-ChildItem -LiteralPath $logDir -Filter "ctest-$Commit-all-tests-*.junit.xml" | ForEach-Object { $_.FullName })
   $manifest = Join-Path $logDir "native-executable-smokes-$Commit.tsv"
-  $manifestLines = @("executable`tregistered_ctest_cases`tresult")
-  foreach ($executable in (Get-ChildItem -Path $buildDir -Filter '*.exe' -File -Recurse | Sort-Object FullName)) {
-    $key = $executable.FullName.ToLowerInvariant()
-    $cases = @()
-    if ($testsByExecutable.ContainsKey($key)) { $cases = @($testsByExecutable[$key]) }
-    if ($exitCode -eq 0) {
-      $status = if ($cases.Count) { 'PASS' } else { 'NO_REGISTERED_CTEST_SMOKE' }
-    } elseif (@($cases | Where-Object { $_ -in $failedTestNames }).Count -gt 0) {
-      $status = 'FAIL'
-    } elseif ($cases.Count) {
-      $status = 'PASS; suite has failures in other executables'
-    } else {
-      $status = 'NO_REGISTERED_CTEST_SMOKE; suite failed'
-    }
-    $manifestLines += "$($executable.FullName)`t$($cases.Count)`t$status"
-  }
-  Set-Content -LiteralPath $manifest -Value $manifestLines -Encoding utf8
+  & (Join-Path $PSScriptRoot 'ctest-manifest.ps1') -InventoryJsonPath $inventoryPath -JunitPath $junitFiles -BuildDir $buildDir -ManifestPath $manifest
   Write-Output "[NATIVE_EXECUTABLE_SMOKE_MANIFEST] $manifest"
 }
 exit $exitCode
