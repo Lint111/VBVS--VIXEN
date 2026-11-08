@@ -1,3 +1,11 @@
+> **✅ 2026-11-08 — R838.11 (`cx-rsimdgen1`).** `RecipeSimd.g.hpp` is now a build-time VIXEN
+> artifact generated from the pinned Yeroket CodegenTool into `CMAKE_BINARY_DIR/generated/include`;
+> the committed copy and `recipe_simd_check` golden comparison are gone. The SVO dependency graph
+> declares the kernel snapshot and recipe declaration inputs. Current pin `86e97bee` and R796
+> `2c4981cee` both configured and built SVO successfully; focused recipe test binaries compiled.
+> Native default/composition boot remained queued behind shared-host CPU pressure and was not claimed
+> as a witness. VIXEN commit: pending `cx-rsimdgen1` land.
+
 > **✅ 2026-09-30 — T-1342/T-1344 renderer build hygiene (`lane-kfrhyg`).** Codegen now prefers the
 > PATH-selected `dotnet` launcher and refreshes an older cached `~/.dotnet/dotnet` fallback when a
 > PATH launcher is available. Compiler-cache data defaults under `CMAKE_BINARY_DIR/_cache/compiler`
