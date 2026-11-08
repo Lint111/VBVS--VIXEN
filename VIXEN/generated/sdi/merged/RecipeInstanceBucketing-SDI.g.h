@@ -1,459 +1,134 @@
 // ============================================================================
-// Feature-Tagged Merged SDI (Semantic Shader Wiring S0)
+// Compact merged SDI declarations (graph-facing ABI)
 // ============================================================================
 //
 // Program: RecipeInstanceBucketing
-// Feature axis: (none — single-variant interface)
-//
-// Merged across compiled feature variants: every member carries the
-// feature conjunction under which it exists (empty = unconditional).
-//
-// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.
+// Generated from the merged shader reflection; do not edit.
+// Layout mirrors live in RecipeInstanceBucketing-SDI.layout.g.h.
 //
 // ============================================================================
 
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <unordered_set>
-#include <vector>
-#include <vulkan/vulkan.h>
-#include <glm/glm.hpp>
 
 namespace ShaderInterface {
 namespace RecipeInstanceBucketing {
 
-// Per-binding access mode, from SPIR-V decorations (storage kinds)
-// or the descriptor kind's inherent read-only nature. Feeds the
-// derived hazard/sync sets (semantic-wiring S3).
 enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
-
-/**
- * @brief BodyInstanceBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
- */
-struct BodyInstanceBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "BodyInstance";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 48;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief RecipeBoundSphereBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xf545d1b65035b0c (for runtime discovery)
- */
-struct RecipeBoundSphereBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf545d1b65035b0cULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "RecipeBoundSphere";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 32;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketCountBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x703a80e433882bf8 (for runtime discovery)
- */
-struct BucketCountBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x703a80e433882bf8ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketIndicesBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xd23e6a432d099a3b (for runtime discovery)
- */
-struct BucketIndicesBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xd23e6a432d099a3bULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketCoverageMinXBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x9ac7955a80189c35 (for runtime discovery)
- */
-struct BucketCoverageMinXBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x9ac7955a80189c35ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketCoverageMinYBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x2801dadacb20ed41 (for runtime discovery)
- */
-struct BucketCoverageMinYBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x2801dadacb20ed41ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketCoverageMaxXBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x69d5ab29f0b0bf9d (for runtime discovery)
- */
-struct BucketCoverageMaxXBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x69d5ab29f0b0bf9dULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketCoverageMaxYBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xe7ac016fc8190895 (for runtime discovery)
- */
-struct BucketCoverageMaxYBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xe7ac016fc8190895ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BucketIndirectCommandBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xc63b714aa73b6450 (for runtime discovery)
- */
-struct BucketIndirectCommandBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xc63b714aa73b6450ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief PrecisionBucketCountBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xefb98332a91fc47e (for runtime discovery)
- */
-struct PrecisionBucketCountBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xefb98332a91fc47eULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief PrecisionBucketIndicesBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xb49e2cddcd91b289 (for runtime discovery)
- */
-struct PrecisionBucketIndicesBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xb49e2cddcd91b289ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "uint32_t";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief BodyInstanceTransformBuffer
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
- */
-struct BodyInstanceTransformBuffer {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "BodyInstanceTransform";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 96;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
 
 namespace Set0 {
 
-    /**
-     * @brief BodyInstanceBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding0 {
         static constexpr const char* NAME = "BodyInstanceBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 0;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BodyInstanceBuffer;
     };
 
-    /**
-     * @brief RecipeBoundSphereBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding1 {
         static constexpr const char* NAME = "RecipeBoundSphereBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 1;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = RecipeBoundSphereBuffer;
     };
 
-    /**
-     * @brief BucketCountBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding2 {
         static constexpr const char* NAME = "BucketCountBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 2;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketCountBuffer;
     };
 
-    /**
-     * @brief BucketIndicesBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding3 {
         static constexpr const char* NAME = "BucketIndicesBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 3;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketIndicesBuffer;
     };
 
-    /**
-     * @brief BucketCoverageMinXBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding4 {
         static constexpr const char* NAME = "BucketCoverageMinXBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 4;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketCoverageMinXBuffer;
     };
 
-    /**
-     * @brief BucketCoverageMinYBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding5 {
         static constexpr const char* NAME = "BucketCoverageMinYBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 5;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketCoverageMinYBuffer;
     };
 
-    /**
-     * @brief BucketCoverageMaxXBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding6 {
         static constexpr const char* NAME = "BucketCoverageMaxXBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 6;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketCoverageMaxXBuffer;
     };
 
-    /**
-     * @brief BucketCoverageMaxYBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding7 {
         static constexpr const char* NAME = "BucketCoverageMaxYBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 7;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketCoverageMaxYBuffer;
     };
 
-    /**
-     * @brief BucketIndirectCommandBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding8 {
         static constexpr const char* NAME = "BucketIndirectCommandBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 8;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BucketIndirectCommandBuffer;
     };
 
-    /**
-     * @brief PrecisionBucketCountBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding9 {
         static constexpr const char* NAME = "PrecisionBucketCountBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 9;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = PrecisionBucketCountBuffer;
     };
 
-    /**
-     * @brief PrecisionBucketIndicesBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding10 {
         static constexpr const char* NAME = "PrecisionBucketIndicesBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 10;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = PrecisionBucketIndicesBuffer;
     };
 
-    /**
-     * @brief BodyInstanceTransformBuffer
-     * Type: STORAGE_BUFFER
-     */
     struct Binding11 {
         static constexpr const char* NAME = "BodyInstanceTransformBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 11;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = BodyInstanceTransformBuffer;
     };
 
 } // namespace Set0
 
-// Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
 using BodyInstanceBuffer = Set0::Binding0;
 using RecipeBoundSphereBuffer = Set0::Binding1;
@@ -555,43 +230,13 @@ namespace Push {
 
 } // namespace Push
 
-struct PushBlock {
-    uint8_t viewProj[64];
-    int32_t instanceCount;
-    uint32_t maxBuckets;
-    uint32_t maxMembersPerBucket;
-    uint32_t screenWidth;
-    uint32_t screenHeight;
-    uint32_t mode;
-    float raySizeCoef;
-    float raySizeBias;
-    glm::vec3 cameraPos;
-    uint8_t _tail[4];
-};
-
-static_assert(offsetof(PushBlock, viewProj) == Push::viewProj::OFFSET, "PushBlock.viewProj is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, instanceCount) == Push::instanceCount::OFFSET, "PushBlock.instanceCount is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, maxBuckets) == Push::maxBuckets::OFFSET, "PushBlock.maxBuckets is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, maxMembersPerBucket) == Push::maxMembersPerBucket::OFFSET, "PushBlock.maxMembersPerBucket is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, screenWidth) == Push::screenWidth::OFFSET, "PushBlock.screenWidth is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, screenHeight) == Push::screenHeight::OFFSET, "PushBlock.screenHeight is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, mode) == Push::mode::OFFSET, "PushBlock.mode is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, raySizeCoef) == Push::raySizeCoef::OFFSET, "PushBlock.raySizeCoef is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, raySizeBias) == Push::raySizeBias::OFFSET, "PushBlock.raySizeBias is not at its SDI OFFSET");
-static_assert(offsetof(PushBlock, cameraPos) == Push::cameraPos::OFFSET, "PushBlock.cameraPos is not at its SDI OFFSET");
-static_assert(sizeof(PushBlock) == Push::SIZE, "PushBlock size differs from Push::SIZE");
-
-// ============================================================================
-// Member table (bindings + push members) for the semantic connect walk
-// ============================================================================
-
 struct MemberInfo {
     const char* name;
     bool isPushMember;
-    uint32_t set;      // descriptor members only
-    uint32_t binding;  // descriptor members only
-    uint32_t offset;   // push members only
-    Access access;     // push members: ReadOnly by nature
+    uint32_t set;
+    uint32_t binding;
+    uint32_t offset;
+    Access access;
     uint32_t featureCount;
     const char* const* features;
 };
@@ -621,23 +266,6 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"raySizeBias", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
 };
-
-/**
- * @brief Members present under the given active feature set
- */
-inline std::vector<MemberInfo> Members(
-    const std::unordered_set<std::string>& activeFeatures
-) {
-    std::vector<MemberInfo> out;
-    for (const auto& m : MEMBERS) {
-        bool present = true;
-        for (uint32_t i = 0; i < m.featureCount; ++i) {
-            if (activeFeatures.count(m.features[i]) == 0) { present = false; break; }
-        }
-        if (present) out.push_back(m);
-    }
-    return out;
-}
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "RecipeInstanceBucketing";

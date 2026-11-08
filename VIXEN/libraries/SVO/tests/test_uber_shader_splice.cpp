@@ -163,6 +163,29 @@ TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {
         << spliced.substr(spliced.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), 4000);
 }
 
+// T-2895: the shared SdfTraceProbe.glsl contract must compile into the real march shader when
+// a harness defines VIXEN_SDF_TRACE_PROBE, and must add nothing when it does not.
+TEST(UberShaderSplice, SdfTraceProbeCompilesWhenEnabled) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { sphere({64.f, 64.f, 64.f}, 5.f) };
+    ASSERT_EQ(registry.Register(2u, e), RecipeRegistry::RegisterResult::Ok);
+    std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry);
+
+    const size_t versionEnd = spliced.find('\n');
+    ASSERT_NE(versionEnd, std::string::npos);
+    std::string probed = spliced;
+    probed.insert(versionEnd + 1, "#define VIXEN_SDF_TRACE_PROBE 1\n");
+
+    auto withProbe = CompileSource(probed);
+    EXPECT_TRUE(withProbe.success) << withProbe.errorMessage;
+    auto withoutProbe = CompileSource(spliced);
+    EXPECT_TRUE(withoutProbe.success) << withoutProbe.errorMessage;
+}
+
 TEST(UberShaderSplice, SharedGlyphRowsUseOneDeduplicatedRuntimeBuffer) {
     const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
     ASSERT_FALSE(raw.empty());

@@ -630,6 +630,252 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     return code.str();
 }
 
+std::string SpirvInterfaceGenerator::GenerateMergedDeclarationToString(
+    const SdiMergedInterface& merged
+) {
+    if (merged.programName.empty()) {
+        return "";
+    }
+
+    std::ostringstream code;
+    const std::string ns = SanitizeName(merged.programName);
+
+    code << "// ============================================================================\n";
+    code << "// Compact merged SDI declarations (graph-facing ABI)\n";
+    code << "// ============================================================================\n";
+    code << "//\n";
+    code << "// Program: " << merged.programName << "\n";
+    code << "// Generated from the merged shader reflection; do not edit.\n";
+    code << "// Layout mirrors live in " << merged.programName << "-SDI.layout.g.h.\n";
+    code << "//\n";
+    code << "// ============================================================================\n\n";
+    code << "#pragma once\n\n";
+    code << "#include <cstdint>\n\n";
+    code << "namespace " << config_.namespacePrefix << " {\n";
+    code << "namespace " << ns << " {\n\n";
+    code << "enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };\n\n";
+
+    auto emitFeatureTag = [&](const std::vector<std::string>& features,
+                              uint32_t indentLevel) {
+        code << Indent(indentLevel) << "static constexpr uint32_t FEATURE_COUNT = "
+             << features.size() << ";\n";
+        if (!features.empty()) {
+            code << Indent(indentLevel) << "static constexpr const char* FEATURES["
+                 << features.size() << "] = {";
+            for (size_t i = 0; i < features.size(); ++i) {
+                if (i) code << ", ";
+                code << "\"" << features[i] << "\"";
+            }
+            code << "};\n";
+        }
+    };
+
+    uint32_t currentSet = 0;
+    bool setOpen = false;
+    for (const auto& b : merged.bindings) {
+        if (!setOpen || b.binding.set != currentSet) {
+            if (setOpen) code << "} // namespace Set" << currentSet << "\n\n";
+            currentSet = b.binding.set;
+            setOpen = true;
+            code << "namespace Set" << currentSet << " {\n\n";
+        }
+        code << Indent(1) << "struct Binding" << b.binding.binding << " {\n";
+        code << Indent(2) << "static constexpr const char* NAME = \""
+             << b.binding.name << "\";\n";
+        code << Indent(2) << "static constexpr uint32_t SET = "
+             << b.binding.set << ";\n";
+        code << Indent(2) << "static constexpr uint32_t BINDING = "
+             << b.binding.binding << ";\n";
+        code << Indent(2) << "static constexpr uint32_t COUNT = "
+             << b.binding.descriptorCount << ";\n";
+        code << Indent(2) << "static constexpr Access ACCESS = Access::"
+             << AccessConstName(b.binding.access) << ";\n";
+        emitFeatureTag(b.requiredFeatures, 2);
+        code << Indent(1) << "};\n\n";
+    }
+    if (setOpen) code << "} // namespace Set" << currentSet << "\n\n";
+
+    // Name-keyed binding aliases are the declaration-only connect-site face.
+    std::map<std::string, uint32_t> nameCounts;
+    for (const auto& b : merged.bindings) ++nameCounts[SanitizeName(b.binding.name)];
+    bool wroteAlias = false;
+    for (const auto& b : merged.bindings) {
+        const std::string alias = SanitizeName(b.binding.name);
+        if (alias.empty() || nameCounts[alias] != 1) continue;
+        if (!wroteAlias) {
+            code << "namespace Bind {\n";
+            wroteAlias = true;
+        }
+        code << "using " << alias << " = Set" << b.binding.set
+             << "::Binding" << b.binding.binding << ";\n";
+    }
+    if (wroteAlias) code << "} // namespace Bind\n\n";
+
+    if (!merged.pushMembers.empty()) {
+        code << "namespace Push {\n\n";
+        code << Indent(1) << "static constexpr uint32_t SIZE = "
+             << merged.pushSize << ";\n\n";
+        for (size_t idx = 0; idx < merged.pushMembers.size(); ++idx) {
+            const auto& m = merged.pushMembers[idx];
+            code << Indent(1) << "struct " << SanitizeName(m.member.name) << " {\n";
+            code << Indent(2) << "static constexpr const char* NAME = \""
+                 << m.member.name << "\";\n";
+            code << Indent(2) << "static constexpr uint32_t INDEX = " << idx << ";\n";
+            code << Indent(2) << "static constexpr uint32_t OFFSET = "
+                 << m.member.offset << ";\n";
+            code << Indent(2) << "static constexpr uint32_t SIZE = "
+                 << m.member.type.sizeInBytes << ";\n";
+            emitFeatureTag(m.requiredFeatures, 2);
+            code << Indent(1) << "};\n\n";
+        }
+        code << "} // namespace Push\n\n";
+    }
+
+    // The flat table remains constexpr because SdiStageWiring consumes it as
+    // a non-type template argument. It is deliberately POD-only so every
+    // graph-family declaration can be included without a runtime library.
+    code << "struct MemberInfo {\n";
+    code << Indent(1) << "const char* name;\n";
+    code << Indent(1) << "bool isPushMember;\n";
+    code << Indent(1) << "uint32_t set;\n";
+    code << Indent(1) << "uint32_t binding;\n";
+    code << Indent(1) << "uint32_t offset;\n";
+    code << Indent(1) << "Access access;\n";
+    code << Indent(1) << "uint32_t featureCount;\n";
+    code << Indent(1) << "const char* const* features;\n";
+    code << "};\n\n";
+
+    for (const auto& b : merged.bindings) {
+        if (b.requiredFeatures.empty()) continue;
+        code << "inline constexpr const char* const kFeatures_Set"
+             << b.binding.set << "_Binding" << b.binding.binding << "[] = {";
+        for (size_t i = 0; i < b.requiredFeatures.size(); ++i) {
+            if (i) code << ", ";
+            code << "\"" << b.requiredFeatures[i] << "\"";
+        }
+        code << "};\n";
+    }
+    for (const auto& m : merged.pushMembers) {
+        if (m.requiredFeatures.empty()) continue;
+        code << "inline constexpr const char* const kFeatures_Push_"
+             << SanitizeName(m.member.name) << "[] = {";
+        for (size_t i = 0; i < m.requiredFeatures.size(); ++i) {
+            if (i) code << ", ";
+            code << "\"" << m.requiredFeatures[i] << "\"";
+        }
+        code << "};\n";
+    }
+    code << "\ninline constexpr MemberInfo MEMBERS[] = {\n";
+    for (const auto& b : merged.bindings) {
+        code << Indent(1) << "{\"" << b.binding.name << "\", false, "
+             << b.binding.set << ", " << b.binding.binding << ", 0, Access::"
+             << AccessConstName(b.binding.access) << ", " << b.requiredFeatures.size() << ", ";
+        if (b.requiredFeatures.empty()) code << "nullptr";
+        else code << "kFeatures_Set" << b.binding.set << "_Binding" << b.binding.binding;
+        code << "},\n";
+    }
+    for (const auto& m : merged.pushMembers) {
+        code << Indent(1) << "{\"" << m.member.name << "\", true, 0, 0, "
+             << m.member.offset << ", Access::ReadOnly, " << m.requiredFeatures.size() << ", ";
+        if (m.requiredFeatures.empty()) code << "nullptr";
+        else code << "kFeatures_Push_" << SanitizeName(m.member.name);
+        code << "},\n";
+    }
+    code << "};\n\n";
+
+    code << "struct Metadata {\n";
+    code << Indent(1) << "static constexpr const char* PROGRAM_NAME = \""
+         << merged.programName << "\";\n";
+    code << Indent(1) << "static constexpr uint32_t NUM_MEMBERS = "
+         << (merged.bindings.size() + merged.pushMembers.size()) << ";\n";
+    code << Indent(1) << "static constexpr uint32_t NUM_FEATURES = "
+         << merged.featureAxis.size() << ";\n";
+    code << "};\n\n";
+    code << "} // namespace " << ns << "\n";
+    code << "} // namespace " << config_.namespacePrefix << "\n";
+    return code.str();
+}
+
+std::string SpirvInterfaceGenerator::GenerateMergedLayoutToString(
+    const SdiMergedInterface& merged
+) {
+    if (merged.programName.empty()) {
+        return "";
+    }
+
+    std::ostringstream code;
+    const std::string ns = SanitizeName(merged.programName);
+    code << "// Generated host-side push-layout mirror; do not edit.\n";
+    code << "#pragma once\n\n";
+    code << "#include \"" << merged.programName << "-SDI.g.h\"\n";
+    code << "#include <cstddef>\n";
+    code << "#include <cstdint>\n";
+    if (!merged.pushMembers.empty()) code << "#include <glm/glm.hpp>\n";
+    code << "\n";
+    code << "namespace " << config_.namespacePrefix << "::" << ns << " {\n\n";
+    if (!merged.pushMembers.empty()) {
+        bool anyGated = false;
+        for (const auto& m : merged.pushMembers) anyGated |= !m.requiredFeatures.empty();
+        auto ifdefCondition = [&](const std::vector<std::string>& features) {
+            for (size_t i = 0; i < features.size(); ++i) {
+                code << (i ? " && " : "") << "defined(" << features[i] << ")";
+            }
+        };
+
+        code << (anyGated ? "struct alignas(16) PushBlock {\n" : "struct PushBlock {\n");
+        uint32_t cursor = 0;
+        for (size_t idx = 0; idx < merged.pushMembers.size(); ++idx) {
+            const auto& m = merged.pushMembers[idx];
+            const uint32_t offset = m.member.offset;
+            const uint32_t size = m.member.type.sizeInBytes;
+            const std::string name = SanitizeName(m.member.name);
+            if (offset > cursor) {
+                code << Indent(1) << "uint8_t _pad" << cursor << "[" << (offset - cursor) << "];\n";
+            }
+            const std::string cppType = PushMemberCppType(m.member.type);
+            const std::string field = cppType.empty()
+                ? "uint8_t " + name + "[" + std::to_string(size) + "]"
+                : cppType + " " + name;
+            const bool gated = !m.requiredFeatures.empty();
+            if (gated) {
+                code << "#if ";
+                ifdefCondition(m.requiredFeatures);
+                code << "\n";
+            }
+            code << Indent(1) << field << ";\n";
+            if (gated) {
+                if (idx + 1 < merged.pushMembers.size()) {
+                    code << "#else\n" << Indent(1) << "uint8_t _absent"
+                         << offset << "[" << size << "];\n";
+                }
+                code << "#endif\n";
+            }
+            cursor = offset + size;
+        }
+        if (!anyGated && merged.pushSize > cursor) {
+            code << Indent(1) << "uint8_t _tail[" << (merged.pushSize - cursor) << "];\n";
+        }
+        code << "};\n\n";
+        for (const auto& m : merged.pushMembers) {
+            const std::string name = SanitizeName(m.member.name);
+            const bool gated = !m.requiredFeatures.empty();
+            if (gated) {
+                code << "#if ";
+                ifdefCondition(m.requiredFeatures);
+                code << "\n";
+            }
+            code << "static_assert(offsetof(PushBlock, " << name << ") == Push::"
+                 << name << "::OFFSET, \"PushBlock." << name << " is not at its SDI OFFSET\");\n";
+            if (gated) code << "#endif\n";
+        }
+        code << (anyGated
+            ? "static_assert(sizeof(PushBlock) <= Push::SIZE, \"PushBlock is larger than Push::SIZE\");\n"
+            : "static_assert(sizeof(PushBlock) == Push::SIZE, \"PushBlock size differs from Push::SIZE\");\n");
+    }
+    code << "\n} // namespace " << config_.namespacePrefix << "::" << ns << "\n";
+    return code.str();
+}
+
 bool SpirvInterfaceGenerator::DeleteSdi(const std::string& uuid) {
     std::filesystem::path filePath = GetSdiPath(uuid);
     if (std::filesystem::exists(filePath)) {
