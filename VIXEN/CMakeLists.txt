@@ -246,6 +246,17 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Benchmark-only measurement hooks.  Keep the keyword shared with Undertow's native-bench
+# tooling so a benchmark selects the same instrumentation contract across the native layers.
+option(UNDERSET_NATIVE_BENCHMARK
+    "Compile benchmark/profiling hooks and diagnostic timing output" OFF)
+if(UNDERSET_NATIVE_BENCHMARK)
+    message(STATUS "Native benchmark instrumentation enabled (UNDERSET_NATIVE_BENCHMARK)")
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=1)
+else()
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=0)
+endif()
+
 # Fail-scenario simulation (Inc 1): declarations, injection seams, and the live sweep harness.
 # OFF by default — zero footprint in real builds (everything guarded compiles out). ON must be a
 # global, consistent view (nodes, app, and tests all see the same macro expansion).
@@ -259,9 +270,11 @@ endif()
 # makes RenderGraph sample them per frame (summary at graph teardown; VIXEN_LOCK_CENSUS_CSV=<path>
 # for a per-frame CSV). OFF (default) is a pure type alias: no wrapper, no counters, no code.
 option(VIXEN_LOCK_CENSUS "Count/time mutex acquisitions per lock-inventory family on the frame path" OFF)
-if(VIXEN_LOCK_CENSUS)
+if(VIXEN_LOCK_CENSUS AND UNDERSET_NATIVE_BENCHMARK)
     message(STATUS "Lock census enabled (VIXEN_LOCK_CENSUS)")
     add_compile_definitions(VIXEN_LOCK_CENSUS=1)
+elseif(VIXEN_LOCK_CENSUS)
+    message(WARNING "VIXEN_LOCK_CENSUS requires UNDERSET_NATIVE_BENCHMARK; ignoring in normal builds")
 endif()
 
 # Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every
