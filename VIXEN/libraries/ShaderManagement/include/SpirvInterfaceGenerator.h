@@ -125,6 +125,24 @@ public:
     std::string GenerateMergedToString(const SdiMergedInterface& merged);
 
     /**
+     * @brief Generate the compact declaration face used by graph builders.
+     *
+     * This header contains only fixed-width declaration metadata: no Vulkan,
+     * GLM, STL containers, reflection helpers, or shader-layout mirrors.
+     * Runtime/layout validation belongs in the companion -SDI.layout.g.h.
+     */
+    std::string GenerateMergedDeclarationToString(const SdiMergedInterface& merged);
+
+    /**
+     * @brief Generate the optional host-side push-layout mirror.
+     *
+     * The layout header includes the compact declaration face and owns the
+     * GLM/Vulkan-adjacent types needed by standalone parity tests. It is not
+     * included by graph-builder translation units.
+     */
+    std::string GenerateMergedLayoutToString(const SdiMergedInterface& merged);
+
+    /**
      * @brief Generate shader-specific Names.g.h file
      *
      * Creates {programName}Names.g.h with shader-specific constexpr constants

@@ -80,6 +80,8 @@ Linux/WSL from the repository root, the `vixen-wsl` preset (its source is `VIXEN
 
 Sanitizer trees (Debug, GCC) have their own presets: `cmake -S VIXEN --preset vixen-wsl-asan` (ASan+UBSan, `build/wsl-asan`) and `--preset vixen-wsl-tsan` (TSan, `build/wsl-tsan`), then `cmake --build build/wsl-asan --target <test> -j4`. They demote only `-Wmaybe-uninitialized` from third-party Gaia/GLM headers out of `-Werror`; all other warnings stay errors.
 
+Historical or matched-capture builds use `tools/configure-detached.sh [--kernel-sha <sha>] <sha>`: it creates a detached worktree at the commit and configures it with `VIXEN_VULKAN_CACHE_DIR`, `VIXEN_SCHEMA_CATALOG`, `YEROKET_ROOT` and `FETCHCONTENT_BASE_DIR` derived from the paired lane worktrees and shared caches (`--dry-run` prints them; env vars override). Never reuse another commit's build tree.
+
 Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=ON`.
 
 ### Visual Studio

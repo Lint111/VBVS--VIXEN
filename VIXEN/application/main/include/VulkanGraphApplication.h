@@ -166,6 +166,44 @@ public:
      */
     virtual void BuildRenderGraph();
 
+    // Production graph construction is split by graph family.  These seams keep the
+    // registration order in BuildRenderGraph while letting the expensive recipe/SVO
+    // scene authoring compile independently from the driver and lighting wiring.
+    void BuildRecipeSvoGraph(NodeHandle cameraNode,
+                             NodeHandle voxelGridNode,
+                             NodeHandle bodyOctreeSceneNode,
+                             NodeHandle lightTreeBufferNode,
+                             NodeHandle lightingConfigNode,
+                             float raymarchCameraFovDegrees);
+    void ConfigureRenderGraphDiagnostics(NodeHandle voxelGridNode,
+                                         NodeHandle descriptorGatherer,
+                                         NodeHandle computeDispatch,
+                                         NodeHandle pushConstantGatherer,
+                                         NodeHandle debugCaptureNode,
+                                         bool debugCaptureEnabled);
+    void BuildPresentationGraph(NodeHandle computeDispatch,
+                                bool skyProjectionFixtureEnabled,
+                                NodeHandle skyProjectionRenderPassNode,
+                                NodeHandle skyProjectionFramebufferNode,
+                                NodeHandle uiRenderPassNode,
+                                NodeHandle uiFramebufferNode,
+                                NodeHandle uiCompositeNode,
+                                bool usesWsi);
+    void ConfigureLightingShadowDispatches(NodeHandle probeGatherNode,
+                                           NodeHandle shadowRayTraceNode,
+                                           NodeHandle probeApplyNode,
+                                           NodeHandle shadowRayRequestBuffer,
+                                           NodeHandle shadowRayResultBuffer,
+                                           NodeHandle probeRayPayloadBuffer,
+                                           uint32_t shadowRaySlotCount,
+                                           uint32_t shadowRayRequestStrideBytes,
+                                           uint32_t shadowRayResultStrideBytes,
+                                           uint32_t probeRayPayloadStrideBytes);
+    void FinalizeLightingShadowDispatches(NodeHandle directLightingNode,
+                                          NodeHandle probeGatherNode,
+                                          NodeHandle shadowRayTraceNode,
+                                          NodeHandle probeApplyNode);
+
     /**
      * @brief Build a UI-only RmlUi demo graph (S0). Gated by the VIXEN_UI_DEMO env var.
      */

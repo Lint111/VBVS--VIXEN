@@ -92,7 +92,9 @@
  */
 
 #include <gtest/gtest.h>
+#include "SdfTraceProbe.h"
 #include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Core/TimelineCapacityTracker.h"
@@ -111,8 +113,7 @@
 #include "Recipe/UberShaderSplice.h"
 #include "Recipe/SdfInstruction.h"
 #include "ShaderBundleBuilder.h"
-#include "TestVkValidation.h"
-#include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "RenderGraphHeavyTestFixtures.h"
 #include "Generated/LightingConfig.g.h"  // Sampled Lighting Inc0 M3: real default light content
                                           // (a zeroed LightingConfig has lightCount=0 -> pure
                                           // black shaded output -> invisible to this test's own
@@ -179,51 +180,12 @@ Vixen::SVO::SdfBakeResult CountedBake(const Vixen::SVO::Recipe::SdfInstruction* 
 
 using PushConstants = ::ShaderInterface::BodyInstanceRayMarch::PushBlock;
 
-// R464's test-only mirror for the procedural SDF marcher. The production editor path is
-// recipe-space sphere tracing, so there is no ESVO voxel/brick scale to report. gridDim and
-// gridBound identify the occupancy acceleration cell instead.
-struct SdfTraceCpu {
-    uint32_t steps = 0;
-    uint32_t termination = 0;
-    uint32_t recipeId = 0;
-    uint32_t gridDim = 0;
-    float t = 0.0f;
-    float sdf = 0.0f;
-    float position[3]{};
-    float gradient[3]{};
-    float gridBound = 0.0f;
-    float tNear = 0.0f;
-    float tFar = 0.0f;
-    float lastStep = 0.0f;
-};
-static_assert(sizeof(SdfTraceCpu) == 64, "SdfTraceCpu must match the test-only 16-word shader record");
-
-struct SdfStepDistribution {
-    double mean = 0.0;
-    uint32_t p50 = 0;
-    uint32_t p99 = 0;
-    uint32_t maximum = 0;
-    size_t activePixels = 0;
-};
-
-SdfStepDistribution SummarizeSdfSteps(const std::vector<SdfTraceCpu>& traces) {
-    SdfStepDistribution result;
-    if (traces.empty()) return result;
-    std::vector<uint32_t> sorted;
-    sorted.reserve(traces.size());
-    uint64_t total = 0;
-    for (const SdfTraceCpu& trace : traces) {
-        sorted.push_back(trace.steps);
-        total += trace.steps;
-        result.maximum = std::max(result.maximum, trace.steps);
-        if (trace.steps != 0u) ++result.activePixels;
-    }
-    std::sort(sorted.begin(), sorted.end());
-    result.mean = static_cast<double>(total) / static_cast<double>(sorted.size());
-    result.p50 = sorted[((sorted.size() - 1u) * 50u) / 100u];
-    result.p99 = sorted[((sorted.size() - 1u) * 99u) / 100u];
-    return result;
-}
+// R464 / T-2895: the per-pixel SDF trace probe is the shared shaders/SdfTraceProbe.glsl
+// contract, decoded by SVO/SdfTraceProbe.h.
+using Vixen::SVO::SdfStepDistribution;
+using Vixen::SVO::SdfTraceRecord;
+using SdfTraceCpu = SdfTraceRecord;
+using Vixen::SVO::SummarizeSdfSteps;
 
 void PrintRimleakCost(const char* scene, const char* version,
                       const std::vector<SdfTraceCpu>& traces, double gpuMs) {
@@ -234,58 +196,11 @@ void PrintRimleakCost(const char* scene, const char* version,
                 stats.mean, stats.p50, stats.p99, stats.maximum);
 }
 
-std::string InjectRimleakTraceSupport(std::string source) {
-    constexpr const char* kSceneBindingsDirective = "\n#include \"SceneBindings.glsl\"";
-    constexpr const char* kDeclaration = R"glsl(
-#ifdef VIXEN_RIMLEAK_TRACE
-layout(std430, binding = 48) buffer RimleakSdfTraceBuffer { uint rimleakSdfTraceWords[]; };
-void rimleakRecordSdfTrace(ivec2 pixel, uint steps, uint termination, uint recipeId,
-                           uint gridDim, float t, float sdf, vec3 position, vec3 gradient,
-                           float gridBound, float tNear, float tFar, float lastStep);
-#endif
-)glsl";
-    constexpr const char* kDefinition = R"glsl(
-#ifdef VIXEN_RIMLEAK_TRACE
-void rimleakRecordSdfTrace(ivec2 pixel, uint steps, uint termination, uint recipeId,
-                           uint gridDim, float t, float sdf, vec3 position, vec3 gradient,
-                           float gridBound, float tNear, float tFar, float lastStep) {
-    ivec2 size = imageSize(outputImage);
-    if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, size))) return;
-    uint base = (uint(pixel.y) * uint(size.x) + uint(pixel.x)) * 16u;
-    rimleakSdfTraceWords[base + 0u] = steps;
-    rimleakSdfTraceWords[base + 1u] = termination;
-    rimleakSdfTraceWords[base + 2u] = recipeId;
-    rimleakSdfTraceWords[base + 3u] = gridDim;
-    rimleakSdfTraceWords[base + 4u] = floatBitsToUint(t);
-    rimleakSdfTraceWords[base + 5u] = floatBitsToUint(sdf);
-    rimleakSdfTraceWords[base + 6u] = floatBitsToUint(position.x);
-    rimleakSdfTraceWords[base + 7u] = floatBitsToUint(position.y);
-    rimleakSdfTraceWords[base + 8u] = floatBitsToUint(position.z);
-    rimleakSdfTraceWords[base + 9u] = floatBitsToUint(gradient.x);
-    rimleakSdfTraceWords[base + 10u] = floatBitsToUint(gradient.y);
-    rimleakSdfTraceWords[base + 11u] = floatBitsToUint(gradient.z);
-    rimleakSdfTraceWords[base + 12u] = floatBitsToUint(gridBound);
-    rimleakSdfTraceWords[base + 13u] = floatBitsToUint(tNear);
-    rimleakSdfTraceWords[base + 14u] = floatBitsToUint(tFar);
-    rimleakSdfTraceWords[base + 15u] = floatBitsToUint(lastStep);
-}
-#endif
-)glsl";
-
+// Opt the shader into the shared SdfTraceProbe.glsl contract (the define must follow #version).
+std::string EnableSdfTraceProbe(std::string source) {
     const size_t versionEnd = source.find('\n');
     if (versionEnd == std::string::npos) return {};
-    source.insert(versionEnd + 1, "#define VIXEN_RIMLEAK_TRACE 1\n");
-    // Match the directive at the beginning of its line. A plain-text search also matches
-    // explanatory comments in BodyInstanceRayMarch.comp; injecting there would turn the
-    // commented example include into a second live SceneBindings include.
-    const size_t directivePrefix = source.find(kSceneBindingsDirective);
-    if (directivePrefix == std::string::npos) return {};
-    const size_t sceneInclude = directivePrefix + 1;
-    source.insert(sceneInclude, kDeclaration);
-    const size_t actualInclude = sceneInclude + std::strlen(kDeclaration);
-    const size_t includeEnd = source.find('\n', actualInclude);
-    if (includeEnd == std::string::npos) return {};
-    source.insert(includeEnd + 1, kDefinition);
+    source.insert(versionEnd + 1, "#define VIXEN_SDF_TRACE_PROBE 1\n");
     return source;
 }
 
@@ -766,19 +681,11 @@ bool RayEntersCylinderOpening(const glm::vec3& origin, const glm::vec3& directio
 // compiles clean) instead of loading a build-time .spv, and (b) reuses the mip-fallback
 // harness's device selection / pool setup / dispatch / readback for BOTH paths.
 // ---------------------------------------------------------------------------
-class BakedVsVirtualParityTest : public ::testing::Test {
+class BakedVsVirtualParityTest
+    : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
-    VkInstance       instance_       = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    VkDevice         logicalDevice_  = VK_NULL_HANDLE;
-    VkQueue          queue_          = VK_NULL_HANDLE;
-    VkCommandPool    commandPool_    = VK_NULL_HANDLE;
-    uint32_t         queueFamily_    = 0;
     uint32_t         timestampValidBits_ = 0;
     double           timestampPeriodNs_ = 0.0;
-    bool             deviceConfirmed_ = false;
-    std::string      selectedDeviceName_;
-    std::unique_ptr<VulkanDevice> deviceShell_;
 
     static bool IsRealGpu(const VkPhysicalDeviceProperties& p) {
         return p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
@@ -794,16 +701,7 @@ protected:
     }
 
     void SetUp() override {
-        VixenSelectWslGpuIcd();
-        VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        ai.pApplicationName = "test_baked_vs_virtual_parity"; ai.apiVersion = VK_API_VERSION_1_3;
-        const auto layers = EnabledValidationLayers();
-        const char* exts[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-        VkInstanceCreateInfo ci{}; ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        ci.pApplicationInfo = &ai;
-        ci.enabledLayerCount = uint32_t(layers.size()); ci.ppEnabledLayerNames = layers.empty() ? nullptr : layers.data();
-        ci.enabledExtensionCount = 1; ci.ppEnabledExtensionNames = exts;
-        ASSERT_EQ(vkCreateInstance(&ci, nullptr, &instance_), VK_SUCCESS);
+        BeginVulkanTest("test_baked_vs_virtual_parity");
         ASSERT_NO_FATAL_FAILURE(PickUsableDevice());
         ASSERT_TRUE(deviceConfirmed_);
         ASSERT_NO_FATAL_FAILURE(CreateLogicalDevice());
@@ -812,12 +710,7 @@ protected:
         deviceShell_->device = logicalDevice_;
     }
 
-    void TearDown() override {
-        if (deviceShell_) { deviceShell_->device = VK_NULL_HANDLE; deviceShell_.reset(); }
-        if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-        if (logicalDevice_ != VK_NULL_HANDLE) vkDestroyDevice(logicalDevice_, nullptr);
-        if (instance_     != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
-    }
+    void TearDown() override { EndVulkanTest(); }
 
     void PickUsableDevice() {
         uint32_t cnt = 0; ASSERT_EQ(vkEnumeratePhysicalDevices(instance_, &cnt, nullptr), VK_SUCCESS);
@@ -969,7 +862,7 @@ protected:
         VkBuffer rimleakTraceBuf=VK_NULL_HANDLE;
         VkDeviceMemory rimleakTraceMem=VK_NULL_HANDLE;
         const VkDeviceSize rimleakTraceSize = outSdfTraces != nullptr
-            ? VkDeviceSize(w) * VkDeviceSize(h) * 16 * sizeof(uint32_t) : 256;
+            ? Vixen::SVO::SdfTraceProbeBufferBytes(w, h) : 256;
         CreateHostBuffer(rimleakTraceSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                          rimleakTraceBuf, rimleakTraceMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE,
@@ -1130,7 +1023,7 @@ protected:
             wI(21,&historyImgI), wB(22,&prevCamI),
             wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
             wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
-            wB(48,&rimleakTraceI),
+            wB(Vixen::SVO::kSdfTraceProbeBinding,&rimleakTraceI),
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -1282,31 +1175,8 @@ protected:
         if (outSdfTraces != nullptr) {
             void* traceMapped = nullptr;
             ASSERT_EQ(vkMapMemory(logicalDevice_, rimleakTraceMem, 0, rimleakTraceSize, 0, &traceMapped), VK_SUCCESS);
-            outSdfTraces->assign(size_t(w) * h, SdfTraceCpu{});
-            const auto asFloat = [](uint32_t bits) {
-                float value = 0.0f;
-                std::memcpy(&value, &bits, sizeof(value));
-                return value;
-            };
-            const auto* words = static_cast<const uint32_t*>(traceMapped);
-            for (size_t i = 0; i < outSdfTraces->size(); ++i) {
-                const uint32_t* record = words + i * 16;
-                SdfTraceCpu& trace = (*outSdfTraces)[i];
-                trace.steps = record[0];
-                trace.termination = record[1];
-                trace.recipeId = record[2];
-                trace.gridDim = record[3];
-                trace.t = asFloat(record[4]);
-                trace.sdf = asFloat(record[5]);
-                for (size_t axis = 0; axis < 3; ++axis) {
-                    trace.position[axis] = asFloat(record[6 + axis]);
-                    trace.gradient[axis] = asFloat(record[9 + axis]);
-                }
-                trace.gridBound = asFloat(record[12]);
-                trace.tNear = asFloat(record[13]);
-                trace.tFar = asFloat(record[14]);
-                trace.lastStep = asFloat(record[15]);
-            }
+            *outSdfTraces = Vixen::SVO::DecodeSdfTraceProbe(
+                static_cast<const uint32_t*>(traceMapped), size_t(w) * h);
             vkUnmapMemory(logicalDevice_, rimleakTraceMem);
         }
 
@@ -1472,8 +1342,8 @@ protected:
         std::string rawSource = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
         ASSERT_FALSE(rawSource.empty());
         if (outSdfTraces != nullptr) {
-            rawSource = InjectRimleakTraceSupport(std::move(rawSource));
-            ASSERT_FALSE(rawSource.empty()) << "failed to inject test-only SDF trace support";
+            rawSource = EnableSdfTraceProbe(std::move(rawSource));
+            ASSERT_FALSE(rawSource.empty()) << "failed to enable the SDF trace probe";
         }
         std::vector<float> occupancyBlob;
         const std::string spliced = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(

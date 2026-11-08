@@ -927,6 +927,18 @@ endif()
 set_target_properties(test_recipe_occupancy PROPERTIES FOLDER "Tests/SVO Tests")
 vixen_gtest_discover_tests(SVO test_recipe_occupancy)
 
+# SDF trace probe contract (T-2895): CPU decoder + shader-include layout check
+add_executable(test_sdf_trace_probe test_sdf_trace_probe.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_sdf_trace_probe PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_sdf_trace_probe PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_sdf_trace_probe PRIVATE
+    VIXEN_SHADERS_DIR="${CMAKE_SOURCE_DIR}/shaders")
+set_target_properties(test_sdf_trace_probe PROPERTIES FOLDER "Tests/SVO Tests")
+vixen_gtest_discover_tests(SVO test_sdf_trace_probe)
+
 # ===========================================================================
 # Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
 # ===========================================================================

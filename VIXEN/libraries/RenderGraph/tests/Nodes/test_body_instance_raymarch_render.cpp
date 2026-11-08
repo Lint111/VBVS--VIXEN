@@ -31,8 +31,9 @@
  * passed in via the GLSL_RAYMARCH_SPV compile definition.
  */
 
+#include "ScopedEnvironment.h"
 #include <gtest/gtest.h>
-#include "merged/BodyInstanceRayMarch-SDI.g.h"
+#include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
@@ -88,23 +89,9 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 #error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch.spv) must be defined by CMake"
 #endif
 
-// Portable set/unset for the VIXEN_STORED_SDF_DEMO bake-gate env var used below. POSIX
-// setenv/unsetenv don't exist on MSVC (C3861); same shim shape as ScenarioHarness.cpp's
-// AppHarness ctor (_putenv_s to set, _putenv("NAME=") to clear).
-static void SetTestEnv(const char* name, const char* value) {
-#ifdef _WIN32
-    _putenv_s(name, value);
-#else
-    ::setenv(name, value, /*overwrite=*/1);
-#endif
-}
-static void UnsetTestEnv(const char* name) {
-#ifdef _WIN32
-    _putenv((std::string(name) + "=").c_str());
-#else
-    ::unsetenv(name);
-#endif
-}
+// Portable set/unset for the VIXEN_STORED_SDF_DEMO bake-gate env var used below.
+static void SetTestEnv(const char* name, const char* value) { Vixen::Core::Env::Set(name, value); }
+static void UnsetTestEnv(const char* name) { Vixen::Core::Env::Unset(name); }
 
 namespace {
 

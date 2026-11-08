@@ -14,6 +14,8 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 #include <string>
 #include <memory>
@@ -301,10 +303,18 @@ public:
      */
     std::shared_ptr<VoxelSceneData> GetOrCreate(const VoxelSceneCreateInfo& ci);
 
+    // ===== Shared scene store =====
+    // Content-keyed CPU scene entries shared by every build tree: one file per scene under
+    // <SharedDeviceCacheDirectory>/voxel-scene/<generator fingerprints>/. Custom generators never use it.
+    static std::filesystem::path SharedSceneEntryPath(const VoxelSceneCreateInfo& ci);
+    static bool StoreSharedScene(const VoxelSceneCreateInfo& ci, const VoxelSceneData& data, std::string* error = nullptr);
+    // Missing = no entry (not an error); Rejected/IoError = a present entry that was not usable.
+    static CacheFileStatus LoadSharedScene(const VoxelSceneCreateInfo& ci, VoxelSceneData& data, std::string* error = nullptr);
+
     // ===== TypedCacher interface =====
     std::string_view name() const noexcept override { return "VoxelSceneCacher"; }
 
-    // Serialization (stub for now - scene data is regeneratable)
+    // Per-tree device payload: retired no-op (scenes persist via the shared store, see the .cpp)
     bool SerializePayloadToFile(const std::filesystem::path& path) const override;
     bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
 
@@ -317,6 +327,8 @@ protected:
     void Cleanup() override;
 
 private:
+    static bool ReadSceneEntry(std::ifstream& in, const VoxelSceneCreateInfo& expected, VoxelSceneData& data, std::string* error);
+
     // ===== Helper methods =====
 
     /**
