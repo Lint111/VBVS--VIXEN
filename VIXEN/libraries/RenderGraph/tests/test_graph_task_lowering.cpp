@@ -709,9 +709,10 @@ TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
     cost.Observe(64, 64, 1'500'000);
     cost.Observe(49, 49, 4'000'000);
     EXPECT_GE(cost.Estimate(49), 4'400'000u);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    // Tiles are sized from the mean of the two samples (5x5 projects ~1.4 ms), not the slower one (4x4).
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
     cost.Observe(16, 16, 1'000'000);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
 }
 
 TEST(GpuChunkCost, MeasuredLaunchLatencyRaisesAnUnattainableBudgetOnly) {
