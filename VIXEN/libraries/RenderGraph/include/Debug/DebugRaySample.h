@@ -670,8 +670,8 @@ struct alignas(16) TraceBufferHeader {
     MipReadByteCounters mipReadByteCounters;
 };
 
-static_assert(sizeof(TraceBufferHeader) == 25184, "TraceBufferHeader must include the leaf instrumentation census and E6-T2 mip ledger");
-static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 584,
+static_assert(sizeof(TraceBufferHeader) == 25392, "TraceBufferHeader must include the leaf instrumentation census and E6-T2 mip ledger");
+static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 788,
               "TraceBufferHeader mip ledger offset must match SceneBindings.glsl");
 
 } // namespace Vixen::RenderGraph::Debug

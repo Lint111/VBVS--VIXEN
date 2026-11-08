@@ -810,8 +810,8 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         // the capture path. Timing runs leave VIXEN_LEAF_COUNTERS unset, so
         // this readback cannot perturb their measurements or their logs.
         if (std::getenv("VIXEN_LEAF_COUNTERS") != nullptr) {
-            if (const auto* rayTrace = debugCaptureResource_->AsRayTrace()) {
-                const auto leaf = rayTrace->ReadLeafInstrumentationStats(vulkanDevice->device);
+            if (debugCaptureResource_) {
+                const auto leaf = debugCaptureResource_->ReadLeafInstrumentationStats(vulkanDevice->device);
                 auto printHistogram = [](const char* metric, const auto& values) {
                     std::cout << "[LeafInstrHistogram] metric=" << metric;
                     for (size_t i = 0; i < values.size(); ++i) {
@@ -827,8 +827,8 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
             }
         }
         if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
-            if (const auto* rayTrace = debugCaptureResource_->AsRayTrace()) {
-                const auto clock = rayTrace->ReadLeafShaderClockStats(vulkanDevice->device);
+            if (debugCaptureResource_) {
+                const auto clock = debugCaptureResource_->ReadLeafShaderClockStats(vulkanDevice->device);
                 const uint32_t waveTicks = clock.waveEndMax - clock.waveStartMin;
                 const uint32_t shadeTicks = clock.shadeEndMax - clock.shadeStartMin;
                 std::cout << "[LeafShaderClock] wave_start_min=" << clock.waveStartMin
