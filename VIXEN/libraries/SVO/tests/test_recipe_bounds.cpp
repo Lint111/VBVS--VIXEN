@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/SdfRecipeEval.h"
+#include <array>
 using namespace Vixen::SVO;
 using namespace Vixen::SVO::Recipe;
 
@@ -61,6 +63,28 @@ TEST(RecipeBounds, UnionOfDisjointSpheresBoundsBoth) {
     // Every point of both source spheres must lie within [center, radius].
     EXPECT_LE(glm::length((glm::vec3(0,0,0)) - r.center) + 1.f, r.radius + 1e-4f);
     EXPECT_LE(glm::length((glm::vec3(10,0,0)) - r.center) + 1.f, r.radius + 1e-4f);
+}
+
+TEST(RecipeBounds, SmoothUnionBoundContainsSampledFieldOutsideExtent) {
+    // The blend band is part of the occupied extent.  Sample just outside the derived
+    // sphere in several directions; every sample must be outside the actual smooth field.
+    std::vector<SdfInstruction> prog = {
+        sphere({0.f, 0.f, 0.f}, 1.f),
+        sphere({3.f, 0.f, 0.f}, 1.f),
+        combine(SdfOpCode::SmoothUnion, 0.75f),
+    };
+    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
+    ASSERT_TRUE(r.ok);
+    const std::array<glm::vec3, 6> directions = {
+        glm::vec3(1, 0, 0), glm::vec3(-1, 0, 0),
+        glm::vec3(0, 1, 0), glm::vec3(0, -1, 0),
+        glm::normalize(glm::vec3(1, 1, 1)), glm::normalize(glm::vec3(-1, 1, -1)),
+    };
+    for (const glm::vec3 direction : directions) {
+        const glm::vec3 sample = r.center + direction * (r.radius + 1e-3f);
+        EXPECT_GT(evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), sample), 0.0f)
+            << "sample=" << sample.x << "," << sample.y << "," << sample.z;
+    }
 }
 
 TEST(RecipeBounds, SmoothSubtractBoundIsConservativeUnion) {

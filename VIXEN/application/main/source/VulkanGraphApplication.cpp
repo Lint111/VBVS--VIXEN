@@ -4415,6 +4415,14 @@ void VulkanGraphApplication::SetRecipePoolProducer(
 
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
+    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
+        [](const auto& instruction) {
+            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
+                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
+        });
+    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr;
+    const bool authoredBound = entry.boundRadius > 0.0f;
     // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined
     // further down, in the anonymous namespace above UpdateBodySceneResidency -- forward
     // reference isn't possible here, so the value is duplicated with this comment as the
@@ -4424,6 +4432,22 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     constexpr float kDefaultProceduralBoundRadius = 24.0f;
     auto boundsResult = Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
         entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
+
+    // The flag is intentionally opt-in until the native owner re-golden.  Once enabled,
+    // authored radius hints cannot make the hardware/software culling bound tighter than the
+    // program-derived result. Runtime-parameter recipes remain on their authored/default
+    // bound because a zero-parameter derivation is not valid over their parameter range.
+    Vixen::SVO::Recipe::RecipeBoundsResult derivedBound;
+    if (derivedBoundsEnabled && authoredBound && !hasRuntimeParameters) {
+        derivedBound = Vixen::SVO::Recipe::DeriveConservativeBounds(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()));
+        if (derivedBound.ok && derivedBound.radius > 0.0f &&
+            std::isfinite(derivedBound.radius)) {
+            entry.boundCenter = derivedBound.center;
+            entry.boundRadius = derivedBound.radius;
+            boundsResult.boundSource = Vixen::SVO::Recipe::RecipeBoundsSource::Derived;
+        }
+    }
 
     if (mainLogger && mainLogger->IsEnabled()) {
         auto sourceName = [](Vixen::SVO::Recipe::RecipeBoundsSource s) {
@@ -4437,7 +4461,9 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
                          " (" + sourceName(boundsResult.boundSource) + ") stepRelaxation=" +
-                         std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")");
+                         std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")" +
+                         " derivedBounds=" + (derivedBoundsEnabled ? "on" : "off") +
+                         (hasRuntimeParameters ? " runtimeParameters=range-bound-required" : ""));
     }
 
     // M6 Task 13 — derive the coarse occupancy grid from the SAME (now-finalized)
@@ -4446,12 +4472,6 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     // (IsLipschitzSafeForOccupancyGrid declines) leaves occupancyGridDim==0 — the splice's
     // getRecipeOccupancyGrid switch then emits a gridDim=0u case for this recipe and the
     // shader skips the occupancy fast-path for it, exactly as if this call never ran.
-    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
-        [](const auto& instruction) {
-            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
-            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
-                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
-        });
     Vixen::SVO::Recipe::OccupancyGridResult occGrid;
     // This grid generator currently samples the zero-parameter field. A runtime-parameter
     // recipe must not inherit that grid because its cells could incorrectly cull a changed
@@ -4514,16 +4534,27 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
 
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
-    constexpr float kDefaultProceduralBoundRadius = 24.0f;
-    Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
-        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
-
     const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
         [](const auto& instruction) {
             const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
             return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
                    op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
         });
+    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr;
+    const bool authoredBound = entry.boundRadius > 0.0f;
+    constexpr float kDefaultProceduralBoundRadius = 24.0f;
+    Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
+
+    if (derivedBoundsEnabled && authoredBound && !hasRuntimeParameters) {
+        const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()));
+        if (derived.ok && derived.radius > 0.0f && std::isfinite(derived.radius)) {
+            entry.boundCenter = derived.center;
+            entry.boundRadius = derived.radius;
+        }
+    }
+
     Vixen::SVO::Recipe::OccupancyGridResult occGrid;
     if (!hasRuntimeParameters) {
         occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(

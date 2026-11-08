@@ -218,7 +218,7 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                         float params[6],
+                         float params[6], float tMaxWorld,
                          out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -245,6 +245,11 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #endif
         return false;
     }
+    // R716/8a: the caller's current best hit is part of the march interval.  Keep the
+    // legacy sequence byte-exact when tMaxWorld is the old effectively-infinite value by
+    // deriving one endpoint and using it for every interval exit below.
+    float tEnd = min(tFar, tMaxWorld);
+    if (tEnd < tNear) return false;
 
     // Task 13: fetch this recipe's occupancy grid metadata once (constant per call, not
     // per march step) — a gridDim==0 recipe pays only this one switch dispatch and then
@@ -256,7 +261,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     const float EPS_MIN = 5e-6;
     const float CONE_EPSILON_SCALE = 0.25;
     const float CONE_PROBE_SCALE = 1.0;
-    float raySpan = max(tFar - tNear, 0.0);
+    float raySpan = max(tEnd - tNear, 0.0);
     // Scale the cap with the actual ray/bound interval. Ordinary editor rays stay well
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
@@ -305,7 +310,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                 bool bracketFound = false;
                 float beforeT = t - probeSpan;
                 float afterT = t + probeSpan;
-                if (beforeT >= tNear && afterT <= tFar) {
+                if (beforeT >= tNear && afterT <= tEnd) {
                     float beforeD = evalRecipeField(recipeId, ro + rd * beforeT, params);
                     float afterD = evalRecipeField(recipeId, ro + rd * afterT, params);
                     float raySlope = (afterD - beforeD) / (2.0 * probeSpan);
@@ -334,7 +339,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     // turning a nearby escape ray into a hit.
                     for (int scan = 1; scan <= 4; ++scan) {
                         float sampleT = t + probeSpan * (0.5 * float(scan));
-                        if (sampleT > tFar) break;
+                        if (sampleT > tEnd) break;
                         float sampleD = evalRecipeField(recipeId, ro + rd * sampleT, params);
                         if (sampleD <= 0.0) {
                             hiT = sampleT;
@@ -415,7 +420,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         traceLastStep = step;
 #endif
         t += step;
-        if (t > tFar) {
+        if (t > tEnd) {
 #ifdef VIXEN_RIMLEAK_TRACE
             vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
             rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
@@ -431,7 +436,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                           traceLastT, traceLastD, traceLastP, gradient, traceLastGridBound,
                           tNear, tFar, traceLastStep);
 #endif
-    g_recipeTraceExhaustedRays += 1u;  // R716: counted, never a silent miss
+    g_recipeTraceExhaustedRays += 1u;  // R716: exhausted before min(tFar,tMaxWorld), never silent
     return false;
 }
 #endif // VIXEN_UBER_RECIPE_SPLICED
