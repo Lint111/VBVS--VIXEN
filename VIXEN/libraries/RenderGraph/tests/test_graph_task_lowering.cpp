@@ -852,6 +852,19 @@ TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);
 }
 
+TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {
+    // The previous run ended tiled: one dense tile set a 77 us/unit max, but tiles averaged 3 us/unit.
+    // Persisting the mean means the next start projects the whole pass from it.
+    const GpuChunkCost::WholePass window{14400, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost maxOnly;
+    maxOnly.Import(14400, 77'000.0, 770'000.0);
+    EXPECT_LT(maxOnly.Edge(2'000'000, 160, 7, &window), 160u);
+    GpuChunkCost withMean;
+    withMean.Import(14400, 77'000.0, 770'000.0, 3'000.0);
+    EXPECT_EQ(withMean.Edge(2'000'000, 160, 7, &window), 160u);
+    EXPECT_EQ(withMean.MeanUnitNs(), 3'000.0);
+}
+
 TEST(GpuChunkCost, DeviceClassDecidesWhichDevicesUntile) {
     EXPECT_TRUE(GpuDeviceClassIsNative("integrated"));
     EXPECT_TRUE(GpuDeviceClassIsNative("discrete"));

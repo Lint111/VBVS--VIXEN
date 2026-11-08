@@ -264,7 +264,7 @@ TEST_F(SimpleTaskProfileTest, SaveLoadState) {
 
 TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     // R503: the chunk-cost envelope is saved per dispatch extent and restored in place.
-    profile->SetChunkCalibration("240x135", {14400, 128.5, 12'000.0});
+    profile->SetChunkCalibration("240x135", {14400, 128.5, 12'000.0, 40.0});
     profile->SetChunkCalibration("63x63", {3969, 90.0, 0.0});
     nlohmann::json j;
     profile->SaveState(j);
@@ -276,6 +276,7 @@ TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     EXPECT_EQ(wide->anchorUnits, 14400u);
     EXPECT_DOUBLE_EQ(wide->unitNs, 128.5);
     EXPECT_DOUBLE_EQ(wide->fixedNs, 12'000.0);
+    EXPECT_DOUBLE_EQ(wide->meanUnitNs, 40.0);
     ASSERT_TRUE(loaded.GetChunkCalibration("63x63").has_value());
     EXPECT_FALSE(loaded.GetChunkCalibration("120x68").has_value());
     loaded.ResetCalibration();

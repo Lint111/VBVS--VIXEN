@@ -72,12 +72,14 @@ public:
     [[nodiscard]] uint64_t AnchorUnits() const { return anchorUnits_; }
     [[nodiscard]] double UnitNs() const { return unitNs_; }
     [[nodiscard]] double FixedNs() const { return fixedNs_; }
-    void Import(uint64_t anchorUnits, double unitNs, double fixedNs) {
+    [[nodiscard]] double MeanUnitNs() const { return meanUnitNs_; }
+    void Import(uint64_t anchorUnits, double unitNs, double fixedNs, double meanUnitNs = 0.0) {
         if (!anchorUnits || !(unitNs > 0) || !(fixedNs >= 0)) return;
         anchorUnits_ = anchorUnits;
         unitNs_ = unitNs;
         fixedNs_ = fixedNs;
-        meanUnitNs_ = unitNs;  // the persisted record keeps only the conservative cost
+        // Records written before the mean was persisted fall back to the conservative cost.
+        meanUnitNs_ = meanUnitNs > 0 && meanUnitNs <= unitNs ? meanUnitNs : unitNs;
         meanSamples_ = 1;
     }
     // Projected time of one untiled dispatch of `units`, from the average full-tile cost.

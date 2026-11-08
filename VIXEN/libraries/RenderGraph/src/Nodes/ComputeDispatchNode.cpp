@@ -432,7 +432,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
         // persists it per device at shutdown, keyed by this flight's extent.
         if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
             chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
-                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs()});
+                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs(), chunkCost_.MeanUnitNs()});
         totalMs = 0;
         for (const auto& batch : submissionBatches_[frameIndex]) {
             const double elapsed = query->GetElapsedMs(0, batch.first * 4,
@@ -519,17 +519,17 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         std::string seed = "cold";
         if (chunkProfile_) {
             if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
-                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs);
+                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs, restored->meanUnitNs);
                 seed = "persisted";
             }
         }
         if (!chunkCost_.Calibrated() && previous.Calibrated()) {
-            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs());
+            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(), previous.MeanUnitNs());
             seed = "previous-extent";
         }
         if (!chunkCost_.Calibrated() && chunkProfile_) {
             if (const auto near = chunkProfile_->NearestChunkCalibration(extentKey)) {
-                chunkCost_.Import(near->anchorUnits, near->unitNs, near->fixedNs);
+                chunkCost_.Import(near->anchorUnits, near->unitNs, near->fixedNs, near->meanUnitNs);
                 seed = "nearest-persisted";
             }
         }
