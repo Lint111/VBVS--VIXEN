@@ -26,7 +26,8 @@
   "states": [
     "midday",
     "late-afternoon",
-    "overcast"
+    "overcast",
+    "night-service"
   ],
   "capture_mode": "Release (vixen-ninja-release), native Windows Vulkan, one fresh process per state plus one repeat; recorded by cl-goldnative1 with VIXEN_PIXEL_GOLDEN_RECORD=1",
   "known_visual_changes": [
@@ -62,7 +63,7 @@
   "witness": {
     "source": "cl-goldnative1",
     "evidence": "/home/liory/codeman-cases/undertow/reports/cl-goldnative1.md",
-    "repeat_pairs": 12,
+    "repeat_pairs": 16,
     "byte_identical": true
   },
   "device_class": "integrated",
