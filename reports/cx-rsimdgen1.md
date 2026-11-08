@@ -34,7 +34,7 @@ Evidence logs are under `/home/liory/codeman-cases/undertow/reports/cx-rsimdgen1
 ## LANDABLE NOW
 
 The VIXEN code and docs delta is complete and compile-witnessed for both requested kernel pins.
-Commit the source change; native default/composition boot remains a follow-up witness because the
+Committed as `3ac7848e`; native default/composition boot remains a follow-up witness because the
 shared queue never admitted it.
 
 ## REDS
@@ -56,4 +56,3 @@ shared queue never admitted it.
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
 - proposed: Native boot launcher pin can be unreachable from the available provider root
-

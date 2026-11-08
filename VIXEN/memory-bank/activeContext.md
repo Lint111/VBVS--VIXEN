@@ -4,7 +4,7 @@
 > declares the kernel snapshot and recipe declaration inputs. Current pin `86e97bee` and R796
 > `2c4981cee` both configured and built SVO successfully; focused recipe test binaries compiled.
 > Native default/composition boot remained queued behind shared-host CPU pressure and was not claimed
-> as a witness. VIXEN commit: pending `cx-rsimdgen1` land.
+> as a witness. VIXEN commit: `3ac7848e`.
 
 > **✅ 2026-09-30 — T-1342/T-1344 renderer build hygiene (`lane-kfrhyg`).** Codegen now prefers the
 > PATH-selected `dotnet` launcher and refreshes an older cached `~/.dotnet/dotnet` fallback when a
