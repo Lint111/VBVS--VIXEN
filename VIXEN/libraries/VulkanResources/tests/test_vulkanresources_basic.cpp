@@ -218,6 +218,10 @@ TEST(VulkanResources_CapabilityGraph, UpscalerMachineProfilesDeclareRequiredProv
     EXPECT_EQ(linux8060s->targetOS, "Linux");
     EXPECT_TRUE(hasProvider(*windows8060s, "Upscaler.Fsr1"));
     EXPECT_TRUE(hasProvider(*linux8060s, "Upscaler.Fsr3.1.4"));
+    EXPECT_EQ(windows8060s->defaultUpscaler, "fsr1");
+    EXPECT_FLOAT_EQ(windows8060s->defaultRenderScale, 2.0f / 3.0f);
+    EXPECT_EQ(linux8060s->defaultUpscaler, "fsr1");
+    EXPECT_FLOAT_EQ(linux8060s->defaultRenderScale, 2.0f / 3.0f);
 
     const auto* windows3060 = FindUpscalerMachineProfile("nvidia-rtx-3060-windows");
     const auto* linux3060 = FindUpscalerMachineProfile("nvidia-rtx-3060-linux");

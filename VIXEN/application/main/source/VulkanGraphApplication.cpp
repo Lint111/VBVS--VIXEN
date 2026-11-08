@@ -150,19 +150,44 @@ VulkanGraphApplication::VulkanGraphApplication()
 
     // The generic renderer host transports its one upscaler setting through this existing
     // process-configuration seam; provider eligibility remains owned by the render graph.
+    bool upscalerRequested = false;
     if (const char* env = std::getenv("VIXEN_UPSCALER")) {
         const std::string_view requested(env);
         if (requested == "none" || requested == "native") {
             renderPathConfig_.upscaler = UpscalerKind::None;
+            upscalerRequested = true;
         } else if (requested == "linear") {
             renderPathConfig_.upscaler = UpscalerKind::Linear;
+            upscalerRequested = true;
         } else if (requested == "fsr1") {
             renderPathConfig_.upscaler = UpscalerKind::Fsr1;
+            upscalerRequested = true;
         } else if (requested == "fsr3") {
             renderPathConfig_.upscaler = UpscalerKind::Fsr3;
+            upscalerRequested = true;
         } else if (mainLogger) {
             mainLogger->Warning("Unknown VIXEN_UPSCALER='" + std::string(requested) +
                                 "'; using the native render path");
+        }
+    }
+
+    // The scale is a render-path setting, not a property of the provider's output image. Keep
+    // the default provider scale in the host config so the graph computes its internal extent
+    // before wiring the provider. An explicit scale always wins, including scale 1.0.
+    if (upscalerRequested && renderPathConfig_.upscaler != UpscalerKind::None &&
+        !std::getenv("VIXEN_RENDER_SCALE")) {
+        renderPathConfig_.renderScale = 2.0f / 3.0f;
+    }
+    if (const char* env = std::getenv("VIXEN_RENDER_SCALE")) {
+        char* end = nullptr;
+        const float requested = std::strtof(env, &end);
+        if (end != env && *end == '\0' && std::isfinite(requested) &&
+            requested > 0.0f && requested <= 1.0f) {
+            renderPathConfig_.renderScale = requested;
+            renderPathConfig_.renderScaleExplicit = true;
+        } else if (mainLogger) {
+            mainLogger->Warning("Invalid VIXEN_RENDER_SCALE='" + std::string(env) +
+                                "'; keeping the current render-path scale");
         }
     }
 
@@ -358,6 +383,12 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
                 }
                 if (mainLogger && mainLogger->IsEnabled()) {
                     mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+                }
+                if (!renderPathResolutionLogged_ && mainLogger && mainLogger->IsEnabled()) {
+                    const char* provider = selectedUpscalerProviderId_.c_str();
+                    mainLogger->Info("[RenderPath] resolved upscaler='" + std::string(provider) +
+                                     "' scale=" + std::to_string(renderPathConfig_.renderScale));
+                    renderPathResolutionLogged_ = true;
                 }
                 break;
             }

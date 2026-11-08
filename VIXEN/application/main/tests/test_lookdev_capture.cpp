@@ -2503,6 +2503,7 @@ int main(int argc, char** argv) {
         const std::string argument(argv[index]);
         if (argument.starts_with("--render-scale=")) {
             gRenderPathConfig.renderScale = std::stof(argument.substr(15));
+            gRenderPathConfig.renderScaleExplicit = true;
         } else if (argument == "--upscaler=none") {
             gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::None;
         } else if (argument == "--upscaler=linear") {
