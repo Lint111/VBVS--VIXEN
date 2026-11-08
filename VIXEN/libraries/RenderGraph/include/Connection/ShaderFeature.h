@@ -63,6 +63,9 @@ inline constexpr ShaderFeature kFeatureB2ProxyPrepass{"VIXEN_B2_PROXY_PREPASS"};
 // The analytic gradient remains the twin when this requirement-free feature
 // is absent or a shell config has no baked-normal descriptor.
 inline constexpr ShaderFeature kFeatureShellNormals{"VIXEN_SHELL_NORMALS"};
+// Procedural recipe surface-shell chunks: binding 44 plus hardware/software
+// candidate culling. Disabled by default to preserve the legacy image path.
+inline constexpr ShaderFeature kFeatureRecipeChunkCull{"VIXEN_RECIPE_CHUNK_CULL"};
 // Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.

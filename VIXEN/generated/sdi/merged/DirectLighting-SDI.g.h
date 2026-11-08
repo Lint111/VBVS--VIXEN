@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: DirectLighting
-// Feature axis: VIXEN_GPU_TRACE_HOOKS
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_RECIPE_CHUNK_CULL
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -93,11 +93,11 @@ struct MaterialBuffer {
  * @brief RayTraceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xebfe77b6e3802c6c (for runtime discovery)
+ * Layout VixenHash: 0xd25560165e676a22 (for runtime discovery)
  */
 struct RayTraceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xebfe77b6e3802c6cULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xd25560165e676a22ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -526,6 +526,30 @@ struct RayTraceBuffer {
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 70;
     };
+    struct pc_71 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25112;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 71;
+    };
+    struct pc_72 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25116;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 72;
+    };
+    struct pc_73 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25120;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 73;
+    };
+    struct pc_74 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25124;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 74;
+    };
 
 };
 
@@ -864,6 +888,26 @@ struct InstanceSkipMaskBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief RecipeChunkAabbBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xc381aaa2b209b0bf (for runtime discovery)
+ */
+struct RecipeChunkAabbBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xc381aaa2b209b0bfULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "RecipeChunkAabb";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 32;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1297,6 +1341,23 @@ namespace Set0 {
     };
 
     /**
+     * @brief RecipeChunkAabbBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_RECIPE_CHUNK_CULL
+     */
+    struct Binding44 {
+        static constexpr const char* NAME = "RecipeChunkAabbBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 44;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECIPE_CHUNK_CULL"};
+        using DataType = RecipeChunkAabbBuffer;
+    };
+
+    /**
      * @brief BodyInstanceTransformBuffer
      * Type: STORAGE_BUFFER
      */
@@ -1383,6 +1444,7 @@ using LightTreeBufferSSBO = Set0::Binding24;
 using ReservoirBufferA = Set0::Binding25;
 using ReservoirBufferB = Set0::Binding26;
 using InstanceSkipMaskBuffer = Set0::Binding35;
+using RecipeChunkAabbBuffer = Set0::Binding44;
 using BodyInstanceTransformBuffer = Set0::Binding47;
 using OccupancyGridBuffer = Set0::Binding48;
 using GlyphOutlineBuffer = Set0::Binding51;
@@ -1557,6 +1619,7 @@ struct MemberInfo {
 };
 
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
+inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_RECIPE_CHUNK_CULL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
@@ -1582,6 +1645,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ReservoirBufferA", false, 0, 25, 0, Access::ReadWrite, 0, nullptr},
     {"ReservoirBufferB", false, 0, 26, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"RecipeChunkAabbBuffer", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
     {"OccupancyGridBuffer", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
     {"GlyphOutlineBuffer", false, 0, 51, 0, Access::ReadOnly, 0, nullptr},
@@ -1621,8 +1685,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "DirectLighting";
-    static constexpr uint32_t NUM_MEMBERS = 41;
-    static constexpr uint32_t NUM_FEATURES = 1;
+    static constexpr uint32_t NUM_MEMBERS = 42;
+    static constexpr uint32_t NUM_FEATURES = 2;
 };
 
 } // namespace DirectLighting

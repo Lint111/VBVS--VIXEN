@@ -33,6 +33,9 @@
       "variants": [
         [],
         [
+          "VIXEN_RECIPE_CHUNK_CULL"
+        ],
+        [
           "VIXEN_GPU_TRACE_HOOKS"
         ],
         [
@@ -117,6 +120,9 @@
       "source": "DirectLighting.comp",
       "variants": [
         [],
+        [
+          "VIXEN_RECIPE_CHUNK_CULL"
+        ],
         [
           "VIXEN_GPU_TRACE_HOOKS"
         ]
@@ -205,6 +211,9 @@
       "source": "ShadowVisibilityWave.comp",
       "variants": [
         [],
+        [
+          "VIXEN_RECIPE_CHUNK_CULL"
+        ],
         [
           "VIXEN_GPU_TRACE_HOOKS"
         ],

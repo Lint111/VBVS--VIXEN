@@ -448,6 +448,57 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
                   std::to_string(occupancyGrid_.size()) + " floats staged");
 }
 
+void BodyOctreeSceneNode::SetRecipeChunkBoxes(
+    std::vector<Vixen::SVO::Recipe::RecipeChunkAabb> boxes) {
+    recipeChunkBoxes_ = std::move(boxes);
+    recipeChunkCount_ = static_cast<uint32_t>(recipeChunkBoxes_.size());
+    // The recipe BLAS is derived from this payload. Invalidate the cached TLAS
+    // whenever the shader-build callback publishes a new chunk set, including a
+    // transition to an empty set after the opt-in flag is cleared.
+    ++rtQueryGeometryEpoch_;
+    // Shader-library builders run after this node's CompileImpl. Replace the
+    // descriptor-backed payload here, just like the glyph blob, so the first
+    // opt-in compile cannot leave a one-byte placeholder bound to the shader.
+    if (GetDevice() != nullptr) {
+        RefreshRecipeChunkBuffer();
+        // The shader builder follows BodyOctreeSceneNode::CompileImpl, so the
+        // initial TLAS may already have been built from the previous payload.
+        // The geometry epoch above makes this a safe one-time rebuild here.
+        EnsureRtQueryTlasBuilt(GetDevice());
+    }
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipeChunkBoxes: " +
+                  std::to_string(recipeChunkBoxes_.size()) + " chunks staged");
+}
+
+void BodyOctreeSceneNode::RefreshRecipeChunkBuffer() {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+
+    const VkDeviceSize size = std::max<VkDeviceSize>(
+        recipeChunkBoxes_.size() * sizeof(Vixen::SVO::Recipe::RecipeChunkAabb), 1);
+    VkBuffer replacement = VK_NULL_HANDLE;
+    VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        recipeChunkBoxes_.empty() ? nullptr : recipeChunkBoxes_.data(),
+        replacement, replacementMemory, "recipe chunk AABB SSBO refresh");
+
+    if (recipeChunkBuffer_ != VK_NULL_HANDLE || recipeChunkMemory_ != VK_NULL_HANDLE) {
+        RetiredBufferGeneration retired;
+        retired.retiredAtFrame = executeFrameCounter_;
+        retired.buffers.emplace_back(recipeChunkBuffer_, recipeChunkMemory_);
+        pendingRetire_.push_back(std::move(retired));
+    }
+    recipeChunkBuffer_ = replacement;
+    recipeChunkMemory_ = replacementMemory;
+    recipeChunkCapacity_ = size;
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER.index, 0)) {
+        output->SetHandle<VkBuffer>(VkBuffer(recipeChunkBuffer_));
+    }
+    RecordWholeBufferUpload(static_cast<uint64_t>(size));
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed recipe chunk buffer (" +
+                  std::to_string(static_cast<uint64_t>(size)) + "B)");
+}
+
 void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances) {
     // R631: this payload is produced by the same shader-build callback as the spliced recipe
@@ -736,6 +787,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).
     // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER,       recipeChunkBuffer_);
     // R631: runtime glyph-outline SSBO (binding 51), always emitted with a descriptor-valid
     // one-byte placeholder when the active recipe set contains no glyph data.
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
@@ -936,6 +988,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,     mipPoolBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER,       recipeChunkBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
         // Publish shell handles with the config created from the same complete pool.
@@ -1465,6 +1518,15 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
         occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
 
+    const VkDeviceSize recipeChunkSize = std::max<VkDeviceSize>(
+        recipeChunkBoxes_.size() * sizeof(Vixen::SVO::Recipe::RecipeChunkAabb), 1);
+    recipeChunkCount_ = static_cast<uint32_t>(recipeChunkBoxes_.size());
+    recipeChunkCapacity_ = recipeChunkSize;
+    CreateHostBuffer(device, recipeChunkSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        recipeChunkBoxes_.empty() ? nullptr : recipeChunkBoxes_.data(),
+        recipeChunkBuffer_, recipeChunkMemory_, "recipe chunk AABB SSBO");
+
     // R631: the glyph outline payload is runtime data. Keeping it out of the generated GLSL
     // source prevents the driver from unrolling one large compile-time object per recipe.
     const VkDeviceSize glyphOutlineSize = std::max<VkDeviceSize>(
@@ -1494,6 +1556,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
     RecordWholeBufferUpload(static_cast<uint64_t>(mipPoolSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(recipeChunkSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineFlatSize));
 
@@ -1507,7 +1570,8 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
                   std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
                   std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B, occupancyGrid=" +
                   std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B, glyphOutline=" +
-                  std::to_string(static_cast<uint64_t>(glyphOutlineSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(glyphOutlineSize)) + "B, recipeChunks=" +
+                  std::to_string(static_cast<uint64_t>(recipeChunkSize)) + "B)");
 
     // Batch 10 (validator-requested cheap add): NODE_LOG_INFO above is disabled
     // by default for these nodes and its absence blocked settling the batch-9
@@ -1821,6 +1885,9 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
     retire(mipPoolBuffer_,       mipPoolMemory_);
     retire(tierRefTableBuffer_,  tierRefTableMemory_);
     retire(occupancyGridBuffer_, occupancyGridMemory_);
+    retire(recipeChunkBuffer_,   recipeChunkMemory_);
+    recipeChunkCapacity_ = 0;
+    recipeChunkCount_ = 0;
     retire(glyphOutlineBuffer_,  glyphOutlineMemory_);
     retire(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_);
 
@@ -1834,6 +1901,12 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
         gen.allocations.push_back(blas.aabbAllocation);
     }
     rtQueryBlas_.clear();
+    for (RtQueryBlas& blas : rtQueryRecipeBlas_) {
+        if (blas.handle != VK_NULL_HANDLE) gen.accelStructures.push_back(blas.handle);
+        gen.allocations.push_back(blas.asAllocation);
+        gen.allocations.push_back(blas.aabbAllocation);
+    }
+    rtQueryRecipeBlas_.clear();
     if (rtQueryTlas_ != VK_NULL_HANDLE) gen.accelStructures.push_back(rtQueryTlas_);
     gen.allocations.push_back(rtQueryTlasAllocation_);
     gen.allocations.push_back(rtQueryScratchAllocation_);
@@ -2221,6 +2294,9 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
     destroy(occupancyGridBuffer_, occupancyGridMemory_); // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13
+    recipeChunkCapacity_ = 0;
+    recipeChunkCount_ = 0;
+    destroy(recipeChunkBuffer_, recipeChunkMemory_);
     destroy(glyphOutlineBuffer_,  glyphOutlineMemory_);  // R631
     destroy(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_); // R768
 }
@@ -2323,6 +2399,77 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(cmd, &beginInfo);
         return cmd;
+    };
+
+    auto buildAabbBlas = [&](RtQueryBlas& blas,
+                             const std::vector<VkAabbPositionsKHR>& aabbs,
+                             const char* label) {
+        if (aabbs.empty()) return;
+        blas.aabbBytes = static_cast<VkDeviceSize>(aabbs.size() * sizeof(VkAabbPositionsKHR));
+        CreateDeviceAddressBuffer(device,
+            static_cast<VkDeviceSize>(aabbs.size() * sizeof(VkAabbPositionsKHR)),
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            blas.aabbAllocation, label);
+        void* mapped = device->MapBuffer(blas.aabbAllocation);
+        if (!mapped) throw std::runtime_error("[BodyOctreeSceneNode] failed to map tracked RT AABBs");
+        std::memcpy(mapped, aabbs.data(), aabbs.size() * sizeof(VkAabbPositionsKHR));
+        device->UnmapBuffer(blas.aabbAllocation);
+
+        VkAccelerationStructureGeometryAabbsDataKHR aabbsData{};
+        aabbsData.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
+        aabbsData.data.deviceAddress = blas.aabbAllocation.deviceAddress != 0
+            ? blas.aabbAllocation.deviceAddress
+            : GetBufferDeviceAddress(device, blas.aabbAllocation.buffer);
+        aabbsData.stride = sizeof(VkAabbPositionsKHR);
+        VkAccelerationStructureGeometryKHR geometry{};
+        geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        geometry.geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
+        geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        geometry.geometry.aabbs = aabbsData;
+        VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
+        buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        buildInfo.geometryCount = 1;
+        buildInfo.pGeometries = &geometry;
+        uint32_t primitiveCount = static_cast<uint32_t>(aabbs.size());
+        VkAccelerationStructureBuildSizesInfoKHR sizeInfo{};
+        sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        vkGetASBuildSizes(vkDevice, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                          &buildInfo, &primitiveCount, &sizeInfo);
+        CreateDeviceAddressBuffer(device, sizeInfo.accelerationStructureSize,
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, blas.asAllocation, label);
+        blas.blasBytes = sizeInfo.accelerationStructureSize;
+        ResourceManagement::BufferAllocation scratchAllocation;
+        CreateDeviceAddressBuffer(device, sizeInfo.buildScratchSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            scratchAllocation, "RTAccelStructures BLAS scratch");
+        VkAccelerationStructureCreateInfoKHR createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+        createInfo.buffer = blas.asAllocation.buffer;
+        createInfo.size = sizeInfo.accelerationStructureSize;
+        createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
+            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
+        }
+        buildInfo.dstAccelerationStructure = blas.handle;
+        buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
+            ? scratchAllocation.deviceAddress
+            : GetBufferDeviceAddress(device, scratchAllocation.buffer);
+        VkAccelerationStructureBuildRangeInfoKHR rangeInfo{};
+        rangeInfo.primitiveCount = primitiveCount;
+        const VkAccelerationStructureBuildRangeInfoKHR* pRangeInfo = &rangeInfo;
+        VkCommandBuffer cmd = beginOneShot();
+        vkCmdBuildAS(cmd, 1, &buildInfo, &pRangeInfo);
+        vkEndCommandBuffer(cmd);
+        submitOneShot(cmd, [device, scratchAllocation]() mutable { device->FreeBuffer(scratchAllocation); });
+        VkAccelerationStructureDeviceAddressInfoKHR addrInfo{};
+        addrInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        addrInfo.accelerationStructure = blas.handle;
+        blas.deviceAddress = vkGetASDeviceAddress(vkDevice, &addrInfo);
     };
 
     // --- Per-octree BLAS: the compact shell proxy AABBs, in octree-local [0,1]^3 space ---
@@ -2431,6 +2578,53 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         blas.deviceAddress = vkGetASDeviceAddress(vkDevice, &addrInfo);
     }
 
+    // Procedural recipes use the same compact shell records, but their boxes are
+    // already in recipe-local space and therefore do not have an octree config.
+    // Keep one BLAS per recipe so TLAS candidates identify both recipe and chunk.
+    rtQueryRecipeBlas_.clear();
+    for (size_t begin = 0; begin < recipeChunkBoxes_.size();) {
+        const uint32_t recipeId = recipeChunkBoxes_[begin].recipeId;
+        size_t end = begin + 1;
+        while (end < recipeChunkBoxes_.size() && recipeChunkBoxes_[end].recipeId == recipeId) ++end;
+        RtQueryBlas blas{};
+        blas.procedural = true;
+        blas.recipeId = recipeId;
+        blas.proxyBase = static_cast<uint32_t>(begin);
+        blas.proxyCount = static_cast<uint32_t>(end - begin);
+        std::vector<VkAabbPositionsKHR> aabbs;
+        aabbs.reserve(end - begin);
+        for (size_t i = begin; i < end; ++i) {
+            const auto& chunk = recipeChunkBoxes_[i];
+            VkAabbPositionsKHR box{};
+            box.minX = chunk.minLocal[0]; box.minY = chunk.minLocal[1]; box.minZ = chunk.minLocal[2];
+            box.maxX = chunk.maxLocal[0]; box.maxY = chunk.maxLocal[1]; box.maxZ = chunk.maxLocal[2];
+            aabbs.push_back(box);
+        }
+        buildAabbBlas(blas, aabbs, "RTAccelStructures recipe BLAS");
+        NODE_LOG_INFO("[RtQuery] BLAS recipe=" + std::to_string(recipeId) +
+                      " chunkBase=" + std::to_string(blas.proxyBase) +
+                      " chunkCount=" + std::to_string(blas.proxyCount));
+        rtQueryRecipeBlas_.push_back(std::move(blas));
+        begin = end;
+    }
+    if (envFlagEnabled("UNDERSET_NATIVE_BENCHMARK")) {
+        VkDeviceSize sceneAabbBytes = 0;
+        VkDeviceSize sceneBlasBytes = 0;
+        for (const auto& blas : rtQueryRecipeBlas_) {
+            sceneAabbBytes += blas.aabbBytes;
+            sceneBlasBytes += blas.blasBytes;
+            NODE_LOG_INFO("[RecipeChunkMetrics] recipe=" + std::to_string(blas.recipeId) +
+                          " chunks=" + std::to_string(blas.proxyCount) +
+                          " aabbBytes=" + std::to_string(blas.aabbBytes) +
+                          " blasBytes=" + std::to_string(blas.blasBytes));
+        }
+        NODE_LOG_INFO("[RecipeChunkMetrics] scene recipes=" +
+                      std::to_string(rtQueryRecipeBlas_.size()) +
+                      " chunks=" + std::to_string(recipeChunkBoxes_.size()) +
+                      " aabbBytes=" + std::to_string(sceneAabbBytes) +
+                      " blasBytes=" + std::to_string(sceneBlasBytes));
+    }
+
     // --- TLAS: one instance per BodyOctreeSceneNode instance ---
     // The instance owns the parent localToWorld affine; the octree config contributes
     // the child localToWorld. Compose parent × child exactly once for this BLAS instance.
@@ -2438,14 +2632,32 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     vkInstances.reserve(instances_.size());
     for (uint32_t ii = 0; ii < static_cast<uint32_t>(instances_.size()); ++ii) {
         const Vixen::SVO::BodyInstanceGpu& inst = instances_[ii];
-        if (inst.material.providerKind != 0u) continue;  // PROVIDER_STORED only -- procedural bodies have no octree/BLAS
-        const uint32_t oi = inst.material.octreeIndex;
-        if (oi >= rtQueryBlas_.size() || rtQueryBlas_[oi].handle == VK_NULL_HANDLE) {
-            continue;  // no brick occupied this octree (or index out of range) -- nothing to instance
+        const RtQueryBlas* sourceBlas = nullptr;
+        Vixen::SVO::Affine3x4Gpu localToWorld{};
+        if (inst.material.providerKind == 0u) {
+            const uint32_t oi = inst.material.octreeIndex;
+            if (oi >= rtQueryBlas_.size() || rtQueryBlas_[oi].handle == VK_NULL_HANDLE) {
+                continue;  // no brick occupied this octree (or index out of range)
+            }
+            sourceBlas = &rtQueryBlas_[oi];
+            localToWorld = Vixen::SVO::ComposeAffine(
+                inst.transform.localToWorld,
+                Vixen::SVO::ToAffine3x4(concatenated_.configs[oi].localToWorld));
+        } else if (inst.material.providerKind == 1u) {
+            for (const auto& candidate : rtQueryRecipeBlas_) {
+                if (candidate.recipeId == inst.material.recipeId &&
+                    candidate.handle != VK_NULL_HANDLE) {
+                    sourceBlas = &candidate;
+                    break;
+                }
+            }
+            if (!sourceBlas) continue;  // no shell chunks: coarse fallback was not derivable
+            // Recipe chunk boxes are emitted in the recipe's local frame, which is
+            // the same frame the procedural evaluator receives in TraceWorld.
+            localToWorld = inst.transform.localToWorld;
+        } else {
+            continue;
         }
-        const Vixen::SVO::Affine3x4Gpu localToWorld = Vixen::SVO::ComposeAffine(
-            inst.transform.localToWorld,
-            Vixen::SVO::ToAffine3x4(concatenated_.configs[oi].localToWorld));
 
         VkAccelerationStructureInstanceKHR vkInst{};
         // Keep the explicit parent×child affine and copy its 3x4 rows as-is.
@@ -2454,7 +2666,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         // the flattened proxy base in the upper 16 bits. This is the only per-instance
         // metadata exposed to a ray-query shader, and recovers both records without a
         // second AS metadata buffer.
-        const uint32_t proxyBaseForInstance = rtQueryBlas_[oi].proxyBase;
+        const uint32_t proxyBaseForInstance = sourceBlas->proxyBase;
         if (ii > 0xFFu || proxyBaseForInstance > 0xFFFFu) {
             releasePool();
             throw std::runtime_error(
@@ -2464,7 +2676,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         vkInst.mask = 0xFF;
         vkInst.instanceShaderBindingTableRecordOffset = 0;
         vkInst.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        vkInst.accelerationStructureReference = rtQueryBlas_[oi].deviceAddress;
+        vkInst.accelerationStructureReference = sourceBlas->deviceAddress;
         vkInstances.push_back(vkInst);
 
     }
@@ -2580,6 +2792,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
 void BodyOctreeSceneNode::DestroyRtQueryTlas() {
     if (!GetDevice()) {
         rtQueryBlas_.clear();
+        rtQueryRecipeBlas_.clear();
         rtQueryTlas_ = VK_NULL_HANDLE;
         rtQueryTlasBuilt_ = false;
         rtQueryTlasBuiltForInstanceCount_ = -1;
@@ -2597,6 +2810,13 @@ void BodyOctreeSceneNode::DestroyRtQueryTlas() {
         GetDevice()->FreeBuffer(blas.aabbAllocation);
     }
     rtQueryBlas_.clear();
+
+    for (RtQueryBlas& blas : rtQueryRecipeBlas_) {
+        if (vkDestroyAS && blas.handle != VK_NULL_HANDLE) vkDestroyAS(vkDevice, blas.handle, nullptr);
+        GetDevice()->FreeBuffer(blas.asAllocation);
+        GetDevice()->FreeBuffer(blas.aabbAllocation);
+    }
+    rtQueryRecipeBlas_.clear();
 
     if (vkDestroyAS && rtQueryTlas_ != VK_NULL_HANDLE) vkDestroyAS(vkDevice, rtQueryTlas_, nullptr);
     rtQueryTlas_ = VK_NULL_HANDLE;

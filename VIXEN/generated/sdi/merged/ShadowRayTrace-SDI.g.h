@@ -93,11 +93,11 @@ struct MaterialBuffer {
  * @brief RayTraceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xebfe77b6e3802c6c (for runtime discovery)
+ * Layout VixenHash: 0xd25560165e676a22 (for runtime discovery)
  */
 struct RayTraceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xebfe77b6e3802c6cULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xd25560165e676a22ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -525,6 +525,30 @@ struct RayTraceBuffer {
         static constexpr uint32_t OFFSET = 25108;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 70;
+    };
+    struct pc_71 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25112;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 71;
+    };
+    struct pc_72 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25116;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 72;
+    };
+    struct pc_73 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25120;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 73;
+    };
+    struct pc_74 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 25124;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 74;
     };
 
 };

@@ -78,6 +78,13 @@ struct FarFieldByTagStats {
     uint32_t colorFallback[2] = {0, 0};
 };
 
+struct RecipeChunkMetrics {
+    uint32_t rays = 0;
+    uint32_t recipes = 0;
+    uint32_t chunks = 0;
+    uint32_t steps = 0;
+};
+
 /**
  * @brief Batch-24 FARGEN readback (see rectRays/rectCellEntries/rectGateCross
  * in DebugRaySample.h): rect-scoped generation funnel over the far clusters
@@ -391,6 +398,8 @@ public:
 
     /// Read the per-frame fixed-capacity E6-T2 body x mip-level byte ledger.
     MipReadByteCounters ReadMipReadByteCounters(VkDevice device) const;
+
+    RecipeChunkMetrics ReadRecipeChunkMetrics(VkDevice device) const;
     [[nodiscard]] const std::vector<MipReadByteCounters>& GetMipReadSnapshots() const {
         return mipReadSnapshots_;
     }

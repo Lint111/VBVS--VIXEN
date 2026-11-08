@@ -2195,6 +2195,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                     renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+                bodyScene->SetRecipeChunkBoxes(envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")
+                    ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
+                    : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
             }
@@ -2387,6 +2390,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchShaderFeatures.push_back(kFeatureShellNormals.define);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        marchShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_CHUNK_CULL: procedural surface-shell chunk TLAS/software culling ENGAGED");
+        }
     }
     if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
         marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
@@ -2631,6 +2640,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        lightingShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
     }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES")) {
         // E11-T1: only ShadowVisibilityWave.comp #includes PolicyStencilTileBuffer;
@@ -9066,6 +9078,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // has. The provider therefore carries the block name, not the member array name.
     sceneProviders.Provide("RtQueryProxyAabbBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, kSceneRoles);
+    sceneProviders.Provide("RecipeChunkAabbBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
                            SlotRole::Execute);
@@ -9199,6 +9213,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchFeatures.Enable(kFeatureShellNormals);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        marchFeatures.Enable(kFeatureRecipeChunkCull);
     }
     // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
     // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table
@@ -10412,6 +10429,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     SdiFeatureSet waveSdiFeatures;
     if (rtLightingMode != RtLightingMode::Off) {
         waveSdiFeatures.Enable(kFeatureRayQueryLighting);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        waveSdiFeatures.Enable(kFeatureRecipeChunkCull);
     }
     if (waveSlotSwizzleEnabled) {
         waveSdiFeatures.Enable(kFeatureWaveSlotSwizzle);

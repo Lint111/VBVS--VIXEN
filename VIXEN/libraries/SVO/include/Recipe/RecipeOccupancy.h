@@ -128,7 +128,8 @@ namespace occupancy_detail {
 template<bool exactReduction> inline OccupancyGridResult DeriveOccupancyGridImpl(
     const SdfInstruction* prog, uint32_t count,
     const glm::vec3& boundCenter, float boundRadius,
-    uint32_t denseN = 64, uint32_t coarseN = 16)
+    uint32_t denseN = 64, uint32_t coarseN = 16,
+    const RecipeRegistry* registry = nullptr)
 {
     OccupancyGridResult out;
     if (count == 0 || boundRadius <= 0.0f) return out;
@@ -187,7 +188,7 @@ template<bool exactReduction> inline OccupancyGridResult DeriveOccupancyGridImpl
                         for(std::uint32_t y=cy*block;!saturated && y<(cy+1)*block;++y)
                             for(std::uint32_t x=cx*block;x<(cx+1)*block;++x) {
                                 const glm::vec3 point(centers[0][x],centers[1][y],centers[2][z]);
-                                minimum=glm::min(minimum,std::fabs(evalRecipe(prog,count,point)));
+                                minimum=glm::min(minimum,std::fabs(evalRecipe(prog,count,point,{},nullptr,registry)));
                                 ++out.sampledPoints;
                                 if(Yeroket::Sdf::Generated::RecipeOccupancyReductionSaturated(minimum,margin)) {
                                     saturated=true; break;
@@ -207,7 +208,7 @@ template<bool exactReduction> inline OccupancyGridResult DeriveOccupancyGridImpl
             for (uint32_t dx = 0; dx < denseN; ++dx) {
                 const float wx = aabbMin.x + (static_cast<float>(dx) + 0.5f) * denseCell;
                 ++out.sampledPoints;
-                const float sd = std::fabs(evalRecipe(prog, count, glm::vec3(wx, wy, wz)));
+                const float sd = std::fabs(evalRecipe(prog, count, glm::vec3(wx, wy, wz),{},nullptr,registry));
 
                 uint32_t cx = static_cast<uint32_t>((wx - aabbMin.x) / coarseCell);
                 uint32_t cy = static_cast<uint32_t>((wy - aabbMin.y) / coarseCell);
@@ -243,8 +244,9 @@ template<bool exactReduction> inline OccupancyGridResult DeriveOccupancyGridImpl
 } // namespace occupancy_detail
 inline OccupancyGridResult DeriveOccupancyGrid(
     const SdfInstruction* prog, std::uint32_t count, const glm::vec3& center,
-    float radius, std::uint32_t denseN=64, std::uint32_t coarseN=16) {
-    return occupancy_detail::DeriveOccupancyGridImpl<true>(prog,count,center,radius,denseN,coarseN);
+    float radius, std::uint32_t denseN=64, std::uint32_t coarseN=16,
+    const RecipeRegistry* registry = nullptr) {
+    return occupancy_detail::DeriveOccupancyGridImpl<true>(prog,count,center,radius,denseN,coarseN,registry);
 }
 
 } // namespace Vixen::SVO::Recipe

@@ -218,7 +218,7 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                         float params[6], float tMaxWorld,
+                         float params[6], float tMinWorld, float tMaxWorld,
                          out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -236,7 +236,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         return false;
     }
     float sq    = sqrt(disc);
-    float tNear = max(-b - sq, 0.0);
+    float tNear = max(-b - sq, max(0.0, tMinWorld));
     float tFar  = -b + sq;
     if (tFar < 0.0) {
 #ifdef VIXEN_RIMLEAK_TRACE

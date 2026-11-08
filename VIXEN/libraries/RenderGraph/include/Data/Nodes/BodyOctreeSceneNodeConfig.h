@@ -16,7 +16,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
     // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
-    static constexpr size_t OUTPUTS = 20;
+    static constexpr size_t OUTPUTS = 21;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -62,7 +62,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (20) =====
+    // ===== OUTPUTS (21) =====
     // Same names/types as VoxelGridNode's octree slots (so Task 8 can swap nodes).
     OUTPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
@@ -142,6 +142,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     // when no procedural recipe has a derivable grid (non-whitelisted opcode, or no
     // recipes registered at all); populated via BodyOctreeSceneNode::SetOccupancyGrid.
     OUTPUT_SLOT(OCTREE_OCCUPANCYGRID_BUFFER, VkBuffer, 12,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // Optional procedural recipe surface-shell chunks (shader binding 44).
+    OUTPUT_SLOT(RECIPE_CHUNK_BUFFER, VkBuffer, 20,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -266,6 +271,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         occupancyGridDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_OCCUPANCYGRID_BUFFER, "octree_occupancygrid_buffer", ResourceLifetime::Persistent, occupancyGridDesc);
 
+        BufferDescriptor recipeChunkDesc{};
+        recipeChunkDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(RECIPE_CHUNK_BUFFER, "recipe_chunk_buffer", ResourceLifetime::Persistent, recipeChunkDesc);
+
         BufferDescriptor glyphOutlineDesc{};
         glyphOutlineDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(GLYPH_OUTLINE_BUFFER, "glyph_outline_buffer", ResourceLifetime::Persistent, glyphOutlineDesc);
@@ -318,6 +327,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(INSTANCE_MOTION_BUFFER_Slot::index == 17, "INSTANCE_MOTION_BUFFER must be at index 17");
     static_assert(GLYPH_OUTLINE_BUFFER_Slot::index == 18, "GLYPH_OUTLINE_BUFFER must be at index 18");
     static_assert(GLYPH_OUTLINE_FLAT_BUFFER_Slot::index == 19, "GLYPH_OUTLINE_FLAT_BUFFER must be at index 19");
+    static_assert(RECIPE_CHUNK_BUFFER_Slot::index == 20, "RECIPE_CHUNK_BUFFER must be at index 20");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -341,6 +351,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<RTQUERY_TLAS_Slot::Type, VkAccelerationStructureKHR>);
     static_assert(std::is_same_v<PROXY_AABB_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<PROXY_AABB_COUNT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<RECIPE_CHUNK_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph
