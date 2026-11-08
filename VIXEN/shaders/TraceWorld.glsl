@@ -372,6 +372,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     farSubPixel = footprint >= 2.0 * boundRadius * worldUnitsPerInstUnit;
                 }
 
+#ifdef VIXEN_LEAF_VARIANT_SEARCH
+                // fl-leafinstr1 measurement variant (not pixel-valid): search only, the bound
+                // sphere test above is the whole per-body cost; take the flat-shade exit.
+                farSubPixel = true;
+#endif
                 if (farSubPixel) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected

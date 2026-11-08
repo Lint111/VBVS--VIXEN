@@ -40,6 +40,11 @@ inline constexpr ShaderFeature kFeatureGpuTraceHooks{"VIXEN_GPU_TRACE_HOOKS"};
 // E1-T1 stencil slice 0: image-inert composition histograms in the existing
 // TraceBufferHeader terminal-pixel ring. Env-gated; no capability requirement.
 inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_COUNTERS"};
+// fl-leafinstr1: measurement-only march variants for the search/march/shade time split.
+// Env-gated (VIXEN_LEAF_INSTR=search|march), default off, interface-invariant (no binding
+// change). Output is NOT pixel-valid: the variants early-return before the HitRecord write.
+inline constexpr ShaderFeature kFeatureLeafVariantSearch{"VIXEN_LEAF_VARIANT_SEARCH"};
+inline constexpr ShaderFeature kFeatureLeafVariantMarch{"VIXEN_LEAF_VARIANT_MARCH"};
 // E7-T1: materialize the primary ray's policy stencil in HitRecord._pad0[2]
 // bits 8..15 and preserve/read back that byte across both shadow writers.
 // Env-gated; no capability or descriptor-interface requirement.

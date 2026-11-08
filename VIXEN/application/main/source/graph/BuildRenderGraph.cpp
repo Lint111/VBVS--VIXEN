@@ -2365,6 +2365,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (const char* leafInstr = std::getenv("VIXEN_LEAF_INSTR"); leafInstr && *leafInstr) {
+        const std::string mode = leafInstr;
+        if (mode == "search") {
+            marchShaderFeatures.push_back(kFeatureLeafVariantSearch.define);
+        } else if (mode == "march") {
+            marchShaderFeatures.push_back(kFeatureLeafVariantMarch.define);
+        } else {
+            throw std::runtime_error("VIXEN_LEAF_INSTR must be search or march");
+        }
+        std::cout << "[LeafInstr] march variant=" << mode << " (not pixel-valid)" << std::endl;
+    }
     const bool policyStencilTilesEnabled =
         envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES");
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
