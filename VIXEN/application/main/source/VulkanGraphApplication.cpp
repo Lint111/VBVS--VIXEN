@@ -696,7 +696,19 @@ void VulkanGraphApplication::PostTick() {
         wholesale.residentSignatureFnv64 = signature;
     }
 
-    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs, wholesale);
+    const auto& waitLedger = renderGraph->GetLastFrameWaitLedger();
+    const double gpuWaitMs = static_cast<double>(waitLedger.gpuRetireWaitNs) / 1'000'000.0;
+    const double paceWaitMs = static_cast<double>(waitLedger.framePaceWaitNs) / 1'000'000.0;
+    const PerfCsvWriter::WindowMetrics windowMetrics{
+        gpuWaitMs,
+        paceWaitMs,
+        cpuFrameTimeMs > 0.0 ? gpuWaitMs / cpuFrameTimeMs : 0.0,
+        waitLedger.windowCount,
+        static_cast<double>(waitLedger.windowPredictedNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.windowActualNs) / 1'000'000.0,
+        waitLedger.ErrorP95Ms()};
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
+                               windowMetrics, wholesale);
 }
 
 void VulkanGraphApplication::Update() {

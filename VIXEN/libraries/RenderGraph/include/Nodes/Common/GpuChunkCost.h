@@ -58,6 +58,11 @@ public:
     [[nodiscard]] double WholePassNs(uint64_t units) const {
         return anchorUnits_ ? fixedNs_ + meanUnitNs_ * units : 0.0;
     }
+    // Issue-time mean used by QueueTimeline's retire predictor. A cold producer returns zero so
+    // SubmitRecord can fall back to its conservative upper-bound entry.
+    [[nodiscard]] uint64_t MeanEstimate(uint64_t units) const {
+        return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + meanUnitNs_ * units)) : 0;
+    }
     uint64_t Estimate(uint64_t units) const {
         return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + unitNs_ * units)) : 0;
     }

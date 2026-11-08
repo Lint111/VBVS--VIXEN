@@ -46,6 +46,16 @@ public:
         Vixen::RenderGraph::GPUPerformanceLogger* logger = nullptr;  // non-owning; may be nullptr (timing unsupported)
     };
 
+    struct WindowMetrics {
+        double gpuWaitMs = 0.0;
+        double paceWaitMs = 0.0;
+        double gpuBoundShare = 0.0;
+        uint64_t windowCount = 0;
+        double windowPredictedMs = 0.0;
+        double windowActualMs = 0.0;
+        double windowErrorP95Ms = 0.0;
+    };
+
     // Reads VIXEN_PERF_CSV; IsEnabled()==false when unset (the only env access this class does).
     PerfCsvWriter();
 
@@ -60,6 +70,7 @@ public:
     void RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                      uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                      double wholeFrameGpuSpanMs,
+                     WindowMetrics windowMetrics,
                      WholesaleMetrics wholesale);
 
     // Writes the accumulated rows to VIXEN_PERF_CSV. Safe to call once at shutdown; no-op if
@@ -75,6 +86,7 @@ private:
         uint64_t bootBytesUploaded = 0;
         uint64_t steadyStateBytesUploaded = 0;
         double wholeFrameGpuSpanMs = 0.0;  // Task 0.1: first CB start -> last CB end, this frame
+        WindowMetrics windowMetrics;
         WholesaleMetrics wholesale;
         std::vector<std::pair<std::string, double>> passMs;  // (columnName, ms) — same set every row
     };

@@ -379,6 +379,7 @@ uint64_t fakeCounter = 0;
 int fakeWaitCalls = 0;
 int failFakeWait = -1;
 std::vector<uint64_t> fakeWaitedValues;
+int lateWaitCalls = 0;
 VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
     VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence fence) {
     EXPECT_EQ(count, 1u);
@@ -403,11 +404,17 @@ VkResult FakeWait(VkDevice, VkSemaphore, uint64_t value, uint64_t) {
     fakeCounter = std::max(fakeCounter, value);
     return VK_SUCCESS;
 }
+VkResult LateWait(VkDevice, VkSemaphore, uint64_t, uint64_t) {
+    ++lateWaitCalls;
+    if (lateWaitCalls >= 2) fakeCounter = 1;
+    return VK_SUCCESS;
+}
 QueueTimeline FakeTimeline() {
     nativeSubmitCalls.clear();
     failNativeSubmit = -1;
     fakeCounter = 0;
     fakeWaitCalls = 0;
+    lateWaitCalls = 0;
     failFakeWait = -1;
     fakeWaitedValues.clear();
     QueueTimeline timeline;
@@ -508,6 +515,89 @@ TEST(SubmitRecord, ReachedOldestBatchIsPolledNotWaited) {
     EXPECT_EQ(fakeWaitCalls, 0);
     EXPECT_EQ(timeline.blockingWaits, 0u);
     EXPECT_EQ(timeline.outstanding.size(), 2u);
+}
+
+TEST(QueueTimeline, NoFillerKeepsOneBoundedWaitPerCapHit) {
+    QueueTimeline timeline = FakeTimeline();
+    timeline.Issued(1, 10'000'000, 10'000'000);
+    timeline.Issued(2, 10'000'000, 10'000'000);
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fakeWaitCalls, 1);
+    EXPECT_EQ(timeline.blockingWaits, 1u);
+}
+
+TEST(QueueTimeline, FillerReceivesCostMinusDerivedMarginAndClosesOnReach) {
+    QueueTimeline timeline = FakeTimeline();
+    timeline.Issued(1, 100'000'000, 70'000'000);
+    timeline.Issued(2, 100'000'000, 70'000'000);
+    FrameWaitLedger ledger;
+    timeline.frameLedger = &ledger;
+    uint64_t predicted = 0;
+    std::stop_token closed;
+    int fillerCalls = 0;
+    IdleWindowFiller filler = [&](const IdleWindow& window) {
+        ++fillerCalls;
+        EXPECT_EQ(window.kind, IdleWindow::Kind::GpuRetire);
+        EXPECT_EQ(window.waitValue, 1u);
+        predicted = window.predictedNs;
+        closed = window.closed;
+        fakeCounter = 1;
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fillerCalls, 1);
+    EXPECT_GT(predicted, 0u);
+    EXPECT_LE(predicted, 70'000'000u);
+    EXPECT_TRUE(closed.stop_requested());
+    ASSERT_EQ(ledger.gpuRetireWaitCount, 1u);
+    ASSERT_EQ(ledger.waitSampleCount, 1u);
+    EXPECT_EQ(ledger.waits[0].kind, IdleWindow::Kind::GpuRetire);
+}
+
+TEST(QueueTimeline, EarlyGpuReturnsAfterFirstPollWithoutAnotherWait) {
+    QueueTimeline timeline = FakeTimeline();
+    timeline.Issued(1, 10'000'000, 10'000'000);
+    timeline.Issued(2, 10'000'000, 10'000'000);
+    int fillerCalls = 0;
+    IdleWindowFiller filler = [&](const IdleWindow&) {
+        ++fillerCalls;
+        fakeCounter = 1;
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fillerCalls, 1);
+    EXPECT_EQ(fakeWaitCalls, 0);
+}
+
+TEST(QueueTimeline, LateGpuGetsARePredictedRemainder) {
+    QueueTimeline timeline = FakeTimeline();
+    timeline.waitFn = LateWait;
+    timeline.Issued(1, 100'000'000, 100'000'000);
+    timeline.Issued(2, 100'000'000, 100'000'000);
+    std::vector<uint64_t> predictions;
+    IdleWindowFiller filler = [&](const IdleWindow& window) {
+        predictions.push_back(window.predictedNs);
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    ASSERT_EQ(predictions.size(), 2u);
+    EXPECT_LE(predictions[1], predictions[0]);
+    EXPECT_EQ(lateWaitCalls, 2);
+}
+
+TEST(QueueTimeline, PredictorChainsTwoOutstandingBatches) {
+    QueueTimeline timeline = FakeTimeline();
+    const auto now = QueueTimeline::Clock::now();
+    timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
+    timeline.Issued(2, 200, 200, now + std::chrono::seconds(1));
+
+    const uint64_t predicted = timeline.PredictRetireNs(2, now);
+    EXPECT_GE(predicted, 1'000'000'299u);
+    EXPECT_LE(predicted, 1'000'000'301u);
 }
 
 TEST(SubmitRecord, ReleaseRunsOnlyOnceItsValueIsReached) {

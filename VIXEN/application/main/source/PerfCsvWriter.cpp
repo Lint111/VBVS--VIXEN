@@ -14,6 +14,7 @@ PerfCsvWriter::PerfCsvWriter() {
 void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                                 uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                                 double wholeFrameGpuSpanMs,
+                                WindowMetrics windowMetrics,
                                 WholesaleMetrics wholesale) {
     if (!IsEnabled()) return;
 
@@ -26,6 +27,7 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.bootBytesUploaded = bootBytesUploaded;
     row.steadyStateBytesUploaded = steadyStateBytesUploaded;
     row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
+    row.windowMetrics = windowMetrics;
     row.wholesale = wholesale;
 
     // Steady-state FPS: rolling average over the last kFpsWindow frames (or however many
@@ -68,7 +70,9 @@ void PerfCsvWriter::Flush() {
            "populated_shader_readable_bytes,reusable_populated_bytes,boot_bytes_uploaded_ledger,"
            "steady_state_bytes_uploaded_ledger,whole_buffer_upload_bytes,"
            "channel_pool_populated_bytes,brick_lookup_populated_bytes,mip_pool_populated_bytes,"
-           "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64";
+           "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64,"
+           "gpu_wait_ms,pace_wait_ms,gpu_bound_share,window_count,window_predicted_ms,"
+           "window_actual_ms,window_error_p95_ms";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -87,7 +91,11 @@ void PerfCsvWriter::Flush() {
             << row.wholesale.wholeBufferUploadBytes << ","
             << row.wholesale.channelPoolPopulatedBytes << "," << row.wholesale.brickLookupPopulatedBytes << ","
             << row.wholesale.mipPoolPopulatedBytes << "," << row.wholesale.tierRefPopulatedBytes << ","
-            << row.wholesale.occupancyGridPopulatedBytes << "," << row.wholesale.residentSignatureFnv64;
+            << row.wholesale.occupancyGridPopulatedBytes << "," << row.wholesale.residentSignatureFnv64
+            << "," << row.windowMetrics.gpuWaitMs << "," << row.windowMetrics.paceWaitMs
+            << "," << row.windowMetrics.gpuBoundShare << "," << row.windowMetrics.windowCount
+            << "," << row.windowMetrics.windowPredictedMs << "," << row.windowMetrics.windowActualMs
+            << "," << row.windowMetrics.windowErrorP95Ms;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }

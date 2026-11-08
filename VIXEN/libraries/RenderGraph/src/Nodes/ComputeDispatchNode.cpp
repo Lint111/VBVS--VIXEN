@@ -372,6 +372,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
     for (uint32_t groups : tileWorkGroupCounts_[currentFrameIndex]) {
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
+        record.commandCostMeanNs.push_back(chunkCost_.MeanEstimate(groups));
     }
     submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
     if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));

@@ -33,11 +33,17 @@
 // "idle handling becomes a quiescent row" seen from the submit side.
 // ============================================================================
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <string>
+#include <stop_token>
 #include <utility>
 #include <vector>
 
@@ -48,33 +54,147 @@ namespace Vixen::Vulkan::Resources { class VulkanDevice; }
 
 namespace Vixen::RenderGraph {
 
+/// A bounded host interval in which the graph would otherwise wait for a GPU value or a clock.
+/// The stop token is requested by the owner as soon as the awaited event is observed reached.
+struct IdleWindow {
+    enum class Kind : uint8_t { GpuRetire, FramePace };
+
+    Kind kind = Kind::GpuRetire;
+    uint64_t frameIndex = 0;
+    uint64_t predictedNs = 0;
+    uint64_t waitValue = 0;
+    std::stop_token closed;
+};
+
+using IdleWindowFiller = std::function<void(const IdleWindow&)>;
+
+/// Fixed-capacity telemetry for one completed graph frame. The rows are rotated with the
+/// frames-in-flight ring, so recording a wait never grows a container or allocates.
+struct FrameWaitLedger {
+    static constexpr std::size_t kFlightCount = 4;
+    static constexpr std::size_t kMaxWaitsPerFrame = 64;
+    static constexpr std::size_t kErrorHistogramBuckets = 16;
+
+    struct WaitSample {
+        IdleWindow::Kind kind = IdleWindow::Kind::GpuRetire;
+        uint64_t predictedNs = 0;
+        uint64_t actualNs = 0;
+        int64_t errorNs = 0;
+    };
+
+    uint64_t frameIndex = 0;
+    uint64_t gpuRetireWaitCount = 0;
+    uint64_t gpuRetireWaitNs = 0;
+    uint64_t framePaceWaitNs = 0;
+    uint64_t windowCount = 0;
+    uint64_t windowPredictedNs = 0;
+    uint64_t windowActualNs = 0;
+    uint64_t filledNs = 0;
+    uint64_t overrunNs = 0;
+    int64_t errorMinNs = 0;
+    int64_t errorMaxNs = 0;
+    int64_t errorSumNs = 0;
+    uint64_t errorCount = 0;
+    std::array<uint32_t, kErrorHistogramBuckets> errorHistogram{};
+    std::array<WaitSample, kMaxWaitsPerFrame> waits{};
+    uint32_t waitSampleCount = 0;
+
+    void Reset(uint64_t newFrameIndex) {
+        *this = FrameWaitLedger{};
+        frameIndex = newFrameIndex;
+    }
+
+    void RecordWait(IdleWindow::Kind kind, uint64_t predictedNs, uint64_t actualNs) {
+        const int64_t errorNs = actualNs >= predictedNs
+            ? static_cast<int64_t>(actualNs - predictedNs)
+            : -static_cast<int64_t>(predictedNs - actualNs);
+        if (waitSampleCount < waits.size()) {
+            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs};
+        }
+        ++windowCount;
+        windowPredictedNs += predictedNs;
+        windowActualNs += actualNs;
+        if (kind == IdleWindow::Kind::GpuRetire) {
+            ++gpuRetireWaitCount;
+            gpuRetireWaitNs += actualNs;
+        } else {
+            framePaceWaitNs += actualNs;
+        }
+        if (errorCount++ == 0) {
+            errorMinNs = errorMaxNs = errorNs;
+        } else {
+            errorMinNs = std::min(errorMinNs, errorNs);
+            errorMaxNs = std::max(errorMaxNs, errorNs);
+        }
+        errorSumNs += errorNs;
+        // Sixteen signed one-millisecond buckets: [-8,-7), ... [-1,0),
+        // [0,1), ... [7,+inf). This keeps early and late errors visible without
+        // allocating a histogram whose range depends on a frame.
+        const int64_t errorMs = errorNs / 1'000'000;
+        const int bucket = std::clamp(static_cast<int>(errorMs) + 8, 0,
+                                      static_cast<int>(kErrorHistogramBuckets - 1));
+        ++errorHistogram[static_cast<std::size_t>(bucket)];
+    }
+
+    [[nodiscard]] double ErrorP95Ms() const {
+        if (!errorCount) return 0.0;
+        std::array<int64_t, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) sorted[i] = waits[i].errorNs;
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(0.95 * static_cast<double>(count - 1) + 0.5));
+        return static_cast<double>(sorted[index]) / 1'000'000.0;
+    }
+};
+
 /// R715 pattern 5: the retirement timeline of one VkQueue, owned by the graph's single submission
 /// point (one owner, one thread). Every batch the owner issues signals the next value. R503 caps the
 /// outstanding batches at SubmitRecord::kOutstandingBatchCap: when the cap is reached the owner first
 /// polls the counter and only waits (bounded) for the OLDEST outstanding batch, never for the whole
 /// queue. A release (a one-shot command buffer, a staging buffer) runs once its value is reached.
 struct QueueTimeline {
+    using Clock = std::chrono::steady_clock;
     using CounterFn = VkResult (*)(VkDevice, VkSemaphore, uint64_t*);
     using WaitFn = VkResult (*)(VkDevice, VkSemaphore, uint64_t value, uint64_t boundNs);
+
+    struct IssuedBatch {
+        uint64_t value = 0;
+        Clock::time_point issuedAt{};
+        uint64_t upperBoundNs = 0;
+        uint64_t meanCostNs = 0;
+    };
 
     VkDevice device = VK_NULL_HANDLE;
     VkSemaphore semaphore = VK_NULL_HANDLE;
     uint64_t lastSignaled = 0;           ///< value of the newest issued batch
     uint64_t completed = 0;              ///< newest value observed reached
     std::deque<uint64_t> outstanding;    ///< issued values not yet observed reached, oldest first
+    std::deque<IssuedBatch> issuedBatches; ///< prediction metadata aligned with outstanding
     std::deque<std::pair<uint64_t, std::function<void()>>> releases;  ///< ordered by value
     CounterFn counterFn = nullptr;       ///< vkGetSemaphoreCounterValue when null; injectable for tests
     WaitFn waitFn = nullptr;             ///< bounded vkWaitSemaphores when null; injectable for tests
     uint64_t blockingWaits = 0;          ///< cap waits that found the oldest batch still running
+    uint64_t frameIndex = 0;             ///< graph frame associated with the active window
+    IdleWindowFiller* idleWindowFiller = nullptr; ///< graph-owned, never copied on the frame path
+    FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
+    Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
 
     /// Refresh `completed` from the counter and drop reached values. Never blocks.
     VkResult Poll();
     /// Make room for one more batch under the R503 cap: poll, then wait for the oldest value only.
     VkResult ReserveBatch(uint32_t cap);
+    /// Predict the remaining time until `value`, chaining the issue-time mean costs.
+    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const;
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }
     /// Record a successfully issued batch value.
-    void Issued(uint64_t value) { outstanding.push_back(value); }
+    void Issued(uint64_t value, uint64_t upperBoundNs = 0, uint64_t meanCostNs = 0,
+                Clock::time_point issuedAt = Clock::now()) {
+        outstanding.push_back(value);
+        issuedBatches.push_back(IssuedBatch{value, issuedAt, upperBoundNs,
+                                            meanCostNs ? meanCostNs : upperBoundNs});
+    }
     /// Run `release` once `value` is reached (immediately when it already is).
     void Defer(uint64_t value, std::function<void()> release);
     /// Run every release whose value is reached. Returns them collected so the caller may run them
@@ -94,6 +214,9 @@ struct SubmitRecord {
     // Calibrated upper bounds supplied by the existing producer's timestamp history.
     // Missing/zero entries reserve a whole submission; they can never enable batching.
     std::vector<uint64_t> commandCostUpperBoundsNs;
+    // Producer running-mean estimates, parallel to commandCostUpperBoundsNs. Missing/zero
+    // entries fall back to the corresponding upper bound at issue time.
+    std::vector<uint64_t> commandCostMeanNs;
     uint64_t submissionBudgetNs = 2'000'000;
     struct Batch { std::size_t first, count; };
     [[nodiscard]] std::vector<Batch> SubmissionBatches() const;
@@ -125,11 +248,12 @@ struct SubmitRecord {
     // existing entry/exit barriers retain the original graph dependency contract.
     // R503: at most two submitted batches are outstanding on the queue, so one
     // batch executes while the next is queued and a pass boundary no longer costs
-    // a host round trip. Worst queued work is two submission budgets (4 ms), inside
-    // R494's 4.17 ms desktop reserve. The final semaphore/fence remains owned by the
-    // final batch. The queue-wide count lives in the owner's QueueTimeline, shared by
-    // both executors, so no record has to assume a full queue; reaching the cap waits
-    // for the oldest outstanding batch value, not for the queue to drain.
+    // a host round trip. On native devices a batch is now a whole pass, so this cap
+    // intentionally bounds whole-pass submissions rather than tile-sized work. The
+    // final semaphore/fence remains owned by the final batch. The queue-wide count
+    // lives in the owner's QueueTimeline, shared by both executors, so no record has
+    // to assume a full queue; reaching the cap waits for the oldest outstanding batch
+    // value, not for the queue to drain.
     static constexpr uint32_t kOutstandingBatchCap = 2;
     /// Issue every batch through `issue` (one VkSubmitInfo2 + fence per call), each signalling the
     /// queue's timeline; the final batch also carries the record's own signals and fence. The cap
