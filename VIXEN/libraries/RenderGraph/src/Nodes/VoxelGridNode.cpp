@@ -806,6 +806,40 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
                    << " (" << perFrame(tagStats.colorFallback[0]) << "/frame) not-primary=" << tagStats.colorFallback[1]
                    << " (" << perFrame(tagStats.colorFallback[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
 
+        // cx-leafinstr2: the leaf histogram is intentionally drained only on
+        // the capture path. Timing runs leave VIXEN_LEAF_COUNTERS unset, so
+        // this readback cannot perturb their measurements or their logs.
+        if (std::getenv("VIXEN_LEAF_COUNTERS") != nullptr) {
+            if (const auto* rayTrace = debugCaptureResource_->AsRayTrace()) {
+                const auto leaf = rayTrace->ReadLeafInstrumentationStats(vulkanDevice->device);
+                auto printHistogram = [](const char* metric, const auto& values) {
+                    std::cout << "[LeafInstrHistogram] metric=" << metric;
+                    for (size_t i = 0; i < values.size(); ++i) {
+                        std::cout << " b" << i << "=" << values[i];
+                    }
+                    std::cout << std::endl;
+                };
+                printHistogram("steps", leaf.steps);
+                printHistogram("bodies", leaf.bodies);
+                printHistogram("candidates", leaf.candidates);
+                printHistogram("path_class", leaf.pathClass);
+                printHistogram("brick_steps", leaf.brickSteps);
+            }
+        }
+        if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
+            if (const auto* rayTrace = debugCaptureResource_->AsRayTrace()) {
+                const auto clock = rayTrace->ReadLeafShaderClockStats(vulkanDevice->device);
+                const uint32_t waveTicks = clock.waveEndMax - clock.waveStartMin;
+                const uint32_t shadeTicks = clock.shadeEndMax - clock.shadeStartMin;
+                std::cout << "[LeafShaderClock] wave_start_min=" << clock.waveStartMin
+                          << " wave_end_max=" << clock.waveEndMax
+                          << " wave_ticks=" << waveTicks
+                          << " shade_start_min=" << clock.shadeStartMin
+                          << " shade_end_max=" << clock.shadeEndMax
+                          << " shade_ticks=" << shadeTicks << std::endl;
+            }
+        }
+
         // Round 12 instrument fix (b): the 32-slot pixel decode ring is
         // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32
         // writes before wrap), not a spatial sample of the far-field

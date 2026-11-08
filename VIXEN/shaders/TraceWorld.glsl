@@ -120,6 +120,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
 
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+    g_leafInstrRaySteps = 0u;
+    g_leafInstrBodies = 0u;
+    g_leafInstrCandidates = 0u;
+#endif
+
     bool  anyHit          = false;
     float bestT           = 1e30;
     vec3  bestColor       = vec3(0.0);
@@ -148,6 +154,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
     bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
     uint  bestFootprintRegime = 1u;
+    uint  bestPathClass = 0u;             // 0=miss, 1=recipe, 2=stored, 3=far-field
     uint  sourceMask = 0u;
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
@@ -217,6 +224,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestEmission   = rqEmission;
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
+            bestPathClass = rqWasFarField ? 3u : 2u;
             sourceMask |= 2u;
             anyHit         = true;
         }
@@ -386,6 +394,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pNormal = normalize(-instDir);  // local-space normal; transformed after the march
                 } else {
                     uint pSteps;
+                    incrLeafInstrBody();
                     // Recipe-Parameterization M2 Task 6: read inst.recipeParams[] out of the
                     // SSBO once here and pass it down as a plain argument — same convention
                     // the legacy recipeId<2 branch above already uses for pParams, not a
@@ -396,6 +405,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                                instOrigin, instDir, conservativeSdfStepScale,
                                                VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                    addLeafInstrSteps(pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -434,6 +444,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // every non-emissive body) without a new BodyInstance field.
                 bestEmission   = inst.recipeParams[3];
                 bestFootprintRegime = 1u;
+                bestPathClass = 1u;
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -707,6 +718,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
         // both the cull check and the traversal, so they can never disagree at the AABB
         // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+        incrLeafInstrBody();
+#endif
 #ifdef VIXEN_RTQUERY_TRAVERSAL
         // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: FORMAT_STORED_SDF
         // instances never reach this call site anymore (skipped above, covered by
@@ -802,6 +816,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestEmission    = hitEmission;
             bestWasFarField = instWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = instFootprintRegime;
+            bestPathClass = instWasFarField ? 3u : 2u;
             anyHit          = true;
         }
 #ifdef VIXEN_REGIME3_COMPOSITE
@@ -834,6 +849,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.wasFarField = anyHit && bestWasFarField;
     hit.footprintRegime = bestFootprintRegime;
     hit.sourceMask = sourceMask;
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+    recordLeafInstrRay(g_leafInstrRaySteps, g_leafInstrBodies, g_leafInstrCandidates, bestPathClass);
+#endif
 #ifdef VIXEN_REGIME3_COMPOSITE
     hit.residualT   = bestResidualT;
     hit.behindColor = secondColor;

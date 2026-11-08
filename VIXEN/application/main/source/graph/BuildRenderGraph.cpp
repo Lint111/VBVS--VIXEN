@@ -2365,6 +2365,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (envFlagEnabled("VIXEN_LEAF_COUNTERS")) {
+        marchShaderFeatures.push_back(kFeatureLeafInstrCounters.define);
+    }
     if (const char* leafInstr = std::getenv("VIXEN_LEAF_INSTR"); leafInstr && *leafInstr) {
         const std::string mode = leafInstr;
         if (mode == "search") {
@@ -2639,6 +2642,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         lightingShaderFeatures.push_back(kFeatureCompositionCounters.define);
+    }
+    if (envFlagEnabled("VIXEN_SHADER_CLOCK")) {
+        lightingShaderFeatures.push_back(kFeatureLeafShaderClock.define);
     }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);

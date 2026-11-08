@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdio>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph::Debug {
 
@@ -172,6 +173,15 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
         header->farFieldRhsMinBits = 0xFFFFFFFFu;
         header->farFieldRhsMaxBits = 0u;
         header->rtLoopEntries = 0;
+        for (uint32_t i = 0; i < LEAF_INSTR_LOG2_BINS; ++i) {
+            header->leafInstrStepsLog2[i] = 0u;
+            header->leafInstrBodiesLog2[i] = 0u;
+            header->leafInstrCandidatesLog2[i] = 0u;
+            header->leafInstrBrickStepsLog2[i] = 0u;
+        }
+        for (uint32_t i = 0; i < LEAF_INSTR_PATH_CLASSES; ++i) {
+            header->leafInstrPathClass[i] = 0u;
+        }
         header->farFieldMipSuccess = 0;
         header->farFieldMipFail = 0;
         header->farFieldRejectedByBounds = 0;
@@ -196,6 +206,16 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
         header->farFieldTerminalPixelWriteCount = 0;  // round 11: pixel ring
         for (int i = 0; i < 32; ++i) {
             header->farFieldTerminalPixels[i] = 0;
+        }
+        // cx-leafinstr2 item 4: slots 28..31 are reserved for the opt-in
+        // shader-clock probe. They overlap E7 policy-stencil summary slots only
+        // when both diagnostics are explicitly requested; the clock capture is
+        // run separately from policy-stencil captures.
+        if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
+            header->farFieldTerminalPixels[28] = 0xFFFFFFFFu; // wave start min
+            header->farFieldTerminalPixels[29] = 0u;           // wave end max
+            header->farFieldTerminalPixels[30] = 0xFFFFFFFFu; // shade start min
+            header->farFieldTerminalPixels[31] = 0u;           // shade end max
         }
         header->rtLoopEntriesOct3 = 0;      // round 17: octree-3-only probe
         header->farFieldGateRejectOct3 = 0;
@@ -334,6 +354,47 @@ MipReadByteCounters RayTraceBuffer::ReadMipReadByteCounters(VkDevice device) con
     result = header->mipReadByteCounters;
     vkUnmapMemory(device, memory_);
     return result;
+}
+
+LeafInstrumentationStats RayTraceBuffer::ReadLeafInstrumentationStats(VkDevice device) const {
+    LeafInstrumentationStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    for (uint32_t i = 0; i < LEAF_INSTR_LOG2_BINS; ++i) {
+        stats.steps[i] = header->leafInstrStepsLog2[i];
+        stats.bodies[i] = header->leafInstrBodiesLog2[i];
+        stats.candidates[i] = header->leafInstrCandidatesLog2[i];
+        stats.brickSteps[i] = header->leafInstrBrickStepsLog2[i];
+    }
+    for (uint32_t i = 0; i < LEAF_INSTR_PATH_CLASSES; ++i) {
+        stats.pathClass[i] = header->leafInstrPathClass[i];
+    }
+    vkUnmapMemory(device, memory_);
+    return stats;
+}
+
+LeafShaderClockStats RayTraceBuffer::ReadLeafShaderClockStats(VkDevice device) const {
+    LeafShaderClockStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    stats.waveStartMin = header->farFieldTerminalPixels[28];
+    stats.waveEndMax = header->farFieldTerminalPixels[29];
+    stats.shadeStartMin = header->farFieldTerminalPixels[30];
+    stats.shadeEndMax = header->farFieldTerminalPixels[31];
+    vkUnmapMemory(device, memory_);
+    return stats;
 }
 
 uint32_t RayTraceBuffer::Read(VkDevice device) {

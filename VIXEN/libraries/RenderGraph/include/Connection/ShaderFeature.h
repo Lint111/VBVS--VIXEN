@@ -45,6 +45,12 @@ inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_CO
 // change). Output is NOT pixel-valid: the variants early-return before the HitRecord write.
 inline constexpr ShaderFeature kFeatureLeafVariantSearch{"VIXEN_LEAF_VARIANT_SEARCH"};
 inline constexpr ShaderFeature kFeatureLeafVariantMarch{"VIXEN_LEAF_VARIANT_MARCH"};
+// cx-leafinstr2: capture-only per-ray leaf traversal histograms. This axis is
+// intentionally separate from the non-pixel-valid search/march timing modes.
+inline constexpr ShaderFeature kFeatureLeafInstrCounters{"VIXEN_LEAF_INSTR_COUNTERS"};
+// cx-leafinstr2 item 4: opt-in shader realtime-clock probes for the shadow wave
+// and shade pass, stored in the existing binding-4 diagnostic ring.
+inline constexpr ShaderFeature kFeatureLeafShaderClock{"VIXEN_LEAF_SHADER_CLOCK"};
 // E7-T1: materialize the primary ray's policy stencil in HitRecord._pad0[2]
 // bits 8..15 and preserve/read back that byte across both shadow writers.
 // Env-gated; no capability or descriptor-interface requirement.

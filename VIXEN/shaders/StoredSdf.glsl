@@ -1065,8 +1065,18 @@ bool marchBrickSdfCell(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN
     float dPrev = 0.0;
     float stepTakenPrev = 0.0;
     bool forceHonestStep = false;
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+    uint leafInstrBrickSteps = 0u;
+#endif
     for (int i = 0; i < MAX_STEPS; ++i) {
-        if (s > sMax) return false;   // brick exit, no crossing -- caller's DDA continues
+        if (s > sMax) {
+            recordLeafInstrBrickSteps(leafInstrBrickSteps);
+            return false;   // brick exit, no crossing -- caller's DDA continues
+        }
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+        ++leafInstrBrickSteps;
+        addLeafInstrSteps(1u);
+#endif
         vec3  p = gridEntry + gridDirN * s;
         vec3 cellF; vec4 cellZ0, cellZ1;
         _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
@@ -1074,6 +1084,7 @@ bool marchBrickSdfCell(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN
         if (d < EPS) {
             hitNormal = sdfGradientStoredFromCell(p, octreeIdx, cellF, cellZ0, cellZ1);
             sHit      = s;
+            recordLeafInstrBrickSteps(leafInstrBrickSteps);
             return true;
         }
         bool sentinel = d > SENTINEL_D;
@@ -1090,6 +1101,7 @@ bool marchBrickSdfCell(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN
         forceHonestStep = false;
         s += stepTaken;
     }
+    recordLeafInstrBrickSteps(leafInstrBrickSteps);
     return false;
 }
 
