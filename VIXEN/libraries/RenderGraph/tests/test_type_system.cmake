@@ -27,8 +27,8 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_array_type_validation PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${CMAKE_SOURCE_DIR}/libraries/Core/include  # header-only no-stall primitives (PerThreadLog.h)
-        ${glm_SOURCE_DIR}
     )
+    target_link_libraries(test_array_type_validation PRIVATE glm::glm)  # include path + the glm compile definitions
 
     # Add Vulkan headers
     if(VULKAN_TRIMMED_BUILD_ACTIVE)
@@ -97,8 +97,8 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_field_extraction PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${CMAKE_SOURCE_DIR}/libraries/Core/include  # header-only no-stall primitives (PerThreadLog.h)
-        ${glm_SOURCE_DIR}
     )
+    target_link_libraries(test_field_extraction PRIVATE glm::glm)  # include path + the glm compile definitions
 
     # Add Vulkan headers
     if(VULKAN_TRIMMED_BUILD_ACTIVE)
@@ -153,8 +153,8 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     target_include_directories(test_resource_gatherer PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
         ${CMAKE_SOURCE_DIR}/libraries/Core/include  # header-only no-stall primitives (PerThreadLog.h)
-        ${glm_SOURCE_DIR}
     )
+    target_link_libraries(test_resource_gatherer PRIVATE glm::glm)  # include path + the glm compile definitions
 
     # Add Vulkan headers
     if(VULKAN_TRIMMED_BUILD_ACTIVE)

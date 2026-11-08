@@ -38,7 +38,7 @@
 #include <gtest/gtest.h>
 #include "merged/BodyInstanceRayMarch-SDI.layout.g.h"
 
-#include "Headers.h"  // MUST be first: defines GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
+#include "Headers.h"
 
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
