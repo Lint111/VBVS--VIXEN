@@ -528,8 +528,8 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
             seed = "previous-extent";
         }
         if (!chunkCost_.Calibrated() && chunkProfile_) {
-            if (const auto near = chunkProfile_->NearestChunkCalibration(extentKey)) {
-                chunkCost_.Import(near->anchorUnits, near->unitNs, near->fixedNs, near->meanUnitNs);
+            if (const auto neighbour = chunkProfile_->NearestChunkCalibration(extentKey)) {
+                chunkCost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs, neighbour->meanUnitNs);
                 seed = "nearest-persisted";
             }
         }
