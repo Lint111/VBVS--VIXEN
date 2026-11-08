@@ -143,7 +143,6 @@ void DescriptorResourceGathererNode::VariadicCompileImpl(VariadicCompileContext&
         maxBinding = std::max(maxBinding, binding.binding);
     }
     resourceArray_.resize(maxBinding + 1);  // Each entry: handle + slotRole + debugCapture
-    publishedAfterCompile_ = false;
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
 
@@ -182,22 +181,6 @@ void DescriptorResourceGathererNode::VariadicCompileImpl(VariadicCompileContext&
     }
 }
 
-namespace {
-bool SameDescriptorHandle(const DescriptorHandleVariant& a, const DescriptorHandleVariant& b) {
-    if (a.index() != b.index()) return false;
-    return std::visit([&](const auto& left) -> bool {
-        using T = std::decay_t<decltype(left)>;
-        const T& right = std::get<T>(b);
-        if constexpr (std::is_same_v<T, ImageSamplerPair>)
-            return left.imageView == right.imageView && left.sampler == right.sampler;
-        else if constexpr (std::is_same_v<T, std::monostate>)
-            return true;
-        else
-            return left == right;
-    }, a);
-}
-}  // namespace
-
 void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // Execute phase: Update transient (per-frame) resources only
     // - Compile phase gathered static resources and validated against shader
@@ -206,7 +189,6 @@ void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext&
 
     size_t variadicCount = ctx.InVariadicCount();
     bool hasTransients = false;
-    bool handlesChanged = false;
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Processing " + std::to_string(variadicCount) + " variadic slots for Execute-role resources");
 
@@ -284,20 +266,14 @@ void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext&
             // Execute-only slot: no Compile-phase resource, use freshResource directly
             handle = freshResource ? freshResource->GetDescriptorHandle() : DescriptorHandleVariant{std::monostate{}};
         }
-        if (!SameDescriptorHandle(resourceArray_[binding].handle, handle)) {
-            resourceArray_[binding].handle = std::move(handle);
-            handlesChanged = true;
-        }
+        resourceArray_[binding].handle = handle;
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated binding " + std::to_string(binding) +
                       " (slot " + std::to_string(i) + "), used " + (originalResource ? "original" : "fresh") + " resource" +
-                      ", handle variant index=" + std::to_string(resourceArray_[binding].handle.index()));
+                      ", handle variant index=" + std::to_string(handle.index()));
     }
 
-    // Reuse: the array already published (at Compile or by the last changed frame) is current when no
-    // refreshed handle differs, so the per-frame copy and re-publish are skipped.
-    if (hasTransients && (handlesChanged || !publishedAfterCompile_)) {
-        publishedAfterCompile_ = true;
+    if (hasTransients) {
         // Re-output updated resource array
         ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
 
@@ -614,7 +590,7 @@ void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotInd
                        GetInstanceName() + "::StoreFieldExtractionResource");
 #endif
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + ", handle variant index=" + std::to_string(resourceArray_[binding].handle.index()));
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + ", handle variant index=" + std::to_string(handle.index()));
 }
 
 template<typename T>

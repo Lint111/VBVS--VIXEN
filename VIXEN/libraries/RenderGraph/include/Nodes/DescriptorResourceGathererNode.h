@@ -114,7 +114,6 @@ private:
     // Output resource array (indexed by binding)
     // Each entry contains: handle + slotRole + optional debugCapture
     std::vector<DescriptorResourceEntry> resourceArray_;
-    bool publishedAfterCompile_ = false;  ///< First Execute republishes; later frames only when a handle changed.
 
     // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);
