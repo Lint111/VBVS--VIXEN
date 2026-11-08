@@ -351,6 +351,9 @@ if(TARGET GTest::gtest_main)
         GTest::gtest_main
         RenderGraph
     )
+    target_include_directories(test_sdi_stage_wiring PRIVATE ${VIXEN_ROOT}/generated/sdi)
+    target_compile_definitions(test_sdi_stage_wiring PRIVATE
+        VIXEN_GENERATED_TONEMAP_COMP="${VIXEN_ROOT}/shaders/Generated/ExposureTonemapSystem.comp")
     set_target_properties(test_sdi_stage_wiring PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_sdi_stage_wiring)
     message(STATUS "✓ test_sdi_stage_wiring configured (Semantic Wiring S2)")
@@ -586,15 +589,7 @@ if(TARGET GTest::gtest_main)
 
     # Stage the UI assets (font + rml + rcss) next to the test binary so
     # hud.rml / font paths resolve at test runtime.
-    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
-    add_custom_command(TARGET test_ui_hud_smoke POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:test_ui_hud_smoke>/assets/ui"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${_UI_ASSETS_SRC}"
-            "$<TARGET_FILE_DIR:test_ui_hud_smoke>/assets/ui"
-        COMMENT "Staging UI assets for test_ui_hud_smoke"
-    )
+    vixen_stage_assets(test_ui_hud_smoke ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
 
     set_target_properties(test_ui_hud_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
@@ -616,12 +611,7 @@ if(TARGET GTest::gtest_main)
     )
     target_link_libraries(test_ui_startup_cache PRIVATE GTest::gtest_main RenderGraph)
     target_include_directories(test_ui_startup_cache PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
-    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
-    add_custom_command(TARGET test_ui_startup_cache POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:test_ui_startup_cache>/assets/ui"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_UI_ASSETS_SRC}" "$<TARGET_FILE_DIR:test_ui_startup_cache>/assets/ui"
-        COMMENT "Staging UI assets for test_ui_startup_cache"
-    )
+    vixen_stage_assets(test_ui_startup_cache ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_ui_startup_cache PROPERTIES FOLDER "Tests/RenderGraph Tests")
 endif()
 
@@ -641,15 +631,7 @@ if(TARGET GTest::gtest_main)
     target_link_libraries(test_ui_composition_host PRIVATE GTest::gtest_main RenderGraph)
     target_include_directories(test_ui_composition_host PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
-    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
-    add_custom_command(TARGET test_ui_composition_host POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${_UI_ASSETS_SRC}"
-            "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
-        COMMENT "Staging UI assets for test_ui_composition_host"
-    )
+    vixen_stage_assets(test_ui_composition_host ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
 
     set_target_properties(test_ui_composition_host PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_ui_composition_host)
@@ -736,12 +718,7 @@ if(TARGET GTest::gtest_main)
     add_executable(test_panel_dock_documents test_panel_dock_documents.cpp)
     target_link_libraries(test_panel_dock_documents PRIVATE GTest::gtest_main RenderGraph AppFlow)
     target_include_directories(test_panel_dock_documents PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
-    add_custom_command(TARGET test_panel_dock_documents POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:test_panel_dock_documents>/assets/ui"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui"
-            "$<TARGET_FILE_DIR:test_panel_dock_documents>/assets/ui"
-        COMMENT "Staging UI assets for test_panel_dock_documents"
-    )
+    vixen_stage_assets(test_panel_dock_documents ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_panel_dock_documents PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_panel_dock_documents)
     message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")

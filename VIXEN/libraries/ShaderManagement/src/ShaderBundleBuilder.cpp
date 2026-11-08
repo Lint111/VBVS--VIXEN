@@ -1,4 +1,5 @@
 #include "ShaderBundleBuilder.h"
+#include "ShaderReflectionCache.h"
 #include "SPIRVReflection.h"
 #include "SdiRegistryManager.h"
 #include "ShaderLogger.h"
@@ -539,7 +540,13 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     }
 
     // Perform rest of build (reflection, SDI, bundling)
-    result = PerformBuild(program);
+    BuildResult built = PerformBuild(program);
+    // PerformBuild only knows reflection/SDI; keep what the compile loop measured and warned.
+    built.preprocessTime = result.preprocessTime;
+    built.compileTime = result.compileTime;
+    built.usedCache = result.usedCache;
+    built.warnings.insert(built.warnings.begin(), result.warnings.begin(), result.warnings.end());
+    result = std::move(built);
 
     auto endTime = std::chrono::steady_clock::now();
     result.totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -643,13 +650,36 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     BuildResult result;
     result.success = false;
 
-    // 1. Reflect SPIRV
+    // 1. Reflect SPIRV (and the legacy descriptor layout): both are pure functions of the SPIR-V,
+    // so a warm launch restores them from the reflection cache instead of re-running SPIRV-Reflect.
+    ShaderCacheManager* const spirvCache =
+        cachingDisabled_ ? nullptr : (cacheManager_ ? cacheManager_ : &DefaultShaderCacheManager());
+    std::optional<ShaderReflectionCache> reflectionCache;
+    if (spirvCache && spirvCache->IsEnabled()) reflectionCache.emplace(*spirvCache);
+
     auto reflectStart = std::chrono::steady_clock::now();
-    SpirvReflector reflector;
-    auto reflectionData = reflector.Reflect(program);
+    std::unique_ptr<SpirvReflectionData> reflectionData;
+    std::unique_ptr<DescriptorLayoutSpec> descriptorLayout;
+    bool reflectionRestored = false;
+    if (reflectionCache) {
+        if (auto cached = reflectionCache->Lookup(program)) {
+            reflectionData = std::move(cached->reflection);
+            descriptorLayout = std::move(cached->descriptorLayout);
+            reflectionRestored = true;
+        }
+    }
+    if (!reflectionRestored) {
+        SpirvReflector reflector;
+        reflectionData = reflector.Reflect(program);
+        if (reflectionData) descriptorLayout = ReflectDescriptorLayout(program);
+        if (reflectionData && reflectionCache) {
+            reflectionCache->Store(program, *reflectionData, descriptorLayout.get());
+        }
+    }
     auto reflectEnd = std::chrono::steady_clock::now();
     result.reflectTime = std::chrono::duration_cast<std::chrono::milliseconds>(
         reflectEnd - reflectStart);
+    result.reflectionFromCache = reflectionRestored;
 
     if (!reflectionData) {
         result.errorMessage = "SPIRV reflection failed";
@@ -663,8 +693,7 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
         ShaderLogger::LogDebug("Generated descriptor-based UUID: " + uuid_, "Builder");
     }
 
-    // 3. Extract descriptor layout (legacy compatibility)
-    auto descriptorLayout = ReflectDescriptorLayout(program);
+    // 3. Descriptor layout (legacy compatibility)
     if (!descriptorLayout) {
         result.warnings.push_back("Failed to extract descriptor layout");
     }

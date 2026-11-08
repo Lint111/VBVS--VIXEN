@@ -24,10 +24,21 @@ add_test(NAME Codegen.LauncherArguments
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
 set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
 
+add_test(NAME Codegen.StageGpuSchemaSource
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_STAGE_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/stage-gpu-schema-source"
+            -P "${VIXEN_ROOT}/cmake/tests/test_stage_gpu_schema_source.cmake")
+set_tests_properties(Codegen.StageGpuSchemaSource PROPERTIES LABELS "Codegen;cpu")
+
 add_test(NAME Native.WslDozenHostGate
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_DOZEN_GATE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/wsl-dozen-host-gate"
             -P "${VIXEN_ROOT}/cmake/tests/test_wsl_dozen_host_gate.cmake")
 set_tests_properties(Native.WslDozenHostGate PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.LookdevCaptureWrapperArgs
+    COMMAND "${CMAKE_COMMAND}" "-DLOOKDEV_ARGS_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/lookdev-wrapper-args"
+            "-DLOOKDEV_WRAPPER=${VIXEN_ROOT}/application/main/tests/run_lookdev_capture.cmake"
+            -P "${VIXEN_ROOT}/cmake/tests/test_run_lookdev_capture_args.cmake")
+set_tests_properties(Native.LookdevCaptureWrapperArgs PROPERTIES LABELS "cpu")
 
 add_test(NAME Native.WindowsGitTrust
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_GIT_TRUST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windows-git-trust"

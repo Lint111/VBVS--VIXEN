@@ -61,7 +61,8 @@ namespace Vixen.ViewSchemas
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,
         // BindEditorLayersModel_activeLayerCountOverride, that a consumer must define by hand
-        // (Vixen::App::EditorLayersView.h). A top-level scalar, separate from the row-level
+        // (Vixen::App::EditorLayersView.h) with the exact generated signature, `noexcept` included
+        // (the emitter spells it; a mismatched definition fails to compile, MSVC C2382). A top-level scalar, separate from the row-level
         // isChecked Projection proof above, so the two proofs don't collide on the same binding.
         [Overridden]
         public int activeLayerCount;

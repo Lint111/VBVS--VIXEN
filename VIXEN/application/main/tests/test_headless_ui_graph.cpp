@@ -1,3 +1,4 @@
+#include "ScopedEnvironment.h"
 #include "VulkanGraphApplication.h"
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Nodes/RenderTargetNode.h"
@@ -22,14 +23,7 @@
 namespace {
 
 void SetUiDemoEnvironment(bool enabled) {
-#if defined(_WIN32)
-    _putenv_s("VIXEN_UI_DEMO", enabled ? "1" : "");
-#else
-    if (enabled)
-        setenv("VIXEN_UI_DEMO", "1", 1);
-    else
-        unsetenv("VIXEN_UI_DEMO");
-#endif
+    Vixen::Core::Env::Set("VIXEN_UI_DEMO", enabled ? "1" : nullptr);
 }
 
 class HeadlessTextResolver final : public Vixen::Text::TextResolver {

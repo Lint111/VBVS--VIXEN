@@ -3,17 +3,24 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: native-capture.sh lookdev <state> [--gpu-benchmark]" >&2
-  echo "       native-capture.sh planet <state> [--gpu-benchmark]" >&2
-  echo "       native-capture.sh glyphsdf <latin-carved|latin-embossed|qps-rtl-carved|qps-rtl-embossed|analytic-vs-voxel> [--gpu-benchmark]" >&2
+  local capture
+  echo "usage (captures and states come from capture-routes.tsv):" >&2
+  for capture in $(native_route_list); do
+    echo "       native-capture.sh $capture <$(native_route_list "$capture" | tr ' ' '|')> [--gpu-benchmark]" >&2
+  done
   echo "       native-capture.sh --label <ctest-label> [--gpu-benchmark]" >&2
   echo "       native-capture.sh --all-tests [--gpu-benchmark]" >&2
   echo "       native-capture.sh --negative-missing-dll [--gpu-benchmark]" >&2
+  echo "options: --env VIXEN_NAME=value  per-run override (repeatable; state and --label runs only)" >&2
+  echo "any form: --source-commit <rev> builds and captures that commit's own tree instead of HEAD" >&2
+  echo "  --cache-seed <sha|rev|native-build-dir>  copy that build's runtime caches into this commit's build first" >&2
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 source "$script_dir/native-common.sh"
+native_source_dispatch "$0" "$@"
+set -- ${native_args[@]+"${native_args[@]}"}
 repo_commit="$(native_resolve_commit)"
 queue=/home/liory/.local/bin/with-test-lock.sh
 powershell_exe="$native_powershell_exe"
@@ -23,6 +30,8 @@ capture=""
 state=""
 ctest_label=""
 benchmark=false
+env_overrides=""
+cache_seed=""
 
 if [[ "${1:-}" == --negative-missing-dll ]]; then
   mode=negative-dll
@@ -39,16 +48,36 @@ else
   [[ $# -ge 2 ]] || { usage; exit 2; }
   capture="$1"
   state="$2"
-  [[ "$capture" == lookdev || "$capture" == planet || "$capture" == glyphsdf ]] || { usage; exit 2; }
+  native_route_lookup "$capture" "$state" || { usage; exit 2; }
   shift 2
 fi
 while (($#)); do
   case "$1" in
     --gpu-benchmark) benchmark=true ;;
+    --env)
+      [[ $# -ge 2 && "$2" =~ ^VIXEN_[A-Za-z0-9_]+=[^\;]*$ ]] || {
+        echo "native-capture: --env takes VIXEN_NAME=value without ';'" >&2; exit 2; }
+      env_overrides+="${env_overrides:+;}$2"
+      shift
+      ;;
+    --cache-seed)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      cache_seed="$2"
+      shift
+      ;;
     *) usage; exit 2 ;;
   esac
   shift
 done
+
+if [[ -n "$env_overrides" && "$mode" != state && "$mode" != label ]]; then
+  echo "native-capture: --env applies only to state and --label captures" >&2
+  exit 2
+fi
+if [[ -n "$cache_seed" && "$mode" == negative-dll ]]; then
+  echo "native-capture: --cache-seed does not apply to --negative-missing-dll (it runs no capture)" >&2
+  exit 2
+fi
 
 # A build is reusable only for the same VIXEN commit and the same paired Undertow schema tree.
 need_build=false
@@ -63,9 +92,22 @@ elif [[ -n "${UNDERTOW_ROOT:-}" && -d "${UNDERTOW_ROOT}/core/src/Undertow.Author
     need_build=true
   fi
 fi
+if [[ -n "$cache_seed" ]]; then
+  if [[ -d "$cache_seed" ]]; then
+    cache_seed="$(wslpath -w "$(cd "$cache_seed" && pwd)")"
+  elif seed_sha="$(git -C "$repo_root" rev-parse --verify --quiet "$cache_seed^{commit}")"; then
+    cache_seed="$seed_sha"
+  else
+    echo "native-capture: --cache-seed '$cache_seed' is neither a directory nor a commit in $repo_root; pass a native build directory, a 40-hex SHA or a git revision" >&2
+    exit 2
+  fi
+fi
 if [[ "$need_build" == true ]]; then
   bash "$script_dir/native-build.sh"
 fi
+
+env_args=()
+if [[ -n "$env_overrides" ]]; then env_args=(-EnvOverrides "$env_overrides"); fi
 
 native_ps="$native_root/reports/capturespeed/reproduce/native-capture.ps1"
 native_ps_win="$(wslpath -w "$native_ps")"
@@ -75,16 +117,22 @@ queue_args=(--agent "$native_lane_id" --resource "$resource" \
   --label "${native_lane_id}:native-${capture:-${mode}}-${state:-${ctest_label:-missing-dll}}")
 if [[ "$benchmark" == true ]]; then queue_args+=(--gpu-benchmark); fi
 
+# VIXEN_NATIVE_CTEST_INDEX="start,end" resumes an all-tests run; the manifest merges every slice.
+ctest_index_args=()
+if [[ -n "${VIXEN_NATIVE_CTEST_INDEX:-}" ]]; then ctest_index_args=(-CtestIndex "$VIXEN_NATIVE_CTEST_INDEX"); fi
+seed_args=()
+if [[ -n "$cache_seed" ]]; then seed_args=(-CacheSeed "$cache_seed"); fi
+
 capture_rc=0
 if [[ "$mode" == state ]]; then
   bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
     -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" || capture_rc=$?
+    -Commit "$repo_commit" -Mode state -Capture "$capture" -State "$state" "${env_args[@]}" "${seed_args[@]}" || capture_rc=$?
 else
   if [[ "$mode" == label ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" || capture_rc=$?
+      -Commit "$repo_commit" -Mode label -CtestLabel "$ctest_label" "${env_args[@]}" "${seed_args[@]}" || capture_rc=$?
   elif [[ "$mode" == negative-dll ]]; then
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
@@ -92,7 +140,7 @@ else
   else
     bash "$queue" "${queue_args[@]}" -- "$powershell_exe" -NoLogo -NoProfile -NonInteractive \
       -ExecutionPolicy Bypass -File "$native_ps_win" -Root "$native_root_win" \
-      -Commit "$repo_commit" -Mode all-tests || capture_rc=$?
+      -Commit "$repo_commit" -Mode all-tests "${ctest_index_args[@]}" "${seed_args[@]}" || capture_rc=$?
   fi
 fi
 

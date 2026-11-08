@@ -1,3 +1,4 @@
+#include "ScopedEnvironment.h"
 #include "ScenarioHarness.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"
@@ -7,11 +8,7 @@
 #include <cstdlib>
 
 AppHarness::AppHarness() {
-#ifdef _WIN32
-    _putenv_s("VIXEN_HIDDEN_WINDOW", "1");
-#else
-    setenv("VIXEN_HIDDEN_WINDOW", "1", 1);
-#endif
+    Vixen::Core::Env::Set("VIXEN_HIDDEN_WINDOW", "1");
     // Mirror main.cpp:18-43 (the InstanceNode/DeviceNode read these globals), but gate the
     // validation layer on availability (TestVkValidation pattern) instead of a compile def.
     deviceExtensionNames = { VK_KHR_SWAPCHAIN_EXTENSION_NAME,
