@@ -19,6 +19,8 @@
  */
 
 #include "Core/ITaskProfile.h"
+#include <cmath>
+#include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
@@ -130,7 +132,8 @@ public:
         for (const auto& [extent, calibration] : chunkCalibration_) {
             chunks[extent] = {{"anchorUnits", calibration.anchorUnits},
                               {"unitNs", calibration.unitNs},
-                              {"fixedNs", calibration.fixedNs}};
+                              {"fixedNs", calibration.fixedNs},
+                              {"meanUnitNs", calibration.meanUnitNs}};
         }
         j["chunkCalibration"] = std::move(chunks);
     }
@@ -154,6 +157,7 @@ public:
                 calibration.anchorUnits = value.value("anchorUnits", uint64_t{0});
                 calibration.unitNs = value.value("unitNs", 0.0);
                 calibration.fixedNs = value.value("fixedNs", 0.0);
+                calibration.meanUnitNs = value.value("meanUnitNs", 0.0);
                 if (calibration.anchorUnits && calibration.unitNs > 0 && calibration.fixedNs >= 0)
                     chunkCalibration_[extent] = calibration;
             }
@@ -190,6 +194,7 @@ public:
         uint64_t anchorUnits = 0;
         double unitNs = 0;
         double fixedNs = 0;
+        double meanUnitNs = 0;  ///< average full-tile cost; 0 in records written before it was persisted
     };
     void SetChunkCalibration(const std::string& extent, const ChunkCalibration& calibration) {
         chunkCalibration_[extent] = calibration;
@@ -198,6 +203,26 @@ public:
         const auto it = chunkCalibration_.find(extent);
         if (it == chunkCalibration_.end()) return std::nullopt;
         return it->second;
+    }
+
+    // Envelope learned at the extent whose pixel count is closest to `extent` ("WxH"), excluding
+    // `extent` itself. Per-workgroup cost is a property of the device and pipeline, so a new
+    // resolution can start from it instead of from the cold floor.
+    [[nodiscard]] std::optional<ChunkCalibration> NearestChunkCalibration(const std::string& extent) const {
+        const auto area = [](const std::string& key) -> double {
+            const auto x = key.find('x');
+            if (x == std::string::npos) return 0.0;
+            return std::atof(key.substr(0, x).c_str()) * std::atof(key.substr(x + 1).c_str());
+        };
+        const double target = area(extent);
+        std::optional<ChunkCalibration> best;
+        double bestGap = 0;
+        for (const auto& [key, calibration] : chunkCalibration_) {
+            if (key == extent) continue;
+            const double gap = std::abs(area(key) - target);
+            if (!best || gap < bestGap) { best = calibration; bestGap = gap; }
+        }
+        return best;
     }
 
     // =========================================================================
