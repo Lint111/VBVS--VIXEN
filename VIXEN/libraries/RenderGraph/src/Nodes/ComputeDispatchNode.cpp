@@ -402,9 +402,12 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
 void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
     if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
+#if UNDERSET_NATIVE_BENCHMARK
         double totalMs = 0, maximumMs = 0;
+#endif
         for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
             const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+#if UNDERSET_NATIVE_BENCHMARK
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
                 NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
                     " flight=" + std::to_string(frameIndex) + " chunk=" + std::to_string(i) +
@@ -415,7 +418,10 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
                     " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
                     " elapsed_gpu_ms=" + std::to_string(ms));
             }
+#endif
+#if UNDERSET_NATIVE_BENCHMARK
             totalMs += ms;
+#endif
             if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
                 chunkCost_.Observe(tileWorkGroupCounts_[frameIndex][i],
                     tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
@@ -426,23 +432,30 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
         if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
             chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
                 {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs()});
+#if UNDERSET_NATIVE_BENCHMARK
         totalMs = 0;
+#endif
         for (const auto& batch : submissionBatches_[frameIndex]) {
             const double elapsed = query->GetElapsedMs(0, batch.first * 4,
                 (batch.first + batch.count) * 4 - 1);
+#if UNDERSET_NATIVE_BENCHMARK
             maximumMs = std::max(maximumMs, elapsed);
             totalMs += elapsed;
+#endif
             uint64_t groups = 0;
             for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
                 groups += tileWorkGroupCounts_[frameIndex][i];
             if (groups) chunkCost_.ObserveBatch(groups, batch.count, elapsed * 1.0e6);
+#if UNDERSET_NATIVE_BENCHMARK
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
                 NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
                     " first_chunk=" + std::to_string(batch.first) +
                     " chunks=" + std::to_string(batch.count) +
                     " elapsed_gpu_ms=" + std::to_string(elapsed));
             }
+#endif
         }
+#if UNDERSET_NATIVE_BENCHMARK
         NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
             " submissions=" + std::to_string(submissionBatches_[frameIndex].size()) +
             " chunks=" + std::to_string(tileCounts_[frameIndex]) +
@@ -450,6 +463,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             " max_submission_ms=" + std::to_string(maximumMs) +
             " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
             " device_class=" + GpuDeviceClassName(*vulkanDevice));
+#endif
     }
 
 }
@@ -509,10 +523,12 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
                 chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs);
             }
         }
+#if UNDERSET_NATIVE_BENCHMARK
         NODE_LOG_INFO("[GPUYIELD_CALIBRATION] node=" + GetInstanceName() + " extent=" + extentKey +
             (chunkCost_.Calibrated() ? " start=warm anchor_units=" + std::to_string(chunkCost_.AnchorUnits()) +
                 " unit_ns=" + std::to_string(chunkCost_.UnitNs()) + " fixed_ns=" + std::to_string(chunkCost_.FixedNs())
                 : std::string(" start=cold")));
+#endif
     }
     tileExtentKeys_[frameIndex] = extentKey;
     // VIXEN_GPUYIELD_EDGE=<n> pins the tile edge in workgroups (0 = one untiled dispatch); a

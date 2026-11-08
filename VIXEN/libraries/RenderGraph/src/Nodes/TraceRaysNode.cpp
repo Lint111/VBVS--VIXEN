@@ -509,11 +509,14 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 void TraceRaysNode::CollectTileTiming(uint32_t frame) {
     auto& query = tileQueries_[frame];
     if (!query || !query->ReadResults(0)) return;
+#if UNDERSET_NATIVE_BENCHMARK
     double total = 0, maximum = 0;
+#endif
     for (uint32_t i = 0; i < tileCounts_[frame]; ++i) {
         const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
         if (tilePixelCounts_[frame][i])
             chunkCost_.Observe(tilePixelCounts_[frame][i], tileNominalPixelCounts_[frame], ms * 1.0e6);
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
             NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
                 " flight=" + std::to_string(frame) + " chunk=" + std::to_string(i) +
@@ -524,28 +527,35 @@ void TraceRaysNode::CollectTileTiming(uint32_t frame) {
                 " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
                 " elapsed_gpu_ms=" + std::to_string(ms));
         }
+#endif
     }
     for (const auto& batch : submissionBatches_[frame]) {
         const double ms = query->GetElapsedMs(0, batch.first * 4,
             (batch.first + batch.count) * 4 - 1);
+#if UNDERSET_NATIVE_BENCHMARK
         total += ms;
         maximum = std::max(maximum, ms);
+#endif
         uint64_t pixels = 0;
         for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
             pixels += tilePixelCounts_[frame][i];
         if (pixels) chunkCost_.ObserveBatch(pixels, batch.count, ms * 1.0e6);
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_GPUYIELD_TRACE"))
             NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
                 " first_chunk=" + std::to_string(batch.first) +
                 " chunks=" + std::to_string(batch.count) +
                 " elapsed_gpu_ms=" + std::to_string(ms));
+#endif
     }
+#if UNDERSET_NATIVE_BENCHMARK
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" +
         std::to_string(submissionBatches_[frame].size()) +
         " chunks=" + std::to_string(tileCounts_[frame]) + " total_gpu_ms=" + std::to_string(total) +
         " max_submission_ms=" + std::to_string(maximum) +
         " budget_ms=" + std::to_string(tileBudgets_[frame] / 1.0e6) +
         " device_class=" + GpuDeviceClassName(*vulkanDevice_));
+#endif
 }
 
 void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {

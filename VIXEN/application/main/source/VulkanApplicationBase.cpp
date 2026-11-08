@@ -9,6 +9,7 @@
 #include <string>
 
 namespace {
+#if UNDERSET_NATIVE_BENCHMARK
 // Encapsulates the standalone app's rolling CPU frame-time instrumentation (relocated from
 // application/main/source/main.cpp so it isn't copy-pasted per entry point). Behavior-identical:
 // avg/p99/FPS summary every 120 frames + a per-frame OUTLIER line when a frame costs >3x the prior
@@ -52,6 +53,7 @@ private:
     std::chrono::steady_clock::time_point lastFrameStart_ = std::chrono::steady_clock::now();
     double lastWindowMedian_ = 0.0;
 };
+#endif
 }  // namespace
 
 VulkanApplicationBase::VulkanApplicationBase()
@@ -185,11 +187,15 @@ int VulkanApplicationBase::Run(const RunOptions& opts) {
         // the limit too, matching the old main.cpp where the timer block ran unconditionally
         // before the exitAfterFrames check. A condition-gated while would skip recording on the
         // terminal tick, silently dropping the "frames 0-120" summary line on an exact-120 run.
+#if UNDERSET_NATIVE_BENCHMARK
         FrameTimer frameTimer;
+#endif
         TickStatus st;
         do {
             st = Tick();
+#if UNDERSET_NATIVE_BENCHMARK
             if (opts.enableFrameTimer) frameTimer.Record(frameCounter_, mainLogger.get());
+#endif
         } while (st == TickStatus::Running);
 
         if (mainLogger) {

@@ -83,6 +83,7 @@ public:
         const bool utTextCapture = std::getenv("VIXEN_HEADLESS_UT_TEXT_CAPTURE") != nullptr;
         if (!utTextCapture) {
             BuildUIGraph();
+            SelectNativeUpscalerForModulelessGraph();
             return;
         }
 

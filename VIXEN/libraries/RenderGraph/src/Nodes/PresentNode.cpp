@@ -113,7 +113,9 @@ VkResult PresentNode::Present(Context& ctx) {
         present.presentFence = presentFenceArray[imageIndex];
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     const auto presentStarted = std::chrono::steady_clock::now();
+#endif
     {
         lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present,
                                         GetOwningGraph()->SubmitNodeWork(this, std::move(present)));
@@ -135,6 +137,7 @@ VkResult PresentNode::Present(Context& ctx) {
         // OUT_OF_DATE / SUBOPTIMAL are the swapchain nodes' business; a loss or OOM here is not.
         GetOwningGraph()->ReportGpuFault("PresentNode::vkQueuePresentKHR", lastResult);
     }
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
         const auto completed = std::chrono::steady_clock::now();
         std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-and-idle elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
@@ -142,6 +145,7 @@ VkResult PresentNode::Present(Context& ctx) {
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(presentStarted.time_since_epoch()).count()),
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
     }
+#endif
 
     // Set outputs
     ctx.Out(PresentNodeConfig::PRESENT_RESULT, &lastResult);
