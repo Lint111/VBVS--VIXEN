@@ -522,11 +522,17 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         return value && *value ? std::strtol(value, nullptr, 10) : -1L;
     }();
     const uint32_t wholeEdge = std::max(1u, std::max(dispatchX, dispatchY));
+    // Native devices untile a pass whose projected whole time is far below the watchdog window;
+    // translated devices keep the submission-budget tiling. Same rule for every dispatch node.
+    const GpuChunkCost::WholePass whole{uint64_t(dispatchX) * dispatchY,
+        NativeWholePassWindowNs(capacity.gpuSubmissionBudgetNs, capacity.gpuTimeBudgetNs)};
+    const GpuChunkCost::WholePass* wholePass =
+        GpuDeviceClassIsNative(GpuDeviceClassName(*vulkanDevice)) ? &whole : nullptr;
     const uint32_t edge = !canTile_ || edgeOverride == 0
         ? wholeEdge
         : edgeOverride > 0
             ? static_cast<uint32_t>(edgeOverride)
-            : chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7);
+            : chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7, wholePass);
     tileNominalWorkGroupCounts_[frameIndex] = std::min(edge, dispatchX) * std::min(edge, dispatchY);
     const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
     auto& extraBuffers = tileCommandBuffers_[frameIndex];

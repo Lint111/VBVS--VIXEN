@@ -1,4 +1,5 @@
 #include "Nodes/Common/GpuChunkCost.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include <gtest/gtest.h>
 
 #include "Core/GraphTaskLowering.h"
@@ -758,4 +759,32 @@ TEST(QueueOwnerFixture, DrainsPublishedRequestIntoOwnerRecord) {
     EXPECT_EQ(owner.Records().front().device, &device);
     EXPECT_EQ(owner.Records().front().completion, completion);
     EXPECT_EQ(owner.Records().front().commandBuffers.size(), 0u);
+}
+
+TEST(GpuChunkCost, NativeUntilesWhenWholePassFitsAndUsesMeanNotMax) {
+    // look-dev 63x63: one dense 7x7 tile (1.69 ms) among 0.6 ms tiles pinned the edge at 7.
+    constexpr uint64_t whole = 63 * 63;
+    GpuChunkCost cost;
+    cost.Observe(49, 49, 1'690'000);
+    for (int i = 0; i < 80; ++i) cost.Observe(49, 49, 550'000);
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);  // max-based (translated) rule is unchanged
+    const uint64_t window = NativeWholePassWindowNs(2'000'000, 16'666'666);
+    EXPECT_GE(window, 239'000'000u);
+    EXPECT_LE(window, 241'000'000u);
+    const GpuChunkCost::WholePass fits{whole, window};
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7, &fits), 63u);  // one dispatch
+    const GpuChunkCost::WholePass tooLong{whole, 20'000'000};  // projected ~45 ms
+    const uint32_t grown = cost.Edge(2'000'000, 63, 7, &tooLong);
+    EXPECT_GT(grown, 7u);  // genuine long pass still tiles, by the mean cost
+    EXPECT_LT(grown, 63u);
+}
+
+TEST(GpuChunkCost, DeviceClassDecidesWhichDevicesUntile) {
+    EXPECT_TRUE(GpuDeviceClassIsNative("integrated"));
+    EXPECT_TRUE(GpuDeviceClassIsNative("discrete"));
+    EXPECT_FALSE(GpuDeviceClassIsNative("translated"));
+    EXPECT_FALSE(GpuDeviceClassIsNative("cpu"));
+    GpuChunkCost cold;
+    const GpuChunkCost::WholePass any{3969, 240'000'000};
+    EXPECT_EQ(cold.Edge(2'000'000, 63, 7, &any), 7u);  // uncalibrated stays at the cold floor
 }
