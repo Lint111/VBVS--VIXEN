@@ -218,7 +218,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                     bestT = worldT;
                     bestInstIdx = ci;
                     bestProcedural = true;
-                    hitColor = candidateInst.color;
+                    // TraceWorld applies the winning instance tint after the ray-query
+                    // hit record is returned, just as it does for stored-SDF hits.
+                    // Returning the tint here would multiply procedural materials twice
+                    // only when recipe-chunk culling is enabled.
+                    hitColor = vec3(1.0);
                     hitNormal = instanceLocalToWorldNormal(ci, candidateNormal);
                     hitRoughness = 0.5;
                     hitEmission = candidateInst.recipeParams[3];
