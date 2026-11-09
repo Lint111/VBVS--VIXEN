@@ -23,12 +23,39 @@ uint64_t ElapsedNs(QueueTimeline::Clock::time_point start,
     return elapsed > 0 ? static_cast<uint64_t>(elapsed) : 0;
 }
 
-void RecordRetireWait(QueueTimeline& timeline, uint64_t predictedNs,
+/// What a window predicted when it opened. Captured once so the ledger and the margin learn from
+/// the same numbers.
+struct OpeningPrediction {
+    uint64_t rawNs = 0;
+    uint64_t marginNs = 0;
+    uint64_t commandKey = 0;
+    bool cold = false;
+    [[nodiscard]] uint64_t WindowNs() const {
+        return marginNs == std::numeric_limits<uint64_t>::max() || rawNs <= marginNs ? 0 : rawNs - marginNs;
+    }
+};
+
+OpeningPrediction OpenPrediction(const QueueTimeline& timeline, uint64_t value,
+                                 QueueTimeline::Clock::time_point now) {
+    OpeningPrediction opening;
+    opening.rawNs = timeline.PredictRetireRawNs(value, now);
+    opening.marginNs = timeline.DerivedMarginNs(value);
+    const auto batch = std::find_if(timeline.issuedBatches.begin(), timeline.issuedBatches.end(),
+        [value](const QueueTimeline::IssuedBatch& b) { return b.value == value; });
+    if (batch != timeline.issuedBatches.end()) {
+        opening.commandKey = batch->commandKey;
+        opening.cold = batch->cold;
+    }
+    return opening;
+}
+
+void RecordRetireWait(QueueTimeline& timeline, const OpeningPrediction& opening,
                       QueueTimeline::Clock::time_point started) {
     const uint64_t actualNs = ElapsedNs(started, QueueTimeline::Clock::now());
     if (timeline.frameLedger)
-        timeline.frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, predictedNs, actualNs);
-    timeline.ObservePredictionError(predictedNs, actualNs);
+        timeline.frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, opening.WindowNs(), actualNs,
+                                         opening.commandKey, opening.rawNs, opening.cold);
+    timeline.ObservePredictionError(opening.commandKey, opening.cold, opening.rawNs, actualNs);
 }
 } // namespace
 
@@ -79,7 +106,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
 #endif
     const uint64_t oldest = outstanding[outstanding.size() - cap];
     const auto windowStarted = Clock::now();
-    const uint64_t initialPrediction = PredictRetireNs(oldest, windowStarted);
+    const OpeningPrediction initialPrediction = OpenPrediction(*this, oldest, windowStarted);
     const bool hasFiller = idleWindowFiller && static_cast<bool>(*idleWindowFiller);
     if (!hasFiller) {
         const auto started = Clock::now();
@@ -151,7 +178,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
     }
 }
 
-uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now) const {
+uint64_t QueueTimeline::PredictRetireRawNs(uint64_t value, Clock::time_point now) const {
     if (issuedBatches.empty()) return 0;
     const auto target = std::find_if(issuedBatches.begin(), issuedBatches.end(),
         [value](const IssuedBatch& batch) { return batch.value == value; });
@@ -164,22 +191,26 @@ uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now) c
         retireAt = base + std::chrono::nanoseconds(it->meanCostNs);
         havePrevious = true;
     }
-
-    uint64_t upperAhead = 0;
-    uint64_t meanAhead = 0;
-    for (auto it = target; it != issuedBatches.end(); ++it) {
-        upperAhead = SaturatingAdd(upperAhead, it->upperBoundNs);
-        meanAhead = SaturatingAdd(meanAhead, it->meanCostNs);
-    }
-    // The first frame has no measured spread, so retain the existing conservative envelope. Once
-    // a wait has completed, the window owner uses only the observed under-prediction history; this
-    // keeps the predictor unbiased while still ending the usable window before GPU retirement.
-    const uint64_t envelopeMarginNs = upperAhead > meanAhead ? upperAhead - meanAhead : 0;
-    const uint64_t marginNs = predictionMarginCount_ ? LearnedPredictionMarginNs() : envelopeMarginNs;
     const auto remaining = std::chrono::duration_cast<std::chrono::nanoseconds>(retireAt - now).count();
-    if (remaining <= 0) return 0;
-    const uint64_t remainingNs = static_cast<uint64_t>(remaining);
-    return remainingNs > marginNs ? remainingNs - marginNs : 0;
+    return remaining > 0 ? static_cast<uint64_t>(remaining) : 0;
+}
+
+uint64_t QueueTimeline::DerivedMarginNs(uint64_t value) const {
+    const auto target = std::find_if(issuedBatches.begin(), issuedBatches.end(),
+        [value](const IssuedBatch& batch) { return batch.value == value; });
+    constexpr uint64_t kWarmingUp = std::numeric_limits<uint64_t>::max();
+    if (target == issuedBatches.end() || target->cold || !target->commandKey) return kWarmingUp;
+    const PredictionHistory& history = predictionHistory_[HistorySlot(target->commandKey)];
+    if (history.count < kPredictionMarginHistory) return kWarmingUp;
+    uint64_t margin = 0;
+    for (uint32_t i = 0; i < history.count; ++i) margin = std::max(margin, history.earlyRetireNs[i]);
+    return margin;
+}
+
+uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now) const {
+    const uint64_t raw = PredictRetireRawNs(value, now);
+    const uint64_t margin = DerivedMarginNs(value);
+    return margin == std::numeric_limits<uint64_t>::max() || raw <= margin ? 0 : raw - margin;
 }
 
 void QueueTimeline::Defer(uint64_t value, std::function<void()> release) {
@@ -279,7 +310,10 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
 #endif
         if (result != VK_SUCCESS) return result;
         const auto [upperCost, meanCost] = batchCosts(batches[i]);
-        timeline.Issued(timeline.NextValue(), upperCost, meanCost, QueueTimeline::Clock::now());
+        bool cold = false;
+        for (std::size_t command = batches[i].first; command < batches[i].first + batches[i].count; ++command)
+            cold = cold || command >= commandCostMeanNs.size() || !commandCostMeanNs[command];
+        timeline.Issued(timeline.NextValue(), upperCost, meanCost, QueueTimeline::Clock::now(), cold);
     }
     return VK_SUCCESS;
 }

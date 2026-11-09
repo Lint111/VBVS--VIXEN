@@ -527,8 +527,15 @@ TEST(QueueTimeline, NoFillerKeepsOneBoundedWaitPerCapHit) {
     EXPECT_EQ(timeline.blockingWaits, 1u);
 }
 
+// Fill command `key`'s history with `samples` early-retire errors so its window is no longer warm-up.
+void WarmMargin(QueueTimeline& timeline, uint64_t key, uint64_t earlyRetireNs = 0) {
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionMarginHistory; ++i)
+        timeline.ObservePredictionError(key, false, earlyRetireNs + 1'000, 1'000);
+}
+
 TEST(QueueTimeline, FillerReceivesCostMinusDerivedMarginAndClosesOnReach) {
     QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
     timeline.Issued(1, 100'000'000, 70'000'000);
     timeline.Issued(2, 100'000'000, 70'000'000);
     FrameWaitLedger ledger;
@@ -569,19 +576,51 @@ TEST(FrameCommandTimingLedger, RotatesRowsAndRejectsReshapedCommands) {
     EXPECT_EQ(ledger.Last(1, 0, 49), 2'000'000u);
 }
 
-TEST(FrameWaitLedger, ReportsAbsoluteRelativeErrorAndOverrun) {
+TEST(FrameWaitLedger, ReportsErrorViolationsUnusedAndUtilisationPerWindow) {
     FrameWaitLedger ledger;
-    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 125);
-    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 75);
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 125, 7);  // safe: 25 unused
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 75, 8);   // violation: window outlives GPU by 25
     EXPECT_DOUBLE_EQ(ledger.ErrorP50Relative(), 0.25);
     EXPECT_DOUBLE_EQ(ledger.ErrorP95Relative(), 0.25);
     EXPECT_DOUBLE_EQ(ledger.ErrorP50Ms(), 0.000025);
-    EXPECT_DOUBLE_EQ(ledger.OverrunRate(), 0.5);
-    EXPECT_EQ(ledger.overrunNs, 25u);
+    EXPECT_EQ(ledger.violationCount, 1u);
+    EXPECT_EQ(ledger.violationNs, 25u);
+    EXPECT_EQ(ledger.unusedNs, 25u);
+    EXPECT_EQ(ledger.usedNs, 175u);
+    EXPECT_DOUBLE_EQ(ledger.Utilisation(), 175.0 / 200.0);
+    EXPECT_EQ(ledger.waits[0].errorNs, 25);
+    EXPECT_FALSE(ledger.waits[0].violation);
+    EXPECT_EQ(ledger.waits[1].errorNs, -25);
+    EXPECT_TRUE(ledger.waits[1].violation);
+    EXPECT_EQ(ledger.waits[1].commandKey, 8u);
+}
+
+TEST(QueueTimeline, MarginIsWarmUpUntilHistoryFillsThenCoversRecentEarlyRetire) {
+    QueueTimeline timeline = FakeTimeline();
+    const auto now = QueueTimeline::Clock::now();
+    timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // no history: no window
+    for (std::size_t i = 0; i + 1 < QueueTimeline::kPredictionMarginHistory; ++i)
+        timeline.ObservePredictionError(1, false, 5'000, 1'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // history not yet full
+    timeline.ObservePredictionError(1, true, 900'000'000, 1'000);  // cold: ignored
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
+    timeline.ObservePredictionError(1, false, 5'000, 1'000);
+    // margin = early-retire max = 4'000 ns
+    const uint64_t raw = timeline.PredictRetireRawNs(1, now);
+    EXPECT_EQ(timeline.DerivedMarginNs(1), 4'000u);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), raw - 4'000u);
+    // Errors shrink: the margin decays once the large samples leave the ring.
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionMarginHistory; ++i)
+        timeline.ObservePredictionError(1, false, 1'500, 1'000);
+    EXPECT_EQ(timeline.DerivedMarginNs(1), 500u);
+    timeline.ResetPredictionHistory();
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
 }
 
 TEST(QueueTimeline, EarlyGpuReturnsAfterFirstPollWithoutAnotherWait) {
     QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
     timeline.Issued(1, 10'000'000, 10'000'000);
     timeline.Issued(2, 10'000'000, 10'000'000);
     int fillerCalls = 0;
@@ -598,6 +637,7 @@ TEST(QueueTimeline, EarlyGpuReturnsAfterFirstPollWithoutAnotherWait) {
 
 TEST(QueueTimeline, LateGpuGetsARePredictedRemainder) {
     QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
     timeline.waitFn = LateWait;
     timeline.Issued(1, 100'000'000, 100'000'000);
     timeline.Issued(2, 100'000'000, 100'000'000);
@@ -619,7 +659,7 @@ TEST(QueueTimeline, PredictorChainsTwoOutstandingBatches) {
     timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
     timeline.Issued(2, 200, 200, now + std::chrono::seconds(1));
 
-    const uint64_t predicted = timeline.PredictRetireNs(2, now);
+    const uint64_t predicted = timeline.PredictRetireRawNs(2, now);
     EXPECT_GE(predicted, 1'000'000'299u);
     EXPECT_LE(predicted, 1'000'000'301u);
 }

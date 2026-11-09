@@ -79,8 +79,12 @@ struct FrameWaitLedger {
         IdleWindow::Kind kind = IdleWindow::Kind::GpuRetire;
         uint64_t predictedNs = 0;
         uint64_t actualNs = 0;
-        int64_t errorNs = 0;
+        int64_t errorNs = 0;          ///< actual - predicted, signed
         double relativeError = 0.0;
+        uint64_t commandKey = 0;      ///< issue ordinal of the awaited batch within its frame (0 = unkeyed)
+        uint64_t rawPredictedNs = 0;  ///< prediction before the derived margin was subtracted
+        bool cold = false;            ///< the awaited batch had no last-frame timing
+        bool violation = false;       ///< predicted > actual: the window would outlive the GPU work
     };
 
     uint64_t frameIndex = 0;
@@ -91,8 +95,12 @@ struct FrameWaitLedger {
     uint64_t windowPredictedNs = 0;
     uint64_t windowActualNs = 0;
     uint64_t filledNs = 0;
-    uint64_t overrunNs = 0;
-    uint64_t overrunCount = 0;
+    // A violation is predicted > actual, per window (owner 11-10). It must be zero: the window may
+    // never end after the GPU work it waits on retires. Unused time is the safe remainder.
+    uint64_t violationCount = 0;
+    uint64_t violationNs = 0;   ///< sum of (predicted - actual) over violating windows
+    uint64_t unusedNs = 0;      ///< sum of (actual - predicted) over windows with actual >= predicted
+    uint64_t usedNs = 0;        ///< sum of min(predicted, actual): window time actually usable
     int64_t errorMinNs = 0;
     int64_t errorMaxNs = 0;
     int64_t errorSumNs = 0;
@@ -106,7 +114,8 @@ struct FrameWaitLedger {
         frameIndex = newFrameIndex;
     }
 
-    void RecordWait(IdleWindow::Kind kind, uint64_t predictedNs, uint64_t actualNs) {
+    void RecordWait(IdleWindow::Kind kind, uint64_t predictedNs, uint64_t actualNs,
+                    uint64_t commandKey = 0, uint64_t rawPredictedNs = 0, bool cold = false) {
         const int64_t errorNs = actualNs >= predictedNs
             ? static_cast<int64_t>(actualNs - predictedNs)
             : -static_cast<int64_t>(predictedNs - actualNs);
@@ -115,14 +124,19 @@ struct FrameWaitLedger {
         const double relativeError = predictedNs
             ? static_cast<double>(absoluteErrorNs) / static_cast<double>(predictedNs) : 0.0;
         if (waitSampleCount < waits.size()) {
-            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs, relativeError};
+            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs, relativeError,
+                commandKey, rawPredictedNs ? rawPredictedNs : predictedNs, cold, predictedNs > actualNs};
         }
         ++windowCount;
         windowPredictedNs += predictedNs;
         windowActualNs += actualNs;
-        if (actualNs > predictedNs) {
-            overrunNs += actualNs - predictedNs;
-            ++overrunCount;
+        if (predictedNs > actualNs) {
+            violationNs += predictedNs - actualNs;
+            ++violationCount;
+            usedNs += actualNs;
+        } else {
+            unusedNs += actualNs - predictedNs;
+            usedNs += predictedNs;
         }
         if (kind == IdleWindow::Kind::GpuRetire) {
             ++gpuRetireWaitCount;
@@ -186,8 +200,9 @@ struct FrameWaitLedger {
     [[nodiscard]] double ErrorP95AbsoluteMs() const { return AbsoluteErrorPercentileMs(0.95); }
     [[nodiscard]] double ErrorP50Relative() const { return RelativeErrorPercentile(0.50); }
     [[nodiscard]] double ErrorP95Relative() const { return RelativeErrorPercentile(0.95); }
-    [[nodiscard]] double OverrunRate() const {
-        return windowCount ? static_cast<double>(overrunCount) / static_cast<double>(windowCount) : 0.0;
+    /// Σused / Σactual wait over this frame's windows; the figure to maximise at zero violations.
+    [[nodiscard]] double Utilisation() const {
+        return windowActualNs ? static_cast<double>(usedNs) / static_cast<double>(windowActualNs) : 0.0;
     }
 };
 
@@ -242,6 +257,8 @@ struct QueueTimeline {
         Clock::time_point issuedAt{};
         uint64_t upperBoundNs = 0;
         uint64_t meanCostNs = 0;
+        uint64_t commandKey = 0;  ///< 1-based issue ordinal within the frame that issued it
+        bool cold = false;        ///< no last-frame timing: the mean fell back to the upper bound
     };
 
     VkDevice device = VK_NULL_HANDLE;
@@ -258,39 +275,62 @@ struct QueueTimeline {
     IdleWindowFiller* idleWindowFiller = nullptr; ///< graph-owned, never copied on the frame path
     FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
     Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
-    static constexpr std::size_t kPredictionMarginHistory = 16;
-    std::array<uint64_t, kPredictionMarginHistory> predictionMarginsNs_{};
-    uint32_t predictionMarginCount_ = 0;
-    uint32_t predictionMarginNext_ = 0;
+    /// Margin derivation (R613: last-frame data only). A window predicted as `raw - margin` violates
+    /// when the GPU retires earlier than raw by more than the margin, so the margin must cover the
+    /// early-retire error `raw - actual`. It is kept per command (the issue ordinal of the batch
+    /// within its frame) as the maximum of that error over the last kPredictionMarginHistory
+    /// samples of that command: a high quantile of the recent distribution that decays as the
+    /// errors shrink. Warm-up windows (cold batches, a reset after a pipeline or resolution change)
+    /// never contribute, and a command whose history is not yet full gets no window at all.
+    static constexpr std::size_t kPredictionMarginHistory = FrameWaitLedger::kFlightCount;
+    static constexpr std::size_t kMaxPredictionKeys = 64;
+    struct PredictionHistory {
+        std::array<uint64_t, kPredictionMarginHistory> earlyRetireNs{};
+        uint32_t count = 0;
+        uint32_t next = 0;
+    };
+    std::array<PredictionHistory, kMaxPredictionKeys> predictionHistory_{};
+    uint64_t issueFrameIndex_ = ~uint64_t{0};
+    uint64_t issueOrdinal_ = 0;
+
+    [[nodiscard]] static std::size_t HistorySlot(uint64_t commandKey) {
+        return static_cast<std::size_t>(commandKey % kMaxPredictionKeys);
+    }
+    /// Forget all learned errors (pipeline or resolution change): the next frames are warm-up.
+    void ResetPredictionHistory() { predictionHistory_ = {}; }
 
     /// Refresh `completed` from the counter and drop reached values. Never blocks.
     VkResult Poll();
     /// Make room for one more batch under the R503 cap: poll, then wait for the oldest value only.
     VkResult ReserveBatch(uint32_t cap);
-    /// Predict the remaining time until `value`, chaining the issue-time mean costs.
+    /// Remaining time until `value` from the chained issue-time mean costs, before any margin.
+    [[nodiscard]] uint64_t PredictRetireRawNs(uint64_t value, Clock::time_point now) const;
+    /// The derived margin for `value`'s command; UINT64_MAX while its history is warming up.
+    [[nodiscard]] uint64_t DerivedMarginNs(uint64_t value) const;
+    /// The window to expose: raw prediction minus the derived margin, 0 while warming up.
     [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const;
-    /// Learn the next window margin from a completed wait. Only under-prediction contributes.
-    void ObservePredictionError(uint64_t predictedNs, uint64_t actualNs) {
-        const uint64_t underPrediction = actualNs > predictedNs ? actualNs - predictedNs : 0;
-        predictionMarginsNs_[predictionMarginNext_] = underPrediction;
-        predictionMarginNext_ = (predictionMarginNext_ + 1) % kPredictionMarginHistory;
-        predictionMarginCount_ = std::min<uint32_t>(predictionMarginCount_ + 1,
-                                                     kPredictionMarginHistory);
-    }
-    [[nodiscard]] uint64_t LearnedPredictionMarginNs() const {
-        uint64_t margin = 0;
-        for (uint32_t i = 0; i < predictionMarginCount_; ++i)
-            margin = std::max(margin, predictionMarginsNs_[i]);
-        return margin;
+    /// Learn from a completed window. Cold batches and unkeyed batches are warm-up and ignored.
+    void ObservePredictionError(uint64_t commandKey, bool cold, uint64_t rawPredictedNs,
+                                uint64_t actualNs) {
+        if (cold || !commandKey) return;
+        PredictionHistory& history = predictionHistory_[HistorySlot(commandKey)];
+        history.earlyRetireNs[history.next] = rawPredictedNs > actualNs ? rawPredictedNs - actualNs : 0;
+        history.next = (history.next + 1) % kPredictionMarginHistory;
+        history.count = std::min<uint32_t>(history.count + 1, kPredictionMarginHistory);
     }
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }
     /// Record a successfully issued batch value.
     void Issued(uint64_t value, uint64_t upperBoundNs = 0, uint64_t meanCostNs = 0,
-                Clock::time_point issuedAt = Clock::now()) {
+                Clock::time_point issuedAt = Clock::now(), bool cold = false) {
+        if (frameIndex != issueFrameIndex_) {
+            issueFrameIndex_ = frameIndex;
+            issueOrdinal_ = 0;
+        }
         outstanding.push_back(value);
         issuedBatches.push_back(IssuedBatch{value, issuedAt, upperBoundNs,
-                                            meanCostNs ? meanCostNs : upperBoundNs});
+                                            meanCostNs ? meanCostNs : upperBoundNs,
+                                            ++issueOrdinal_, cold || !meanCostNs});
     }
     /// Run `release` once `value` is reached (immediately when it already is).
     void Defer(uint64_t value, std::function<void()> release);

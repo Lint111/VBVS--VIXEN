@@ -18,6 +18,8 @@ public:
     template <typename... Args>
     constexpr void RecordFrame(Args&&...) noexcept {}
     constexpr void Flush() noexcept {}
+    template <typename... Args>
+    constexpr void RecordWindowSamples(Args&&...) noexcept {}
 };
 
 #else
@@ -79,8 +81,24 @@ public:
         double windowErrorP50Relative = 0.0;
         double windowErrorP95Relative = 0.0;
         double windowErrorP50Ms = 0.0;
-        double windowOverrunRate = 0.0;
-        double windowFrameTimeAddedMs = 0.0;
+        // Violation = predicted > actual per window (must be 0); unused = actual - predicted
+        // where actual >= predicted; utilisation = sum(min(predicted, actual)) / sum(actual).
+        uint64_t windowViolationCount = 0;
+        double windowViolationMs = 0.0;
+        double windowUnusedMs = 0.0;
+        double windowUtilisation = 0.0;
+    };
+
+    // One idle window, exported to "<VIXEN_PERF_CSV>.windows.csv" so misses can be attributed.
+    struct WindowSample {
+        uint64_t frame = 0;
+        const char* kind = "";
+        uint64_t command = 0;
+        bool cold = false;
+        double rawPredictedMs = 0.0;
+        double predictedMs = 0.0;
+        double actualMs = 0.0;
+        bool violation = false;
     };
 
     // Reads VIXEN_PERF_CSV; IsEnabled()==false when unset (the only env access this class does).
@@ -105,6 +123,9 @@ public:
     // but this class doesn't rely on that).
     void Flush();
 
+    // Buffers this frame's window samples (call after RecordFrame; frame = the row just recorded).
+    void RecordWindowSamples(const std::vector<WindowSample>& samples);
+
 private:
     struct Row {
         uint64_t frameIndex = 0;
@@ -120,6 +141,7 @@ private:
 
     std::string path_;
     std::vector<Row> rows_;
+    std::vector<WindowSample> windowSamples_;
     bool flushed_ = false;
     std::set<std::string> warnedNoSlot_;  // columns already reported as slot-less
 

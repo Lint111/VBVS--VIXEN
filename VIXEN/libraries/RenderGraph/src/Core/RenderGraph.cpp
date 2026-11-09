@@ -2820,6 +2820,11 @@ void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg
     // subscribe to WindowResizedMessage and mark themselves dirty.
     // Downstream consumers (DepthBufferNode, FramebufferNode, etc.) are automatically
     // marked dirty by the recompilation system when their dependencies change.
+    // The new resolution changes every command's cost: the learned window margins are warm-up again.
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.ResetPredictionHistory();
+    }
 }
 
 void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {

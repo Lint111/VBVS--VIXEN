@@ -3,6 +3,7 @@
 #include "Core/GPUPerformanceLogger.h"
 
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>  // std::getenv
 #include <numeric>  // std::accumulate
 
@@ -52,9 +53,26 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     rows_.push_back(std::move(row));
 }
 
+void PerfCsvWriter::RecordWindowSamples(const std::vector<WindowSample>& samples) {
+    if (!IsEnabled()) return;
+    for (WindowSample sample : samples) {
+        sample.frame = frameCounter_;
+        windowSamples_.push_back(sample);
+    }
+}
+
 void PerfCsvWriter::Flush() {
     if (!IsEnabled() || flushed_) return;
     flushed_ = true;
+
+    if (std::ofstream windows(path_ + ".windows.csv"); windows.is_open()) {
+        windows << "frame,kind,command,cold,raw_predicted_ms,predicted_ms,actual_ms,violation\n";
+        for (const auto& w : windowSamples_) {
+            windows << w.frame << "," << w.kind << "," << w.command << "," << (w.cold ? 1 : 0) << ","
+                    << w.rawPredictedMs << "," << w.predictedMs << "," << w.actualMs << ","
+                    << (w.violation ? 1 : 0) << "\n";
+        }
+    }
 
     std::ofstream out(path_);
     if (!out.is_open()) return;  // best-effort: don't throw during shutdown
@@ -74,8 +92,8 @@ void PerfCsvWriter::Flush() {
            "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64,"
            "gpu_wait_ms,pace_wait_ms,gpu_bound_share,window_count,window_predicted_ms,"
            "window_actual_ms,window_error_p95_ms,window_error_p50_relative,"
-           "window_error_p95_relative,window_error_p50_ms,window_overrun_rate,"
-           "window_frame_time_added_ms";
+           "window_error_p95_relative,window_error_p50_ms,window_violation_count,"
+           "window_violation_ms,window_unused_ms,window_utilisation";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -102,8 +120,10 @@ void PerfCsvWriter::Flush() {
             << "," << row.windowMetrics.windowErrorP50Relative
             << "," << row.windowMetrics.windowErrorP95Relative
             << "," << row.windowMetrics.windowErrorP50Ms
-            << "," << row.windowMetrics.windowOverrunRate
-            << "," << row.windowMetrics.windowFrameTimeAddedMs;
+            << "," << row.windowMetrics.windowViolationCount
+            << "," << row.windowMetrics.windowViolationMs
+            << "," << row.windowMetrics.windowUnusedMs
+            << "," << row.windowMetrics.windowUtilisation;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }

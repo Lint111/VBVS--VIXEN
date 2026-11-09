@@ -713,10 +713,23 @@ void VulkanGraphApplication::PostTick() {
         waitLedger.ErrorP50Relative(),
         waitLedger.ErrorP95Relative(),
         waitLedger.ErrorP50Ms(),
-        waitLedger.OverrunRate(),
-        static_cast<double>(waitLedger.overrunNs) / 1'000'000.0};
+        waitLedger.violationCount,
+        static_cast<double>(waitLedger.violationNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.unusedNs) / 1'000'000.0,
+        waitLedger.Utilisation()};
     perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
                                windowMetrics, wholesale);
+    std::vector<PerfCsvWriter::WindowSample> windowSamples;
+    windowSamples.reserve(waitLedger.waitSampleCount);
+    for (uint32_t i = 0; i < waitLedger.waitSampleCount; ++i) {
+        const auto& w = waitLedger.waits[i];
+        windowSamples.push_back(PerfCsvWriter::WindowSample{0,
+            w.kind == Vixen::RenderGraph::IdleWindow::Kind::GpuRetire ? "gpu-retire" : "frame-pace",
+            w.commandKey, w.cold, static_cast<double>(w.rawPredictedNs) / 1'000'000.0,
+            static_cast<double>(w.predictedNs) / 1'000'000.0,
+            static_cast<double>(w.actualNs) / 1'000'000.0, w.violation});
+    }
+    perfCsvWriter_.RecordWindowSamples(windowSamples);
 #endif  // UNDERSET_NATIVE_BENCHMARK
 }
 
