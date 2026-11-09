@@ -280,6 +280,18 @@ def check_reference_provenance(
     return False
 
 
+EXIT_SMOKE_ONLY = 77  # ctest's skip convention: never a pass
+
+
+def device_class(directory: Path) -> str | None:
+    """Device class a capture directory was recorded on (capture-device.json or golden-device.json)."""
+    for name in ("golden-device.json", "capture-device.json"):
+        path = directory / name
+        if path.is_file():
+            return str(json.loads(path.read_text(encoding="utf-8")).get("device_class"))
+    return None
+
+
 def crop_image(image: Image, left: int, top: int, right: int, bottom: int) -> Image:
     width, _, rgba = image
     rows = [rgba[(y * width + left) * 4 : (y * width + right + 1) * 4] for y in range(top, bottom + 1)]
@@ -508,6 +520,11 @@ def main() -> int:
         help="fail (exit 2) unless run inside a box-queue job, so a landing witness cannot be unattested",
     )
     parser.add_argument(
+        "--require-device-record",
+        action="store_true",
+        help="fail (exit 2) when either directory lacks a device record; translated devices exit 77 (smoke only)",
+    )
+    parser.add_argument(
         "--crops",
         type=Path,
         metavar="DIR",
@@ -574,6 +591,17 @@ def main() -> int:
         return 2
     else:
         print("queue provenance: none (unqueued run; not an attested witness)")
+
+    classes = {str(d): device_class(d) for d in (args.before, args.after)}
+    print("device classes: " + " ".join(f"{d}={c or 'unrecorded'}" for d, c in classes.items()))
+    if "translated" in classes.values():
+        print("SKIPPED (smoke only): pixel witnesses are native Vulkan only; a translated device "
+              "(Dozen/Venus/llvmpipe/SwiftShader) is never compared as a pass", file=sys.stderr)
+        return EXIT_SMOKE_ONLY
+    if args.require_device_record and None in classes.values():
+        print("ERROR: --require-device-record: a directory has no capture-device.json/golden-device.json",
+              file=sys.stderr)
+        return 2
 
     try:
         if args.reference_provenance and check_reference_provenance(

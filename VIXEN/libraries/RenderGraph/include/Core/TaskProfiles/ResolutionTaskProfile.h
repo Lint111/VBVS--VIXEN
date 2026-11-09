@@ -16,6 +16,7 @@
  */
 
 #include "Core/ITaskProfile.h"
+#include <nlohmann/json.hpp>
 #include <array>
 #include <sstream>
 #include <iomanip>
