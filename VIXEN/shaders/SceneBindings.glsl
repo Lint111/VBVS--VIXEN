@@ -552,8 +552,33 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     uint mipReadSamples[192][16];
     uint mipReadCounterOverflow;
     uint _mipReadPadding[3];
+    uint recipeRayCount;
+    uint recipeMarchCount;
+    uint recipeChunkMarchCount;
+    uint recipeStepCount;
+    uint _recipeChunkMetricsPadding[3];
     uint traceData[];
 };
+
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+void recordRecipeChunkRay() {
+    atomicAdd(recipeRayCount, 1u);
+}
+void recordRecipeMarch() {
+    atomicAdd(recipeMarchCount, 1u);
+}
+void recordRecipeChunkMarch() {
+    atomicAdd(recipeChunkMarchCount, 1u);
+}
+void recordRecipeSteps(uint steps) {
+    atomicAdd(recipeStepCount, steps);
+}
+#else
+#define recordRecipeChunkRay()
+#define recordRecipeMarch()
+#define recordRecipeChunkMarch()
+#define recordRecipeSteps(steps)
+#endif
 
 // Fixed-point scale for farFieldSampleIntensityFixedSum -- luminance is a
 // small [0,~2] float (shaded mip color channel range), so this keeps ~6
@@ -1235,6 +1260,48 @@ struct ShellProxyAabb {
 layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
     ShellProxyAabb rtQueryProxyAabbs[];
 };
+#endif
+
+// Derived procedural surface-shell chunks. The record uses the same 32-byte
+// std430 shape as ShellProxyAabb so CPU registration can upload one compact
+// vector. recipeId is the candidate's recipe identity; flags bit 0 marks the
+// coarse-parent fallback used when a recipe has no occupancy shell.
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+struct RecipeChunkAabb {
+    vec3 minLocal;
+    uint recipeId;
+    vec3 maxLocal;
+    uint flags;
+};
+layout(std430, set = 0, binding = 44) readonly buffer RecipeChunkAabbBuffer {
+    RecipeChunkAabb recipeChunkAabbs[];
+};
+
+bool intersectRecipeChunkSet(uint recipeId, vec3 ro, vec3 rd, float tMin, float tMax,
+                             out float chunkEntry, out float chunkExit) {
+    bool found = false;
+    chunkEntry = tMax;
+    chunkExit = tMin;
+    for (uint i = 0u; i < recipeChunkAabbs.length(); ++i) {
+        RecipeChunkAabb chunk = recipeChunkAabbs[i];
+        if (chunk.recipeId != recipeId) continue;
+        vec3 invD = vec3(abs(rd.x) > 1e-8 ? 1.0 / rd.x : 0.0,
+                         abs(rd.y) > 1e-8 ? 1.0 / rd.y : 0.0,
+                         abs(rd.z) > 1e-8 ? 1.0 / rd.z : 0.0);
+        vec3 t0 = (chunk.minLocal - ro) * invD;
+        vec3 t1 = (chunk.maxLocal - ro) * invD;
+        vec3 lo = min(t0, t1);
+        vec3 hi = max(t0, t1);
+        float enter = max(max(lo.x, lo.y), max(lo.z, tMin));
+        float exit = min(min(hi.x, hi.y), min(hi.z, tMax));
+        if (exit >= enter) {
+            found = true;
+            chunkEntry = min(chunkEntry, enter);
+            chunkExit = max(chunkExit, exit);
+        }
+    }
+    return found;
+}
 #endif
 
 // ============================================================================

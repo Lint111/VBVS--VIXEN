@@ -656,9 +656,17 @@ struct alignas(16) TraceBufferHeader {
     // boot-lifetime probes above.  The overflow flag is set if an atomic
     // increment would wrap.
     MipReadByteCounters mipReadByteCounters;
+    // Optional recipe-chunk benchmark ledger. The shader only bumps these
+    // counters when VIXEN_RECIPE_CHUNK_CULL is compiled; the flag-off path
+    // remains zero-cost and byte-identical in its image-producing logic.
+    uint32_t recipeRayCount;
+    uint32_t recipeMarchCount;
+    uint32_t recipeChunkMarchCount;
+    uint32_t recipeStepCount;
+    uint32_t _recipeChunkMetricsPadding[3];
 };
 
-static_assert(sizeof(TraceBufferHeader) == 25120, "TraceBufferHeader must include the fixed E6-T2 mip ledger");
+static_assert(sizeof(TraceBufferHeader) == 25136, "TraceBufferHeader must include the recipe chunk metrics ledger");
 static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 516,
               "TraceBufferHeader mip ledger offset must match SceneBindings.glsl");
 

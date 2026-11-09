@@ -2,6 +2,7 @@
 #include "MainCacher.h"
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeOccupancy.h"
+#include "Recipe/RecipeChunkBounds.h"
 #include "RecipeContentCacher.h"
 #include "RecipeBucketDataCacher.h"
 #include "Nodes/BodyOctreeSceneNode.h"
@@ -717,7 +718,8 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
             return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
                    op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
         });
-    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr;
+    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
+        std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
     const bool authoredBound = entry.boundRadius > 0.0f;
     // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined
     // further down, in the anonymous namespace above UpdateBodySceneResidency -- forward
@@ -775,7 +777,7 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     if (!hasRuntimeParameters) {
         occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
             entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
-            entry.boundCenter, entry.boundRadius);
+            entry.boundCenter, entry.boundRadius, 64u, 16u, &proceduralRecipes_);
     }
     if (occGrid.ok) {
         entry.occupancyGridValues    = std::move(occGrid.values);
@@ -836,7 +838,8 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProced
             return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
                    op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
         });
-    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr;
+    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
+        std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
     const bool authoredBound = entry.boundRadius > 0.0f;
     constexpr float kDefaultProceduralBoundRadius = 24.0f;
     Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
@@ -855,7 +858,7 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProced
     if (!hasRuntimeParameters) {
         occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
             entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
-            entry.boundCenter, entry.boundRadius);
+            entry.boundCenter, entry.boundRadius, 64u, 16u, &proceduralRecipes_);
     }
     if (occGrid.ok) {
         entry.occupancyGridValues = std::move(occGrid.values);

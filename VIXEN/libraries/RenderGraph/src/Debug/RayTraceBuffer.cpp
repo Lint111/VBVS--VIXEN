@@ -255,6 +255,13 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
         header->compositeBlends = 0u;
         header->compositeBehindMaxBits = 0u;
         std::memset(&header->mipReadByteCounters, 0, sizeof(header->mipReadByteCounters));
+        header->recipeRayCount = 0u;
+        header->recipeMarchCount = 0u;
+        header->recipeChunkMarchCount = 0u;
+        header->recipeStepCount = 0u;
+        header->_recipeChunkMetricsPadding[0] = 0u;
+        header->_recipeChunkMetricsPadding[1] = 0u;
+        header->_recipeChunkMetricsPadding[2] = 0u;
         vkUnmapMemory(device, memory_);
     }
 
@@ -308,6 +315,10 @@ bool RayTraceBuffer::Reset(VkDevice device) {
     // Reset write index
     auto* header = static_cast<TraceBufferHeader*>(data);
     header->writeIndex = 0;
+    header->recipeRayCount = 0u;
+    header->recipeMarchCount = 0u;
+    header->recipeChunkMarchCount = 0u;
+    header->recipeStepCount = 0u;
     mipReadSnapshots_.push_back(header->mipReadByteCounters);
     std::memset(&header->mipReadByteCounters, 0, sizeof(header->mipReadByteCounters));
 
@@ -332,6 +343,22 @@ MipReadByteCounters RayTraceBuffer::ReadMipReadByteCounters(VkDevice device) con
     }
     const auto* header = static_cast<const TraceBufferHeader*>(data);
     result = header->mipReadByteCounters;
+    vkUnmapMemory(device, memory_);
+    return result;
+}
+
+RecipeChunkMetrics RayTraceBuffer::ReadRecipeChunkMetrics(VkDevice device) const {
+    RecipeChunkMetrics result{};
+    if (!IsValid() || !isHostVisible_) return result;
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return result;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    result.rays = header->recipeRayCount;
+    result.recipes = header->recipeMarchCount;
+    result.chunks = header->recipeChunkMarchCount;
+    result.steps = header->recipeStepCount;
     vkUnmapMemory(device, memory_);
     return result;
 }

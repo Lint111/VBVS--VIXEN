@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>  // [FarFieldCount] boot-summary print (round-3 fix item 3)
 #include <span>
+#include <string_view>
 
 // New SVO library integration
 #include "SVOBuilder.h"
@@ -467,6 +468,21 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         const uint32_t farFieldCount = debugCaptureResource_->ReadFarFieldCount(vulkanDevice->device);
         std::cout << "[FarFieldCount] n=" << farFieldCount
                    << " (" << perFrame(farFieldCount) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+#if UNDERSET_NATIVE_BENCHMARK
+        {
+            const auto recipeMetrics = debugCaptureResource_->ReadRecipeChunkMetrics(vulkanDevice->device);
+            std::cout << "[RecipeChunkMetrics] rays=" << recipeMetrics.rays
+                      << " recipes=" << recipeMetrics.recipes
+                      << " chunks=" << recipeMetrics.chunks
+                      << " recipesPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.recipes) / recipeMetrics.rays : 0.0)
+                      << " chunksPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.chunks) / recipeMetrics.rays : 0.0)
+                      << " stepsPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.steps) / recipeMetrics.rays : 0.0)
+                      << std::endl;
+        }
+#endif  // UNDERSET_NATIVE_BENCHMARK
 
         // Round-6 blocker-1 probe: min/max of both far-field gate operands.
         // Not a count -- no per-frame division applies.

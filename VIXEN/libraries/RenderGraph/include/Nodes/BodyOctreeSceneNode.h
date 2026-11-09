@@ -10,6 +10,7 @@
 #include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
+#include "Recipe/RecipeChunkBounds.h" // optional procedural RT/software chunk candidates
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
@@ -190,6 +191,7 @@ public:
      * flag needed).
      */
     void SetOccupancyGrid(std::vector<float> concatenatedGrid);
+    void SetRecipeChunkBoxes(std::vector<Vixen::SVO::Recipe::RecipeChunkAabb> boxes);
 
     /**
      * @brief Stage the flattened runtime glyph-outline SSBO payload (R631).
@@ -292,7 +294,8 @@ public:
             padded(concatenated_.mipPool.size()) +
             padded(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef)) +
             padded(occupancyGrid_.size() * sizeof(float)) +
-            padded(glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance));
+            padded(glyphOutlineInstances_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance)) +
+            padded(static_cast<size_t>(recipeChunkCapacity_));
         total += static_cast<uint64_t>(shellDataCapacity_ + shellLookupCapacity_ +
                                        proxyAabbCapacity_);
         return total;
@@ -346,6 +349,7 @@ private:
     void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device,
                              bool publishingShellGeneration = false);  // complete pool generation
     void RefreshGlyphOutlineBuffer();                                  // replace the shader-build payload only
+    void RefreshRecipeChunkBuffer();
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
@@ -560,6 +564,11 @@ private:
     // recipes, or one with only non-whitelisted-opcode recipes).
     VkBuffer       occupancyGridBuffer_  = VK_NULL_HANDLE;
     VkDeviceMemory occupancyGridMemory_  = VK_NULL_HANDLE;
+    VkBuffer       recipeChunkBuffer_    = VK_NULL_HANDLE;
+    VkDeviceMemory recipeChunkMemory_    = VK_NULL_HANDLE;
+    VkDeviceSize   recipeChunkCapacity_ = 0;
+    uint32_t       recipeChunkCount_    = 0;
+    std::vector<Vixen::SVO::Recipe::RecipeChunkAabb> recipeChunkBoxes_;
     // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
     VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;
@@ -639,8 +648,13 @@ private:
         VkDeviceAddress deviceAddress = 0;
         uint32_t proxyBase = 0;
         uint32_t proxyCount = 0;
+        bool procedural = false;
+        uint32_t recipeId = 0;
+        VkDeviceSize aabbBytes = 0;
+        VkDeviceSize blasBytes = 0;
     };
     std::vector<RtQueryBlas>    rtQueryBlas_;           // one per octree (concatenated_.count)
+    std::vector<RtQueryBlas>    rtQueryRecipeBlas_;     // one per recipe with chunks
     VkAccelerationStructureKHR  rtQueryTlas_        = VK_NULL_HANDLE;
     ResourceManagement::BufferAllocation rtQueryTlasAllocation_{};
     ResourceManagement::BufferAllocation rtQueryScratchAllocation_{};
