@@ -27,19 +27,16 @@ uint64_t ElapsedNs(QueueTimeline::Clock::time_point start,
 /// the same numbers.
 struct OpeningPrediction {
     uint64_t rawNs = 0;
-    uint64_t marginNs = 0;
+    uint64_t windowNs = 0;
     uint64_t commandKey = 0;
     bool cold = false;
-    [[nodiscard]] uint64_t WindowNs() const {
-        return marginNs == std::numeric_limits<uint64_t>::max() || rawNs <= marginNs ? 0 : rawNs - marginNs;
-    }
 };
 
 OpeningPrediction OpenPrediction(const QueueTimeline& timeline, uint64_t value,
                                  QueueTimeline::Clock::time_point now) {
     OpeningPrediction opening;
     opening.rawNs = timeline.PredictRetireRawNs(value, now);
-    opening.marginNs = timeline.DerivedMarginNs(value);
+    opening.windowNs = timeline.PredictRetireNs(value, now, now);
     const auto batch = std::find_if(timeline.issuedBatches.begin(), timeline.issuedBatches.end(),
         [value](const QueueTimeline::IssuedBatch& b) { return b.value == value; });
     if (batch != timeline.issuedBatches.end()) {
@@ -53,7 +50,7 @@ void RecordRetireWait(QueueTimeline& timeline, const OpeningPrediction& opening,
                       QueueTimeline::Clock::time_point started) {
     const uint64_t actualNs = ElapsedNs(started, QueueTimeline::Clock::now());
     if (timeline.frameLedger)
-        timeline.frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, opening.WindowNs(), actualNs,
+        timeline.frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, opening.windowNs, actualNs,
                                          opening.commandKey, opening.rawNs, opening.cold);
     timeline.ObservePredictionError(opening.commandKey, opening.cold, opening.rawNs, actualNs);
 }
@@ -136,7 +133,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
 
     for (;;) {
         const auto now = Clock::now();
-        const uint64_t predicted = PredictRetireNs(oldest, now);
+        const uint64_t predicted = PredictRetireNs(oldest, now, windowStarted);
         std::stop_source closed;
         const IdleWindow window{IdleWindow::Kind::GpuRetire, frameIndex, predicted, oldest,
                                 closed.get_token()};
@@ -195,22 +192,36 @@ uint64_t QueueTimeline::PredictRetireRawNs(uint64_t value, Clock::time_point now
     return remaining > 0 ? static_cast<uint64_t>(remaining) : 0;
 }
 
-uint64_t QueueTimeline::DerivedMarginNs(uint64_t value) const {
+uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now,
+                                        Clock::time_point windowStarted) const {
     const auto target = std::find_if(issuedBatches.begin(), issuedBatches.end(),
         [value](const IssuedBatch& batch) { return batch.value == value; });
-    constexpr uint64_t kWarmingUp = std::numeric_limits<uint64_t>::max();
-    if (target == issuedBatches.end() || target->cold || !target->commandKey) return kWarmingUp;
+    if (target == issuedBatches.end() || target->cold || !target->commandKey) return 0;
     const PredictionHistory& history = predictionHistory_[HistorySlot(target->commandKey)];
-    if (history.count < kPredictionMarginHistory) return kWarmingUp;
-    uint64_t margin = 0;
-    for (uint32_t i = 0; i < history.count; ++i) margin = std::max(margin, history.earlyRetireNs[i]);
-    return margin;
-}
-
-uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now) const {
+    if (history.count < kPredictionWarmup) return 0;
     const uint64_t raw = PredictRetireRawNs(value, now);
-    const uint64_t margin = DerivedMarginNs(value);
-    return margin == std::numeric_limits<uint64_t>::max() || raw <= margin ? 0 : raw - margin;
+    if (!raw) return 0;
+
+    // Walk the ring oldest to newest.
+    const uint32_t first = history.count < kPredictionHistory ? 0 : history.next;
+    double worstEarlyRetire = 0.0;  // largest (raw - actual) / raw
+    double worstShrink = 1.0;       // smallest actual / previous actual
+    uint64_t previousActual = 0;
+    for (uint32_t i = 0; i < history.count; ++i) {
+        const auto& sample = history.samples[(first + i) % kPredictionHistory];
+        if (sample.rawNs > sample.actualNs)
+            worstEarlyRetire = std::max(worstEarlyRetire,
+                static_cast<double>(sample.rawNs - sample.actualNs) / static_cast<double>(sample.rawNs));
+        if (previousActual)
+            worstShrink = std::min(worstShrink,
+                static_cast<double>(sample.actualNs) / static_cast<double>(previousActual));
+        previousActual = sample.actualNs;
+    }
+    const double marginBound = static_cast<double>(raw) * (1.0 - worstEarlyRetire);
+    const double elapsed = static_cast<double>(ElapsedNs(windowStarted, now));
+    const double shrinkBound = static_cast<double>(previousActual) * worstShrink - elapsed;
+    const double window = std::min(marginBound, shrinkBound);
+    return window > 0.0 ? static_cast<uint64_t>(window) : 0;
 }
 
 void QueueTimeline::Defer(uint64_t value, std::function<void()> release) {

@@ -275,17 +275,23 @@ struct QueueTimeline {
     IdleWindowFiller* idleWindowFiller = nullptr; ///< graph-owned, never copied on the frame path
     FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
     Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
-    /// Margin derivation (R613: last-frame data only). A window predicted as `raw - margin` violates
-    /// when the GPU retires earlier than raw by more than the margin, so the margin must cover the
-    /// early-retire error `raw - actual`. It is kept per command (the issue ordinal of the batch
-    /// within its frame) as the maximum of that error over the last kPredictionMarginHistory
-    /// samples of that command: a high quantile of the recent distribution that decays as the
-    /// errors shrink. Warm-up windows (cold batches, a reset after a pipeline or resolution change)
-    /// never contribute, and a command whose history is not yet full gets no window at all.
-    static constexpr std::size_t kPredictionMarginHistory = FrameWaitLedger::kFlightCount;
+    /// Window derivation (R613: last-frame data only; owner 11-10: the margin is derived, never
+    /// tuned). A window is a command's remaining time to retire, bounded by two quantities learned
+    /// from that command's own recent windows (issue ordinal within the frame is the command key):
+    ///   1. the raw prediction scaled by (1 - worst relative early-retire error seen), so the margin
+    ///      is the largest recent over-prediction of this command;
+    ///   2. the last observed wait scaled by the worst consecutive shrink ratio seen, so a command
+    ///      whose waits are falling is not predicted from a stale larger value.
+    /// The window is the smaller bound, minus time already elapsed in it. History is the last
+    /// kPredictionHistory non-cold windows of that command, so a bound decays once the large
+    /// error leaves the ring. Warm-up (cold batches, fewer than kPredictionWarmup samples, a reset
+    /// after a pipeline or resolution change) yields no window.
+    static constexpr std::size_t kPredictionWarmup = 2 * FrameWaitLedger::kFlightCount;
+    static constexpr std::size_t kPredictionHistory = 6 * FrameWaitLedger::kFlightCount;
     static constexpr std::size_t kMaxPredictionKeys = 64;
     struct PredictionHistory {
-        std::array<uint64_t, kPredictionMarginHistory> earlyRetireNs{};
+        struct Sample { uint64_t rawNs = 0; uint64_t actualNs = 0; };
+        std::array<Sample, kPredictionHistory> samples{};  ///< ring, oldest at `next` once full
         uint32_t count = 0;
         uint32_t next = 0;
     };
@@ -303,20 +309,24 @@ struct QueueTimeline {
     VkResult Poll();
     /// Make room for one more batch under the R503 cap: poll, then wait for the oldest value only.
     VkResult ReserveBatch(uint32_t cap);
-    /// Remaining time until `value` from the chained issue-time mean costs, before any margin.
+    /// Remaining time until `value` from the chained issue-time mean costs, before any bound.
     [[nodiscard]] uint64_t PredictRetireRawNs(uint64_t value, Clock::time_point now) const;
-    /// The derived margin for `value`'s command; UINT64_MAX while its history is warming up.
-    [[nodiscard]] uint64_t DerivedMarginNs(uint64_t value) const;
-    /// The window to expose: raw prediction minus the derived margin, 0 while warming up.
-    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const;
-    /// Learn from a completed window. Cold batches and unkeyed batches are warm-up and ignored.
+    /// The window to expose for `value`: 0 while warming up. `windowStarted` is when the window
+    /// opened, so the last-wait bound shrinks as the window is consumed.
+    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now,
+                                           Clock::time_point windowStarted) const;
+    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const {
+        return PredictRetireNs(value, now, now);
+    }
+    /// Learn from a completed window. Cold batches, unkeyed batches and windows with no raw
+    /// prediction are warm-up and ignored.
     void ObservePredictionError(uint64_t commandKey, bool cold, uint64_t rawPredictedNs,
                                 uint64_t actualNs) {
-        if (cold || !commandKey) return;
+        if (cold || !commandKey || !rawPredictedNs) return;
         PredictionHistory& history = predictionHistory_[HistorySlot(commandKey)];
-        history.earlyRetireNs[history.next] = rawPredictedNs > actualNs ? rawPredictedNs - actualNs : 0;
-        history.next = (history.next + 1) % kPredictionMarginHistory;
-        history.count = std::min<uint32_t>(history.count + 1, kPredictionMarginHistory);
+        history.samples[history.next] = {rawPredictedNs, actualNs};
+        history.next = (history.next + 1) % kPredictionHistory;
+        history.count = std::min<uint32_t>(history.count + 1, kPredictionHistory);
     }
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }

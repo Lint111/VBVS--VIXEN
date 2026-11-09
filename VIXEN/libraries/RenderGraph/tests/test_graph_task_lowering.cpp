@@ -527,10 +527,11 @@ TEST(QueueTimeline, NoFillerKeepsOneBoundedWaitPerCapHit) {
     EXPECT_EQ(timeline.blockingWaits, 1u);
 }
 
-// Fill command `key`'s history with `samples` early-retire errors so its window is no longer warm-up.
-void WarmMargin(QueueTimeline& timeline, uint64_t key, uint64_t earlyRetireNs = 0) {
-    for (std::size_t i = 0; i < QueueTimeline::kPredictionMarginHistory; ++i)
-        timeline.ObservePredictionError(key, false, earlyRetireNs + 1'000, 1'000);
+// Fill command `key`'s history so its window is no longer warm-up. Raw predictions equal the
+// actual waits, so the derived bounds do not shrink the window.
+void WarmMargin(QueueTimeline& timeline, uint64_t key, uint64_t waitNs = 100'000'000) {
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionWarmup; ++i)
+        timeline.ObservePredictionError(key, false, waitNs, waitNs);
 }
 
 TEST(QueueTimeline, FillerReceivesCostMinusDerivedMarginAndClosesOnReach) {
@@ -595,25 +596,36 @@ TEST(FrameWaitLedger, ReportsErrorViolationsUnusedAndUtilisationPerWindow) {
     EXPECT_EQ(ledger.waits[1].commandKey, 8u);
 }
 
-TEST(QueueTimeline, MarginIsWarmUpUntilHistoryFillsThenCoversRecentEarlyRetire) {
+TEST(QueueTimeline, WindowIsWarmUpThenBoundedByWorstEarlyRetireAndShrink) {
     QueueTimeline timeline = FakeTimeline();
     const auto now = QueueTimeline::Clock::now();
     timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
     EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // no history: no window
-    for (std::size_t i = 0; i + 1 < QueueTimeline::kPredictionMarginHistory; ++i)
-        timeline.ObservePredictionError(1, false, 5'000, 1'000);
-    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // history not yet full
-    timeline.ObservePredictionError(1, true, 900'000'000, 1'000);  // cold: ignored
+    for (std::size_t i = 0; i + 1 < QueueTimeline::kPredictionWarmup; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // warm-up not yet complete
+    timeline.ObservePredictionError(1, true, 1'000'000'000, 1);  // cold: ignored
     EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
-    timeline.ObservePredictionError(1, false, 5'000, 1'000);
-    // margin = early-retire max = 4'000 ns
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
     const uint64_t raw = timeline.PredictRetireRawNs(1, now);
-    EXPECT_EQ(timeline.DerivedMarginNs(1), 4'000u);
-    EXPECT_EQ(timeline.PredictRetireNs(1, now), raw - 4'000u);
-    // Errors shrink: the margin decays once the large samples leave the ring.
-    for (std::size_t i = 0; i < QueueTimeline::kPredictionMarginHistory; ++i)
-        timeline.ObservePredictionError(1, false, 1'500, 1'000);
-    EXPECT_EQ(timeline.DerivedMarginNs(1), 500u);
+    // Exact history: nothing to cover beyond the last observed wait (1 s) bounding the raw value.
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 1'000'000'000u);
+
+    // One window retired at 80% of its prediction: the window shrinks by that worst relative error.
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 800'000'000);
+    const uint64_t covered = timeline.PredictRetireNs(1, now);
+    EXPECT_LE(covered, static_cast<uint64_t>(0.8 * static_cast<double>(raw)) + 1);
+    EXPECT_GT(covered, 0u);
+
+    // The large error leaves the ring and the window recovers (decay).
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionHistory; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 1'000'000'000u);
+
+    // A falling wait (4 -> 1 s) bounds the window by the last wait times the shrink ratio.
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 250'000'000);
+    EXPECT_LE(timeline.PredictRetireNs(1, now), 62'500'001u);
     timeline.ResetPredictionHistory();
     EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
 }
