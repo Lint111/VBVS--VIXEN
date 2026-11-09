@@ -2,9 +2,9 @@
 #include "ShaderBundleBuilder.h"
 #include "SdiDiscoveryScanner.h"
 #include "SdiRegistryManager.h"
+#include "RuntimeCachePaths.h"
 #include <filesystem>
 #include <fstream>
-#include <unistd.h>
 
 using namespace ShaderManagement;
 
@@ -26,7 +26,7 @@ protected:
         // directory made them delete each other's SDI output under ctest -j.
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
         testDir = std::filesystem::temp_directory_path() /
-                  ("sdi_lifecycle_test_" + std::to_string(::getpid()) + "_" + info->name());
+                  ("sdi_lifecycle_test_" + std::to_string(Vixen::CurrentProcessId()) + "_" + info->name());
         sdiOutputDir = testDir / "generated" / "sdi";
         cacheDir = testDir / "cache";
 

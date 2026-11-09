@@ -143,11 +143,11 @@ uint64_t ResourceBudgetManager::AvailableBytesImpl(const Slot* slot) {
     if (!slot || !slot->configured.load(std::memory_order_acquire)) {
         return (std::numeric_limits<uint64_t>::max)(); // Unlimited
     }
-    const uint64_t max = slot->maxBytes.load(std::memory_order_relaxed);
-    if (max == 0) return (std::numeric_limits<uint64_t>::max)(); // Unlimited
+    const uint64_t maxBytes = slot->maxBytes.load(std::memory_order_relaxed);
+    if (maxBytes == 0) return (std::numeric_limits<uint64_t>::max)(); // Unlimited
 
     const uint64_t current = slot->usage.currentBytes.load(std::memory_order_acquire);
-    return (current < max) ? (max - current) : 0;
+    return (current < maxBytes) ? (maxBytes - current) : 0;
 }
 
 bool ResourceBudgetManager::NearWarningImpl(const Slot* slot) {

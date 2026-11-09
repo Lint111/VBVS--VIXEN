@@ -141,8 +141,8 @@ struct EsvoMipArmStats {
  * farFieldSampledLevelMin/Max/Sum/Count field comment, DebugRaySample.h).
  */
 struct FarFieldSampledLevelStats {
-    uint32_t min = 0;
-    uint32_t max = 0;
+    uint32_t minValue = 0;
+    uint32_t maxValue = 0;
     uint32_t sum = 0;
     uint32_t count = 0;
 };
@@ -155,8 +155,8 @@ struct FarFieldSampledLevelStats {
  * See DebugRaySample.h's farFieldSampleIntensity* field comment.
  */
 struct FarFieldSampleIntensityStats {
-    float min = 0.0f;
-    float max = 0.0f;
+    float minValue = 0.0f;
+    float maxValue = 0.0f;
     float mean = 0.0f;
 };
 

@@ -44,11 +44,11 @@ TEST(ResolvableLevel, FixedFovVaryingDistance_MonotonicIncreaseWithDistance) {
     // Moving farther away should never make a finer level resolvable — the
     // returned level must be monotonically non-decreasing with distance.
     const float fovRad = DegToRad(60.0f);
-    const int near = minResolvableLevel(100.0f, fovRad, kScreenHeightPx, kLeafSize_m, kPxThreshold);
+    const int nearLevel = minResolvableLevel(100.0f, fovRad, kScreenHeightPx, kLeafSize_m, kPxThreshold);
     const int mid = minResolvableLevel(500.0f, fovRad, kScreenHeightPx, kLeafSize_m, kPxThreshold);
-    const int far = minResolvableLevel(2000.0f, fovRad, kScreenHeightPx, kLeafSize_m, kPxThreshold);
-    EXPECT_LE(near, mid);
-    EXPECT_LE(mid, far);
+    const int farLevel = minResolvableLevel(2000.0f, fovRad, kScreenHeightPx, kLeafSize_m, kPxThreshold);
+    EXPECT_LE(nearLevel, mid);
+    EXPECT_LE(mid, farLevel);
 }
 
 // ---------------------------------------------------------------------------

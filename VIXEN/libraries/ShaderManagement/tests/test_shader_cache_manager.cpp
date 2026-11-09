@@ -1,13 +1,9 @@
 #include <gtest/gtest.h>
 #include "ShaderCacheManager.h"
 #include "ShaderCompiler.h"
+#include "RuntimeCachePaths.h"
 #include <filesystem>
 #include <fstream>
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 using namespace ShaderManagement;
 
@@ -21,13 +17,7 @@ protected:
         // within one ctest run; the process id disambiguates concurrent runs (two build trees).
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
         testCacheDir = std::filesystem::temp_directory_path() /
-            ("shader_cache_test_" + std::to_string(
-#ifdef _WIN32
-                 static_cast<unsigned long>(::_getpid())
-#else
-                 static_cast<unsigned long>(::getpid())
-#endif
-                 ) + "_" + info->name());
+            ("shader_cache_test_" + std::to_string(Vixen::CurrentProcessId()) + "_" + info->name());
 
         // Clean up any existing test cache
         if (std::filesystem::exists(testCacheDir)) {

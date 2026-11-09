@@ -219,9 +219,9 @@ public:
      * @param min Minimum required inputs (inclusive)
      * @param max Maximum allowed inputs (inclusive)
      */
-    void SetVariadicInputConstraints(size_t min, size_t max = SIZE_MAX) {
-        minVariadicInputs_ = min;
-        maxVariadicInputs_ = max;
+    void SetVariadicInputConstraints(size_t minValue, size_t maxValue = SIZE_MAX) {
+        minVariadicInputs_ = minValue;
+        maxVariadicInputs_ = maxValue;
     }
 
     /**

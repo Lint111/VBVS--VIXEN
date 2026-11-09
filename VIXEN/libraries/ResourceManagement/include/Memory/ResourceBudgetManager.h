@@ -30,8 +30,8 @@ struct ResourceBudget {
     bool strict = false;           // If true, fail allocation when over limit
 
     ResourceBudget() = default;
-    ResourceBudget(uint64_t max, uint64_t warning = 0, bool strictMode = false)
-        : maxBytes(max), warningThreshold(warning), strict(strictMode) {}
+    ResourceBudget(uint64_t maxBytesValue, uint64_t warning = 0, bool strictMode = false)
+        : maxBytes(maxBytesValue), warningThreshold(warning), strict(strictMode) {}
 };
 
 /**

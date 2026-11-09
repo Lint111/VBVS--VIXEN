@@ -315,8 +315,8 @@ uint8_t LaineKarrasOctree::getChildMask(const glm::vec3& position, int scale) co
 
 ISVOStructure::VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& position, int scale) const {
     ISVOStructure::VoxelBounds bounds{};
-    bounds.min = m_worldMin;
-    bounds.max = m_worldMax;
+    bounds.minCorner = m_worldMin;
+    bounds.maxCorner = m_worldMax;
     return bounds;
 }
 

@@ -151,9 +151,9 @@ public:
     [[nodiscard]] int32_t GetMinWorkUnits() const { return minWorkUnits_; }
     [[nodiscard]] int32_t GetMaxWorkUnits() const { return maxWorkUnits_; }
 
-    void SetBounds(int32_t min, int32_t max) {
-        minWorkUnits_ = min;
-        maxWorkUnits_ = max;
+    void SetBounds(int32_t minValue, int32_t maxValue) {
+        minWorkUnits_ = minValue;
+        maxWorkUnits_ = maxValue;
         workUnits_ = std::clamp(workUnits_, minWorkUnits_, maxWorkUnits_);
     }
 

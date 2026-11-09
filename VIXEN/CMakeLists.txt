@@ -769,11 +769,11 @@ endif()
 # not pinned (with its inventory family) in scripts/no-new-mutex.allowlist. Needs bash + python3;
 # silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
 option(VIXEN_NO_NEW_MUTEX_GATE "Check changed sources for undeclared mutex declarations" ON)
+include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 if(VIXEN_NO_NEW_MUTEX_GATE)
     find_program(VIXEN_GATE_BASH NAMES bash)
     find_program(VIXEN_GATE_PYTHON3 NAMES python3)
     if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
-        include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
         set(_mutex_inputs)
         foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
             file(GLOB_RECURSE _mutex_sources CONFIGURE_DEPENDS
@@ -791,6 +791,34 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
             VERBATIM)
     else()
         message(STATUS "no-new-mutex gate skipped: bash/python3 not found (run scripts/check-no-new-mutex.sh from WSL/CI)")
+    endif()
+endif()
+
+# Windows SDK headers define short, un-namespaced macros such as near/far/min/max.  A declaration
+# using one of those spellings compiles on Linux and then fails only when MSVC sees the same header
+# graph.  Keep this source-only scan cheap and make it part of every normal build and pre-commit run.
+option(VIXEN_WINDOWS_IDENTIFIER_GATE "Reject declarations that collide with Windows SDK macros" ON)
+if(VIXEN_WINDOWS_IDENTIFIER_GATE)
+    find_program(VIXEN_WINDOWS_IDENTIFIER_PYTHON3 NAMES python3)
+    if(VIXEN_WINDOWS_IDENTIFIER_PYTHON3)
+        set(_windows_identifier_inputs)
+        foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
+            file(GLOB_RECURSE _windows_identifier_sources CONFIGURE_DEPENDS
+                "${VIXEN_ROOT}/*.${_extension}")
+            list(APPEND _windows_identifier_inputs ${_windows_identifier_sources})
+        endforeach()
+        list(FILTER _windows_identifier_inputs EXCLUDE REGEX "/(third_party|build|archive|generated|Vixen-Docs)/")
+        list(REMOVE_DUPLICATES _windows_identifier_inputs)
+        vixen_add_checked_target(windows_identifier_check ALL
+            COMMAND ${VIXEN_WINDOWS_IDENTIFIER_PYTHON3}
+                    "${VIXEN_ROOT}/scripts/check-windows-identifiers.py"
+                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            DEPENDS ${_windows_identifier_inputs}
+                    "${VIXEN_ROOT}/scripts/check-windows-identifiers.py"
+            COMMENT "Windows SDK identifier collision gate"
+            VERBATIM)
+    else()
+        message(STATUS "Windows identifier gate skipped: python3 not found")
     endif()
 endif()
 

@@ -341,17 +341,17 @@ TEST(PhantomIsolation, CheckB_CastRayHitsAreInShellSet) {
         }
     };
 
-    const float far = static_cast<float>(n) + 8.0f;
+    const float farPoint = static_cast<float>(n) + 8.0f;
     // Orthographic-ish faces (rays parallel to an axis, marching across the face).
-    sweep(glm::vec3(0, 0, -1), [&](float a, float b){ return glm::vec3(a, b, far); });   // -Z over XY
-    sweep(glm::vec3(-1, 0, 0), [&](float a, float b){ return glm::vec3(far, a, b); });   // -X over YZ
-    sweep(glm::vec3(0, -1, 0), [&](float a, float b){ return glm::vec3(a, far, b); });   // -Y over XZ
+    sweep(glm::vec3(0, 0, -1), [&](float a, float b){ return glm::vec3(a, b, farPoint); });   // -Z over XY
+    sweep(glm::vec3(-1, 0, 0), [&](float a, float b){ return glm::vec3(farPoint, a, b); });   // -X over YZ
+    sweep(glm::vec3(0, -1, 0), [&](float a, float b){ return glm::vec3(a, farPoint, b); });   // -Y over XZ
     // Oblique angles (exercise multi-octant descent / mirrored-octant brick pick).
     {
         const glm::vec3 d1 = glm::normalize(glm::vec3(-0.2f, -0.15f, -1.0f));
-        sweep(d1, [&](float a, float b){ return glm::vec3(a, b, far); });
+        sweep(d1, [&](float a, float b){ return glm::vec3(a, b, farPoint); });
         const glm::vec3 d2 = glm::normalize(glm::vec3(-1.0f, -0.25f, -0.2f));
-        sweep(d2, [&](float a, float b){ return glm::vec3(far, a, b); });
+        sweep(d2, [&](float a, float b){ return glm::vec3(farPoint, a, b); });
     }
 
     // Characterize the phantom pattern: bounding box + per-axis modulo-8 (brick
@@ -401,7 +401,7 @@ TEST(PhantomIsolation, CheckBPrime_PhantomHitPointDiagnostics) {
     const std::set<ICell> S = ShellSet(depth);
     auto s = Vixen::SVO::BuildShellOctree(depth, /*materialId*/ 2);
 
-    const float far = static_cast<float>(n) + 8.0f;
+    const float farPoint = static_cast<float>(n) + 8.0f;
 
     auto inBounds = [n](const glm::vec3& p) {
         const float lo = -0.01f, hi = static_cast<float>(n) + 0.01f;
@@ -432,13 +432,13 @@ TEST(PhantomIsolation, CheckBPrime_PhantomHitPointDiagnostics) {
                     label, legit, inB, outB);
     };
 
-    sweepDiag("-Z", glm::vec3(0,0,-1), [&](float a,float b){ return glm::vec3(a, b, far); });
-    sweepDiag("-X", glm::vec3(-1,0,0), [&](float a,float b){ return glm::vec3(far, a, b); });
-    sweepDiag("-Y", glm::vec3(0,-1,0), [&](float a,float b){ return glm::vec3(a, far, b); });
+    sweepDiag("-Z", glm::vec3(0,0,-1), [&](float a,float b){ return glm::vec3(a, b, farPoint); });
+    sweepDiag("-X", glm::vec3(-1,0,0), [&](float a,float b){ return glm::vec3(farPoint, a, b); });
+    sweepDiag("-Y", glm::vec3(0,-1,0), [&](float a,float b){ return glm::vec3(a, farPoint, b); });
     sweepDiag("obliqZ", glm::normalize(glm::vec3(-0.2f,-0.15f,-1.0f)),
-              [&](float a,float b){ return glm::vec3(a, b, far); });
+              [&](float a,float b){ return glm::vec3(a, b, farPoint); });
     sweepDiag("obliqX", glm::normalize(glm::vec3(-1.0f,-0.25f,-0.2f)),
-              [&](float a,float b){ return glm::vec3(far, a, b); });
+              [&](float a,float b){ return glm::vec3(farPoint, a, b); });
     SUCCEED();  // diagnostic only
 }
 
@@ -454,8 +454,8 @@ TEST(PhantomIsolation, CheckBPrime2_SinglePhantomRayTrace) {
     const int n = 1 << depth;
     auto s = Vixen::SVO::BuildShellOctree(depth, /*materialId*/ 2);
 
-    const float far = static_cast<float>(n) + 8.0f;
-    const glm::vec3 origin(1.75f, 2.25f, far);
+    const float farPoint = static_cast<float>(n) + 8.0f;
+    const glm::vec3 origin(1.75f, 2.25f, farPoint);
     const glm::vec3 dir = glm::normalize(glm::vec3(-0.2f, -0.15f, -1.0f));
 
     std::printf("[CheckB''] origin=(%.3f,%.3f,%.3f) dir=(%.4f,%.4f,%.4f)\n",
@@ -534,7 +534,7 @@ TEST(Completeness, CheckC_EveryShellVoxelIsHittable) {
     ASSERT_FALSE(S.empty());
     auto s = Vixen::SVO::BuildShellOctree(depth, /*materialId*/ 2);
 
-    const float far = static_cast<float>(n) + 8.0f;
+    const float farPoint = static_cast<float>(n) + 8.0f;
 
     auto snap = [](const glm::vec3& hp, const glm::vec3& dir) -> ICell {
         const glm::vec3 q = hp + dir * 1e-3f;
@@ -552,11 +552,11 @@ TEST(Completeness, CheckC_EveryShellVoxelIsHittable) {
         const glm::vec3 center(target.x + 0.5f, target.y + 0.5f, target.z + 0.5f);
         struct Probe { glm::vec3 origin, dir; int axis, sign; };
         const Probe probesList[] = {
-            { glm::vec3(far,      center.y, center.z), glm::vec3(-1,0,0), 0, -1 },
+            { glm::vec3(farPoint,      center.y, center.z), glm::vec3(-1,0,0), 0, -1 },
             { glm::vec3(-8.0f,    center.y, center.z), glm::vec3( 1,0,0), 0, +1 },
-            { glm::vec3(center.x, far,      center.z), glm::vec3(0,-1,0), 1, -1 },
+            { glm::vec3(center.x, farPoint,      center.z), glm::vec3(0,-1,0), 1, -1 },
             { glm::vec3(center.x, -8.0f,    center.z), glm::vec3(0, 1,0), 1, +1 },
-            { glm::vec3(center.x, center.y, far     ), glm::vec3(0,0,-1), 2, -1 },
+            { glm::vec3(center.x, center.y, farPoint     ), glm::vec3(0,0,-1), 2, -1 },
             { glm::vec3(center.x, center.y, -8.0f   ), glm::vec3(0,0, 1), 2, +1 },
         };
         for (const Probe& p : probesList) {

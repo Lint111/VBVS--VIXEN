@@ -307,18 +307,18 @@ struct AccumulationConfig {
     // Constexpr constructor for compile-time usage
     constexpr AccumulationConfig() = default;
 
-    constexpr AccumulationConfig(size_t min, size_t max,
+    constexpr AccumulationConfig(size_t minConnectionsValue, size_t maxConnectionsValue,
                                   OrderStrategy order = OrderStrategy::ByMetadata,
                                   bool duplicates = false)
-        : minConnections(min), maxConnections(max),
+        : minConnections(minConnectionsValue), maxConnections(maxConnectionsValue),
           orderStrategy(order), allowDuplicateKeys(duplicates) {}
 
-    constexpr AccumulationConfig(size_t min, size_t max,
+    constexpr AccumulationConfig(size_t minConnectionsValue, size_t maxConnectionsValue,
                                   OrderStrategy order,
                                   AccumulationStorage storageMode,
                                   bool duplicates = false,
                                   bool flatten = true)
-        : minConnections(min), maxConnections(max),
+        : minConnections(minConnectionsValue), maxConnections(maxConnectionsValue),
           orderStrategy(order), storage(storageMode),
           allowDuplicateKeys(duplicates), flattenIterables(flatten) {}
 };

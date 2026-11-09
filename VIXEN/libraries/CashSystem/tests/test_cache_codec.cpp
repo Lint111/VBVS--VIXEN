@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <CacheCodec.h>
 #include <RenderPassCacher.h>
+#include <RuntimeCachePaths.h>
 
 #include <cstdio>
 #include <filesystem>
@@ -14,11 +15,6 @@
 #include <atomic>
 #include <thread>
 #include <vector>
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 using CashSystem::CacheReader;
 using CashSystem::CacheWriter;
@@ -30,12 +26,7 @@ namespace {
 // "the process cannot access the file because it is being used by another process". The process
 // id disambiguates concurrent runs; the scenario name disambiguates cases within one run.
 std::filesystem::path TempPath(const char* name) {
-    const auto pid =
-#ifdef _WIN32
-        static_cast<unsigned long>(::_getpid());
-#else
-        static_cast<unsigned long>(::getpid());
-#endif
+    const auto pid = Vixen::CurrentProcessId();
     return std::filesystem::temp_directory_path() /
            (std::string("cache_codec_test_") + std::to_string(pid) + "_" + name);
 }

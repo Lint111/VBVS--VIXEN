@@ -169,8 +169,8 @@ TEST_F(OctreeQueryTest, GetChildMaskOutOfBounds) {
 
 TEST_F(OctreeQueryTest, GetVoxelBounds) {
     auto bounds = lkOctree->getVoxelBounds(glm::vec3(0.0f), 0);
-    EXPECT_EQ(bounds.min, glm::vec3(0.0f));
-    EXPECT_EQ(bounds.max, glm::vec3(10.0f));
+    EXPECT_EQ(bounds.minCorner, glm::vec3(0.0f));
+    EXPECT_EQ(bounds.maxCorner, glm::vec3(10.0f));
 }
 TEST_F(OctreeQueryTest, CastRayMissEmpty) {
     // Ray shooting through empty space (child 1+ don't exist)

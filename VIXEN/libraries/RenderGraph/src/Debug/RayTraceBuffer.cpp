@@ -606,8 +606,8 @@ FarFieldSampledLevelStats RayTraceBuffer::ReadFarFieldSampledLevelStats(VkDevice
         return stats;
     }
     const auto* header = static_cast<const TraceBufferHeader*>(data);
-    stats.min = header->farFieldSampledLevelMin;
-    stats.max = header->farFieldSampledLevelMax;
+    stats.minValue = header->farFieldSampledLevelMin;
+    stats.maxValue = header->farFieldSampledLevelMax;
     stats.sum = header->farFieldSampledLevelSum;
     stats.count = header->farFieldSampledLevelCount;
     vkUnmapMemory(device, memory_);
@@ -630,8 +630,8 @@ FarFieldSampleIntensityStats RayTraceBuffer::ReadFarFieldSampleIntensityStats(Vk
     }
     const auto* header = static_cast<const TraceBufferHeader*>(data);
     constexpr float kIntensityFixedPointScale = 1000000.0f;  // must match SceneBindings.glsl
-    stats.min = std::bit_cast<float>(header->farFieldSampleIntensityMinBits);
-    stats.max = std::bit_cast<float>(header->farFieldSampleIntensityMaxBits);
+    stats.minValue = std::bit_cast<float>(header->farFieldSampleIntensityMinBits);
+    stats.maxValue = std::bit_cast<float>(header->farFieldSampleIntensityMaxBits);
     uint32_t count = header->farFieldSampledLevelCount;
     stats.mean = count > 0
         ? (static_cast<float>(header->farFieldSampleIntensityFixedSum) / kIntensityFixedPointScale) / static_cast<float>(count)

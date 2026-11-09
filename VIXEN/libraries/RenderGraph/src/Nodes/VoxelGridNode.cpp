@@ -608,14 +608,14 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         const double sampledLevelMean = sampledLevel.count > 0
             ? static_cast<double>(sampledLevel.sum) / static_cast<double>(sampledLevel.count)
             : 0.0;
-        std::cout << "[FarFieldSampledLevel] min=" << sampledLevel.min
-                   << " max=" << sampledLevel.max
+        std::cout << "[FarFieldSampledLevel] min=" << sampledLevel.minValue
+                   << " max=" << sampledLevel.maxValue
                    << " mean=" << sampledLevelMean
                    << " n=" << sampledLevel.count
                    << " (" << perFrame(sampledLevel.count) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
         // Standing rule (batch-13 postmortem): min seeded 0xFFFFFFFF at
         // Create(); a real min of 0 is only credible with count > 0.
-        if (sampledLevel.count == 0u && sampledLevel.min != 0xFFFFFFFFu) {
+        if (sampledLevel.count == 0u && sampledLevel.minValue != 0xFFFFFFFFu) {
             std::cout << "[FarFieldSampledLevel] SEEDED-SANITY WARNING: "
                           "count=0 but min!=0xFFFFFFFF -- looks like an "
                           "unseeded/stale atomicMin. Verify Create() seeds this field."
@@ -629,8 +629,8 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         // policy (rect mean 244.3->149.9) while FarFieldSampledLevel/count
         // stayed flat.
         const auto sampleIntensity = debugCaptureResource_->ReadFarFieldSampleIntensityStats(vulkanDevice->device);
-        std::cout << "[FarFieldSampleIntensity] min=" << sampleIntensity.min
-                   << " max=" << sampleIntensity.max
+        std::cout << "[FarFieldSampleIntensity] min=" << sampleIntensity.minValue
+                   << " max=" << sampleIntensity.maxValue
                    << " mean=" << sampleIntensity.mean
                    << " n=" << sampledLevel.count << std::endl;
 

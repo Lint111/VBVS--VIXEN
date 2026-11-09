@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ShaderCompiler.h"
+#include "ScopedEnvironment.h"
 #include <filesystem>
 #include <fstream>
 
@@ -323,21 +324,12 @@ TEST_F(ShaderCompilerTest, CompileCache_SecondCompileIsServedFromCache) {
 
 TEST_F(ShaderCompilerTest, DumpDir_WritesGlslAndSpirvForFreshAndCachedCompiles) {
     const std::filesystem::path dumpDir = testDir / "dump";
-#ifdef _WIN32
-    _putenv_s("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str());
-#else
-    setenv("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str(), 1);
-#endif
+    Vixen::Core::Env::ScopedEnvironment environment("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str());
     ShaderCacheManager cache([&] { ShaderCacheConfig c; c.cacheDirectory = testDir / "spirv"; return c; }());
     ShaderCompiler compiler;
     compiler.SetCache(&cache);
     auto fresh = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
     auto cached = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
-#ifdef _WIN32
-    _putenv_s("VIXEN_SHADER_DUMP_DIR", "");
-#else
-    unsetenv("VIXEN_SHADER_DUMP_DIR");
-#endif
     ASSERT_TRUE(fresh.success) << fresh.errorLog;
     EXPECT_TRUE(cached.fromCache);
 

@@ -31,8 +31,8 @@ namespace CashSystem {
  * Layout matches VkAabbPositionsKHR (6 floats, tightly packed)
  */
 struct VoxelAABB {
-    glm::vec3 min;  // Minimum corner (x, y, z)
-    glm::vec3 max;  // Maximum corner (x+1, y+1, z+1)
+    glm::vec3 minCorner;  // Minimum corner (x, y, z)
+    glm::vec3 maxCorner;  // Maximum corner (x+1, y+1, z+1)
 };
 static_assert(sizeof(VoxelAABB) == 24, "VoxelAABB must be 24 bytes for VkAabbPositionsKHR");
 
