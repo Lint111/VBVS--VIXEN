@@ -1013,7 +1013,8 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
-                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                           tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
                 g_recipeProvenStepOnly = false;
             }
 #endif
