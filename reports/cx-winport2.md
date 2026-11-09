@@ -33,7 +33,7 @@ Land `f7918833` with its parent portability commit `6c23635e` and published-tip 
 
 ## REDS
 
-No unresolved red in the required Linux build, identifier gate, or named CPU/GPU test scope. The disabled `ShaderCompilerTest.ValidateSpirvSuccess` is pre-existing CTest configuration, not a failure. The remaining 113 build warnings are outside this lane's touched files.
+No unresolved red in the required Linux build, identifier gate, or named CPU/GPU test scope. `ShaderCompilerTest.ValidateSpirvSuccess` was CTest-disabled in this configured tree, so it did not execute and is not classified as a test failure. The remaining 113 build warnings are outside this lane's touched files.
 
 ## STOPs
 
