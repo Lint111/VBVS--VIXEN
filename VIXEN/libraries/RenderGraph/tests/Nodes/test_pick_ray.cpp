@@ -11,10 +11,8 @@
 // `1 - 2*pixelY/H` would send the vertical ray the wrong way; the up/down sign tests below
 // would fail and catch that regression.
 
-// CRITICAL: match the engine's GLM configuration BEFORE including glm, so the glm::perspective
-// we build here is bit-for-bit the matrix CameraNode produces (Vulkan [0,1] depth, radians).
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+// The glm target's compile definitions (Vulkan [0,1] depth, radians) make the glm::perspective we
+// build here bit-for-bit the matrix CameraNode produces.
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>

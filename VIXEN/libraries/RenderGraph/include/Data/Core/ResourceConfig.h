@@ -1,6 +1,8 @@
 #pragma once
 
-#include "Headers.h"
+#include <vulkan/vulkan.h>
+#include <any>
+#include <vector>
 
 #include "Data/Core/ResourceTypes.h"
 #include "Core/BarrierTypes.h"  // For AccessKind (auto-sync P3)

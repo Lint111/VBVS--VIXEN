@@ -3,6 +3,7 @@
 #include "Nodes/CameraNode.h"
 #include "Nodes/LightingConfigNode.h"
 #include "Nodes/DeviceNode.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
@@ -1201,6 +1202,55 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     return true;
 }
 
+// Pixel goldens are recorded and compared on native Vulkan only (owner ruling 11-08). Every capture
+// directory gets a capture-device.json naming the device class (GpuDeviceClass); a directory that is
+// a golden (it already holds golden-device.json, or VIXEN_PIXEL_GOLDEN_RECORD is set) is refused on a
+// translated device, and a recording run stamps golden-device.json beside the images.
+bool RecordCaptureDevice(const Vixen::Vulkan::Resources::VulkanDevice& device,
+                         const std::filesystem::path& outputDir, std::string& error) {
+    namespace fs = std::filesystem;
+    const std::string deviceClass = Vixen::RenderGraph::GpuDeviceClassName(device);
+    const bool goldenTarget = fs::exists(outputDir / "golden-device.json") ||
+        std::getenv("VIXEN_PIXEL_GOLDEN_RECORD") != nullptr;
+    if (goldenTarget && deviceClass == "translated") {
+        error = "refusing to record or overwrite a pixel golden on a translated device (Dozen/Venus/"
+                "llvmpipe/SwiftShader); goldens are native Vulkan only: " + outputDir.string();
+        return false;
+    }
+    std::string deviceName, driverName, driverInfo;
+    if (const auto capability = device.GetCapabilityGraph().GetCapability("BuildFact:ObservedDeviceDriverIdentity")) {
+        if (const auto* fact = dynamic_cast<const Vixen::BuildFactCapability*>(capability.get())) {
+            if (const auto* identity = std::get_if<Vixen::DeviceDriverIdentityBuildFact>(&fact->GetValue())) {
+                deviceName = identity->deviceName;
+                driverName = identity->driverName;
+                driverInfo = identity->driverInfo;
+            }
+        }
+    }
+    const auto quote = [](const std::string& text) {
+        std::string quoted = "\"";
+        for (const char c : text) {
+            if (c == '"' || c == '\\') quoted += '\\';
+            quoted += c;
+        }
+        return quoted + '"';
+    };
+    std::ostringstream record;
+    record << "{\"schema\":\"vixen-capture-device/v1\",\"device_class\":" << quote(deviceClass)
+           << ",\"device\":" << quote(deviceName) << ",\"driver\":" << quote(driverName)
+           << ",\"driver_info\":" << quote(driverInfo) << "}\n";
+    for (const char* name : {"capture-device.json", "golden-device.json"}) {
+        if (name[0] == 'g' && !goldenTarget) continue;
+        std::ofstream file(outputDir / name, std::ios::out | std::ios::trunc);
+        file << record.str();
+        if (!file) {
+            error = std::string("could not write ") + name + " in " + outputDir.string();
+            return false;
+        }
+    }
+    return true;
+}
+
 class LookdevCaptureApplication final : public VulkanGraphApplication {
 public:
     LookdevCaptureApplication(std::filesystem::path outputDir,
@@ -1473,6 +1523,18 @@ public:
 #if UNDERSET_NATIVE_BENCHMARK
             firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
 #endif
+        }
+        // The device record is written once, on the process's first frame; frameWallMs_ is only
+        // filled in benchmark builds, so the first frame is scenario 0, frame 0.
+        if (scenarioIndex_ == 0 && framesInScenario_ == 0) {
+            auto* deviceNode = dynamic_cast<Vixen::RenderGraph::DeviceNode*>(
+                GetRenderGraph()->GetInstanceByName("main_device"));
+            auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+            if (!device) {
+                captureError_ = "missing capture device for the device record";
+                return false;
+            }
+            if (!RecordCaptureDevice(*device, outputDir_, captureError_)) return false;
         }
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
             camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));

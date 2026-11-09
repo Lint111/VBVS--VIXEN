@@ -29,6 +29,10 @@ environment.update(VIXEN_LOOKDEV_CAPTURE_STATE=state,
 subprocess.run([str(build/"application/main/vixen_lookdev_capture"),
     "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically"],
     cwd=properties.get("WORKING_DIRECTORY", str(build)), env=environment, check=True)
+device = output/"capture-device.json"
+if device.is_file() and json.loads(device.read_text()).get("device_class") == "translated":
+    print(f"{state}: SKIPPED (smoke only): pixel witnesses are native Vulkan only")
+    sys.exit(77)
 for angle in range(4):
     name = f"{state}-angle-{angle}.png"
     if hashlib.sha256((output/name).read_bytes()).digest() != hashlib.sha256((reference/name).read_bytes()).digest():

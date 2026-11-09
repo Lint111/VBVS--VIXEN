@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Headers.h"  // GLM_FORCE_DEPTH_ZERO_TO_ONE must precede GLM headers.
+#include "Headers.h"
 #include "Generated/OctreeConfig.g.h"
 #include "Nodes/ProxyIntervalPrepassMirror.h"
 #include "ShellDerive.h"
