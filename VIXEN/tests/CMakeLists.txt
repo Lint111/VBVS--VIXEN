@@ -170,6 +170,13 @@ add_test(NAME Native.AutoMessageTypeUnique
             -P "${VIXEN_ROOT}/cmake/tests/test_auto_message_type_unique.cmake")
 set_tests_properties(Native.AutoMessageTypeUnique PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.VixenTestClassApplyLoadContext
+    COMMAND "${CMAKE_COMMAND}"
+            "-DVIXEN_TEST_CLASS_APPLY=${VIXEN_ROOT}/cmake/VixenTestClassApply.cmake"
+            "-DVIXEN_TEST_APPLY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vixen-test-class-apply"
+            -P "${VIXEN_ROOT}/cmake/tests/test_vixen_test_class_apply.cmake")
+set_tests_properties(Native.VixenTestClassApplyLoadContext PROPERTIES LABELS "cpu")
+
 if(VIXEN_RENDERER_BYTE_IDENTITY_TEST)
     set(_renderer_identity_undertow_root "$ENV{UNDERTOW_ROOT}")
     add_test(NAME Native.RendererObjectByteIdentity

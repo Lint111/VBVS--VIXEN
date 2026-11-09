@@ -296,12 +296,21 @@ run_gpu_shards() {
 
   local shard_total=0
   local -a pids=()
-  local index count shard_regex shard_started shard_status
+  local index count shard_tests shard_started shard_status
   for ((index = 0; index < gpu_jobs; ++index)); do
     count="$(<"$shard_dir/shard-$index.count")"
     shard_total=$((shard_total + count))
     (( count > 0 )) || continue
-    shard_regex="$(<"$shard_dir/shard-$index.regex")"
+    # CTest resolves --tests-from-file relative to --test-dir, not the caller's
+    # working directory.  The split output directory is commonly relative to
+    # the source tree, so pass an absolute list path to avoid a false empty
+    # shard when CTest cannot open the file.
+    shard_tests="$(realpath "$shard_dir/shard-$index.tests")"
+    [[ -s "$shard_tests" ]] || {
+      echo "[run-tests-split] GPU shard $index declares $count tests but its test list is empty" >&2
+      echo "2 $((SECONDS - started))" >"$out_dir/gpu.status"
+      return 2
+    }
     (
       shard_started=$SECONDS
       if (( use_queue )); then
@@ -312,14 +321,14 @@ run_gpu_shards() {
           env "${witness_env[@]}" "${shard_env[@]}" \
           "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
-            -R "$shard_regex" --no-tests=error --output-on-failure \
+            --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
           "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
-            -R "$shard_regex" --no-tests=error --output-on-failure \
+            --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       fi

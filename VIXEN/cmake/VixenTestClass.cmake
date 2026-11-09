@@ -234,7 +234,8 @@ function(_vixen_collect_directories directory output_variable)
     set(${output_variable} "${_directories}" PARENT_SCOPE)
 endfunction()
 
-# Executable targets a test command launches: `$<TARGET_FILE:x>` or a bare executable target name.
+# Executable targets explicitly declared in a test command: `$<TARGET_FILE:x>` or a bare executable
+# target name. Do not infer ownership from substrings in arbitrary arguments or script paths.
 function(_vixen_command_executables output_variable)
     set(_executables)
     foreach(_element IN LISTS ARGN)
@@ -269,33 +270,11 @@ function(add_test)
         set(_name "${ARGV0}")
         set(_command ${ARGN})
     endif()
+    _vixen_command_executables(_declared_executables ${_command})
     string(JOIN "\n" _text ${_command})
     set_property(GLOBAL PROPERTY "VIXEN_TEST_COMMAND_${_name}" "${_text}")
+    set_property(GLOBAL PROPERTY "VIXEN_TEST_EXECUTABLES_${_name}" "${_declared_executables}")
     cmake_language(EVAL CODE "_add_test(${_forward})")
-endfunction()
-
-# Executable targets named anywhere in a test's command text (`$<TARGET_FILE:x>`, an argument equal
-# to the target name, or a path ending in it), so `bash -c 'exec .../x'` and `python gate.py --app x`
-# are seen as launching x.
-function(_vixen_text_executables output_variable text)
-    set(_haystack "\n${text}\n")
-    set(_found)
-    foreach(_candidate IN LISTS ARGN)
-        set(_hit FALSE)
-        foreach(_pattern "$<TARGET_FILE:${_candidate}>" "$<TARGET_FILE_NAME:${_candidate}>"
-                         "$<TARGET_FILE_DIR:${_candidate}>" "\n${_candidate}\n" "/${_candidate}\n"
-                         "/${_candidate}\"" "/${_candidate} " "/${_candidate}'")
-            string(FIND "${_haystack}" "${_pattern}" _position)
-            if(NOT _position EQUAL -1)
-                set(_hit TRUE)
-                break()
-            endif()
-        endforeach()
-        if(_hit)
-            list(APPEND _found ${_candidate})
-        endif()
-    endforeach()
-    set(${output_variable} "${_found}" PARENT_SCOPE)
 endfunction()
 
 # Fingerprint of a plain test: its command with build/source roots normalised, the sources of the
@@ -374,7 +353,7 @@ function(vixen_finalize_test_classes)
         get_property(_tests DIRECTORY "${_directory}" PROPERTY TESTS)
         foreach(_test IN LISTS _tests)
             get_property(_text GLOBAL PROPERTY "VIXEN_TEST_COMMAND_${_test}")
-            _vixen_text_executables(_launched "${_text}" ${_executables})
+            get_property(_launched GLOBAL PROPERTY "VIXEN_TEST_EXECUTABLES_${_test}")
             set(_class cpu)
             set(_evidence "link: command launches no project executable")
             set(_first_exe "")

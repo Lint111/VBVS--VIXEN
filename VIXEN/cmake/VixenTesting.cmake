@@ -120,7 +120,9 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     # GoogleTest leaves every discovered case name in a TEST_LIST variable (default <target>_TESTS);
-    # the class stub reads it at CTest load time to label each case gpu or cpu.
+    # the class stub reads it at CTest load time to apply the generated class metadata. The suite and
+    # executable labels are the only discovery-time labels: CTest load context cannot read a TEST
+    # property's existing labels, and LABELS writes append there.
     set(_test_list_variable "${target}_TESTS")
     if(VGT_TEST_LIST)
         set(_test_list_variable "${VGT_TEST_LIST}")
@@ -136,10 +138,9 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     vixen_test_class_environment_modification(_class_modification)
 
-    # Classify the target before PRE_TEST discovery. CTest can load its placeholder or discovery
-    # include before the per-case class hook sees a registered TEST, so the initial link class keeps
-    # selection/build-edge metadata available during --show-only. The deferred hook can replace it
-    # with a manifest-backed class once the case exists.
+    # Classify the declared executable at configure time. This target class is also emitted into the
+    # generated selection tables; the load-time hook uses those generated inputs when it has to apply
+    # a per-case manifest result.
     get_target_property(_class_label ${target} VIXEN_TEST_CLASS)
     if(NOT _class_label OR _class_label MATCHES "-NOTFOUND$")
         get_target_property(_declared_gpu ${target} VIXEN_DECLARED_GPU)
@@ -152,9 +153,10 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     # The exe: label names the registering executable so a changed target selects its own cases;
-    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$).
+    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$). The class
+    # label is deliberately applied by the generated load hook, not duplicated here.
     # GoogleTest re-expands the property list in a second script: escape the label separator.
-    set(_labels "${suite};${_class_label};exe:${target}")
+    set(_labels "${suite};exe:${target}")
     string(REPLACE ";" "\\\\;" _labels "${_labels}")
     set(_properties LABELS "${_labels}")
     # HEADLESS registers a CPU-only test (document/recipe code) with normal discovery, labels and class

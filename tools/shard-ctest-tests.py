@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Partition a filtered CTest JSON listing into independent regex shards.
+"""Partition a filtered CTest JSON listing into independent test-list shards.
 
 CTest's RESOURCE_LOCK is scoped to one CTest invocation.  The GPU suite therefore
 needs separate invocations when the outer queue is the resource arbiter.  Cases that
@@ -108,6 +108,11 @@ def main() -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for index, names in enumerate(groups):
+        (args.out_dir / f"shard-{index}.tests").write_text(
+            "".join(f"{name}\n" for name in names), encoding="utf-8"
+        )
+        # Keep the regex artifact for older diagnostics and consumers, but do not use it to run
+        # shards: long exact-name expressions exceed CMake's regex limit on large GPU suites.
         (args.out_dir / f"shard-{index}.regex").write_text(
             regex_for(names) if names else "^$", encoding="utf-8"
         )
