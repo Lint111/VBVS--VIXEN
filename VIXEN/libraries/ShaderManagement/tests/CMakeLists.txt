@@ -152,9 +152,24 @@ if(TARGET sdi_tool)
     # PROJECT_SOURCE_DIR here is the ShaderManagement library, so anchor the
     # engine root off this file's own location instead.
     get_filename_component(_vixen_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    # Keep the drift check CPU-classified. The generic CTest classifier sees the
+    # sdi_tool target's transitive Vulkan link closure, although this command
+    # only invokes its file-merging CLI and never creates a device.
+    set(_sdi_drift_runner "${CMAKE_CURRENT_BINARY_DIR}/run_sdi_merged_drift_check.cmake")
+    file(GENERATE OUTPUT "${_sdi_drift_runner}" CONTENT
+"execute_process(
+    COMMAND [==[${CMAKE_COMMAND}]==]
+        [==[-DVIXEN_ROOT=${_vixen_root}]==]
+        [==[-DVIXEN_SDI_TOOL=$<TARGET_FILE:sdi_tool>]==]
+        [==[-DVIXEN_STAMP=${CMAKE_CURRENT_BINARY_DIR}/sdi_merged_drift_check.digest]==]
+        [==[-P]==] [==[${_vixen_root}/cmake/check_sdi_merged_drift.cmake]==]
+    RESULT_VARIABLE _sdi_drift_result)
+if(NOT _sdi_drift_result EQUAL 0)
+    cmake_language(EXIT \${_sdi_drift_result})
+endif()
+")
     add_test(NAME sdi_merged_drift_check
-        COMMAND $<TARGET_FILE:sdi_tool> merge-variants
-                ${_vixen_root}/shaders/sdi-variants.json --check
+        COMMAND ${CMAKE_COMMAND} -P ${_sdi_drift_runner}
         WORKING_DIRECTORY ${_vixen_root}
     )
     # ctest never builds anything: without this edge, building only the ShaderManagement test

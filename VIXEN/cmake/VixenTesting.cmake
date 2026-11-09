@@ -89,7 +89,7 @@ function(vixen_gtest_discover_tests suite target)
     cmake_parse_arguments(PARSE_ARGV 2 VGT
         "NO_PRETTY_TYPES;NO_PRETTY_VALUES;GPU;HEADLESS"
         "DISCOVERY_MODE;DISCOVERY_TIMEOUT;WORKING_DIRECTORY;TEST_LIST;TEST_PREFIX;TEST_SUFFIX;XML_OUTPUT_DIR;TIMEOUT;PROCESSORS;FIXTURES_REQUIRED"
-        "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS")
+        "EXTRA_ARGS;TEST_ENVIRONMENT;TEST_ENVIRONMENT_MODIFICATION;GPU_TESTS;BENCHMARK_TESTS;ON_DEMAND_TESTS")
 
     # POST_BUILD discovery (CMake's default) runs every test binary at build time, so a parallel
     # build launches several freshly linked executables at once and a loaded box misses the timeout
@@ -182,6 +182,15 @@ function(vixen_gtest_discover_tests suite target)
         list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")
     endif()
 
+    # CMake 3.29's TEST_LAUNCHER lets every discovered case make the same device-class decision,
+    # including PRE_TEST discovery itself.  The launcher returns 77 for the non-smoke cases on a
+    # translated device; CTest then records a skip rather than a pass.  Keep the guard at the test
+    # target boundary so the many legacy GPU fixtures do not each grow a copied device probe.
+    if((VGT_GPU OR VGT_GPU_TESTS) AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.29")
+        set_property(TARGET ${target} PROPERTY TEST_LAUNCHER
+            "${CMAKE_COMMAND};-P;${CMAKE_CURRENT_FUNCTION_LIST_DIR}/VixenGpuTestLauncher.cmake")
+    endif()
+
     if(VGT_GPU_TESTS)
         # PRE_TEST discovery creates cases at CTest run time. Its TEST_LIST variable
         # is available to TEST_INCLUDE_FILES, which can apply locks per discovered case.
@@ -203,7 +212,6 @@ function(vixen_gtest_discover_tests suite target)
     vixen_stage_runtime_dlls_for_target(${target})
     set_property(GLOBAL APPEND PROPERTY VIXEN_REGISTERED_TEST_EXECUTABLES "${target}")
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
-    vixen_test_class_register(${target} "${_test_list_variable}")
 
     if(VGT_GPU_TESTS)
         # GoogleTest appends its discovery include while registering the target.
@@ -213,6 +221,70 @@ function(vixen_gtest_discover_tests suite target)
             set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${_gpu_test_lock_script}")
         endif()
     endif()
+
+    if(VGT_BENCHMARK_TESTS OR VGT_ON_DEMAND_TESTS OR VGT_GPU OR VGT_GPU_TESTS)
+        # PRE_TEST discovery makes the case list available here.  One generated include applies
+        # all policy metadata together, so benchmark/reproduction selection and the translated GPU
+        # smoke rule remain attached to the discovered test names rather than to source order.
+        set(_policy_script "${CMAKE_CURRENT_BINARY_DIR}/vixen_test_policy_${target}.cmake")
+        set(_policy_content "set(_vixen_policy_benchmark_tests)\n")
+        string(APPEND _policy_content "set(_vixen_policy_on_demand_tests)\n")
+        string(APPEND _policy_content "set(_vixen_policy_gpu_smoke_tests)\n")
+        string(APPEND _policy_content "foreach(_vixen_test IN LISTS ${_test_list_variable})\n")
+
+        if(VGT_BENCHMARK_TESTS)
+            foreach(_pattern IN LISTS VGT_BENCHMARK_TESTS)
+                string(APPEND _policy_content
+                    "  if(_vixen_test MATCHES [==[${_pattern}]==])\n"
+                    "    list(APPEND _vixen_policy_benchmark_tests \"\${_vixen_test}\")\n"
+                    "    if(NOT \"\$ENV{VIXEN_RUN_BENCHMARK}\" STREQUAL \"1\")\n"
+                    "      set_tests_properties(\"\${_vixen_test}\" PROPERTIES DISABLED TRUE)\n"
+                    "    endif()\n"
+                    "  endif()\n")
+            endforeach()
+        endif()
+
+        if(VGT_ON_DEMAND_TESTS)
+            foreach(_pattern IN LISTS VGT_ON_DEMAND_TESTS)
+                string(APPEND _policy_content
+                    "  if(_vixen_test MATCHES [==[${_pattern}]==])\n"
+                    "    list(APPEND _vixen_policy_on_demand_tests \"\${_vixen_test}\")\n"
+                    "    if(NOT \"\$ENV{VIXEN_RUN_ON_DEMAND}\" STREQUAL \"1\")\n"
+                    "      set_tests_properties(\"\${_vixen_test}\" PROPERTIES DISABLED TRUE)\n"
+                    "    endif()\n"
+                    "  endif()\n")
+            endforeach()
+        endif()
+
+        if(VGT_GPU OR VGT_GPU_TESTS)
+            string(APPEND _policy_content "  set(_vixen_is_gpu FALSE)\n")
+            if(VGT_GPU)
+                string(APPEND _policy_content "  set(_vixen_is_gpu TRUE)\n")
+            else()
+                foreach(_pattern IN LISTS VGT_GPU_TESTS)
+                    string(APPEND _policy_content
+                        "  if(_vixen_test MATCHES [==[${_pattern}]==])\n"
+                        "    set(_vixen_is_gpu TRUE)\n"
+                        "  endif()\n")
+                endforeach()
+            endif()
+            string(APPEND _policy_content
+                "  set_tests_properties(\"\${_vixen_test}\" PROPERTIES SKIP_RETURN_CODE 77)\n"
+                "  if(_vixen_is_gpu AND NOT _vixen_policy_gpu_smoke_tests\n"
+                "     AND NOT _vixen_test IN_LIST _vixen_policy_benchmark_tests\n"
+                "     AND NOT _vixen_test IN_LIST _vixen_policy_on_demand_tests)\n"
+                "    list(APPEND _vixen_policy_gpu_smoke_tests \"\${_vixen_test}\")\n"
+                "  endif()\n")
+        endif()
+
+        string(APPEND _policy_content "endforeach()\n")
+        file(GENERATE OUTPUT "${_policy_script}" CONTENT "${_policy_content}")
+        set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${_policy_script}")
+    endif()
+
+    # Register after the policy include: the class hook owns the single CTest property write and
+    # can append benchmark/on-demand/smoke labels to the class labels and environment it derives.
+    vixen_test_class_register(${target} "${_test_list_variable}")
 endfunction()
 
 # Plain-main() tests check with assert(); Release defines NDEBUG and compiles those checks out, so the
@@ -242,6 +314,13 @@ function(vixen_set_suite_properties suite)
     endif()
     if(VSP_GPU)
         list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")
+        # Plain CTest commands do not pass through a target TEST_LAUNCHER. Translated Dzn is a
+        # smoke device for discovered GoogleTest families, not a full native-capture witness, so
+        # keep these direct GPU commands out of the translated correctness selection. Native
+        # configurations leave them enabled.
+        if(VIXEN_WSL_DZN_ICD)
+            list(APPEND _properties DISABLED TRUE)
+        endif()
     endif()
     set_tests_properties(${VSP_TESTS} PROPERTIES ${_properties})
 endfunction()
@@ -252,6 +331,12 @@ function(vixen_lock_gpu_tests)
         message(FATAL_ERROR "vixen_lock_gpu_tests requires TESTS")
     endif()
     set_tests_properties(${VLG_TESTS} PROPERTIES RESOURCE_LOCK "vixen_gpu_device")
+    # These tests are plain CTest commands and therefore cannot use the discovered-test launcher.
+    # On translated Dzn, only one launcher-marked smoke case per GoogleTest family is meaningful;
+    # direct application/capture witnesses remain enabled for native configurations.
+    if(VIXEN_WSL_DZN_ICD)
+        set_tests_properties(${VLG_TESTS} PROPERTIES DISABLED TRUE)
+    endif()
 endfunction()
 
 function(_vixen_collect_subtree_targets directory output_variable)

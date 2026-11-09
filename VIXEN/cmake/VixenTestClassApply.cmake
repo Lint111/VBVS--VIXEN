@@ -38,11 +38,33 @@ if(VIXEN_CLASS_TESTS)
             endif()
         endif()
 
+        set(_vixen_extra_labels)
+        if(_vixen_test IN_LIST _vixen_policy_benchmark_tests)
+            list(APPEND _vixen_extra_labels benchmark)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_on_demand_tests)
+            list(APPEND _vixen_extra_labels on_demand)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
+            list(APPEND _vixen_extra_labels gpu_smoke)
+        endif()
+        set(_vixen_extra_modification)
+        if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
+            list(APPEND _vixen_extra_modification "VIXEN_GPU_TEST_SMOKE=set:1")
+        endif()
+        set(_vixen_labels "${_vixen_class};${_vixen_source};${_vixen_extra_labels}")
+        set(_vixen_environment_modification
+            "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test};${_vixen_extra_modification}")
+
         set_tests_properties("${_vixen_test}" PROPERTIES
-            LABELS "${_vixen_class};${_vixen_source}"
-            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
+            LABELS "${_vixen_labels}"
+            ENVIRONMENT_MODIFICATION "${_vixen_environment_modification}")
         if(_vixen_class STREQUAL "gpu")
             set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
         endif()
     endforeach()
 endif()
+
+unset(_vixen_policy_benchmark_tests)
+unset(_vixen_policy_on_demand_tests)
+unset(_vixen_policy_gpu_smoke_tests)

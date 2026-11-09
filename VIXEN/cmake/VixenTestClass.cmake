@@ -467,6 +467,13 @@ function(vixen_finalize_test_classes)
             ${_modification} "VIXEN_TEST_CLASS=set:${_class}" "VIXEN_TEST_NAME=set:${_test}")
         if(_class STREQUAL "gpu")
             set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY RESOURCE_LOCK vixen_gpu_device)
+            # Plain CTest commands cannot pass through the discovered-test launcher. On the
+            # translated Dzn configuration, keep them out of the correctness run; GPU GoogleTest
+            # families receive their one launcher-marked smoke case instead. Native configurations
+            # retain the full plain GPU witness set.
+            if(VIXEN_WSL_DZN_ICD)
+                set_tests_properties(${_test} DIRECTORY "${_directory}" PROPERTIES DISABLED TRUE)
+            endif()
         endif()
     endforeach()
 
