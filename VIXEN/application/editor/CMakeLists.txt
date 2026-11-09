@@ -110,9 +110,13 @@ if(BUILD_TESTS AND TARGET VIXEN)
         "${VIXEN_EDITOR_TEST_DOCUMENT}" COPYONLY)
     set(VIXEN_EDITOR_TARGET_FILE
         "${VIXEN_BINARIES_DIR}/vixen_editor${CMAKE_EXECUTABLE_SUFFIX}")
-    set(VIXEN_EDITOR_CAPTURE_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/run_editor_capture.cmake")
+    # Keep the action specification from editor_capture_contract.cmake separate from the
+    # CMake producer path.  The editor consumes VIXEN_EDITOR_SCRIPT as a comma-delimited
+    # action timeline; reusing that variable for the producer made it parse this .cmake file
+    # and silently skip every scripted action.
+    set(_editor_capture_cmake_script "${CMAKE_CURRENT_BINARY_DIR}/run_editor_capture.cmake")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_editor_capture.cmake.in"
-        "${VIXEN_EDITOR_CAPTURE_SCRIPT}" @ONLY)
+        "${_editor_capture_cmake_script}" @ONLY)
 
     vixen_fresh_capture_shell(VIXEN_EDITOR_FRESH editor_capture_ 5 25 45 75 105 115)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -133,7 +137,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 ${VIXEN_EDITOR_FRESH_CHECK}")
     else()
         add_test(NAME vixen_editor_capture_producer
-            COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_EDITOR_CAPTURE_SCRIPT}")
+            COMMAND "${CMAKE_COMMAND}" -P "${_editor_capture_cmake_script}")
     endif()
     vixen_gpu_fixture_timeout(_editor_timeout 360)
     set_tests_properties(vixen_editor_capture_producer PROPERTIES

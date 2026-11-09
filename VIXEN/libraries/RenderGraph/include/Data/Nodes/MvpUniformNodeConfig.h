@@ -20,7 +20,7 @@ namespace MvpUniformNodeCounts {
  * Allocates a host-visible Vulkan uniform buffer (UBO, binding 0) holding a single
  * glm::mat4 mvp = proj * view. The general Draw.vert shader reads this as
  * `layout(std140, binding=0) uniform bufferVals { mat4 mvp; }` and applies the
- * per-instance model matrix plus the Vulkan Y-flip / Z-remap itself (AR#31).
+ * per-instance model matrix plus the Vulkan Y-flip itself; proj is a [0,1] depth projection (AR#31).
  *
  * Inputs: 1
  *   - VULKAN_DEVICE_IN (VulkanDevice*) - Device for allocation

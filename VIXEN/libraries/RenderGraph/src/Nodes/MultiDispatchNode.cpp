@@ -473,6 +473,10 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // ============================================================================
 
 void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
+#if !UNDERSET_NATIVE_BENCHMARK
+    (void)slot;
+    return;
+#else
     auto& query = chunkQueries_[slot];
     if (!query || !query->ReadResults(0)) return;
     double total = 0, peak = 0;
@@ -496,6 +500,7 @@ void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
         " total_gpu_ms=" + std::to_string(total) +
         " max_submission_ms=" + std::to_string(peak) + " budget_ms=2.000000" +
         " device_class=" + GpuDeviceClassName(*vulkanDevice_));
+#endif
 }
 
 std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(

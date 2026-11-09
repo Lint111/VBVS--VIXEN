@@ -390,9 +390,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                                instOrigin, instDir, conservativeSdfStepScale,
-                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                               bestT / worldUnitsPerInstUnit, pNormal, pT, pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
-                    // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
+                    // step count (>=1, even on a miss that exhausted its ray-interval budget or exited
+                    // min(tFar,tMaxWorld)) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
                     // early-reject fired," matching the ESVO branch's own convention exactly.
 #ifdef VIXEN_GPU_TRACE_HOOKS
@@ -989,7 +991,8 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 g_recipeProvenStepOnly = true;
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
                                            instOrigin, instDir, conservativeSdfStepScale,
-                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                           tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
                 g_recipeProvenStepOnly = false;
             }
 #endif

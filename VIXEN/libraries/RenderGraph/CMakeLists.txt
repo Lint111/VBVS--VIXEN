@@ -190,6 +190,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/WaveScheduler.cpp  # Sprint 6.4: Task #347 - Wave computation
     src/Core/SlotTask.cpp
     src/Core/TimelineCapacityTracker.cpp  # Sprint 6.3: Task #344 - Timeline capacity tracker
+    src/Core/ITaskProfile.cpp  # SaveState/LoadState bodies out of line: keeps nlohmann/json.hpp out of the node base header chain
     src/Core/TaskProfileRegistry.cpp  # Sprint 6.5: Profile factory initialization
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp

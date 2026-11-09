@@ -1,3 +1,4 @@
+#if UNDERSET_NATIVE_BENCHMARK
 #include "PerfCsvWriter.h"
 #include "Core/GPUPerformanceLogger.h"
 
@@ -102,3 +103,4 @@ void PerfCsvWriter::Flush() {
         out << "\n";
     }
 }
+#endif  // UNDERSET_NATIVE_BENCHMARK

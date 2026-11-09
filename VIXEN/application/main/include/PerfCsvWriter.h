@@ -1,5 +1,27 @@
 #pragma once
 
+#ifndef UNDERSET_NATIVE_BENCHMARK
+#define UNDERSET_NATIVE_BENCHMARK 0
+#endif
+
+#if !UNDERSET_NATIVE_BENCHMARK
+
+// The public type stays source-compatible for application code, while normal builds have no
+// storage, environment access, CSV state, or out-of-line symbols for the recorder.
+class PerfCsvWriter {
+public:
+    struct WholesaleMetrics {};
+    struct PassSource {};
+
+    constexpr PerfCsvWriter() noexcept = default;
+    constexpr bool IsEnabled() const noexcept { return false; }
+    template <typename... Args>
+    constexpr void RecordFrame(Args&&...) noexcept {}
+    constexpr void Flush() noexcept {}
+};
+
+#else
+
 // Lazy-Procedural-Delta-Baseline Inc1 M4 Task 6b: a lightweight, always-available (NOT
 // demo-gated) perf recorder. Records one row per frame (CPU frame time, per-pass GPU
 // dispatch time(s), cumulative bytes-uploaded, running FPS) and writes it out as a CSV on
@@ -101,3 +123,5 @@ private:
     double recentFrameTimesMs_[kFpsWindow] = {};
     uint64_t frameCounter_ = 0;
 };
+
+#endif  // UNDERSET_NATIVE_BENCHMARK

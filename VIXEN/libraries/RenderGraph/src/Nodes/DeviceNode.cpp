@@ -461,6 +461,7 @@ void DeviceNode::CreateLogicalDevice() {
     // VIXEN_PIPELINE_STATS=1: opt-in VK_KHR_pipeline_executable_properties for per-pipeline
     // register/spill stats (see ComputePipelineCacher::CreateComputePipeline). Strict no-op when
     // unset or unsupported -- same env-gated-optional-extension shape as the blocks above.
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_PIPELINE_STATS")) {
         if (hasExt(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME)) {
             allExtensions.push_back(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME);
@@ -469,6 +470,7 @@ void DeviceNode::CreateLogicalDevice() {
             NODE_LOG_INFO("[DeviceNode] VIXEN_PIPELINE_STATS=1 but VK_KHR_pipeline_executable_properties unavailable on this device");
         }
     }
+#endif
 
     // R516: live memory budget. Best-effort — without it the budget manager keeps the static heap size.
     memoryBudgetExtensionEnabled_ = false;

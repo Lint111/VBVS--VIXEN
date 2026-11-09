@@ -78,7 +78,9 @@ Every admitted `[SdfCoreKernel]` body is formed as a standalone `KernelInfo`, ch
   the incorrect `0 - x` behavior for `+0 -> -0`.
 
 Both source-generator and `--recipe-simd-cpp ... [--check]` entry points call the same
-`RecipeSimdEmitter` and model builder. The checked-in `RecipeSimd.g.hpp` passes the CLI drift gate.
+`RecipeSimdEmitter` and model builder. VIXEN's CMake codegen target materializes
+`RecipeSimd.g.hpp` under `CMAKE_BINARY_DIR/generated/include/Recipe/generated` from the pinned kernel
+snapshot; it is a build-time input, not a committed source artifact.
 
 ## 5. Flattener relocation and invocation closure
 
@@ -131,7 +133,7 @@ The configured compile database confirmed the strict flags appear after `-ffast-
 | `BulkMaterializationIntegrationTest.SimdBatchCancellationProducesTerminalResult` | PASS |
 | `RecipeNestedInvocation.CompilerOwnedUnrollMatchesRecursiveEvaluation` | PASS |
 | `VoxelDocumentDecode` / `VoxelDocumentFlatten` | 8/8 PASS |
-| `recipe_simd_check` | PASS after regeneration |
+| `recipe_simd_codegen` | Build dependency materializes `RecipeSimd.g.hpp` from the pinned kernel snapshot |
 
 ## 8. Benchmark
 

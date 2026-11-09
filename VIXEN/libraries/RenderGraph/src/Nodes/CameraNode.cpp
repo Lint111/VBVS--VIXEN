@@ -1,4 +1,4 @@
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include "Headers.h"
 #include "Nodes/CameraNode.h"
 #include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"

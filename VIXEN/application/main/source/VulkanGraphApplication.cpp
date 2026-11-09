@@ -132,22 +132,26 @@ bool VulkanGraphApplication::Render() {
 
         // Render a complete frame via the graph (it internally handles event processing + deferred
         // recompilation, image acquisition, command recording, queue submission with semaphores, present).
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             std::fprintf(stderr, "[RECIPE/latency] phase=render edge=begin wall_us=%lld\n",
                 static_cast<long long>(wallUs));
         }
+#endif
         auto* historyWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
             renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
         const uint64_t historySerial = historyWriter ? historyWriter->GetSubmissionSerial() : 0;
         VkResult result = renderGraph->RenderFrame();
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             std::fprintf(stderr, "[RECIPE/latency] phase=render edge=end wall_us=%lld\n",
                 static_cast<long long>(wallUs));
         }
+#endif
 
 
         // A provider record fault aborted this frame inside the graph, so nothing new was presented
@@ -574,9 +578,8 @@ void VulkanGraphApplication::PostTick() {
         RunPhotonCellDiagReadback(photonParams->Configuration().diagnosticFrame);
     }
 
-    if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
-        return;
-    }
+#if UNDERSET_NATIVE_BENCHMARK
+    if (!perfCsvWriter_.IsEnabled() || !renderGraph) return;
 
     const auto now = std::chrono::steady_clock::now();
     const double cpuFrameTimeMs = std::chrono::duration<double, std::milli>(now - lastPostTickTime_).count();
@@ -709,6 +712,7 @@ void VulkanGraphApplication::PostTick() {
         waitLedger.ErrorP95Ms()};
     perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
                                windowMetrics, wholesale);
+#endif  // UNDERSET_NATIVE_BENCHMARK
 }
 
 void VulkanGraphApplication::Update() {
