@@ -4,15 +4,13 @@ cmake_minimum_required(VERSION 3.20)
 # the same basename and line in different directories would share a message type id. Fail when any
 # basename:line pair repeats.
 
-if(NOT DEFINED VIXEN_SOURCE_DIR)
-    message(FATAL_ERROR "VIXEN_SOURCE_DIR is required")
+if(NOT DEFINED VIXEN_LIBRARIES_DIR OR NOT DEFINED VIXEN_APPLICATION_DIR)
+    message(FATAL_ERROR "VIXEN_LIBRARIES_DIR and VIXEN_APPLICATION_DIR are required")
 endif()
 
 file(GLOB_RECURSE _sources
-    "${VIXEN_SOURCE_DIR}/libraries/*.h" "${VIXEN_SOURCE_DIR}/libraries/*.hpp"
-    "${VIXEN_SOURCE_DIR}/libraries/*.cpp"
-    "${VIXEN_SOURCE_DIR}/application/*.h" "${VIXEN_SOURCE_DIR}/application/*.hpp"
-    "${VIXEN_SOURCE_DIR}/application/*.cpp")
+    "${VIXEN_LIBRARIES_DIR}/*.h" "${VIXEN_LIBRARIES_DIR}/*.hpp" "${VIXEN_LIBRARIES_DIR}/*.cpp"
+    "${VIXEN_APPLICATION_DIR}/*.h" "${VIXEN_APPLICATION_DIR}/*.hpp" "${VIXEN_APPLICATION_DIR}/*.cpp")
 
 set(_seen_keys)
 set(_site_count 0)
@@ -35,7 +33,7 @@ foreach(_source IN LISTS _sources)
 endforeach()
 
 if(_site_count EQUAL 0)
-    message(FATAL_ERROR "no AUTO_MESSAGE_TYPE() sites found under ${VIXEN_SOURCE_DIR}; the scan is broken")
+    message(FATAL_ERROR "no AUTO_MESSAGE_TYPE() sites found under ${VIXEN_LIBRARIES_DIR} and ${VIXEN_APPLICATION_DIR}; the scan is broken")
 endif()
 if(_collisions)
     list(JOIN _collisions "\n  " _collision_text)
