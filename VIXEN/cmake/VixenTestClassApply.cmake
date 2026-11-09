@@ -22,7 +22,13 @@ if(VIXEN_CLASS_TESTS)
         set(_vixen_link_class gpu)
     endif()
 
+    get_property(_vixen_registered_tests DIRECTORY PROPERTY TESTS)
     foreach(_vixen_test IN LISTS VIXEN_CLASS_TESTS)
+        if(NOT _vixen_test IN_LIST _vixen_registered_tests)
+            # PRE_TEST discovery can defer registration until the test process runs. CTest will
+            # apply the class properties on a later load after the discovery include is materialized.
+            continue()
+        endif()
         set(_vixen_class "${_vixen_link_class}")
         set(_vixen_source classified-by-link)
         string(FIND "${_vixen_manifest}" "\n${_vixen_test}\t" _vixen_position)
@@ -38,9 +44,29 @@ if(VIXEN_CLASS_TESTS)
             endif()
         endif()
 
+        set(_vixen_extra_labels)
+        if(_vixen_test IN_LIST _vixen_policy_benchmark_tests)
+            list(APPEND _vixen_extra_labels benchmark)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_on_demand_tests)
+            list(APPEND _vixen_extra_labels on_demand)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
+            list(APPEND _vixen_extra_labels gpu_smoke)
+        endif()
+
+        get_property(_vixen_existing_labels TEST "${_vixen_test}" PROPERTY LABELS)
+        list(FILTER _vixen_existing_labels EXCLUDE REGEX "^(cpu|gpu|classified-by-(link|run))$")
+        list(APPEND _vixen_existing_labels
+            "${VIXEN_CLASS_SUITE}" "${_vixen_class}" "${_vixen_source}" "exe:${VIXEN_CLASS_TARGET}"
+            ${_vixen_extra_labels})
+        list(REMOVE_DUPLICATES _vixen_existing_labels)
+        get_property(_vixen_existing_environment TEST "${_vixen_test}" PROPERTY ENVIRONMENT_MODIFICATION)
+        list(APPEND _vixen_existing_environment
+            "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
         set_tests_properties("${_vixen_test}" PROPERTIES
-            LABELS "${_vixen_class};${_vixen_source}"
-            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
+            LABELS "${_vixen_existing_labels}"
+            ENVIRONMENT_MODIFICATION "${_vixen_existing_environment}")
         if(_vixen_class STREQUAL "gpu")
             set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
         endif()

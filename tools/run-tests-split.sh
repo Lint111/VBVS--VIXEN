@@ -82,7 +82,7 @@ exclude_args=()
 suite_labels=()
 for label in "${available_labels[@]}"; do
   case "$label" in
-    ""|cpu|gpu|classified-*) continue ;;
+    ""|cpu|gpu|classified-*|exe:*) continue ;;
   esac
   [[ -n "$exclude_labels" && "$label" =~ $exclude_labels ]] && continue
   suite_labels+=("$label")
@@ -137,39 +137,111 @@ select_args=("${exclude_args[@]}")
 [[ -n "$suite_label" ]] && select_args+=(-L "$suite_label")
 [[ -n "$regex" ]] && select_args+=(-R "$regex")
 
+queue() {
+  local resource="$1" label="$2" cpu_tokens="$3"; shift 3
+  if (( use_queue )); then
+    local token_args=()
+    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
+      ${token_args[@]+"${token_args[@]}"} -- "$@"
+  else
+    "$@"
+  fi
+}
+
+# CMake's test metadata carries the executable target for every test whose command launches one.
+# Build those targets (and their declared CMake dependencies) before CTest, so a partial build never
+# turns into a wall of *_NOT_BUILT failures. Selection and JSON interpretation live in the CMake
+# test infrastructure; this shell only invokes the resolver and performs the queued build.
+selection_json="$out_dir/selected-tests.json"
+# PRE_TEST GoogleTest discovery has no suite/class labels until its target has been built. Resolve
+# against the complete non-excluded listing and let the CMake resolver apply the requested suite and
+# class filters using the configure-time target registry.
+preflight_args=("${exclude_args[@]}")
+ctest --test-dir "$build_dir" --show-only=json-v1 "${preflight_args[@]}" >"$selection_json" || {
+  echo "[run-tests-split] could not enumerate the selected tests for the build-edge preflight" >&2
+  exit 2
+}
+build_targets_file="$out_dir/selected-targets.txt"
+not_built_file="$out_dir/selected-not-built.txt"
+missing_file="$out_dir/selected-missing.txt"
+cmake -D VIXEN_SELECTION_JSON="$selection_json" \
+  -D VIXEN_TEST_REGEX="$regex" \
+  -D VIXEN_SUITE_REGEX="$suite_label" \
+  -D VIXEN_CLASS_REGEX='^(cpu|gpu)$' \
+  -D VIXEN_TARGET_METADATA="$build_dir/vixen-test-classes/registered-tests.tsv" \
+  -D VIXEN_EXECUTABLE_METADATA="$build_dir/vixen-test-classes/exe-classes.tsv" \
+  -D VIXEN_EXCLUDE_SUITE_REGEX="$exclude_labels" \
+  -D VIXEN_TARGETS_FILE="$build_targets_file" \
+  -D VIXEN_NOT_BUILT_FILE="$not_built_file" \
+  -D VIXEN_MISSING_FILE="$missing_file" \
+  -P "$root/VIXEN/cmake/VixenTestSelection.cmake" >"$out_dir/selection-resolver.log" 2>&1 || {
+  echo "[run-tests-split] could not resolve selected test build edges" >&2
+  echo "[run-tests-split] resolver log: $out_dir/selection-resolver.log" >&2
+  exit 2
+}
+build_targets=()
+[[ -f "$build_targets_file" ]] && mapfile -t build_targets <"$build_targets_file"
+if ((${#build_targets[@]})); then
+  echo "[run-tests-split] building selected test targets: ${build_targets[*]}"
+  build_log="$out_dir/build-selected-tests.log"
+  queue build build-selected-tests 0 \
+    cmake --build "$build_dir" --target "${build_targets[@]}" --parallel "$cpu_jobs" \
+    >"$build_log" 2>&1
+  build_status=$?
+  if (( build_status != 0 )); then
+    echo "[run-tests-split] selected test-target build failed (exit $build_status); no CTest results were reported" >&2
+    echo "[run-tests-split] build log: $build_log" >&2
+    exit 2
+  fi
+fi
+
+# Recount after target-scoped builds: GoogleTest PRE_TEST discovery now exposes the real cases that
+# replace any *_NOT_BUILT placeholders. The original regex and labels remain in force.
 cpu_selected="$(ctest_count -L '^cpu$' "${select_args[@]}")" || exit 2
 gpu_selected="$(ctest_count -L '^gpu$' "${select_args[@]}")" || exit 2
 if (( cpu_selected + gpu_selected == 0 )); then
-  echo "[run-tests-split] selection matches no tests (label='${suite_label:-<all>}' regex='${regex:-<all>}'): refusing to report a pass" >&2
+  echo "[run-tests-split] post-build selection matches no tests (label='${suite_label:-<all>}' regex='${regex:-<all>}'): refusing to report a pass" >&2
   exit 2
 fi
 
-# Fail before queueing when a selected test's executable was never built: otherwise the run
-# spends its queue slots and reports "Not Run" per test (T-6532). The fix is a full build.
-missing_executables="$(ctest --test-dir "$build_dir" --show-only=json-v1 "${select_args[@]}" | python3 -c '
-import json, os, sys
-for test in json.load(sys.stdin).get("tests", []):
-    # ctest drops "command" from the listing when it cannot resolve the executable.
-    command = test.get("command") or []
-    if not command or (os.path.isabs(command[0]) and not os.path.exists(command[0])):
-        print(test["name"] + " -> " + (command[0] if command else "<executable not found>"))
-')" || { echo "[run-tests-split] could not read the selected tests for the executable preflight" >&2; exit 2; }
-# A label gate also catches CTest's explicit NOT_BUILT marker when the selected executable
-# cannot be resolved in the listing (T-4693).
-missing_report="$(ctest --test-dir "$build_dir" -N -V "${select_args[@]}" 2>&1 |
+final_selection_json="$out_dir/final-selected-tests.json"
+ctest --test-dir "$build_dir" --show-only=json-v1 "${select_args[@]}" >"$final_selection_json" || {
+  echo "[run-tests-split] could not enumerate the selected tests for executable preflight" >&2
+  exit 2
+}
+cmake -D VIXEN_SELECTION_JSON="$final_selection_json" \
+  -D VIXEN_VALIDATE=1 \
+  -D VIXEN_TARGET_METADATA="$build_dir/vixen-test-classes/registered-tests.tsv" \
+  -D VIXEN_EXECUTABLE_METADATA="$build_dir/vixen-test-classes/exe-classes.tsv" \
+  -D VIXEN_EXCLUDE_SUITE_REGEX="$exclude_labels" \
+  -D VIXEN_TARGETS_FILE="$out_dir/final-targets.txt" \
+  -D VIXEN_NOT_BUILT_FILE="$out_dir/final-not-built.txt" \
+  -D VIXEN_MISSING_FILE="$missing_file" \
+  -P "$root/VIXEN/cmake/VixenTestSelection.cmake" >"$out_dir/selection-validation.log" 2>&1 || {
+  echo "[run-tests-split] could not validate selected test executables" >&2
+  echo "[run-tests-split] validator log: $out_dir/selection-validation.log" >&2
+  exit 2
+}
+missing_executables="$(<"$missing_file")"
+missing_report="$(<"$out_dir/final-not-built.txt")"
+located_missing="$(ctest --test-dir "$build_dir" -N -V "${select_args[@]}" 2>&1 |
   sed -n 's/^Could not find executable \(.*\)$/  \1/p; s/^ *Test *#[0-9]*: \(.*\)_NOT_BUILT$/  \1 (target not built)/p' | sort -u)"
-if [[ -n "$missing_executables" || -n "$missing_report" ]]; then
+if [[ -n "$missing_executables" || -n "$missing_report" || -n "$located_missing" ]]; then
   echo "[run-tests-split] selected test executable(s) are not built in $build_dir:" >&2
   [[ -n "$missing_executables" ]] && head -n 10 <<<"$missing_executables" >&2
-  [[ -n "$missing_report" ]] && echo "$missing_report" >&2
-  echo "[run-tests-split] why: the build was scoped to other targets, so these executables were never produced." >&2
-  echo "[run-tests-split] Fix: ./build-wsl.sh (full build, no --target) through the queue, then rerun; or narrow with --label/--regex." >&2
-  echo "[run-tests-split] fix: build the aggregate gate first: cmake --build $build_dir --target rendergraph_svo_tests" >&2
-  echo "[run-tests-split]      (builds every RenderGraph/SVO/Application suite executable, VIXEN and vixen_editor), or narrow the selection with --label/--regex." >&2
+  [[ -n "$missing_report" ]] && sed 's/$/ (target not built)/' "$out_dir/final-not-built.txt" >&2
+  [[ -n "$located_missing" ]] && echo "$located_missing" >&2
+  echo "[run-tests-split] why: the selected test has no usable exe:<target> build edge, or its declared target still did not produce an executable." >&2
+  if ((${#build_targets[@]})); then
+    echo "[run-tests-split] selected build targets: ${build_targets[*]}" >&2
+  fi
+  echo "[run-tests-split] Fix: add the launched CMake target to the test registration metadata, or build it explicitly through the queue:" >&2
+  echo "[run-tests-split]       cmake --build $build_dir --target <target>" >&2
   exit 2
 fi
 
-icd="$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json"
+icd="${HOME:-}/.cache/vixen/wsl-vulkan/dzn_icd.json"
 gpu_env=()
 [[ -z "${VK_ICD_FILENAMES:-}" && -f "$icd" ]] && gpu_env=(VK_ICD_FILENAMES="$icd")
 # A lost device leaves every later GPU case hanging until its CTest timeout; the guard stops the run at
@@ -194,18 +266,6 @@ for test in tests:
             need = max(need, int(prop.get("value", 0)))
 print((need + 1) // 2)
 '
-}
-
-queue() {
-  local resource="$1" label="$2" cpu_tokens="$3"; shift 3
-  if (( use_queue )); then
-    local token_args=()
-    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
-    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
-      ${token_args[@]+"${token_args[@]}"} -- "$@"
-  else
-    "$@"
-  fi
 }
 
 run_gpu_shards() {
@@ -328,11 +388,13 @@ if [[ -z "$gpu_jobs" ]]; then
 fi
 echo "[run-tests-split] build=$build_dir label='${suite_label:-<all correctness labels>}' regex='${regex:-<all>}' exclude-labels='${exclude_labels:-<none>}' cpu-jobs=$cpu_jobs gpu-jobs=$gpu_jobs agent=$agent"
 echo "[run-tests-split] cpu: $cpu_selected   gpu: $gpu_selected"
-for label in "${suite_labels[@]}"; do
-  label_cpu="$(ctest_count -L '^cpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
-  label_gpu="$(ctest_count -L '^gpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
-  echo "[run-tests-split] label=$label cpu=$label_cpu gpu=$label_gpu selected=$((label_cpu + label_gpu))"
-done
+if (( all_correctness_labels )); then
+  for label in "${suite_labels[@]}"; do
+    label_cpu="$(ctest_count -L '^cpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
+    label_gpu="$(ctest_count -L '^gpu$' "${select_args[@]}" -L "^${label}$")" || exit 2
+    echo "[run-tests-split] label=$label cpu=$label_cpu gpu=$label_gpu selected=$((label_cpu + label_gpu))"
+  done
+fi
 
 wall_start=$SECONDS
 run_part cpu test "$cpu_jobs" "$cpu_selected" &
@@ -347,6 +409,12 @@ for part in cpu gpu; do
   read -r rc secs <"$out_dir/$part.status" 2>/dev/null || { rc="?"; secs="?"; }
   summary="$(grep -E 'tests passed' "$out_dir/$part.log" | tail -1)"
   echo "[run-tests-split] $part: exit=$rc wall=${secs}s ${summary:-no ctest summary (see $out_dir/$part.log)}"
+  cmake -D VIXEN_RESULT_PART="$part" \
+    -D VIXEN_RESULT_XML="$out_dir/$part.xml" \
+    -D VIXEN_RESULT_DIR="$out_dir" \
+    -D VIXEN_RESULT_LOG="$out_dir/$part.log" \
+    -D VIXEN_RESULT_NOT_BUILT_FILE="$out_dir/final-not-built.txt" \
+    -P "$root/VIXEN/cmake/VixenTestResultSummary.cmake" 2>&1 | sed -n 's/^-- //p'
   grep -E '^\s+[0-9]+ - .*\((Failed|Timeout|Not Run|SEGFAULT|Subprocess aborted|Exception)' "$out_dir/$part.log" | sed 's/^/    /'
 done
 echo "[run-tests-split] total wall=${wall}s (parts overlap; queue admission may serialize them)"
