@@ -213,10 +213,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # shot instead of leaving multi-GB PDB/ILK files behind (see Worktree-Build-Artifact-
 # Accumulation-Audit-2026-07.md Fix 2). RUNTIME_OUTPUT_DIRECTORY is set per-target below.
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
-set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
-    "Persistent runtime cache directory (defaults to the build tree)")
+set(VIXEN_RUNTIME_CACHE_DIR "runtime-cache" CACHE STRING
+    "Persistent runtime cache directory (relative paths resolve beside the executable at runtime)")
 # Consumed only by libraries/Core/src/RuntimeCachePaths.cpp (a source-scoped definition there);
-# a global definition would put this tree's absolute path into every compile command.
+# keep the default relative so the compile definition cannot embed this build tree's path.
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -230,6 +230,8 @@ option(VULKAN_TRIMMED_BUILD "Build with Vulkan headers only (no runtime libs)" O
 
 # Enable testing early so subprojects can use BUILD_TESTING
 option(BUILD_TESTS "Build unit tests" ON)
+option(VIXEN_RENDERER_BYTE_IDENTITY_TEST
+    "Register the two-build renderer object byte-identity check (expensive; opt-in)" OFF)
 if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
 else()

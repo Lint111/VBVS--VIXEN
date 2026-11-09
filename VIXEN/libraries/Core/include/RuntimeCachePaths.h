@@ -13,11 +13,11 @@ namespace Vixen {
 /**
  * Return the root for persistent runtime caches.
  *
- * VIXEN builds default this to a directory under CMAKE_BINARY_DIR. Hosts can choose another
- * build- or user-cache location with VIXEN_CACHE_DIR. Consumers built outside
- * VIXEN's CMake project fall back to UserCacheDirectory(), never to a working-directory path.
+ * VIXEN builds default this to a runtime-cache directory beside the executable. Hosts can choose
+ * another build- or user-cache location with VIXEN_CACHE_DIR. Consumers built outside VIXEN's
+ * CMake project fall back to UserCacheDirectory(), never to a working-directory path.
  *
- * Defined in src/RuntimeCachePaths.cpp, the only translation unit compiled with the absolute
+ * Defined in src/RuntimeCachePaths.cpp, the only translation unit compiled with the relative
  * VIXEN_RUNTIME_CACHE_DIR definition, so every other TU stays cacheable across build trees.
  */
 std::filesystem::path RuntimeCacheDirectory();

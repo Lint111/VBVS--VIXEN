@@ -163,3 +163,16 @@ add_test(NAME Native.CaptureRootContract
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CAPTURE_ROOT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/capture-root-contract"
             -P "${VIXEN_ROOT}/cmake/tests/test_capture_root.cmake")
 set_tests_properties(Native.CaptureRootContract PROPERTIES LABELS "cpu")
+
+if(VIXEN_RENDERER_BYTE_IDENTITY_TEST)
+    set(_renderer_identity_undertow_root "$ENV{UNDERTOW_ROOT}")
+    add_test(NAME Native.RendererObjectByteIdentity
+        COMMAND "${CMAKE_COMMAND}"
+                "-DVIXEN_SOURCE_DIR=${VIXEN_ROOT}"
+                "-DVIXEN_BYTE_IDENTITY_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/renderer-object-byte-identity"
+                "-DVIXEN_IDENTITY_UNDERTOW_ROOT=${_renderer_identity_undertow_root}"
+                "-DVIXEN_IDENTITY_FETCHCONTENT_BASE_DIR=${FETCHCONTENT_BASE_DIR}"
+                "-DVIXEN_IDENTITY_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                -P "${VIXEN_ROOT}/cmake/tests/test_renderer_object_byte_identity.cmake")
+    set_tests_properties(Native.RendererObjectByteIdentity PROPERTIES LABELS "cpu")
+endif()
