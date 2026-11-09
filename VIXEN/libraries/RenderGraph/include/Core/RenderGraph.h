@@ -20,11 +20,9 @@
 #include "Message.h"
 #include "Time/EngineTime.h"
 #include "MainCacher.h"
-#include "KernelDispatch/FramePipeline.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
 #include "Core/TaskProfileRegistry.h"
-#include "Core/CalibrationStore.h"
 #include "Core/TimelineCapacityTracker.h"
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
 #include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
@@ -48,12 +46,17 @@
 #include <optional>
 #include <string_view>
 
+namespace Vixen::KernelDispatch { class FramePipeline; }
+
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 namespace Vixen { class CapabilityGraph; }
 
 namespace Vixen::RenderGraph {
+
+class CalibrationStore;
+struct GPUIdentifier;
 
 class GraphScope;
 struct SubGraphHandle;
@@ -768,12 +771,7 @@ public:
      * @param gpu GPU identifier for file selection
      * @return Number of profiles loaded
      */
-    size_t LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
-        calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
-        calibrationStore_->SetGPU(gpu);
-        auto result = calibrationStore_->Load(taskProfileRegistry_);
-        return result.profileCount;
-    }
+    size_t LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu);
 
     /**
      * @brief Save calibration data to file
@@ -782,11 +780,7 @@ public:
      *
      * @return true if save succeeded
      */
-    bool SaveCalibration() {
-        if (!calibrationStore_) return false;
-        auto result = calibrationStore_->Save(taskProfileRegistry_);
-        return result.success;
-    }
+    bool SaveCalibration();
 
     // ====== Capacity Tracking System (Sprint 6.3 Phase 4) ======
 

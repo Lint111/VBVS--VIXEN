@@ -27,16 +27,28 @@ if(NOT DEFINED ENV{UNDERTOW_ROOT} AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
     get_filename_component(_vixen_projects_root "${_vixen_provider_repo}" DIRECTORY)
     set(_undertow_lane_candidate
         "${_vixen_projects_root}/undertow/.claude-worktrees/${_vixen_lane_name}")
-    foreach(_undertow_candidate
+    set(_undertow_candidates
         "${_undertow_lane_candidate}"
         "${_vixen_projects_root}/undertow")
-        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json")
+    # A checkout with the schema catalogue is not sufficient for the Text consumer: it also
+    # needs the paired text shader interface. If the exact lane is not generated yet, choose a
+    # complete provider from a sibling worktree instead of silently exporting an unusable root.
+    file(GLOB _undertow_sibling_candidates LIST_DIRECTORIES true
+        "${_vixen_projects_root}/undertow/.claude-worktrees/*")
+    list(SORT _undertow_sibling_candidates)
+    list(APPEND _undertow_candidates ${_undertow_sibling_candidates})
+    foreach(_undertow_candidate IN LISTS _undertow_candidates)
+        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/Text.g.h"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/text.g.glsl")
             get_filename_component(_undertow_root_derived "${_undertow_candidate}" REALPATH)
             set(ENV{UNDERTOW_ROOT} "${_undertow_root_derived}")
             if("${_undertow_candidate}" STREQUAL "${_undertow_lane_candidate}")
                 message(STATUS "[vixen] using paired Undertow lane: ${_undertow_root_derived}")
+            elseif("${_undertow_candidate}" MATCHES "/undertow$" OR "${_undertow_candidate}" MATCHES "\\\\undertow$")
+                message(STATUS "[vixen] using Undertow sibling with generated text shader interface: ${_undertow_root_derived}")
             else()
-                message(STATUS "[vixen] using Undertow sibling for pinned VIXEN provider: ${_undertow_root_derived}")
+                message(STATUS "[vixen] using Undertow provider worktree with generated text shader interface: ${_undertow_root_derived}")
             endif()
             break()
         endif()
@@ -246,6 +258,17 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Benchmark-only measurement hooks.  Keep the keyword shared with Undertow's native-bench
+# tooling so a benchmark selects the same instrumentation contract across the native layers.
+option(UNDERSET_NATIVE_BENCHMARK
+    "Compile benchmark/profiling hooks and diagnostic timing output" OFF)
+if(UNDERSET_NATIVE_BENCHMARK)
+    message(STATUS "Native benchmark instrumentation enabled (UNDERSET_NATIVE_BENCHMARK)")
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=1)
+else()
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=0)
+endif()
+
 # Fail-scenario simulation (Inc 1): declarations, injection seams, and the live sweep harness.
 # OFF by default — zero footprint in real builds (everything guarded compiles out). ON must be a
 # global, consistent view (nodes, app, and tests all see the same macro expansion).
@@ -259,9 +282,11 @@ endif()
 # makes RenderGraph sample them per frame (summary at graph teardown; VIXEN_LOCK_CENSUS_CSV=<path>
 # for a per-frame CSV). OFF (default) is a pure type alias: no wrapper, no counters, no code.
 option(VIXEN_LOCK_CENSUS "Count/time mutex acquisitions per lock-inventory family on the frame path" OFF)
-if(VIXEN_LOCK_CENSUS)
+if(VIXEN_LOCK_CENSUS AND UNDERSET_NATIVE_BENCHMARK)
     message(STATUS "Lock census enabled (VIXEN_LOCK_CENSUS)")
     add_compile_definitions(VIXEN_LOCK_CENSUS=1)
+elseif(VIXEN_LOCK_CENSUS)
+    message(WARNING "VIXEN_LOCK_CENSUS requires UNDERSET_NATIVE_BENCHMARK; ignoring in normal builds")
 endif()
 
 # Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every

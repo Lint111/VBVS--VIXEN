@@ -4,13 +4,30 @@
 #include <filesystem>
 #include <fstream>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 using namespace ShaderManagement;
 
 // Test fixture for shader compiler tests
 class ShaderCompilerTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "shader_compiler_test";
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        const auto testName = info != nullptr ? info->name() : "unknown";
+#ifdef _WIN32
+        const auto processId = _getpid();
+#else
+        const auto processId = getpid();
+#endif
+        // CTest runs these cases in separate processes. A fixed directory lets a parallel case
+        // remove files while another case is compiling, which turns a cache test into a flaky
+        // missing-include or pipeline-validation failure.
+        testDir = std::filesystem::temp_directory_path() /
+                  ("shader_compiler_test_" + std::to_string(processId) + "_" + testName);
         std::filesystem::create_directories(testDir);
     }
 

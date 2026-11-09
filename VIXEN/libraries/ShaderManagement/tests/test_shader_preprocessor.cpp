@@ -3,6 +3,12 @@
 #include <filesystem>
 #include <fstream>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 using namespace ShaderManagement;
 
 // Regression coverage for the includeGuard scoping bug found during Sampled
@@ -13,7 +19,17 @@ using namespace ShaderManagement;
 class ShaderPreprocessorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "shader_preprocessor_test";
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        const auto testName = info != nullptr ? info->name() : "unknown";
+#ifdef _WIN32
+        const auto processId = _getpid();
+#else
+        const auto processId = getpid();
+#endif
+        // CTest runs each case in its own process. Keep parallel cases from deleting one
+        // another's include graph while the preprocessor is reading it.
+        testDir = std::filesystem::temp_directory_path() /
+                  ("shader_preprocessor_test_" + std::to_string(processId) + "_" + testName);
         std::filesystem::create_directories(testDir);
     }
 
