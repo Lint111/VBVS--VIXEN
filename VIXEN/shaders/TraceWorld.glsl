@@ -35,7 +35,7 @@ bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint best
     return candidateT == bestT && candidateInstIdx < bestInstIdx;
 }
 
-#ifdef VIXEN_UBER_RECIPE_SPLICED
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
 bool recipeChunkInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
                          float tMin, float tMax, out float entry, out float exit) {
     vec3 lo = vec3(tMin);
@@ -177,7 +177,9 @@ bool getOctreeTraceBounds(uint octreeIdx, out vec3 boundsMin, out vec3 boundsMax
 // proxy-union interval; without B2 they retain the caller's full ray range.
 // Returns true if any instance was hit; B2 enforces the proxy-union tmax.
 bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit) {
+#ifdef VIXEN_RECIPE_CHUNK_CULL
     recordRecipeChunkRay();
+#endif
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
 
@@ -452,10 +454,17 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     float uberParams[6] = float[6](
                         inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
+#ifdef VIXEN_RECIPE_CHUNK_CULL
                     pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                              instOrigin, instDir, conservativeSdfStepScale,
                                              VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
                                              bestT / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+#else
+                    pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                               instOrigin, instDir, conservativeSdfStepScale,
+                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                               bestT / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+#endif
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited
                     // min(tFar,tMaxWorld)) —
@@ -955,7 +964,9 @@ bool isPointLightSourceInstance(uint instanceIndex, BodyInstance inst, vec3 sour
 bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                           bool skipPointLightSource, vec3 pointLightPosition,
                           float footprintBase, float footprintPerT) {
+#ifdef VIXEN_RECIPE_CHUNK_CULL
     recordRecipeChunkRay();
+#endif
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
     g_lastShadowCompositionRegime = 1u;
@@ -1057,10 +1068,17 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                 g_recipeProvenStepOnly = true;
+#ifdef VIXEN_RECIPE_CHUNK_CULL
                 pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                          instOrigin, instDir, conservativeSdfStepScale,
                                          VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
                                          tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+#else
+                pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                           instOrigin, instDir, conservativeSdfStepScale,
+                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                           tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+#endif
                 g_recipeProvenStepOnly = false;
             }
 #endif

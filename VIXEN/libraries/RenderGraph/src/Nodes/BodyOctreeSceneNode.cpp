@@ -2618,12 +2618,21 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
                           " chunks=" + std::to_string(blas.proxyCount) +
                           " aabbBytes=" + std::to_string(blas.aabbBytes) +
                           " blasBytes=" + std::to_string(blas.blasBytes));
+            std::printf("[RecipeChunkMetrics] recipe=%u chunks=%u aabbBytes=%llu blasBytes=%llu\n",
+                        blas.recipeId, blas.proxyCount,
+                        static_cast<unsigned long long>(blas.aabbBytes),
+                        static_cast<unsigned long long>(blas.blasBytes));
         }
         NODE_LOG_INFO("[RecipeChunkMetrics] scene recipes=" +
                       std::to_string(rtQueryRecipeBlas_.size()) +
                       " chunks=" + std::to_string(recipeChunkBoxes_.size()) +
                       " aabbBytes=" + std::to_string(sceneAabbBytes) +
                       " blasBytes=" + std::to_string(sceneBlasBytes));
+        std::printf("[RecipeChunkMetrics] scene recipes=%zu chunks=%zu aabbBytes=%llu blasBytes=%llu\n",
+                    rtQueryRecipeBlas_.size(), recipeChunkBoxes_.size(),
+                    static_cast<unsigned long long>(sceneAabbBytes),
+                    static_cast<unsigned long long>(sceneBlasBytes));
+        std::fflush(stdout);
     }
 #endif  // UNDERSET_NATIVE_BENCHMARK
 

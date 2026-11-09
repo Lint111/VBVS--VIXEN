@@ -138,7 +138,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     uint  bestInstIdx = 0xFFFFFFFFu;
     int   bestOctreeIdx = -1;
     ivec3 bestCell = ivec3(0);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
     bool  bestProcedural = false;
+#endif
 
     // Same g_octreeIdx/g_brickArrayBase save/restore discipline as the prior
     // per-instance-loop version (fix 1): marchBrickSdfCell's internal
@@ -172,11 +174,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         const uint ci = packedIndex & 0xFFu;
         const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
         if (ci >= bodyInstances.length()) {
             continue;
         }
         const BodyInstance candidateInst = bodyInstances[ci];
-#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
         if (candidateInst.providerKind == 1u) {
             if (proxyBase + brickIdx >= recipeChunkAabbs.length()) continue;
             const RecipeChunkAabb chunk = recipeChunkAabbs[proxyBase + brickIdx];
@@ -225,8 +227,14 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
             }
             continue;
         }
+#else
+        if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
+            continue;
+        }
 #endif
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
         if (proxyBase + brickIdx >= rtQueryProxyAabbs.length()) continue;
+#endif
         const int  oi       = int(bodyInstances[ci].octreeIndex);
         if (oi < 0 || uint(oi) >= configs.length()) continue;
         // ROUND-17 probe: octree-3-only loop-entry tally, taken as early as
@@ -393,7 +401,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestT = tCellEnter;
                 bestInstIdx = ci;
                 bestOctreeIdx = oi;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
                 bestProcedural = false;
+#endif
                 bestCell = cell;
                 hitNormal = -gridDirN;
 #ifdef VIXEN_COMPOSITION_COUNTERS
@@ -473,7 +483,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestT = tWorld;
                 bestInstIdx = ci;
                 bestOctreeIdx = oi;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
                 bestProcedural = false;
+#endif
                 bestCell = cell;
                 hitNormal = nrm;
                 g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: a closer
@@ -491,7 +503,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         }
     }
 
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
     if (bestOctreeIdx < 0 && !bestProcedural) {
+#else
+    if (bestOctreeIdx < 0) {
+#endif
         g_octreeIdx      = savedOctreeIdx;
         g_brickArrayBase = savedBrickArrayBase;
         debugInfo.exitCode = DEBUG_EXIT_NONE;
@@ -500,12 +516,14 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 
     hitT              = bestT;
     hitInstanceIdx    = bestInstIdx;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
     if (bestProcedural) {
         hitBrickIndex = 0u;
         hitVoxelLinearIdx = 0u;
         debugInfo.hitFlag = 1u;
         return true;
     }
+#endif
     // The proxy primitive identifies a compact candidate, while the shared
     // compact grid lookup remains the authoritative cell -> shell-slot map.
     // Keep this final addressing identical to the DDA twin.
@@ -556,10 +574,16 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const uint ci = packedIndex & 0xFFu;
         const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
         if (ci >= bodyInstances.length()) {
             continue;
         }
         const BodyInstance candidateInst = bodyInstances[ci];
+#else
+        if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
+            continue;
+        }
+#endif
         if (skipPointLightSource) {
             vec3 sourceOrigin = instanceLocalToWorldPoint(ci, vec3(0.0));
             vec3 sourceCenter = instanceLocalToWorldPoint(ci, vec3(0.5));
@@ -615,7 +639,9 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
             continue;
         }
 #endif
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
         if (proxyBase + brickIdx >= rtQueryProxyAabbs.length()) continue;
+#endif
         const int  oi       = int(bodyInstances[ci].octreeIndex);
         if (oi < 0 || uint(oi) >= configs.length()) continue;
 
