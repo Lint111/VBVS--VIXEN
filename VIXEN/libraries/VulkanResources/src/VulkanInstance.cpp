@@ -1,6 +1,7 @@
 #include "VulkanInstance.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 namespace Vixen::Vulkan::Resources {
@@ -76,21 +77,23 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	instInfo.ppEnabledExtensionNames = extensionNames.data();
 
 #if VIXEN_VULKAN_VALIDATION
+	// Declared at function scope: instInfo.pNext points at it until vkCreateInstance returns.
+	static const VkValidationFeatureEnableEXT kSyncvalEnables[] = {
+		VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
+	};
+	VkValidationFeaturesEXT validationFeatures{};
 	if (validationFeaturesEnabled) {
 		// Synchronization validation: chain VkValidationFeaturesEXT into pNext so the validation
 		// layer reports missing/wrong barriers as errors. This is only legal when the optional
 		// layer-owned extension survived the availability query above.
-		static const VkValidationFeatureEnableEXT kSyncvalEnables[] = {
-			VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
-		};
-		VkValidationFeaturesEXT validationFeatures{};
 		validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
 		validationFeatures.enabledValidationFeatureCount = 1;
 		validationFeatures.pEnabledValidationFeatures = kSyncvalEnables;
 		validationFeatures.pNext = instInfo.pNext;  // preserve existing chain (e.g. debug messenger)
 		instInfo.pNext = &validationFeatures;
 	} else if (!validationLayerEnabled) {
-		LOG_WARNING("Optional Vulkan validation layer is unavailable; validation features disabled");
+		// VulkanInstance is not an ILoggable, so the LOG_* macros are unavailable here.
+		std::fprintf(stderr, "VulkanInstance: optional validation layer is unavailable; validation features disabled\n");
 	}
 #endif
 
