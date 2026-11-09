@@ -165,7 +165,8 @@ add_test(NAME Native.CaptureRootContract
 set_tests_properties(Native.CaptureRootContract PROPERTIES LABELS "cpu")
 
 add_test(NAME Native.AutoMessageTypeUnique
-    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SOURCE_DIR=${VIXEN_ROOT}"
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_LIBRARIES_DIR=${VIXEN_ROOT}/libraries"
+            "-DVIXEN_APPLICATION_DIR=${VIXEN_ROOT}/application"
             -P "${VIXEN_ROOT}/cmake/tests/test_auto_message_type_unique.cmake")
 set_tests_properties(Native.AutoMessageTypeUnique PROPERTIES LABELS "cpu")
 
