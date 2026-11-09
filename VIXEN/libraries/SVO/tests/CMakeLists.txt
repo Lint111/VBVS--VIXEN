@@ -234,7 +234,9 @@ else()
 endif()
 set_target_properties(test_stored_sdf_march_mirror PROPERTIES FOLDER "Tests/SVO Tests")
 
-vixen_gtest_discover_tests(SVO test_stored_sdf_march_mirror)
+vixen_gtest_discover_tests(SVO test_stored_sdf_march_mirror
+    ON_DEMAND_TESTS
+        "^(StoredSdfMarchMirror\\.(ReproducesBrickAlignedHoles|OccupancyFixRemovesHoles|RootCause_.*|.*Repro))$")
 
 # ===========================================================================
 # Channel Format Tests  (Inc3 M1 — VIXEN channel vocabulary + OctreeConfig table)
@@ -293,7 +295,9 @@ else()
 endif()
 set_target_properties(test_emitter_power PROPERTIES FOLDER "Tests/SVO Tests")
 
-vixen_gtest_discover_tests(SVO test_emitter_power)
+vixen_gtest_discover_tests(SVO test_emitter_power
+    BENCHMARK_TESTS
+        "^(EmitterPower\\.(LaneBakeTimeAndMemoryReport|InteriorNodePowerIsChildSum)|Trees/EmitterPowerSizes\\..*)$")
 
 # ===========================================================================
 # Mip Aniso Pool Tests (Deep-Field Mip Policy — anisotropic coarse mips,
@@ -600,7 +604,8 @@ else()
 endif()
 set_target_properties(test_shell_derive PROPERTIES FOLDER "Tests/SVO Tests")
 
-vixen_gtest_discover_tests(SVO test_shell_derive)
+vixen_gtest_discover_tests(SVO test_shell_derive
+    BENCHMARK_TESTS "^ShellDerive\\.SerialVsWaveWallClockMeasurement$")
 
 # ===========================================================================
 # Recipe Codegen Tests (P2.2 M1 — instruction→HLSL emitter + SPIR-V compile gate)
@@ -1046,7 +1051,8 @@ else()
 endif()
 set_target_properties(test_generation_cost_benchmark PROPERTIES FOLDER "Tests/SVO Tests")
 
-vixen_gtest_discover_tests(SVO test_generation_cost_benchmark)
+vixen_gtest_discover_tests(SVO test_generation_cost_benchmark
+    BENCHMARK_TESTS "^GenerationCostBenchmark\\..*$")
 
 add_executable(benchmark_materialization_simd benchmark_materialization_simd.cpp)
 target_link_libraries(benchmark_materialization_simd PRIVATE
