@@ -471,6 +471,13 @@ endif()
 # and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
 project(${Recipe_Name} VERSION 0.1.0)
 
+# Keep the language mode consistent for every target, including small tools and tests that do not
+# inherit a library's PUBLIC compile features.  In particular, filesystem and the C++17 syntax
+# used by the closure and run-data tests must not depend on each target remembering its own flag.
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # Windows headers can arrive through Vulkan before the optional central PCH.
 # Preserve ordinary C++ min/max semantics in both PCH and non-PCH builds.
 if(WIN32)

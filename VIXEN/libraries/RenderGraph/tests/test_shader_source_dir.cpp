@@ -25,7 +25,7 @@ TEST(ShaderSourceDir, EmptyOverrideIsIgnored) {
 
 TEST(ShaderSourceDir, ExistingOverrideWins) {
     const auto dir = std::filesystem::temp_directory_path();
-    Vixen::Core::Env::ScopedEnvironment guard(kVar, dir.c_str());
+    Vixen::Core::Env::ScopedEnvironment guard(kVar, dir.string().c_str());
     EXPECT_EQ(ResolveShaderSourceDir("/compiled/shaders"), dir.string());
 }
 

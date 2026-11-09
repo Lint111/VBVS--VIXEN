@@ -52,7 +52,7 @@ set_property(TARGET vixen_editor PROPERTY CXX_STANDARD_REQUIRED ON)
 set_target_properties(vixen_editor PROPERTIES FOLDER "Application")
 
 if(MSVC)
-    target_compile_options(vixen_editor PRIVATE /FS)
+    target_compile_options(vixen_editor PRIVATE /FS /bigobj)
 endif()
 
 # Stage the shared RmlUi UI assets (fonts + the editor panel documents, editor.rcss and dock.rml live beside hud.rml/demo.rml
