@@ -1,13 +1,8 @@
 #include <gtest/gtest.h>
 #include "ShaderPreprocessor.h"
+#include "RuntimeCachePaths.h"
 #include <filesystem>
 #include <fstream>
-
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 using namespace ShaderManagement;
 
@@ -21,15 +16,10 @@ protected:
     void SetUp() override {
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
         const auto testName = info != nullptr ? info->name() : "unknown";
-#ifdef _WIN32
-        const auto processId = _getpid();
-#else
-        const auto processId = getpid();
-#endif
         // CTest runs each case in its own process. Keep parallel cases from deleting one
         // another's include graph while the preprocessor is reading it.
         testDir = std::filesystem::temp_directory_path() /
-                  ("shader_preprocessor_test_" + std::to_string(processId) + "_" + testName);
+                  ("shader_preprocessor_test_" + std::to_string(Vixen::CurrentProcessId()) + "_" + testName);
         std::filesystem::create_directories(testDir);
     }
 

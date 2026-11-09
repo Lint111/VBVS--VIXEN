@@ -411,10 +411,10 @@ protected:
 
     std::unique_ptr<SimpleTaskProfile> CreateSimpleProfile(
         const std::string& id, uint8_t priority,
-        int32_t workUnits = 0, int32_t min = -5, int32_t max = +5) {
+        int32_t workUnits = 0, int32_t minValue = -5, int32_t maxValue = +5) {
         auto p = std::make_unique<SimpleTaskProfile>(id, "");
         p->SetPriority(priority);
-        p->SetBounds(min, max);
+        p->SetBounds(minValue, maxValue);
         p->SetWorkUnits(workUnits);
         return p;
     }

@@ -824,27 +824,22 @@ endif()
 # graph.  Keep this source-only scan cheap and make it part of every normal build and pre-commit run.
 option(VIXEN_WINDOWS_IDENTIFIER_GATE "Reject declarations that collide with Windows SDK macros" ON)
 if(VIXEN_WINDOWS_IDENTIFIER_GATE)
-    find_program(VIXEN_WINDOWS_IDENTIFIER_PYTHON3 NAMES python3)
-    if(VIXEN_WINDOWS_IDENTIFIER_PYTHON3)
-        set(_windows_identifier_inputs)
-        foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
-            file(GLOB_RECURSE _windows_identifier_sources CONFIGURE_DEPENDS
-                "${VIXEN_ROOT}/*.${_extension}")
-            list(APPEND _windows_identifier_inputs ${_windows_identifier_sources})
-        endforeach()
-        list(FILTER _windows_identifier_inputs EXCLUDE REGEX "/(third_party|build|archive|generated|Vixen-Docs)/")
-        list(REMOVE_DUPLICATES _windows_identifier_inputs)
-        vixen_add_checked_target(windows_identifier_check ALL
-            COMMAND ${VIXEN_WINDOWS_IDENTIFIER_PYTHON3}
-                    "${VIXEN_ROOT}/scripts/check-windows-identifiers.py"
-                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
-            DEPENDS ${_windows_identifier_inputs}
-                    "${VIXEN_ROOT}/scripts/check-windows-identifiers.py"
-            COMMENT "Windows SDK identifier collision gate"
-            VERBATIM)
-    else()
-        message(STATUS "Windows identifier gate skipped: python3 not found")
-    endif()
+    set(_windows_identifier_inputs)
+    foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
+        file(GLOB_RECURSE _windows_identifier_sources CONFIGURE_DEPENDS
+            "${VIXEN_ROOT}/*.${_extension}")
+        list(APPEND _windows_identifier_inputs ${_windows_identifier_sources})
+    endforeach()
+    list(FILTER _windows_identifier_inputs EXCLUDE REGEX "/(third_party|build|archive|generated|Vixen-Docs)/")
+    list(REMOVE_DUPLICATES _windows_identifier_inputs)
+    vixen_add_checked_target(windows_identifier_check ALL
+        COMMAND "${CMAKE_COMMAND}"
+                "-DVIXEN_WINDOWS_IDENTIFIER_ROOT=${VIXEN_ROOT}"
+                -P "${VIXEN_ROOT}/cmake/check-windows-identifiers.cmake"
+        DEPENDS ${_windows_identifier_inputs}
+                "${VIXEN_ROOT}/cmake/check-windows-identifiers.cmake"
+        COMMENT "Windows SDK identifier collision gate"
+        VERBATIM)
 endif()
 
 get_property(_vixen_check_targets GLOBAL PROPERTY VIXEN_CHECK_TARGETS)
