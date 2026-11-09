@@ -622,7 +622,13 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
     // R715: this node's fence-owning submit goes through the graph's single submission point.
-    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence));
+    auto record = SubmitRecord::FromSubmitInfo2(si, inFlightFence);
+    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
+        const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
+        record.commandCostMeanNs.push_back(expectedNs);
+        record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
+    }
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
         result != VK_SUCCESS) {
         GetOwningGraph()->ReportGpuFault("UIRenderNode::ExecuteImpl vkQueueSubmit2", result);
         return;

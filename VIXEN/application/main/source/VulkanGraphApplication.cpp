@@ -709,7 +709,12 @@ void VulkanGraphApplication::PostTick() {
         waitLedger.windowCount,
         static_cast<double>(waitLedger.windowPredictedNs) / 1'000'000.0,
         static_cast<double>(waitLedger.windowActualNs) / 1'000'000.0,
-        waitLedger.ErrorP95Ms()};
+        waitLedger.ErrorP95Ms(),
+        waitLedger.ErrorP50Relative(),
+        waitLedger.ErrorP95Relative(),
+        waitLedger.ErrorP50Ms(),
+        waitLedger.OverrunRate(),
+        static_cast<double>(waitLedger.overrunNs) / 1'000'000.0};
     perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
                                windowMetrics, wholesale);
 #endif  // UNDERSET_NATIVE_BENCHMARK

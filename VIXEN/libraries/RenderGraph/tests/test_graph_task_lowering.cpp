@@ -556,6 +556,30 @@ TEST(QueueTimeline, FillerReceivesCostMinusDerivedMarginAndClosesOnReach) {
     EXPECT_EQ(ledger.waits[0].kind, IdleWindow::Kind::GpuRetire);
 }
 
+TEST(FrameCommandTimingLedger, RotatesRowsAndRejectsReshapedCommands) {
+    FrameCommandTimingLedger ledger;
+    ledger.Record(0, 0, 49, 1'200'000);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 1'200'000u);
+    EXPECT_EQ(ledger.Last(0, 0, 64), 0u);
+    ledger.Begin(0);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 0u);
+    ledger.Record(0, 0, 49, 1'300'000);
+    ledger.Record(1, 0, 49, 2'000'000);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 1'300'000u);
+    EXPECT_EQ(ledger.Last(1, 0, 49), 2'000'000u);
+}
+
+TEST(FrameWaitLedger, ReportsAbsoluteRelativeErrorAndOverrun) {
+    FrameWaitLedger ledger;
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 125);
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 75);
+    EXPECT_DOUBLE_EQ(ledger.ErrorP50Relative(), 0.25);
+    EXPECT_DOUBLE_EQ(ledger.ErrorP95Relative(), 0.25);
+    EXPECT_DOUBLE_EQ(ledger.ErrorP50Ms(), 0.000025);
+    EXPECT_DOUBLE_EQ(ledger.OverrunRate(), 0.5);
+    EXPECT_EQ(ledger.overrunNs, 25u);
+}
+
 TEST(QueueTimeline, EarlyGpuReturnsAfterFirstPollWithoutAnotherWait) {
     QueueTimeline timeline = FakeTimeline();
     timeline.Issued(1, 10'000'000, 10'000'000);
@@ -724,6 +748,13 @@ TEST(GpuChunkCost, ClippedLatencyDoesNotAmplifyThroughputCost) {
     EXPECT_GE(cost.Edge(2'000'000, 63, 7), 5u);
     EXPECT_GE(cost.Estimate(1), 880'000u);
     EXPECT_GE(cost.Estimate(49), 1'320'000u);
+}
+
+TEST(GpuChunkCost, MeanEstimateKeepsExpectedTimeUnbiased) {
+    GpuChunkCost cost;
+    cost.Observe(100, 100, 1'000'000);
+    EXPECT_EQ(cost.MeanEstimate(100), 1'000'000u);
+    EXPECT_EQ(cost.Estimate(100), 1'100'000u);
 }
 TEST(GpuChunkCost, LargerLaunchRetainsEveryEarlierSampleBound) {
     GpuChunkCost cost;

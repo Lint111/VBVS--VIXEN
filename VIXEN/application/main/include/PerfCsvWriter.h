@@ -76,6 +76,11 @@ public:
         double windowPredictedMs = 0.0;
         double windowActualMs = 0.0;
         double windowErrorP95Ms = 0.0;
+        double windowErrorP50Relative = 0.0;
+        double windowErrorP95Relative = 0.0;
+        double windowErrorP50Ms = 0.0;
+        double windowOverrunRate = 0.0;
+        double windowFrameTimeAddedMs = 0.0;
     };
 
     // Reads VIXEN_PERF_CSV; IsEnabled()==false when unset (the only env access this class does).

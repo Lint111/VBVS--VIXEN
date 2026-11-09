@@ -80,6 +80,7 @@ struct FrameWaitLedger {
         uint64_t predictedNs = 0;
         uint64_t actualNs = 0;
         int64_t errorNs = 0;
+        double relativeError = 0.0;
     };
 
     uint64_t frameIndex = 0;
@@ -91,6 +92,7 @@ struct FrameWaitLedger {
     uint64_t windowActualNs = 0;
     uint64_t filledNs = 0;
     uint64_t overrunNs = 0;
+    uint64_t overrunCount = 0;
     int64_t errorMinNs = 0;
     int64_t errorMaxNs = 0;
     int64_t errorSumNs = 0;
@@ -108,12 +110,20 @@ struct FrameWaitLedger {
         const int64_t errorNs = actualNs >= predictedNs
             ? static_cast<int64_t>(actualNs - predictedNs)
             : -static_cast<int64_t>(predictedNs - actualNs);
+        const uint64_t absoluteErrorNs = actualNs >= predictedNs
+            ? actualNs - predictedNs : predictedNs - actualNs;
+        const double relativeError = predictedNs
+            ? static_cast<double>(absoluteErrorNs) / static_cast<double>(predictedNs) : 0.0;
         if (waitSampleCount < waits.size()) {
-            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs};
+            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs, relativeError};
         }
         ++windowCount;
         windowPredictedNs += predictedNs;
         windowActualNs += actualNs;
+        if (actualNs > predictedNs) {
+            overrunNs += actualNs - predictedNs;
+            ++overrunCount;
+        }
         if (kind == IdleWindow::Kind::GpuRetire) {
             ++gpuRetireWaitCount;
             gpuRetireWaitNs += actualNs;
@@ -145,6 +155,75 @@ struct FrameWaitLedger {
         const std::size_t index = std::min(count - 1,
             static_cast<std::size_t>(0.95 * static_cast<double>(count - 1) + 0.5));
         return static_cast<double>(sorted[index]) / 1'000'000.0;
+    }
+
+    [[nodiscard]] double AbsoluteErrorPercentileMs(double percentile) const {
+        if (!waitSampleCount) return 0.0;
+        std::array<uint64_t, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const int64_t error = waits[i].errorNs;
+            sorted[i] = error < 0 ? static_cast<uint64_t>(-error) : static_cast<uint64_t>(error);
+        }
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(percentile * static_cast<double>(count - 1) + 0.5));
+        return static_cast<double>(sorted[index]) / 1'000'000.0;
+    }
+
+    [[nodiscard]] double RelativeErrorPercentile(double percentile) const {
+        if (!waitSampleCount) return 0.0;
+        std::array<double, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) sorted[i] = waits[i].relativeError;
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(percentile * static_cast<double>(count - 1) + 0.5));
+        return sorted[index];
+    }
+
+    [[nodiscard]] double ErrorP50Ms() const { return AbsoluteErrorPercentileMs(0.50); }
+    [[nodiscard]] double ErrorP95AbsoluteMs() const { return AbsoluteErrorPercentileMs(0.95); }
+    [[nodiscard]] double ErrorP50Relative() const { return RelativeErrorPercentile(0.50); }
+    [[nodiscard]] double ErrorP95Relative() const { return RelativeErrorPercentile(0.95); }
+    [[nodiscard]] double OverrunRate() const {
+        return windowCount ? static_cast<double>(overrunCount) / static_cast<double>(windowCount) : 0.0;
+    }
+};
+
+/// Fixed per-flight command samples. A producer clears the row when it successfully reads the
+/// previous flight's timestamps, then records one sample per command. The next recording pass uses
+/// the same command key, so a missing or reshaped command falls back to the model mean. This keeps
+/// the steady-state prediction path allocation-free and rotates storage with the flight ring.
+struct FrameCommandTimingLedger {
+    static constexpr std::size_t kFlightCount = FrameWaitLedger::kFlightCount;
+    static constexpr std::size_t kMaxCommands = 256;
+
+    struct Sample {
+        uint64_t commandKey = 0;
+        uint64_t elapsedNs = 0;
+    };
+
+    std::array<std::array<Sample, kMaxCommands>, kFlightCount> rows{};
+    std::array<uint32_t, kFlightCount> counts{};
+
+    void Begin(uint32_t flight) {
+        if (flight >= kFlightCount) return;
+        rows[flight].fill(Sample{});
+        counts[flight] = 0;
+    }
+
+    void Record(uint32_t flight, std::size_t command, uint64_t commandKey, uint64_t elapsedNs) {
+        if (flight >= kFlightCount || command >= kMaxCommands || !commandKey || !elapsedNs) return;
+        rows[flight][command] = Sample{commandKey, elapsedNs};
+        counts[flight] = std::max(counts[flight], static_cast<uint32_t>(command + 1));
+    }
+
+    [[nodiscard]] uint64_t Last(uint32_t flight, std::size_t command, uint64_t commandKey) const {
+        if (flight >= kFlightCount || command >= kMaxCommands || !commandKey ||
+            rows[flight][command].commandKey != commandKey)
+            return 0;
+        return rows[flight][command].elapsedNs;
     }
 };
 
@@ -179,6 +258,10 @@ struct QueueTimeline {
     IdleWindowFiller* idleWindowFiller = nullptr; ///< graph-owned, never copied on the frame path
     FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
     Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
+    static constexpr std::size_t kPredictionMarginHistory = 16;
+    std::array<uint64_t, kPredictionMarginHistory> predictionMarginsNs_{};
+    uint32_t predictionMarginCount_ = 0;
+    uint32_t predictionMarginNext_ = 0;
 
     /// Refresh `completed` from the counter and drop reached values. Never blocks.
     VkResult Poll();
@@ -186,6 +269,20 @@ struct QueueTimeline {
     VkResult ReserveBatch(uint32_t cap);
     /// Predict the remaining time until `value`, chaining the issue-time mean costs.
     [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const;
+    /// Learn the next window margin from a completed wait. Only under-prediction contributes.
+    void ObservePredictionError(uint64_t predictedNs, uint64_t actualNs) {
+        const uint64_t underPrediction = actualNs > predictedNs ? actualNs - predictedNs : 0;
+        predictionMarginsNs_[predictionMarginNext_] = underPrediction;
+        predictionMarginNext_ = (predictionMarginNext_ + 1) % kPredictionMarginHistory;
+        predictionMarginCount_ = std::min<uint32_t>(predictionMarginCount_ + 1,
+                                                     kPredictionMarginHistory);
+    }
+    [[nodiscard]] uint64_t LearnedPredictionMarginNs() const {
+        uint64_t margin = 0;
+        for (uint32_t i = 0; i < predictionMarginCount_; ++i)
+            margin = std::max(margin, predictionMarginsNs_[i]);
+        return margin;
+    }
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }
     /// Record a successfully issued batch value.
@@ -214,8 +311,9 @@ struct SubmitRecord {
     // Calibrated upper bounds supplied by the existing producer's timestamp history.
     // Missing/zero entries reserve a whole submission; they can never enable batching.
     std::vector<uint64_t> commandCostUpperBoundsNs;
-    // Producer running-mean estimates, parallel to commandCostUpperBoundsNs. Missing/zero
-    // entries fall back to the corresponding upper bound at issue time.
+    // Producer expected-time estimates, normally the same command's last-frame timestamp and
+    // otherwise the windowed model mean. Missing/zero entries fall back to the corresponding
+    // upper bound at issue time. Safety margin is owned by QueueTimeline at window placement.
     std::vector<uint64_t> commandCostMeanNs;
     uint64_t submissionBudgetNs = 2'000'000;
     struct Batch { std::size_t first, count; };

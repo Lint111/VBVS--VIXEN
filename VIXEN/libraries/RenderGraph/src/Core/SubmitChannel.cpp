@@ -22,6 +22,14 @@ uint64_t ElapsedNs(QueueTimeline::Clock::time_point start,
     const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
     return elapsed > 0 ? static_cast<uint64_t>(elapsed) : 0;
 }
+
+void RecordRetireWait(QueueTimeline& timeline, uint64_t predictedNs,
+                      QueueTimeline::Clock::time_point started) {
+    const uint64_t actualNs = ElapsedNs(started, QueueTimeline::Clock::now());
+    if (timeline.frameLedger)
+        timeline.frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, predictedNs, actualNs);
+    timeline.ObservePredictionError(predictedNs, actualNs);
+}
 } // namespace
 
 std::vector<SubmitRecord::Batch> SubmitRecord::SubmissionBatches() const {
@@ -94,10 +102,8 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
         completed = std::max(completed, oldest);
         while (!outstanding.empty() && outstanding.front() <= completed) outstanding.pop_front();
         while (!issuedBatches.empty() && issuedBatches.front().value <= completed) issuedBatches.pop_front();
-        if (frameLedger) {
-            frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, initialPrediction,
-                                    ElapsedNs(windowStarted, Clock::now()));
-        }
+        lastReachedAt_ = Clock::now();
+        RecordRetireWait(*this, initialPrediction, windowStarted);
         return VK_SUCCESS;
     }
 
@@ -112,10 +118,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
         if (const VkResult polled = Poll(); polled != VK_SUCCESS) return polled;
         if (completed >= oldest) {
             closed.request_stop();
-            if (frameLedger) {
-                frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, initialPrediction,
-                                        ElapsedNs(windowStarted, Clock::now()));
-            }
+            RecordRetireWait(*this, initialPrediction, windowStarted);
             return VK_SUCCESS;
         }
 
@@ -142,10 +145,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
         if (const VkResult polled = Poll(); polled != VK_SUCCESS) return polled;
         if (completed >= oldest) {
             closed.request_stop();
-            if (frameLedger) {
-                frameLedger->RecordWait(IdleWindow::Kind::GpuRetire, initialPrediction,
-                                        ElapsedNs(windowStarted, Clock::now()));
-            }
+            RecordRetireWait(*this, initialPrediction, windowStarted);
             return VK_SUCCESS;
         }
     }
@@ -171,7 +171,11 @@ uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now) c
         upperAhead = SaturatingAdd(upperAhead, it->upperBoundNs);
         meanAhead = SaturatingAdd(meanAhead, it->meanCostNs);
     }
-    const uint64_t marginNs = upperAhead > meanAhead ? upperAhead - meanAhead : 0;
+    // The first frame has no measured spread, so retain the existing conservative envelope. Once
+    // a wait has completed, the window owner uses only the observed under-prediction history; this
+    // keeps the predictor unbiased while still ending the usable window before GPU retirement.
+    const uint64_t envelopeMarginNs = upperAhead > meanAhead ? upperAhead - meanAhead : 0;
+    const uint64_t marginNs = predictionMarginCount_ ? LearnedPredictionMarginNs() : envelopeMarginNs;
     const auto remaining = std::chrono::duration_cast<std::chrono::nanoseconds>(retireAt - now).count();
     if (remaining <= 0) return 0;
     const uint64_t remainingNs = static_cast<uint64_t>(remaining);

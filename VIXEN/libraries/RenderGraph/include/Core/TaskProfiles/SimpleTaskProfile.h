@@ -133,7 +133,9 @@ public:
             chunks[extent] = {{"anchorUnits", calibration.anchorUnits},
                               {"unitNs", calibration.unitNs},
                               {"fixedNs", calibration.fixedNs},
-                              {"meanUnitNs", calibration.meanUnitNs}};
+                              {"meanUnitNs", calibration.meanUnitNs},
+                              {"expectedMeanUnitNs", calibration.meanUnitNs},
+                              {"meanFixedNs", calibration.meanFixedNs}};
         }
         j["chunkCalibration"] = std::move(chunks);
     }
@@ -157,7 +159,14 @@ public:
                 calibration.anchorUnits = value.value("anchorUnits", uint64_t{0});
                 calibration.unitNs = value.value("unitNs", 0.0);
                 calibration.fixedNs = value.value("fixedNs", 0.0);
-                calibration.meanUnitNs = value.value("meanUnitNs", 0.0);
+                // meanUnitNs was safety-inflated before the idle-window predictor split expected
+                // cost from its margin. Old records are therefore converted once on load; new
+                // records carry an explicit expectedMeanUnitNs field.
+                if (value.contains("expectedMeanUnitNs"))
+                    calibration.meanUnitNs = value.value("expectedMeanUnitNs", 0.0);
+                else
+                    calibration.meanUnitNs = value.value("meanUnitNs", 0.0) / 1.1;
+                calibration.meanFixedNs = value.value("meanFixedNs", 0.0);
                 if (calibration.anchorUnits && calibration.unitNs > 0 && calibration.fixedNs >= 0)
                     chunkCalibration_[extent] = calibration;
             }
@@ -194,7 +203,8 @@ public:
         uint64_t anchorUnits = 0;
         double unitNs = 0;
         double fixedNs = 0;
-        double meanUnitNs = 0;  ///< average full-tile cost; 0 in records written before it was persisted
+        double meanUnitNs = 0;  ///< unbiased average full-tile cost
+        double meanFixedNs = 0; ///< unbiased average per-command intercept
     };
     void SetChunkCalibration(const std::string& extent, const ChunkCalibration& calibration) {
         chunkCalibration_[extent] = calibration;

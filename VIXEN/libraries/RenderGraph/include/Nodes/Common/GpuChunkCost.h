@@ -18,17 +18,19 @@ public:
     void Observe(uint64_t units, uint64_t fullTileUnits, double elapsedNs) {
         if (!units || elapsedNs <= 0) return;
         const double upper = elapsedNs * 1.1;
+        const double expectedPerUnit = elapsedNs / units;
         if (units == fullTileUnits && units > anchorUnits_) {
             const double next = upper / units;
             fixedNs_ += std::max(0.0, unitNs_ - next) * anchorUnits_;
             unitNs_ = next;
             anchorUnits_ = units;
-            meanUnitNs_ = next;
+            meanUnitNs_ = expectedPerUnit;
             meanSamples_ = 1;
         } else if (units == anchorUnits_ || units == fullTileUnits) {
-            // One dense tile sets the conservative max above; the mean tracks typical cost.
+            // One dense tile sets the conservative max above; the mean tracks typical cost
+            // without the safety factor. Safety belongs to Estimate/Edge, not prediction.
             meanSamples_ = std::min<uint32_t>(meanSamples_ + 1, kMeanWindow);
-            meanUnitNs_ += (upper / units - meanUnitNs_) / meanSamples_;
+            meanUnitNs_ += (expectedPerUnit - meanUnitNs_) / meanSamples_;
             // A full tile at any launch scale measures throughput; a smaller full
             // tile that runs over budget must not be filed as fixed latency.
             unitNs_ = std::max(unitNs_, upper / units);
@@ -37,8 +39,12 @@ public:
         }
     }
     void ObserveBatch(uint64_t units, uint64_t commands, double elapsedNs) {
-        if (commands && elapsedNs > 0)
+        if (commands && elapsedNs > 0) {
             fixedNs_ = std::max(fixedNs_, (elapsedNs * 1.1 - unitNs_ * units) / commands);
+            const double expectedFixed = std::max(0.0, elapsedNs - meanUnitNs_ * units) / commands;
+            meanFixedSamples_ = std::min<uint32_t>(meanFixedSamples_ + 1, kMeanWindow);
+            meanFixedNs_ += (expectedFixed - meanFixedNs_) / meanFixedSamples_;
+        }
     }
     // R503: the learned envelope is persisted per device and extent through the
     // node's task profile, so a run starts warm. Plain values, no new store.
@@ -73,23 +79,28 @@ public:
     [[nodiscard]] double UnitNs() const { return unitNs_; }
     [[nodiscard]] double FixedNs() const { return fixedNs_; }
     [[nodiscard]] double MeanUnitNs() const { return meanUnitNs_; }
-    void Import(uint64_t anchorUnits, double unitNs, double fixedNs, double meanUnitNs = 0.0) {
+    [[nodiscard]] double MeanFixedNs() const { return meanFixedNs_; }
+    void Import(uint64_t anchorUnits, double unitNs, double fixedNs, double meanUnitNs = 0.0,
+                double meanFixedNs = 0.0) {
         if (!anchorUnits || !(unitNs > 0) || !(fixedNs >= 0)) return;
         anchorUnits_ = anchorUnits;
         unitNs_ = unitNs;
         fixedNs_ = fixedNs;
-        // Records written before the mean was persisted fall back to the conservative cost.
-        meanUnitNs_ = meanUnitNs > 0 && meanUnitNs <= unitNs ? meanUnitNs : unitNs;
+        // Records written before the expected mean was persisted stored the 1.1 envelope here;
+        // remove that decision margin once on import so prediction remains unbiased.
+        meanUnitNs_ = meanUnitNs > 0 && meanUnitNs <= unitNs ? meanUnitNs : unitNs / 1.1;
+        meanFixedNs_ = meanFixedNs >= 0 ? meanFixedNs : 0.0;
         meanSamples_ = 1;
+        meanFixedSamples_ = meanFixedNs_ > 0 ? 1 : 0;
     }
     // Projected time of one untiled dispatch of `units`, from the average full-tile cost.
     [[nodiscard]] double WholePassNs(uint64_t units) const {
-        return anchorUnits_ ? fixedNs_ + meanUnitNs_ * units : 0.0;
+        return anchorUnits_ ? meanFixedNs_ + meanUnitNs_ * units : 0.0;
     }
     // Issue-time mean used by QueueTimeline's retire predictor. A cold producer returns zero so
     // SubmitRecord can fall back to its conservative upper-bound entry.
     [[nodiscard]] uint64_t MeanEstimate(uint64_t units) const {
-        return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + meanUnitNs_ * units)) : 0;
+        return anchorUnits_ ? static_cast<uint64_t>(std::ceil(meanFixedNs_ + meanUnitNs_ * units)) : 0;
     }
     uint64_t Estimate(uint64_t units) const {
         return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + unitNs_ * units)) : 0;
@@ -119,7 +130,11 @@ public:
         if (LaunchLatencyNs() == 0.0 && unitNs_ * double(floor) * double(floor) > double(requestedBudgetNs) &&
             large_.units < 2 * small_.units + 1)
             return std::min(maximum, 2 * floor);
-        const double throughputEdge = std::sqrt(budgetNs * 0.95 / meanUnitNs_);
+        // Tiling is a placement decision, so it keeps the existing 1.1 conservative envelope at
+        // this decision point. The stored mean remains unbiased for prediction/whole-pass timing;
+        // it must not silently remove the correctness margin from the edge chosen here.
+        const double conservativeMeanUnitNs = meanUnitNs_ * 1.1;
+        const double throughputEdge = std::sqrt(budgetNs * 0.95 / conservativeMeanUnitNs);
         // A latency floor must not hide an over-budget full-tile observation.
         const double edge = fixedNs_ < budgetNs * 0.95
             ? throughputEdge
@@ -133,8 +148,9 @@ private:
     static constexpr double kLatencyAmortization = 16.0;     // a command's size keeps latency under ~6%
     static constexpr double kMaxAmortizedBudgetNs = 200'000'000.0;
     uint64_t anchorUnits_ = 0;
-    double unitNs_ = 0, fixedNs_ = 0, meanUnitNs_ = 0;
+    double unitNs_ = 0, fixedNs_ = 0, meanUnitNs_ = 0, meanFixedNs_ = 0;
     uint32_t meanSamples_ = 0;
+    uint32_t meanFixedSamples_ = 0;
     Scale small_, large_;
 };
 }

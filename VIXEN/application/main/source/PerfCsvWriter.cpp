@@ -73,7 +73,9 @@ void PerfCsvWriter::Flush() {
            "channel_pool_populated_bytes,brick_lookup_populated_bytes,mip_pool_populated_bytes,"
            "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64,"
            "gpu_wait_ms,pace_wait_ms,gpu_bound_share,window_count,window_predicted_ms,"
-           "window_actual_ms,window_error_p95_ms";
+           "window_actual_ms,window_error_p95_ms,window_error_p50_relative,"
+           "window_error_p95_relative,window_error_p50_ms,window_overrun_rate,"
+           "window_frame_time_added_ms";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -96,7 +98,12 @@ void PerfCsvWriter::Flush() {
             << "," << row.windowMetrics.gpuWaitMs << "," << row.windowMetrics.paceWaitMs
             << "," << row.windowMetrics.gpuBoundShare << "," << row.windowMetrics.windowCount
             << "," << row.windowMetrics.windowPredictedMs << "," << row.windowMetrics.windowActualMs
-            << "," << row.windowMetrics.windowErrorP95Ms;
+            << "," << row.windowMetrics.windowErrorP95Ms
+            << "," << row.windowMetrics.windowErrorP50Relative
+            << "," << row.windowMetrics.windowErrorP95Relative
+            << "," << row.windowMetrics.windowErrorP50Ms
+            << "," << row.windowMetrics.windowOverrunRate
+            << "," << row.windowMetrics.windowFrameTimeAddedMs;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }
