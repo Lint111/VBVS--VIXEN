@@ -44,13 +44,16 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
     if (const VkResult polled = Poll(); polled != VK_SUCCESS) return polled;
     if (outstanding.size() < cap) return VK_SUCCESS;
     // The cap is reached and the oldest batch is still running: wait for that batch only.
+#if UNDERSET_NATIVE_BENCHMARK
     const bool trace = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
     const auto started = std::chrono::steady_clock::now();
+#endif
     PhaseTiming::ScopedWait retireTimer("submit-retire-oldest-timeline");
     const uint64_t oldest = outstanding[outstanding.size() - cap];
     ++blockingWaits;
     const VkResult waited = waitFn ? waitFn(device, semaphore, oldest, GpuWaitBoundNs())
                                    : BoundedWaitSemaphore(device, semaphore, oldest).result;
+#if UNDERSET_NATIVE_BENCHMARK
     if (trace) {
         const auto ns = [](std::chrono::steady_clock::time_point t) {
             return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -60,6 +63,7 @@ VkResult QueueTimeline::ReserveBatch(uint32_t cap) {
             static_cast<unsigned long long>(oldest), ns(started), ns(std::chrono::steady_clock::now()),
             static_cast<int>(waited));
     }
+#endif
     if (waited != VK_SUCCESS) return waited;
     completed = std::max(completed, oldest);
     while (!outstanding.empty() && outstanding.front() <= completed) outstanding.pop_front();
@@ -95,12 +99,14 @@ std::vector<std::function<void()>> QueueTimeline::TakeAll() {
 }
 
 VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) const {
+#if UNDERSET_NATIVE_BENCHMARK
     const bool trace = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
     using Clock = std::chrono::steady_clock;
     const auto ticks = [](Clock::time_point time) {
         return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             time.time_since_epoch()).count());
     };
+#endif
     const auto batches = SubmissionBatches();
     const std::size_t count = batches.size();
     VkSemaphoreSubmitInfo timelineSignal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
@@ -134,12 +140,16 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
             si.signalSemaphoreInfoCount = 1;
             si.pSignalSemaphoreInfos = &timelineSignal;
         }
+#if UNDERSET_NATIVE_BENCHMARK
         const auto started = trace ? Clock::now() : Clock::time_point{};
+#endif
         const VkResult result = issue(si, last ? fence : VK_NULL_HANDLE);
+#if UNDERSET_NATIVE_BENCHMARK
         if (trace) {
             std::fprintf(stderr, "[GPUYIELD_HOST] operation=submit chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",
                 i, count, ticks(started), ticks(Clock::now()), static_cast<int>(result));
         }
+#endif
         if (result != VK_SUCCESS) return result;
         timeline.Issued(timeline.NextValue());
     }

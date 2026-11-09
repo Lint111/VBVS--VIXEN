@@ -1,5 +1,41 @@
 #pragma once
 
+#ifndef UNDERSET_NATIVE_BENCHMARK
+#define UNDERSET_NATIVE_BENCHMARK 0
+#endif
+
+#if !UNDERSET_NATIVE_BENCHMARK
+
+#include <cstdint>
+#include <string>
+
+namespace Vixen::RenderGraph::PhaseTiming {
+
+// Keep the call surface available to graph code, but make the normal-build implementation
+// constexpr/no-state: no environment read, clock read, storage, or per-frame branch remains.
+struct DisabledClock {
+    using time_point = uint64_t;
+    static constexpr time_point now() noexcept { return 0; }
+};
+
+inline constexpr bool Enabled() noexcept { return false; }
+using Clock = DisabledClock;
+inline constexpr double MsSince(Clock::time_point) noexcept { return 0.0; }
+inline constexpr void AddExecute(const std::string&, double) noexcept {}
+inline constexpr void AddWait(const std::string&, double) noexcept {}
+inline constexpr void PrintSummary() noexcept {}
+
+class ScopedWait {
+public:
+    explicit constexpr ScopedWait(const char*) noexcept {}
+    ScopedWait(const ScopedWait&) = delete;
+    ScopedWait& operator=(const ScopedWait&) = delete;
+};
+
+}  // namespace Vixen::RenderGraph::PhaseTiming
+
+#else
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -92,3 +128,5 @@ private:
 };
 
 }  // namespace Vixen::RenderGraph::PhaseTiming
+
+#endif  // UNDERSET_NATIVE_BENCHMARK

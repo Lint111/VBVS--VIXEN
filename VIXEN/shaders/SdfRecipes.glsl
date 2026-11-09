@@ -7,6 +7,9 @@
 #ifndef SDF_RECIPES_GLSL
 #define SDF_RECIPES_GLSL
 
+// Opt-in per-pixel trace probe (compiles to nothing unless VIXEN_SDF_TRACE_PROBE is defined).
+#include "SdfTraceProbe.glsl"
+
 #define RECIPE_SPHERE           0u
 #define RECIPE_DISPLACED_SPHERE 1u
 
@@ -218,7 +221,7 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                          vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                         float params[6],
+                         float params[6], float tMaxWorld,
                          out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -229,8 +232,8 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     float c    = dot(oc, oc) - boundRadius * boundRadius;
     float disc = b * b - c;
     if (disc < 0.0) {
-#ifdef VIXEN_RIMLEAK_TRACE
-        rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), 0u, 0u, recipeId, 0u,
+#ifdef VIXEN_SDF_TRACE_PROBE
+        sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), 0u, SDF_TRACE_TERM_BOUND_MISS, recipeId, 0u,
                               0.0, 1e30, ro, vec3(0.0), 0.0, 0.0, 0.0, 0.0);
 #endif
         return false;
@@ -239,12 +242,17 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     float tNear = max(-b - sq, 0.0);
     float tFar  = -b + sq;
     if (tFar < 0.0) {
-#ifdef VIXEN_RIMLEAK_TRACE
-        rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), 0u, 0u, recipeId, 0u,
+#ifdef VIXEN_SDF_TRACE_PROBE
+        sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), 0u, SDF_TRACE_TERM_BOUND_MISS, recipeId, 0u,
                               0.0, 1e30, ro, vec3(0.0), 0.0, tNear, tFar, 0.0);
 #endif
         return false;
     }
+    // R716/8a: the caller's current best hit is part of the march interval.  Keep the
+    // legacy sequence byte-exact when tMaxWorld is the old effectively-infinite value by
+    // deriving one endpoint and using it for every interval exit below.
+    float tEnd = min(tFar, tMaxWorld);
+    if (tEnd < tNear) return false;
 
     // Task 13: fetch this recipe's occupancy grid metadata once (constant per call, not
     // per march step) — a gridDim==0 recipe pays only this one switch dispatch and then
@@ -256,12 +264,12 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     const float EPS_MIN = 5e-6;
     const float CONE_EPSILON_SCALE = 0.25;
     const float CONE_PROBE_SCALE = 1.0;
-    float raySpan = max(tFar - tNear, 0.0);
+    float raySpan = max(tEnd - tNear, 0.0);
     // Scale the cap with the actual ray/bound interval. Ordinary editor rays stay well
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
     float lastRefinementT = -1e30;
-#ifdef VIXEN_RIMLEAK_TRACE
+#ifdef VIXEN_SDF_TRACE_PROBE
     float traceLastD = 1e30;
     float traceLastT = tNear;
     vec3  traceLastP = ro + rd * tNear;
@@ -272,7 +280,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p, params);
-#ifdef VIXEN_RIMLEAK_TRACE
+#ifdef VIXEN_SDF_TRACE_PROBE
         traceLastD = d;
         traceLastT = t;
         traceLastP = p;
@@ -283,8 +291,8 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             vec3 gradient = recipeFieldGradient(recipeId, p, params);
             hitNormal = normalize(gradient);
             hitT      = t;
-#ifdef VIXEN_RIMLEAK_TRACE
-            rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u, recipeId,
+#ifdef VIXEN_SDF_TRACE_PROBE
+            sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_HIT, recipeId,
                                   gridDim, t, d, p, gradient, traceLastGridBound,
                                   tNear, tFar, traceLastStep);
 #endif
@@ -305,7 +313,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                 bool bracketFound = false;
                 float beforeT = t - probeSpan;
                 float afterT = t + probeSpan;
-                if (beforeT >= tNear && afterT <= tFar) {
+                if (beforeT >= tNear && afterT <= tEnd) {
                     float beforeD = evalRecipeField(recipeId, ro + rd * beforeT, params);
                     float afterD = evalRecipeField(recipeId, ro + rd * afterT, params);
                     float raySlope = (afterD - beforeD) / (2.0 * probeSpan);
@@ -334,7 +342,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     // turning a nearby escape ray into a hit.
                     for (int scan = 1; scan <= 4; ++scan) {
                         float sampleT = t + probeSpan * (0.5 * float(scan));
-                        if (sampleT > tFar) break;
+                        if (sampleT > tEnd) break;
                         float sampleD = evalRecipeField(recipeId, ro + rd * sampleT, params);
                         if (sampleD <= 0.0) {
                             hiT = sampleT;
@@ -367,11 +375,11 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     vec3 gradient = recipeFieldGradient(recipeId, p, params);
                     hitNormal = normalize(gradient);
                     hitT = t;
-#ifdef VIXEN_RIMLEAK_TRACE
+#ifdef VIXEN_SDF_TRACE_PROBE
                     traceLastT = t;
                     traceLastD = evalRecipeField(recipeId, p, params);
                     traceLastP = p;
-                    rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u,
+                    sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_HIT,
                         recipeId, gridDim, t, traceLastD, p, gradient, traceLastGridBound,
                         tNear, tFar, traceLastStep);
 #endif
@@ -410,28 +418,28 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         // Preserve the identity-scale stepping sequence used by legacy instances.
         float stepScale = clamp(conservativeStepScale, 0.0, 1.0);
         if (stepScale < 1.0) step *= stepScale;
-#ifdef VIXEN_RIMLEAK_TRACE
+#ifdef VIXEN_SDF_TRACE_PROBE
         traceLastGridBound = gridBound;
         traceLastStep = step;
 #endif
         t += step;
-        if (t > tFar) {
-#ifdef VIXEN_RIMLEAK_TRACE
+        if (t > tEnd) {
+#ifdef VIXEN_SDF_TRACE_PROBE
             vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
-            rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
+            sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_BUDGET, recipeId,
                                   gridDim, traceLastT, traceLastD, traceLastP, gradient,
                                   traceLastGridBound, tNear, tFar, traceLastStep);
 #endif
             return false;
         }
     }
-#ifdef VIXEN_RIMLEAK_TRACE
+#ifdef VIXEN_SDF_TRACE_PROBE
     vec3 gradient = recipeFieldGradient(recipeId, traceLastP, params);
-    rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 3u, recipeId, gridDim,
+    sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_EXIT, recipeId, gridDim,
                           traceLastT, traceLastD, traceLastP, gradient, traceLastGridBound,
                           tNear, tFar, traceLastStep);
 #endif
-    g_recipeTraceExhaustedRays += 1u;  // R716: counted, never a silent miss
+    g_recipeTraceExhaustedRays += 1u;  // R716: exhausted before min(tFar,tMaxWorld), never silent
     return false;
 }
 #endif // VIXEN_UBER_RECIPE_SPLICED

@@ -100,6 +100,17 @@ endif()
 set_target_properties(test_voxel_scene_key PROPERTIES FOLDER "Tests/CashSystem Tests")
 vixen_gtest_discover_tests(CashSystem test_voxel_scene_key)
 
+# Shared voxel-scene store tests (T-5199): CPU-only, no device
+add_executable(test_voxel_scene_store
+    test_voxel_scene_store.cpp
+)
+target_compile_features(test_voxel_scene_store PRIVATE cxx_std_23)
+target_link_libraries(test_voxel_scene_store PRIVATE GTest::gtest_main CashSystem Logger VulkanResources glm::glm)
+# Includes the generated fingerprint headers directly: order them before this target's compile.
+add_dependencies(test_voxel_scene_store SvoGeneratorFingerprint VoxelSceneCacherFingerprint)
+set_target_properties(test_voxel_scene_store PROPERTIES FOLDER "Tests/CashSystem Tests")
+vixen_gtest_discover_tests(CashSystem test_voxel_scene_store)
+
 # Shared bounds-checked cache codec tests (audit V-M5..M8, N6, N7)
 add_executable(test_cache_codec
     test_cache_codec.cpp

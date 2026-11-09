@@ -34,6 +34,22 @@ if(NOT DEFINED LOOKDEV_CAPTURE_REPEAT)
 endif()
 
 set(_gtest_filter "--gtest_filter=LookdevCapture.RendersFourStatesAtFourAnglesDeterministically")
+# Per-config capture arguments: a registration passes -DLOOKDEV_CAPTURE_RENDER_SCALE / _UPSCALER and the
+# wrapper forwards them to the capture executable as --render-scale= / --upscaler= (T-6170).  Unset keeps
+# the executable's own defaults, so existing registrations are unchanged.
+set(_capture_args "${_gtest_filter}")
+if(DEFINED LOOKDEV_CAPTURE_RENDER_SCALE AND NOT "${LOOKDEV_CAPTURE_RENDER_SCALE}" STREQUAL "")
+    if(NOT "${LOOKDEV_CAPTURE_RENDER_SCALE}" MATCHES "^[0-9]+(\\.[0-9]+)?$")
+        message(FATAL_ERROR "LOOKDEV_CAPTURE_RENDER_SCALE='${LOOKDEV_CAPTURE_RENDER_SCALE}' is not a number such as 0.5 or 1.0; fix the -DLOOKDEV_CAPTURE_RENDER_SCALE argument of the CTest registration in VIXEN/application/main/tests/test_lookdev_capture.cmake")
+    endif()
+    list(APPEND _capture_args "--render-scale=${LOOKDEV_CAPTURE_RENDER_SCALE}")
+endif()
+if(DEFINED LOOKDEV_CAPTURE_UPSCALER AND NOT "${LOOKDEV_CAPTURE_UPSCALER}" STREQUAL "")
+    if(NOT "${LOOKDEV_CAPTURE_UPSCALER}" MATCHES "^(none|linear|fsr1|fsr3)$")
+        message(FATAL_ERROR "LOOKDEV_CAPTURE_UPSCALER='${LOOKDEV_CAPTURE_UPSCALER}' is not one of none, linear, fsr1, fsr3 (the values vixen_lookdev_capture accepts for --upscaler=); fix the -DLOOKDEV_CAPTURE_UPSCALER argument of the CTest registration")
+    endif()
+    list(APPEND _capture_args "--upscaler=${LOOKDEV_CAPTURE_UPSCALER}")
+endif()
 set(_states midday late-afternoon overcast night-service)
 if(DEFINED LOOKDEV_CAPTURE_STATES AND NOT "${LOOKDEV_CAPTURE_STATES}" STREQUAL "")
     set(_states ${LOOKDEV_CAPTURE_STATES})
@@ -56,7 +72,7 @@ foreach(_state IN LISTS _states)
         # ECHO_*: the process output streams through this script to CTest while it runs, so
         # `ctest -V` and the queue log show progress instead of one buffered dump at the end.
         execute_process(
-            COMMAND "${LOOKDEV_CAPTURE_EXE}" "${_gtest_filter}"
+            COMMAND "${LOOKDEV_CAPTURE_EXE}" ${_capture_args}
             RESULT_VARIABLE _result
             OUTPUT_VARIABLE _stdout
             ERROR_VARIABLE _stderr
@@ -68,6 +84,9 @@ foreach(_state IN LISTS _states)
         string(TIMESTAMP _run_end "%s")
         math(EXPR _run_s "${_run_end} - ${_run_start}")
         string(REGEX MATCHALL "\\[CAPTURE_TIMING\\][^\n]*" _timing_lines "${_stdout}")
+        if(DEFINED VIXEN_NATIVE_BENCHMARK AND VIXEN_NATIVE_BENCHMARK AND NOT _timing_lines)
+            message(FATAL_ERROR "Benchmark capture produced no [CAPTURE_TIMING] lines")
+        endif()
         string(REPLACE ";" "\n    " _timing_text "${_timing_lines}")
         message(STATUS "Look-dev ${_state} -> ${_run}: wall ${_run_s} s\n    ${_timing_text}")
         string(REGEX MATCHALL "\\[HDRMeter\\][^\n]*" _meter_lines "${_stdout}")

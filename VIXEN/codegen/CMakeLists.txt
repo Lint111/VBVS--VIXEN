@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "4abf4ab34ba68882b097489e7924110aec700b23")
+set(_vixen_tracked_yeroket_kernel_sha "24fec7d79d3888a73c97da992531eceed662bc6d")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -218,6 +218,15 @@ vixen_record_kernel_pin("${CMAKE_BINARY_DIR}/vixen-kernel-pin.json"
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
+set(_recipe_simd_build_output
+    "${CMAKE_BINARY_DIR}/generated/include/Recipe/generated/RecipeSimd.g.hpp")
+set(_recipe_simd_input_files
+    "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs"
+    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs"
+    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs"
+    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs"
+    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs"
+    "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
 set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
 # AA kernel callables (R619.1): inlined into the GPU systems, C++ face for the resolve tests.
@@ -478,7 +487,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h" _out_sdf_opcodes_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
+        _codegen_to_wsl_path("${_recipe_simd_build_output}" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc" _out_recipe_eval_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc" _out_recipe_glsl_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl" _out_recipe_tape_glsl_run)
@@ -584,7 +593,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
         set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
         set(_out_sdf_opcodes_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h")
-        set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
+        set(_out_recipe_simd_run "${_recipe_simd_build_output}")
         set(_out_recipe_eval_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc")
         set(_out_recipe_glsl_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc")
         set(_out_recipe_tape_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl")
@@ -857,9 +866,9 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
-    # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
-    # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
-    set(_recipe_simd_args
+    # RecipeSimd.g.hpp is runtime input, so materialize it in the build tree from the pinned
+    # kernel snapshot. Keep the other recipe artifacts source-owned and untouched by this target.
+    set(_recipe_simd_build_args
         "${_yk_dll_run}"
         --recipe-simd-cpp
         --namespace Vixen::SVO::Recipe
@@ -875,23 +884,24 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
-        --out-header "${_out_recipe_simd_run}"
-        --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
-        --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}"
-        --out-tape-glsl "${_out_recipe_tape_glsl_run}"
-        --out-glsl-literals "${_out_recipe_glsl_literals_run}")
-    vixen_add_codegen_check(recipe_simd_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
-        COMMENT "[codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations"
+        --out-header "${_out_recipe_simd_run}")
+    add_custom_command(
+        OUTPUT "${_recipe_simd_build_output}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "${CMAKE_BINARY_DIR}/generated/include/Recipe/generated"
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_build_args}
+        DEPENDS engine_codegen_tool
+            "${_yk_root}/.archive-complete"
+            ${_recipe_simd_input_files}
+        COMMENT "[codegen] generate build-tree RecipeSimd.g.hpp from pinned kernel"
+        JOB_POOL vixen_codegen
         VERBATIM)
+    add_custom_target(recipe_simd_codegen DEPENDS "${_recipe_simd_build_output}")
     # libraries/ is configured before codegen/, so SVO (and everything linking it) is ordered here.
     if(TARGET SVO)
-        add_dependencies(SVO recipe_simd_check)
+        add_dependencies(SVO recipe_simd_codegen)
     endif()
-    add_custom_target(recipe_simd_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
-        COMMENT "[codegen] regenerate recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator from merged declarations"
-        VERBATIM)
+    add_custom_target(recipe_simd_regen DEPENDS recipe_simd_codegen)
 
     set(_sdf_core_kernel_args
         "${_yk_dll_run}"
@@ -964,7 +974,8 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         AND EXISTS "${_schema_kernel_schema}/SchemaTypes.cs")
         set(_gpu_schema_source_files)
         file(GLOB_RECURSE _vixen_gpu_schema_sources CONFIGURE_DEPENDS
-            "${_schema_gpu_source}/*.cs")
+            "${_schema_gpu_source}/*.cs"
+            "${_schema_gpu_source}/*.json")
         list(APPEND _gpu_schema_source_files ${_vixen_gpu_schema_sources})
 
         # Keep the FrameTargets source closure independent of Undertow's full core/src tree, but
@@ -981,10 +992,14 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             list(APPEND _frame_targets_lineage_inputs ${_frame_targets_pending_sources})
         endif()
 
+        set(_gpu_schema_stage_script "${_cg}/StageGpuSchemaSource.cmake")
         add_custom_target(frame_targets_schema_source_stage
-            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_schema_gpu_staged}"
-            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_schema_gpu_source}" "${_schema_gpu_staged}"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DSOURCE_ROOT=${_schema_gpu_source}"
+                "-DOUTPUT_ROOT=${_schema_gpu_staged}"
+                -P "${_gpu_schema_stage_script}"
             DEPENDS ${_gpu_schema_source_files}
+                "${_gpu_schema_stage_script}"
             COMMENT "[codegen] stage VIXEN FrameTargets schema source from ${_schema_gpu_source}"
             VERBATIM)
 

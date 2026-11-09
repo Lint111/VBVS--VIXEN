@@ -50,8 +50,17 @@ file(GLOB_RECURSE _sdi_merged_inputs CONFIGURE_DEPENDS
     "${_vixen_root}/libraries/SVO/shaders/*.comp" "${_vixen_root}/libraries/SVO/shaders/*.glsl"
     "${_vixen_root}/libraries/SVO/shaders/*.h"
     "${_vixen_root}/generated/sdi/merged/*-SDI.g.h")
+# Opt-in (default OFF): rewrite the tracked merged headers in place instead of failing, for a
+# queued build after a layout/source change. Off by default so the default build still reports
+# drift rather than hiding it; review the resulting `git diff generated/sdi/merged`.
+option(VIXEN_SDI_MERGED_AUTO_REGEN
+    "Regenerate stale merged SDI headers during the build instead of failing the drift gate" OFF)
+set(_sdi_gate_args "--check")
+if(VIXEN_SDI_MERGED_AUTO_REGEN)
+    set(_sdi_gate_args)
+endif()
 vixen_add_checked_target(sdi_merged_drift_gate ALL
-    COMMAND sdi_tool merge-variants "${_vixen_root}/shaders/sdi-variants.json" --check
+    COMMAND sdi_tool merge-variants "${_vixen_root}/shaders/sdi-variants.json" ${_sdi_gate_args}
     DEPENDS sdi_tool "${_vixen_root}/shaders/sdi-variants.json" ${_sdi_merged_inputs}
     COMMENT "Merged SDI drift gate (stale? build target sdi_merged_regen)"
     VERBATIM)

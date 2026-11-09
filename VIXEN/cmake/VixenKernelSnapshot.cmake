@@ -179,6 +179,11 @@ function(vixen_resolve_yeroket_root home_candidates out_root)
     set(${out_root} "${_root}" PARENT_SCOPE)
 endfunction()
 
+function(_vixen_kernel_snapshot_fail stage archive reason)
+    file(REMOVE_RECURSE "${stage}" "${archive}")
+    message(FATAL_ERROR "${reason}")
+endfunction()
+
 function(vixen_kernel_snapshot repository sha out_directory)
     # A short SHA (git's abbreviation minimum is 4 hex digits) is resolved against the kernel
     # repository first. Git's own rule decides it: a prefix naming several objects is refused, never guessed.
@@ -221,10 +226,11 @@ function(vixen_kernel_snapshot repository sha out_directory)
 
     find_program(_vixen_kernel_git NAMES git REQUIRED)
     vixen_trust_wsl_git_directory("${repository}")
+    set(_cat_file_command_text "\"${_vixen_kernel_git}\" -C \"${repository}\" cat-file -e \"${sha}^{commit}\"")
     execute_process(COMMAND "${_vixen_kernel_git}" -C "${repository}" cat-file -e "${sha}^{commit}"
         RESULT_VARIABLE _exists ERROR_VARIABLE _error OUTPUT_QUIET)
     if(NOT _exists EQUAL 0)
-        message(FATAL_ERROR "[codegen] pinned kernel ${sha} unavailable from ${repository}: ${_error}")
+        message(FATAL_ERROR "[codegen] pinned kernel ${sha} unavailable from ${repository} (command: ${_cat_file_command_text}; exit code: ${_exists}; stderr: ${_error})")
     endif()
     # Each writer extracts into its own stage and publishes it with one directory rename, which
     # fails onto a populated directory. The writer that renames first owns the entry and every
@@ -244,7 +250,8 @@ function(vixen_kernel_snapshot repository sha out_directory)
             "${sha}" -- "${_path}" OUTPUT_VARIABLE _path_files RESULT_VARIABLE _listed
             ERROR_VARIABLE _error OUTPUT_STRIP_TRAILING_WHITESPACE)
         if(NOT _listed EQUAL 0)
-            message(FATAL_ERROR "[codegen] cannot list codegen inputs for pinned kernel ${sha}: ${_error}")
+            _vixen_kernel_snapshot_fail("${_stage}" "${_archive}"
+                "[codegen] cannot list codegen inputs for pinned kernel ${sha} (command: \"${_vixen_kernel_git}\" -C \"${repository}\" ls-tree -r --name-only \"${sha}\" -- \"${_path}\"; exit code: ${_listed}; stderr: ${_error})")
         endif()
         string(REPLACE "\n" ";" _path_files "${_path_files}")
         foreach(_file IN LISTS _path_files)
@@ -255,19 +262,51 @@ function(vixen_kernel_snapshot repository sha out_directory)
     endforeach()
     list(REMOVE_DUPLICATES _archive_paths)
     if(NOT _archive_paths)
-        message(FATAL_ERROR "[codegen] pinned kernel ${sha} has no usable codegen inputs")
+        _vixen_kernel_snapshot_fail("${_stage}" "${_archive}"
+            "[codegen] pinned kernel ${sha} has no usable codegen inputs")
     endif()
+
+    # Keep the archive command independent of the number of matching files.  Git versions shipped
+    # by the supported native setup do not provide archive's --pathspec-from-file, so archive the
+    # pinned tree and prune it against the allowlist collected above before publishing it.  This
+    # keeps the snapshot's file set identical to the historical path-expanded command without
+    # putting the paths on Windows' 32,767-character command-line limit.
+    set(_archive_command_text
+        "\"${_vixen_kernel_git}\" -c core.autocrlf=false -C \"${repository}\" archive --format=tar --output \"${_archive}\" \"${sha}\"")
     execute_process(COMMAND "${_vixen_kernel_git}" -c core.autocrlf=false -C "${repository}" archive
-        --format=tar --output "${_archive}" "${sha}" -- ${_archive_paths}
+        --format=tar --output "${_archive}" "${sha}"
         RESULT_VARIABLE _archived ERROR_VARIABLE _error)
     if(NOT _archived EQUAL 0)
-        message(FATAL_ERROR "[codegen] cannot archive pinned kernel ${sha}: ${_error}")
+        _vixen_kernel_snapshot_fail("${_stage}" "${_archive}"
+            "[codegen] cannot archive pinned kernel ${sha} (command: ${_archive_command_text}; exit code: ${_archived}; stderr: ${_error})")
     endif()
     execute_process(COMMAND "${CMAKE_COMMAND}" -E tar xf "${_archive}"
         WORKING_DIRECTORY "${_stage}" RESULT_VARIABLE _extracted ERROR_VARIABLE _error)
     if(NOT _extracted EQUAL 0)
-        message(FATAL_ERROR "[codegen] cannot extract pinned kernel ${sha}: ${_error}")
+        _vixen_kernel_snapshot_fail("${_stage}" "${_archive}"
+            "[codegen] cannot extract pinned kernel ${sha} (command: \"${CMAKE_COMMAND}\" -E tar xf \"${_archive}\"; exit code: ${_extracted}; stderr: ${_error})")
     endif()
+
+    file(GLOB_RECURSE _snapshot_files LIST_DIRECTORIES false RELATIVE "${_stage}" "${_stage}/*")
+    foreach(_snapshot_file IN LISTS _snapshot_files)
+        list(FIND _archive_paths "${_snapshot_file}" _expected_index)
+        if(_expected_index EQUAL -1)
+            file(REMOVE "${_stage}/${_snapshot_file}")
+        endif()
+    endforeach()
+    # Remove directories emptied by the allowlist pruning.  Sort deepest-first so a directory can
+    # be removed as soon as its children are gone.
+    file(GLOB_RECURSE _snapshot_directories LIST_DIRECTORIES true RELATIVE "${_stage}" "${_stage}/*")
+    list(SORT _snapshot_directories COMPARE STRING ORDER DESCENDING)
+    foreach(_snapshot_directory IN LISTS _snapshot_directories)
+        if(IS_DIRECTORY "${_stage}/${_snapshot_directory}")
+            file(GLOB _snapshot_children RELATIVE "${_stage}/${_snapshot_directory}"
+                "${_stage}/${_snapshot_directory}/*")
+            if(NOT _snapshot_children)
+                file(REMOVE_RECURSE "${_stage}/${_snapshot_directory}")
+            endif()
+        endif()
+    endforeach()
     file(WRITE "${_stage}/.archive-complete" "${sha}\n")
     file(RENAME "${_stage}" "${_directory}" RESULT _published)
     file(REMOVE "${_archive}")

@@ -7,9 +7,8 @@
 // engine (the 87-190s Cornell bake re-runs every boot); this header lets a caller
 // hash its bake inputs into a content-addressed key, then load/store the resulting
 // ConcatenatedOctrees + light-tree-cut bundle as a single file under
-// cache/global/BakeArtifactCache/<hex-key>.bake — mirroring the existing
-// cache/global/ + cache/devices/<id>/*.cache convention (ShaderCacheManager's own
-// cacheDirectory idiom). A cache HIT must reproduce byte-identical
+// <shared-cache>/bake-artifact/<hex-key>.bake (the shared store next to SPIR-V and
+// pipeline blobs; the key includes the generator fingerprint). A cache HIT must reproduce byte-identical
 // ConcatenatedOctrees to a cold bake; that guard is the caller's responsibility
 // (verify via a hash compare + the same_path parity gate on a warm boot), this
 // header only handles the mechanical save/load.
@@ -20,6 +19,7 @@
 #include "LightTree.h"        // LightTreeNode
 #include "Recipe/SdfInstruction.h"  // SdfInstruction (132B POD, hashed verbatim)
 #include "RuntimeCachePaths.h"
+#include "SvoGeneratorFingerprint.h"  // generated: content hash of the SVO/Gaia/VoxelData sources
 
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -80,7 +80,12 @@ public:
     // OctreeConfig._tailPad[6..7]; v2 entries predate the lane and would load without it.
     static constexpr uint32_t kFormatVersion = 3u;
 
-    BakeArtifactKeyBuilder() { addU32(kFormatVersion); }
+    // The generator fingerprint is hashed right after the version so the key (and therefore the
+    // shared store entry) only matches artifacts built by identical SVO/Gaia/VoxelData code.
+    BakeArtifactKeyBuilder() {
+        addU32(kFormatVersion);
+        addBytes(kSvoGeneratorFingerprint, sizeof(kSvoGeneratorFingerprint) - 1);
+    }
 
     void addBytes(const void* data, size_t size) {
         const auto* bytes = static_cast<const uint8_t*>(data);
@@ -185,12 +190,11 @@ bool readPodVec(std::istream& f, std::vector<T>& v) {
 
 }  // namespace detail
 
-// Default cache root: <runtime-cache>/global/BakeArtifactCache/, mirroring the existing
-// global + device cache split without writing runtime data into the source tree.
-// (ShaderCacheManager's own cacheDirectory idiom) -- global, not per-device,
-// because a bake artifact has no GPU-specific content.
+// Default cache root: <shared-cache>/bake-artifact/ (Vixen::SharedDeviceCacheDirectory), shared by
+// every build tree of the user. Safe because the key folds in the generator fingerprint (see
+// BakeArtifactKeyBuilder) and a bake artifact has no GPU-specific content.
 inline std::filesystem::path DefaultBakeArtifactCacheDir() {
-    return Vixen::RuntimeCacheDirectory() / "global" / "BakeArtifactCache";
+    return Vixen::SharedDeviceCacheDirectory() / "bake-artifact";
 }
 
 inline std::filesystem::path BakeArtifactCacheFilePath(

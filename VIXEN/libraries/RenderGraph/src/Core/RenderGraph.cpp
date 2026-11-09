@@ -1,6 +1,8 @@
 #include "Core/ImageUsage.h"
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
+#include "KernelDispatch/FramePipeline.h"
+#include "Core/CalibrationStore.h"
 #include "Data/Core/ResourceConfig.h"
 #include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
@@ -165,11 +167,26 @@ RenderGraph::RenderGraph(
     taskProfileRegistry_.Init();
 }
 
+size_t RenderGraph::LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
+    calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
+    calibrationStore_->SetGPU(gpu);
+    auto result = calibrationStore_->Load(taskProfileRegistry_);
+    return result.profileCount;
+}
+
+bool RenderGraph::SaveCalibration() {
+    if (!calibrationStore_) return false;
+    auto result = calibrationStore_->Save(taskProfileRegistry_);
+    return result.success;
+}
+
 RenderGraph::~RenderGraph() {
     PhaseTiming::PrintSummary();
     // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
     // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
+#if VIXEN_LOCK_CENSUS
     lockCensus_.Report();
+#endif
 
     // Sprint 6.5: Publish shutdown event for CalibrationStore auto-save
     if (messageBus) {
@@ -1365,12 +1382,15 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
             presentInfo.swapchainCount = 1;
             presentInfo.pSwapchains = &rec.swapchain;
             presentInfo.pImageIndices = &rec.imageIndex;
+#if UNDERSET_NATIVE_BENCHMARK
             const auto started = std::chrono::steady_clock::now();
+#endif
             if (rec.presentFn) {
                 result = rec.presentFn(device->queue, &presentInfo);
             } else {
                 result = VK_ERROR_INITIALIZATION_FAILED;
             }
+#if UNDERSET_NATIVE_BENCHMARK
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
                 const auto completed = std::chrono::steady_clock::now();
                 std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
@@ -1378,6 +1398,7 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
                     static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
                     static_cast<int>(result));
             }
+#endif
         } else {
             const PFN_vkQueueSubmit2 submit2 = device->fpQueueSubmit2;
             const VkQueue queue = device->queue;
@@ -1830,9 +1851,11 @@ VkResult RenderGraph::RenderFrame() {
 
     // Lock census sample for this frame (no-op unless VIXEN_LOCK_CENSUS). Taken after the frame's
     // own bus dispatch/cleanup so the per-frame deltas include every acquisition the frame caused.
+#if VIXEN_LOCK_CENSUS
     frameWaveStats_.frameCpuMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - frameExecuteStart).count();
     lockCensus_.Sample(globalFrameIndex, frameWaveStats_);
+#endif
 
     // Increment frame counter for next frame
     globalFrameIndex++;
@@ -1853,12 +1876,15 @@ VkResult RenderGraph::RenderFrame() {
     if (frameResult == VK_SUCCESS && !frameAborted_) {
         const auto frameBudget = std::chrono::nanoseconds(
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
+#if UNDERSET_NATIVE_BENCHMARK
         const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
         const auto paceStart = std::chrono::steady_clock::now();
+#endif
         {
             PhaseTiming::ScopedWait paceTimer("frame-pace");
             PaceFrameUntil(frameExecuteStart + frameBudget);
         }
+#if UNDERSET_NATIVE_BENCHMARK
         if (traceYield) {
             const auto paceEnd = std::chrono::steady_clock::now();
             const auto ticks = [](auto time) {
@@ -1870,6 +1896,7 @@ VkResult RenderGraph::RenderFrame() {
             std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-pace start_ns=%lld end_ns=%lld result=0\n",
                 ticks(paceStart), ticks(paceEnd));
         }
+#endif
     }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
@@ -2532,12 +2559,14 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // All dirty nodes are still executing
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
         const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=begin wall_us=%lld\n",
             static_cast<long long>(wallUs));
     }
+#endif
 
     // This recompile owns a fresh epoch. Any token retained by work from the previous graph shape
     // is stopped before cleanup begins; compile-time slot tasks below receive the new live token.
@@ -2668,12 +2697,14 @@ void RenderGraph::RecompileDirtyNodes() {
             GRAPH_LOG_WARNING("[RenderGraph] Some nodes failed to recompile - graph remains uncompiled");
         }
     }
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
         const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=end wall_us=%lld\n",
             static_cast<long long>(wallUs));
     }
+#endif
 }
 
 void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
