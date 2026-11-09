@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef UNDERSET_NATIVE_BENCHMARK
+#define UNDERSET_NATIVE_BENCHMARK 0
+#endif
+
 #include <string>
 #include <functional>
 #include <mutex>
@@ -305,6 +309,7 @@ private:
  * }  // Timer automatically updates totalCompileTimeUs on destruction
  * @endcode
  */
+#if UNDERSET_NATIVE_BENCHMARK
 class ScopedTelemetryTimer {
 public:
     explicit ScopedTelemetryTimer(std::atomic<uint64_t>& counter)
@@ -322,5 +327,14 @@ private:
     std::atomic<uint64_t>& counter_;
     std::chrono::high_resolution_clock::time_point start_;
 };
+#else
+class ScopedTelemetryTimer {
+public:
+    explicit ScopedTelemetryTimer(std::atomic<uint64_t>&) noexcept {}
+    ~ScopedTelemetryTimer() = default;
+    ScopedTelemetryTimer(const ScopedTelemetryTimer&) = delete;
+    ScopedTelemetryTimer& operator=(const ScopedTelemetryTimer&) = delete;
+};
+#endif
 
 } // namespace ShaderManagement

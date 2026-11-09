@@ -270,9 +270,12 @@ void FrameSyncNode::HandleFrameEnd() {
     // Retire this frame before the host's next PreTick can write parameters.
     // Keep the allocation ring, but bound outstanding graph work to one frame.
     // The existing marker covers all submits, including nodes after the binary fence owner.
+#if UNDERSET_NATIVE_BENCHMARK
     const auto waitStarted = std::chrono::steady_clock::now();
+#endif
     const GpuWaitResult retire = BoundedWaitSemaphore(
         vulkanDevice->device, timelineSemaphore_, completionValue);
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
         const auto completed = std::chrono::steady_clock::now();
         std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-retire elapsed_ms=%.6f start_ns=%lld end_ns=%lld\n",
@@ -280,6 +283,7 @@ void FrameSyncNode::HandleFrameEnd() {
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(waitStarted.time_since_epoch()).count()),
             static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()));
     }
+#endif
     if (!retire.Ok()) {
         frameCompletionSubmitFailure_ = retire.result;
         NODE_LOG_ERROR("FrameSyncNode: failed to retire frame completion timeline: " +

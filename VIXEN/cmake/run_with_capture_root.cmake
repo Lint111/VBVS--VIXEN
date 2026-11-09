@@ -47,6 +47,15 @@ foreach(_name IN LISTS _mkparent_vars)
         file(MAKE_DIRECTORY "${_parent}")
     endif()
 endforeach()
+# Commands such as the cold-pipeline witness receive capture paths as ordinary arguments (for
+ # example --expect-file), not environment variables. Keep those arguments in the same runtime root
+ # as the rebased capture environment.
+set(_rebased_command)
+foreach(_arg IN LISTS _command)
+    vixen_capture_runtime_rebase("${_arg}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" _value)
+    list(APPEND _rebased_command "${_value}")
+endforeach()
+set(_command "${_rebased_command}")
 if(NOT _root STREQUAL VIXEN_CAPTURE_DEFAULT_ROOT)
     message(STATUS "Capture root ${_root} (VIXEN_CAPTURE_ROOT) replaces ${VIXEN_CAPTURE_DEFAULT_ROOT}")
 endif()

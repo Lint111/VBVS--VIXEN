@@ -24,7 +24,8 @@ public:
  * the general Draw.vert shader's `layout(std140, binding=0) uniform bufferVals { mat4 mvp; }`.
  *
  * Outputs the VkBuffer. The model matrix is applied per-instance in the shader, and
- * Draw.vert performs the Vulkan Y-flip / Z-remap itself, so this node bakes only the
+ * Draw.vert performs the Vulkan Y-flip itself. proj is a [0,1] depth projection
+ * (GLM_FORCE_DEPTH_ZERO_TO_ONE), so no Z remap is needed; this node bakes only the
  * unmodified proj*view.
  *
  * FR-7 lifecycle: the buffer persists across graph recompile; released only on

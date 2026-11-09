@@ -417,9 +417,12 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     auto startTime = std::chrono::steady_clock::now();
     BuildResult result;
 
-    // Update telemetry
+    // Update benchmark telemetry only when the benchmark keyword is enabled. BuildResult's
+    // compile/reflect durations remain functional build results for callers.
     auto& telemetry = ShaderLogger::GetTelemetry();
+#if UNDERSET_NATIVE_BENCHMARK
     telemetry.totalCompilations.fetch_add(1);
+#endif
 
     ShaderLogger::LogDebug("Starting shader bundle build: " + programName_, "Builder");
 
@@ -441,7 +444,9 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
             result.success = false;
             result.errorMessage = "Pipeline validation failed: " + error;
             ShaderLogger::LogError("Pipeline validation failed: " + error, "Builder");
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.failedCompilations.fetch_add(1);
+#endif
             return result;
         }
         ShaderLogger::LogDebug("Pipeline validation passed", "Builder");
@@ -502,28 +507,38 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         );
         auto compileEnd = std::chrono::steady_clock::now();
         if (compiled.fromCache) {
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.cacheHits.fetch_add(1);
+#endif
             result.usedCache = true;
         } else {
+#if UNDERSET_NATIVE_BENCHMARK
             if (cacheManager) telemetry.cacheMisses.fetch_add(1);
+#endif
             result.compileTime += std::chrono::duration_cast<std::chrono::milliseconds>(
                 compileEnd - compileStart);
         }
 
         // Update telemetry
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.totalSourceSizeBytes.fetch_add(sourceToCompile.size());
+#endif
 
         if (!compiled.success) {
             result.success = false;
             result.errorMessage = "Compilation failed for stage " +
                 std::string(ShaderStageName(stageSource.stage)) + ": " + compiled.errorLog;
             ShaderLogger::LogError("Compilation failed: " + compiled.errorLog, "Compiler");
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.failedCompilations.fetch_add(1);
+#endif
             return result;
         }
 
         // Update SPIRV size telemetry
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.totalSpirvSizeBytes.fetch_add(compiled.spirv.size() * sizeof(uint32_t));
+#endif
 
         // Add to program
         CompiledShaderStage stage;
@@ -554,11 +569,15 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
     // Update telemetry on success
     if (result.success) {
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.successfulCompilations.fetch_add(1);
+#endif
         ShaderLogger::LogInfo("Shader bundle build completed successfully: " + programName_ +
             " (" + std::to_string(result.totalTime.count()) + "ms)", "Builder");
     } else {
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.failedCompilations.fetch_add(1);
+#endif
         ShaderLogger::LogError("Shader bundle build failed: " + result.errorMessage, "Builder");
     }
 

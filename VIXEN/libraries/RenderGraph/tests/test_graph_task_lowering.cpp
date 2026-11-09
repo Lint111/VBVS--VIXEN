@@ -677,9 +677,43 @@ TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
     cost.Observe(64, 64, 1'500'000);
     cost.Observe(49, 49, 4'000'000);
     EXPECT_GE(cost.Estimate(49), 4'400'000u);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    // Tiles are sized from the mean of the two samples (5x5 projects ~1.4 ms), not the slower one (4x4).
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
     cost.Observe(16, 16, 1'000'000);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
+}
+
+TEST(GpuChunkCost, MeasuredLaunchLatencyRaisesAnUnattainableBudgetOnly) {
+    // Dozen: cost(w) = 5.4 ms + 0.32 ms * w. A 49-workgroup tile costs 21 ms against a 2 ms budget, so
+    // splitting to the cold launch pays 5.4 ms of latency per command for nothing.
+    GpuChunkCost dozen;
+    dozen.Observe(49, 49, 21'000'000);
+    EXPECT_EQ(dozen.LaunchLatencyNs(), 0.0);
+    EXPECT_EQ(dozen.Edge(2'000'000, 63, 7), 14u);                 // probe a second scale
+    dozen.ObserveScale(49, 21'000'000);
+    dozen.ObserveScale(196, 68'000'000);                          // 5.4 + 0.32 * 196 ~= 68 ms
+    EXPECT_NEAR(dozen.LaunchLatencyNs(), 5.4e6, 0.6e6);
+    EXPECT_GT(dozen.SubmissionBudgetNs(2'000'000), 80'000'000u);
+    EXPECT_LE(dozen.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    dozen.Observe(196, 196, 68'000'000);
+    EXPECT_GT(dozen.Edge(2'000'000, 63, 7), 9u);
+    // Native: 30 us of latency is nowhere near the budget; nothing moves.
+    GpuChunkCost native;
+    native.Observe(49, 49, 900'000);
+    native.ObserveScale(49, 900'000);
+    native.ObserveScale(196, 3'520'000);
+    EXPECT_LT(native.LaunchLatencyNs(), 100'000.0);
+    EXPECT_EQ(native.SubmissionBudgetNs(2'000'000), 2'000'000u);
+    // A stalled measurement cannot request an unbounded submission.
+    GpuChunkCost stalled;
+    stalled.ObserveScale(49, 1.0e9);
+    stalled.ObserveScale(196, 1.5e9);
+    EXPECT_EQ(stalled.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    // Two scales closer than 2x are not enough to separate latency from throughput.
+    GpuChunkCost close;
+    close.ObserveScale(49, 20e6);
+    close.ObserveScale(64, 25e6);
+    EXPECT_EQ(close.LaunchLatencyNs(), 0.0);
 }
 
 TEST(GpuChunkCost, ImportedEnvelopeStartsWarmAndRejectsEmptyState) {
@@ -706,7 +740,8 @@ TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {
     EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
     cost.Observe(49, 49, 1'000'000);
     cost.Observe(49, 49, 50'000'000);
-    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    // Over budget at the cold launch with no latency measured: one probe scale up, never below the launch.
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 14u);
     EXPECT_EQ(cost.Edge(2'000'000, 5, 7), 5u);
     EXPECT_GE(cost.Estimate(49), 55'000'000u);
 }
@@ -735,7 +770,11 @@ TEST(GpuChunkCost, NativeUntilesWhenWholePassFitsAndUsesMeanNotMax) {
     GpuChunkCost cost;
     cost.Observe(49, 49, 1'690'000);
     for (int i = 0; i < 80; ++i) cost.Observe(49, 49, 550'000);
-    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);  // max-based (translated) rule is unchanged
+    // One rule for both device classes: the tile is sized from the mean cost, so a translated device
+    // (no WholePass) grows past the cold floor but still tiles.
+    const uint32_t translatedEdge = cost.Edge(2'000'000, 63, 7);
+    EXPECT_GT(translatedEdge, 7u);
+    EXPECT_LT(translatedEdge, 63u);
     const uint64_t window = NativeWholePassWindowNs(2'000'000, 16'666'666);
     EXPECT_GE(window, 239'000'000u);
     EXPECT_LE(window, 241'000'000u);
@@ -745,6 +784,53 @@ TEST(GpuChunkCost, NativeUntilesWhenWholePassFitsAndUsesMeanNotMax) {
     const uint32_t grown = cost.Edge(2'000'000, 63, 7, &tooLong);
     EXPECT_GT(grown, 7u);  // genuine long pass still tiles, by the mean cost
     EXPECT_LT(grown, 63u);
+}
+
+TEST(GpuChunkCost, TranslatedAndOverWindowNativeShareLatencyDerivedTiling) {
+    // Dozen-like: 5.4 ms launch latency + 0.32 ms/workgroup. Both classes raise the budget from the
+    // measured latency; only the native class with a fitting window collapses to one dispatch.
+    const auto dozen = [] {
+        GpuChunkCost cost;
+        cost.Observe(49, 49, 21'000'000);
+        cost.ObserveScale(49, 21'000'000);
+        cost.ObserveScale(196, 68'000'000);
+        cost.Observe(196, 196, 68'000'000);
+        return cost;
+    };
+    const GpuChunkCost translated = dozen();
+    const uint32_t translatedEdge = translated.Edge(2'000'000, 63, 7);
+    EXPECT_GT(translatedEdge, 9u);
+    EXPECT_LT(translatedEdge, 63u);  // still tiles
+    const GpuChunkCost::WholePass tooLong{3969, 240'000'000};  // ~1.3 s projected
+    EXPECT_EQ(translated.Edge(2'000'000, 63, 7, &tooLong), translatedEdge);  // same sizing on a long native pass
+    const GpuChunkCost::WholePass fits{3969, 2'000'000'000};
+    EXPECT_EQ(translated.Edge(2'000'000, 63, 7, &fits), 63u);
+}
+
+TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
+    // A known device at a new resolution: the envelope learned at 63x63 seeds 135x240 so the first
+    // frame (before any ring readback) is already one dispatch.
+    GpuChunkCost learned;
+    learned.Observe(3969, 3969, 12'000'000);
+    GpuChunkCost seeded;
+    seeded.Import(learned.AnchorUnits(), learned.UnitNs(), learned.FixedNs());
+    const GpuChunkCost::WholePass window{135ull * 240, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    EXPECT_EQ(seeded.Edge(2'000'000, 240, 7, &window), 240u);
+    GpuChunkCost cold;
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);
+}
+
+TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {
+    // The previous run ended tiled: one dense tile set a 77 us/unit max, but tiles averaged 3 us/unit.
+    // Persisting the mean means the next start projects the whole pass from it.
+    const GpuChunkCost::WholePass window{14400, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost maxOnly;
+    maxOnly.Import(14400, 77'000.0, 770'000.0);
+    EXPECT_LT(maxOnly.Edge(2'000'000, 160, 7, &window), 160u);
+    GpuChunkCost withMean;
+    withMean.Import(14400, 77'000.0, 770'000.0, 3'000.0);
+    EXPECT_EQ(withMean.Edge(2'000'000, 160, 7, &window), 160u);
+    EXPECT_EQ(withMean.MeanUnitNs(), 3'000.0);
 }
 
 TEST(GpuChunkCost, DeviceClassDecidesWhichDevicesUntile) {

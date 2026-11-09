@@ -51,6 +51,23 @@
       }
     },
     {
+      "name": "vixen-wsl-benchmark",
+      "inherits": "vixen-wsl",
+      "displayName": "VIXEN WSL Native Benchmark (measurement hooks enabled)",
+      "description": "Release Linux/GCC build with UNDERSET_NATIVE_BENCHMARK enabled for native-bench and capture timing witnesses.",
+      "binaryDir": "${sourceDir}/../build/wsl-benchmark",
+      "cacheVariables": {
+        "UNDERSET_NATIVE_BENCHMARK": "ON"
+      }
+    },
+    {
+      "name": "vixen-wsl-lookdev",
+      "inherits": "vixen-wsl-benchmark",
+      "displayName": "VIXEN WSL Look-dev Capture (benchmark instrumentation)",
+      "description": "Look-dev capture preset; inherits the native benchmark keyword so perf.csv and capture timing remain available.",
+      "binaryDir": "${sourceDir}/../build/wsl-lookdev"
+    },
+    {
       "name": "vixen-wsl-personalized",
       "inherits": "vixen-wsl",
       "displayName": "VIXEN WSL Personalized Capability Build (Dozen device-bound)",
@@ -105,6 +122,8 @@
     { "name": "vixen-ninja-release", "configurePreset": "vixen-ninja-release" },
     { "name": "vixen-wsl", "configurePreset": "vixen-wsl" },
     { "name": "vixen-wsl-full", "configurePreset": "vixen-wsl-full" },
+    { "name": "vixen-wsl-benchmark", "configurePreset": "vixen-wsl-benchmark" },
+    { "name": "vixen-wsl-lookdev", "configurePreset": "vixen-wsl-lookdev" },
     { "name": "vixen-wsl-personalized", "configurePreset": "vixen-wsl-personalized" },
     { "name": "vixen-wsl-debug", "configurePreset": "vixen-wsl-debug" },
     { "name": "vixen-wsl-asan", "configurePreset": "vixen-wsl-asan" },

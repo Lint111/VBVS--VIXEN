@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 #include "Core/ITaskProfile.h"
+#include <nlohmann/json.hpp>
 #include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "Core/TaskProfiles/ResolutionTaskProfile.h"
 #include "Core/TaskProfileRegistry.h"
@@ -264,7 +265,7 @@ TEST_F(SimpleTaskProfileTest, SaveLoadState) {
 
 TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     // R503: the chunk-cost envelope is saved per dispatch extent and restored in place.
-    profile->SetChunkCalibration("240x135", {14400, 128.5, 12'000.0});
+    profile->SetChunkCalibration("240x135", {14400, 128.5, 12'000.0, 40.0});
     profile->SetChunkCalibration("63x63", {3969, 90.0, 0.0});
     nlohmann::json j;
     profile->SaveState(j);
@@ -276,6 +277,7 @@ TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     EXPECT_EQ(wide->anchorUnits, 14400u);
     EXPECT_DOUBLE_EQ(wide->unitNs, 128.5);
     EXPECT_DOUBLE_EQ(wide->fixedNs, 12'000.0);
+    EXPECT_DOUBLE_EQ(wide->meanUnitNs, 40.0);
     ASSERT_TRUE(loaded.GetChunkCalibration("63x63").has_value());
     EXPECT_FALSE(loaded.GetChunkCalibration("120x68").has_value());
     loaded.ResetCalibration();
@@ -287,6 +289,19 @@ TEST_F(SimpleTaskProfileTest, ChunkCalibrationPersistsPerExtentAndResets) {
     rejected.LoadState(bad);
     EXPECT_FALSE(rejected.GetChunkCalibration("240x135").has_value());
     EXPECT_TRUE(rejected.GetChunkCalibration("63x63").has_value());
+}
+
+TEST_F(SimpleTaskProfileTest, NearestChunkCalibrationSeedsANewExtent) {
+    EXPECT_FALSE(profile->NearestChunkCalibration("240x135").has_value());
+    profile->SetChunkCalibration("63x63", {3969, 90.0, 0.0});
+    profile->SetChunkCalibration("160x90", {14400, 80.0, 0.0});
+    const auto seed = profile->NearestChunkCalibration("200x112");
+    ASSERT_TRUE(seed.has_value());
+    EXPECT_EQ(seed->anchorUnits, 14400u);
+    // The extent itself is never its own seed.
+    const auto other = profile->NearestChunkCalibration("160x90");
+    ASSERT_TRUE(other.has_value());
+    EXPECT_EQ(other->anchorUnits, 3969u);
 }
 
 // ============================================================================
