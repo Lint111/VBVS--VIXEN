@@ -1,3 +1,4 @@
+#include "ScopedEnvironment.h"
 #include "VulkanGraphApplication.h"
 #include "graph/PlanetSceneDefinition.h"
 #include "Nodes/CameraNode.h"
@@ -60,6 +61,7 @@ constexpr uint32_t kMaxFramesPerState = 2 * kReservoirHistoryCap;
 constexpr uint32_t kDefaultFramesPerState = 2 * kRingSlotCount;
 constexpr double kDefaultProcessBudgetMs = 300000.0; // Cold-driver dzn compile is ~100 s; see reports/capturespeed.md.
 
+#if UNDERSET_NATIVE_BENCHMARK
 using CaptureClock = std::chrono::steady_clock;
 
 double MsBetween(CaptureClock::time_point from, CaptureClock::time_point to) {
@@ -72,6 +74,7 @@ double Percentile(std::vector<double> samples, double fraction) {
     const auto index = static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1) + 0.5);
     return samples[std::min(index, samples.size() - 1)];
 }
+#endif
 
 uint32_t DefaultFramesPerState() {
     return Vixen::RenderGraph::ResolveReservoirEnabled() ? kMaxFramesPerState : kDefaultFramesPerState;
@@ -100,11 +103,7 @@ double ProcessBudgetMs() {
 }
 
 void SetEnvironment(const char* key, const std::string& value) {
-#ifdef _WIN32
-    _putenv_s(key, value.c_str());
-#else
-    setenv(key, value.c_str(), 1);
-#endif
+    Vixen::Core::Env::Set(key, value);
 }
 
 class PlanetCaptureApplication final : public VulkanGraphApplication {
@@ -239,9 +238,13 @@ public:
 
 
     bool Render() override {
+#if UNDERSET_NATIVE_BENCHMARK
         const auto frameStart = CaptureClock::now();
+#endif
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+#if UNDERSET_NATIVE_BENCHMARK
         frameWallMs_.push_back(MsBetween(frameStart, CaptureClock::now()));
+#endif
         if (++framesInState_ < framesPerState_) return true;
         const std::filesystem::path output = outputDir_ / (state_.name + ".png");
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
@@ -252,7 +255,9 @@ public:
 
     bool Captured() const { return captured_; }
     const std::string& CaptureError() const { return captureError_; }
+#if UNDERSET_NATIVE_BENCHMARK
     const std::vector<double>& FrameWallMs() const { return frameWallMs_; }
+#endif
 
 private:
     static void WriteVec(std::ostream& out, const glm::dvec3& v) {
@@ -393,7 +398,9 @@ private:
     bool shadingLambert_ = false;
     bool captured_ = false;
     std::string captureError_;
+#if UNDERSET_NATIVE_BENCHMARK
     std::vector<double> frameWallMs_;
+#endif
     VkDevice snapshotDevice_ = VK_NULL_HANDLE;
     VkBuffer snapshotBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory snapshotMemory_ = VK_NULL_HANDLE;
@@ -419,11 +426,15 @@ TEST(PlanetCapture, RendersStateDeterministically) {
 
     SetEnvironment("VIXEN_WINDOW_WIDTH", std::to_string(state->width));
     SetEnvironment("VIXEN_WINDOW_HEIGHT", std::to_string(state->height));
+#if UNDERSET_NATIVE_BENCHMARK
     const auto processStart = CaptureClock::now();
+#endif
     PlanetCaptureApplication app(outputDir, *state, framesPerState);
     const int result = app.Run(RunOptions{.exitAfterFrames = framesPerState});
+#if UNDERSET_NATIVE_BENCHMARK
     const double processMs =
         std::chrono::duration<double, std::milli>(CaptureClock::now() - processStart).count();
+#endif
     ASSERT_TRUE(result == 0 && app.Captured())
         << (app.CaptureError().empty() ? "application exited before the planet capture was written"
                                        : app.CaptureError());
@@ -431,6 +442,7 @@ TEST(PlanetCapture, RendersStateDeterministically) {
     ASSERT_TRUE(std::filesystem::exists(path) && std::filesystem::file_size(path, ec) > 0)
         << "capture file was not written: " << path.string();
 
+#if UNDERSET_NATIVE_BENCHMARK
     // R536: every capture reports process wall time and its runtime budget. Per-frame values cover
     // each VulkanGraphApplication::Render call; process wall also includes startup and PNG export.
     const double budgetMs = ProcessBudgetMs();
@@ -442,6 +454,7 @@ TEST(PlanetCapture, RendersStateDeterministically) {
     std::fflush(stdout);
     ASSERT_LE(processMs, budgetMs) << "planet capture exceeded its runtime budget: " << processMs
                                    << " ms > " << budgetMs << " ms (VIXEN_PLANET_CAPTURE_BUDGET_MS)";
+#endif
 }
 
 } // namespace

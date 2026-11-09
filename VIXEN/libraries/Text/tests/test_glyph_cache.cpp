@@ -2,6 +2,7 @@
 #if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
 #define _CRT_SECURE_NO_WARNINGS
 #endif
+#include "ScopedEnvironment.h"
 #include "Text/GlyphAtlas.h"
 #include "Text/GlyphCellStore.h"
 #include "Text/RmlFontEngine.h"
@@ -26,13 +27,7 @@ namespace {
 namespace fs = std::filesystem;
 using namespace Vixen::Text;
 
-void SetEnv(const char* name, const std::string& value) {
-#ifdef _WIN32
-    _putenv_s(name, value.c_str());
-#else
-    setenv(name, value.c_str(), 1);
-#endif
-}
+void SetEnv(const char* name, const std::string& value) { Vixen::Core::Env::Set(name, value); }
 
 // Each test gets its own store root under the working directory (the build tree), never the
 // real user cache.

@@ -143,6 +143,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     // memoryLogger_ here is used ONLY for GPUPerformanceLogger's memory-tracking API
     // (RegisterBufferAllocation/GetMemorySummary — see PrintGPUMemorySummary below), never for
     // GPU timestamp recording: this node never calls BeginFrame/RecordDispatchStart/
@@ -160,6 +161,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
     if (nodeLogger) {
         nodeLogger->AddChild(memoryLogger_);
     }
+#endif
 
     // Register VoxelSceneCacher with CashSystem (idempotent)
     RegisterVoxelSceneCacher();
@@ -305,6 +307,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("Uploaded octree buffers successfully");
 
+#if UNDERSET_NATIVE_BENCHMARK
     // Print memory summary for Week 3 benchmarking
     if (memoryLogger_) {
         NODE_LOG_INFO("GPU MEMORY SUMMARY:\n" + memoryLogger_->GetMemorySummary() +
@@ -312,6 +315,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
     } else {
         NODE_LOG_WARNING("[VoxelGridNode] WARNING: memoryLogger_ is null, cannot print memory summary");
     }
+#endif
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
 }

@@ -163,6 +163,44 @@ public:
      */
     virtual void BuildRenderGraph();
 
+    // Production graph construction is split by graph family.  These seams keep the
+    // registration order in BuildRenderGraph while letting the expensive recipe/SVO
+    // scene authoring compile independently from the driver and lighting wiring.
+    void BuildRecipeSvoGraph(NodeHandle cameraNode,
+                             NodeHandle voxelGridNode,
+                             NodeHandle bodyOctreeSceneNode,
+                             NodeHandle lightTreeBufferNode,
+                             NodeHandle lightingConfigNode,
+                             float raymarchCameraFovDegrees);
+    void ConfigureRenderGraphDiagnostics(NodeHandle voxelGridNode,
+                                         NodeHandle descriptorGatherer,
+                                         NodeHandle computeDispatch,
+                                         NodeHandle pushConstantGatherer,
+                                         NodeHandle debugCaptureNode,
+                                         bool debugCaptureEnabled);
+    void BuildPresentationGraph(NodeHandle computeDispatch,
+                                bool skyProjectionFixtureEnabled,
+                                NodeHandle skyProjectionRenderPassNode,
+                                NodeHandle skyProjectionFramebufferNode,
+                                NodeHandle uiRenderPassNode,
+                                NodeHandle uiFramebufferNode,
+                                NodeHandle uiCompositeNode,
+                                bool usesWsi);
+    void ConfigureLightingShadowDispatches(NodeHandle probeGatherNode,
+                                           NodeHandle shadowRayTraceNode,
+                                           NodeHandle probeApplyNode,
+                                           NodeHandle shadowRayRequestBuffer,
+                                           NodeHandle shadowRayResultBuffer,
+                                           NodeHandle probeRayPayloadBuffer,
+                                           uint32_t shadowRaySlotCount,
+                                           uint32_t shadowRayRequestStrideBytes,
+                                           uint32_t shadowRayResultStrideBytes,
+                                           uint32_t probeRayPayloadStrideBytes);
+    void FinalizeLightingShadowDispatches(NodeHandle directLightingNode,
+                                          NodeHandle probeGatherNode,
+                                          NodeHandle shadowRayTraceNode,
+                                          NodeHandle probeApplyNode);
+
     /**
      * @brief Build a UI-only RmlUi demo graph (S0). Gated by the VIXEN_UI_DEMO env var.
      */
@@ -567,10 +605,8 @@ private:
     // Update() re-places them when the layout or window size changes.
     std::unique_ptr<Vixen::RenderGraph::PanelDockHost> panelDock_ = std::make_unique<Vixen::RenderGraph::PanelDockHost>();
 
-    // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
-    // PostTick call (for measuring this tick's CPU frame time). No-op object when
-    // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
-    // all cheap no-ops on every run that doesn't opt in.
+    // Inc1 M4 Task 6b: perf-CSV recorder. The type is empty when the benchmark keyword is
+    // off, so normal builds have no CSV state or environment read.
     PerfCsvWriter perfCsvWriter_;
     // Render-path modules publish their timed passes through the module build contract, so the
     // per-frame recorder never looks up a module's private graph members by name.
@@ -581,7 +617,9 @@ private:
     std::vector<UpscalerPassMetric> upscalerPerfPasses_;
     // The vixen: composition's generated GPU systems (BuildRenderGraph); each stage is a perf column.
     Vixen::RenderGraph::GeneratedSystemStages generatedSystems_;
+#if UNDERSET_NATIVE_BENCHMARK
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
+#endif
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
     // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it

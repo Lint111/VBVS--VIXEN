@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
 
 namespace Vixen::RenderGraph {
 

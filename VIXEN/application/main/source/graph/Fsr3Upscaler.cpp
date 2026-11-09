@@ -5,14 +5,20 @@
 #include "Nodes/Common/SwapchainBarriers.h"
 #include "VulkanDevice.h"
 
+#ifndef UNDERSET_NATIVE_BENCHMARK
+#define UNDERSET_NATIVE_BENCHMARK 0
+#endif
+
 #include <FidelityFX/host/backends/vk/ffx_vk.h>
 #include <FidelityFX/host/ffx_fsr3upscaler.h>
 
+#if UNDERSET_NATIVE_BENCHMARK
 #include <algorithm>
-#include <array>
-#include <cmath>
 #include <cstdio>
 #include <chrono>
+#endif
+#include <array>
+#include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -46,7 +52,9 @@ public:
         if (!initialized_ || !device_) {
             return "FSR 3.1.4 dispatch requested before context initialization";
         }
+#if UNDERSET_NATIVE_BENCHMARK
         const auto recordStart = std::chrono::steady_clock::now();
+#endif
         auto* output = context.In(ComputeStageNodeConfig::IMAGE_WRITE);
         const auto inputs = context.In(ComputeStageNodeConfig::IMAGE_READ_ARRAY);
         if (!output || inputs.size() != 4 ||
@@ -105,6 +113,7 @@ public:
         dispatch.cameraFar = farPlane_;
         dispatch.cameraFovAngleVertical = glm::radians(camera.fov);
         dispatch.viewSpaceToMetersFactor = 1.0f;
+#if UNDERSET_NATIVE_BENCHMARK
         const bool recordGpuTiming = timingEnabled_ && timingSampleCount_ < kMaxGpuTimingSamples;
         const uint32_t timingSample = recordGpuTiming ? timingSampleCount_++ : 0;
         if (recordGpuTiming) {
@@ -115,9 +124,11 @@ public:
             timingOverflow_ = true;
         }
         const auto dispatchStart = std::chrono::steady_clock::now();
+#endif
         const std::string dispatchFailure = FfxFailure(
             ffxFsr3UpscalerContextDispatch(&context_, &dispatch), "ffxFsr3UpscalerContextDispatch");
         if (!dispatchFailure.empty()) return dispatchFailure;
+#if UNDERSET_NATIVE_BENCHMARK
         const auto dispatchEnd = std::chrono::steady_clock::now();
         if (recordGpuTiming) {
             vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -129,13 +140,16 @@ public:
             cpuRecordMs_.push_back(Millis(std::chrono::steady_clock::now() - recordStart).count());
             cpuDispatchMs_.push_back(Millis(dispatchEnd - dispatchStart).count());
         }
+#endif
         return {};
     }
 
     void Cleanup() noexcept {
         if (device_ && device_->device != VK_NULL_HANDLE) {
             vkDeviceWaitIdle(device_->device);
+#if UNDERSET_NATIVE_BENCHMARK
             CollectGpuTimings();
+#endif
         }
         if (initialized_) {
             ffxFsr3UpscalerContextDestroy(&context_);
@@ -147,10 +161,12 @@ public:
                 DestroySharedImage(frame.dilatedMotionVectors);
                 DestroySharedImage(frame.dilatedDepth);
             }
+#if UNDERSET_NATIVE_BENCHMARK
             if (timingPool_ != VK_NULL_HANDLE) {
                 vkDestroyQueryPool(device_->device, timingPool_, nullptr);
                 timingPool_ = VK_NULL_HANDLE;
             }
+#endif
         }
         scratch_.reset();
         device_ = nullptr;
@@ -204,7 +220,9 @@ private:
             return failure;
         }
         initialized_ = true;
+#if UNDERSET_NATIVE_BENCHMARK
         CreateTimingPool();
+#endif
         return CreateSharedResources();
     }
 
@@ -223,6 +241,7 @@ private:
         SharedImage dilatedDepth;
     };
 
+#if UNDERSET_NATIVE_BENCHMARK
     void CreateTimingPool() {
         if (!std::getenv("VIXEN_FSR3_GPU_TIMING")) return;
         VkPhysicalDeviceProperties properties{};
@@ -285,6 +304,7 @@ private:
             std::fprintf(stderr, "[FSR3_GPU_TIMING] sample limit reached (%u)\n", kMaxGpuTimingSamples);
         }
     }
+#endif
 
     static VkFormat ToVkFormat(FfxSurfaceFormat format) {
         switch (format) {
@@ -452,6 +472,7 @@ private:
     FfxInterface backendInterface_{};
     FfxFsr3UpscalerContext context_{};
     std::array<SharedFrameResources, kFramesInFlight> sharedResources_{};
+#if UNDERSET_NATIVE_BENCHMARK
     VkQueryPool timingPool_ = VK_NULL_HANDLE;
     uint32_t timingSampleCount_ = 0;
     float timestampPeriodNs_ = 0.0f;
@@ -459,6 +480,7 @@ private:
     bool timingOverflow_ = false;
     std::vector<double> cpuRecordMs_;
     std::vector<double> cpuDispatchMs_;
+#endif
     bool initialized_ = false;
 };
 

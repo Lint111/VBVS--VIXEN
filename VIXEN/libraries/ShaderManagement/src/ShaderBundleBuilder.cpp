@@ -1,4 +1,5 @@
 #include "ShaderBundleBuilder.h"
+#include "ShaderReflectionCache.h"
 #include "SPIRVReflection.h"
 #include "SdiRegistryManager.h"
 #include "ShaderLogger.h"
@@ -416,9 +417,12 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     auto startTime = std::chrono::steady_clock::now();
     BuildResult result;
 
-    // Update telemetry
+    // Update benchmark telemetry only when the benchmark keyword is enabled. BuildResult's
+    // compile/reflect durations remain functional build results for callers.
     auto& telemetry = ShaderLogger::GetTelemetry();
+#if UNDERSET_NATIVE_BENCHMARK
     telemetry.totalCompilations.fetch_add(1);
+#endif
 
     ShaderLogger::LogDebug("Starting shader bundle build: " + programName_, "Builder");
 
@@ -440,7 +444,9 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
             result.success = false;
             result.errorMessage = "Pipeline validation failed: " + error;
             ShaderLogger::LogError("Pipeline validation failed: " + error, "Builder");
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.failedCompilations.fetch_add(1);
+#endif
             return result;
         }
         ShaderLogger::LogDebug("Pipeline validation passed", "Builder");
@@ -501,28 +507,38 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         );
         auto compileEnd = std::chrono::steady_clock::now();
         if (compiled.fromCache) {
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.cacheHits.fetch_add(1);
+#endif
             result.usedCache = true;
         } else {
+#if UNDERSET_NATIVE_BENCHMARK
             if (cacheManager) telemetry.cacheMisses.fetch_add(1);
+#endif
             result.compileTime += std::chrono::duration_cast<std::chrono::milliseconds>(
                 compileEnd - compileStart);
         }
 
         // Update telemetry
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.totalSourceSizeBytes.fetch_add(sourceToCompile.size());
+#endif
 
         if (!compiled.success) {
             result.success = false;
             result.errorMessage = "Compilation failed for stage " +
                 std::string(ShaderStageName(stageSource.stage)) + ": " + compiled.errorLog;
             ShaderLogger::LogError("Compilation failed: " + compiled.errorLog, "Compiler");
+#if UNDERSET_NATIVE_BENCHMARK
             telemetry.failedCompilations.fetch_add(1);
+#endif
             return result;
         }
 
         // Update SPIRV size telemetry
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.totalSpirvSizeBytes.fetch_add(compiled.spirv.size() * sizeof(uint32_t));
+#endif
 
         // Add to program
         CompiledShaderStage stage;
@@ -539,7 +555,13 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     }
 
     // Perform rest of build (reflection, SDI, bundling)
-    result = PerformBuild(program);
+    BuildResult built = PerformBuild(program);
+    // PerformBuild only knows reflection/SDI; keep what the compile loop measured and warned.
+    built.preprocessTime = result.preprocessTime;
+    built.compileTime = result.compileTime;
+    built.usedCache = result.usedCache;
+    built.warnings.insert(built.warnings.begin(), result.warnings.begin(), result.warnings.end());
+    result = std::move(built);
 
     auto endTime = std::chrono::steady_clock::now();
     result.totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -547,11 +569,15 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
     // Update telemetry on success
     if (result.success) {
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.successfulCompilations.fetch_add(1);
+#endif
         ShaderLogger::LogInfo("Shader bundle build completed successfully: " + programName_ +
             " (" + std::to_string(result.totalTime.count()) + "ms)", "Builder");
     } else {
+#if UNDERSET_NATIVE_BENCHMARK
         telemetry.failedCompilations.fetch_add(1);
+#endif
         ShaderLogger::LogError("Shader bundle build failed: " + result.errorMessage, "Builder");
     }
 
@@ -643,13 +669,36 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     BuildResult result;
     result.success = false;
 
-    // 1. Reflect SPIRV
+    // 1. Reflect SPIRV (and the legacy descriptor layout): both are pure functions of the SPIR-V,
+    // so a warm launch restores them from the reflection cache instead of re-running SPIRV-Reflect.
+    ShaderCacheManager* const spirvCache =
+        cachingDisabled_ ? nullptr : (cacheManager_ ? cacheManager_ : &DefaultShaderCacheManager());
+    std::optional<ShaderReflectionCache> reflectionCache;
+    if (spirvCache && spirvCache->IsEnabled()) reflectionCache.emplace(*spirvCache);
+
     auto reflectStart = std::chrono::steady_clock::now();
-    SpirvReflector reflector;
-    auto reflectionData = reflector.Reflect(program);
+    std::unique_ptr<SpirvReflectionData> reflectionData;
+    std::unique_ptr<DescriptorLayoutSpec> descriptorLayout;
+    bool reflectionRestored = false;
+    if (reflectionCache) {
+        if (auto cached = reflectionCache->Lookup(program)) {
+            reflectionData = std::move(cached->reflection);
+            descriptorLayout = std::move(cached->descriptorLayout);
+            reflectionRestored = true;
+        }
+    }
+    if (!reflectionRestored) {
+        SpirvReflector reflector;
+        reflectionData = reflector.Reflect(program);
+        if (reflectionData) descriptorLayout = ReflectDescriptorLayout(program);
+        if (reflectionData && reflectionCache) {
+            reflectionCache->Store(program, *reflectionData, descriptorLayout.get());
+        }
+    }
     auto reflectEnd = std::chrono::steady_clock::now();
     result.reflectTime = std::chrono::duration_cast<std::chrono::milliseconds>(
         reflectEnd - reflectStart);
+    result.reflectionFromCache = reflectionRestored;
 
     if (!reflectionData) {
         result.errorMessage = "SPIRV reflection failed";
@@ -663,8 +712,7 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
         ShaderLogger::LogDebug("Generated descriptor-based UUID: " + uuid_, "Builder");
     }
 
-    // 3. Extract descriptor layout (legacy compatibility)
-    auto descriptorLayout = ReflectDescriptorLayout(program);
+    // 3. Descriptor layout (legacy compatibility)
     if (!descriptorLayout) {
         result.warnings.push_back("Failed to extract descriptor layout");
     }

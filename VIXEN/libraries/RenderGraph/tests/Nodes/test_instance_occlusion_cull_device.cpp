@@ -21,7 +21,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
+#include "Headers.h"
 #include "Generated/OctreeConfig.g.h"            // Vixen::Gpu::OctreeConfig (432 B, static_asserted)
 #include "Nodes/InstanceOcclusionCullMirror.h"   // the CPU mirror under parity test
 #include "ShellOctreeGpu.h"                      // Vixen::SVO::BodyInstanceGpu

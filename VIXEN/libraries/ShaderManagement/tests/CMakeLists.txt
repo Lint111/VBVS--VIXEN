@@ -20,6 +20,7 @@ enable_testing()
 add_executable(ShaderManagementTests
     test_shader_compiler.cpp
     test_shader_cache_manager.cpp
+    test_shader_reflection_cache.cpp
     test_sdi_lifecycle.cpp
     test_shader_preprocessor.cpp
     # Temporarily disabled - need API updates
@@ -139,7 +140,8 @@ target_link_libraries(test_spirv_descriptor_layout
 set_target_properties(test_spirv_descriptor_layout PROPERTIES FOLDER "Tests/ShaderManagement Tests")
 include(GoogleTest)
 vixen_stage_runtime_dlls_for_target(test_spirv_descriptor_layout)
-gtest_discover_tests(test_spirv_descriptor_layout WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+gtest_discover_tests(test_spirv_descriptor_layout WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
 
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
 # feature-variant interface from the committed manifest and fails (exit 6)

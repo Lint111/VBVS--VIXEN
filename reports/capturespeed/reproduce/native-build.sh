@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Sync this exact VIXEN commit to its lane-isolated NTFS clone and build its capture tests.
+# Sync this exact VIXEN commit (HEAD, or --source-commit <rev>) to its lane-isolated NTFS clone and build its capture tests.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 undertow_root="${UNDERTOW_ROOT:-}"
 source "$script_dir/native-common.sh"
+native_source_dispatch "$0" "$@"
+set -- ${native_args[@]+"${native_args[@]}"}
 queue=/home/liory/.local/bin/with-test-lock.sh
 cmd_exe="$native_cmd_exe"
 native_batch="$native_root/reports/capturespeed/reproduce/native-build.bat"

@@ -163,7 +163,9 @@ void ShellRevalidateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     }
 
     BuildPipeline();
+#if UNDERSET_NATIVE_BENCHMARK
     chunkQuery_ = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(vulkanDevice_, 1, 4);
+#endif
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -360,7 +362,9 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t groupCount = (brickCount + 63u) / 64u;
     const uint32_t layers = std::max(1u, dilation); // canonical zero -> one layer
     uint32_t chunks = 0;
+#if UNDERSET_NATIVE_BENCHMARK
     double totalMs = 0, maximumMs = 0;
+#endif
     for (uint32_t phase = 0; phase <= layers; ++phase) {
         for (uint32_t first = 0; first < groupCount; first += 4) {
             VkCommandBuffer chunkCommand = VK_NULL_HANDLE;
@@ -388,9 +392,11 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             ++chunks;
         }
     }
+#if UNDERSET_NATIVE_BENCHMARK
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() + " submissions=" + std::to_string(chunks) +
         " total_gpu_ms=" + std::to_string(totalMs) + " max_submission_ms=" + std::to_string(maximumMs) + " budget_ms=2.000000" +
         " device_class=" + GpuDeviceClassName(*vulkanDevice_));
+#endif
     ctx.Out(ShellRevalidateNodeConfig::SHELL_FLAGS_BUFFER, layers % 2 == 0 ? shellFlagsBuffer_ : previousFlagsBuffer_);
 }
 
@@ -418,7 +424,9 @@ void ShellRevalidateNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
         if (previousFlagsMemory_) vkFreeMemory(vulkanDevice_->device, previousFlagsMemory_, nullptr);
         previousFlagsBuffer_ = VK_NULL_HANDLE;
         previousFlagsMemory_ = VK_NULL_HANDLE;
+#if UNDERSET_NATIVE_BENCHMARK
         chunkQuery_.reset();
+#endif
         shellFlagsCapacity_ = 0;
 
         DestroyPipeline();

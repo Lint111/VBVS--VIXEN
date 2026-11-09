@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "DeviceIdentifier.h"
 #include "MainCacher.h"
+#include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "VixenHash.h"

@@ -15,6 +15,16 @@ if(TARGET glm)
     endif()
     set_target_properties(glm PROPERTIES FOLDER "Dependencies")
 endif()
+# The ONE place glm's configuration is set. glm latches these macros at its first include in a
+# translation unit, so a source-level #define made the clip convention depend on include order
+# (141 of 271 RenderGraph TUs built with -1..1, 80 with 0..1). Every glm consumer inherits them
+# from the target, so no TU can see glm without them. Vulkan's native depth range is 0..1.
+foreach(_vixen_glm_target glm glm-header-only)
+    if(TARGET ${_vixen_glm_target})
+        target_compile_definitions(${_vixen_glm_target} INTERFACE
+            GLM_FORCE_DEPTH_ZERO_TO_ONE GLM_FORCE_RADIANS)
+    endif()
+endforeach()
 
 # The single Gaia pin shared by VIXEN, the native loader, undertow and the kernel lives in gaia.pin.
 # A consuming application that validates a different Gaia commit (a fork under test) passes its own

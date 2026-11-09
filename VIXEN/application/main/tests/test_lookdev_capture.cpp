@@ -3,6 +3,7 @@
 #include "Nodes/CameraNode.h"
 #include "Nodes/LightingConfigNode.h"
 #include "Nodes/DeviceNode.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
@@ -175,6 +176,7 @@ constexpr float kPlaqueHalfWidth = 14.0f;        // recipe units
 constexpr float kPlaqueHalfHeight = 10.0f;
 constexpr float kPlaqueHalfDepth = 1.8f;
 
+#if UNDERSET_NATIVE_BENCHMARK
 using CaptureClock = std::chrono::steady_clock;
 
 double MsBetween(CaptureClock::time_point from, CaptureClock::time_point to) {
@@ -187,6 +189,7 @@ double Percentile(std::vector<double> samples, double fraction) {
     const auto index = static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1) + 0.5);
     return samples[std::min(index, samples.size() - 1)];
 }
+#endif
 
 // R676.2: canonical captures stay one raw unjittered sample. A look capture declares the
 // presentation sampling path instead (VIXEN_LOOKDEV_CAPTURE_SAMPLING=presentation): the frame
@@ -1199,6 +1202,55 @@ bool BuildSdfFilterNonTextScene(GlyphSdfSceneBundle& scene, std::string& error) 
     return true;
 }
 
+// Pixel goldens are recorded and compared on native Vulkan only (owner ruling 11-08). Every capture
+// directory gets a capture-device.json naming the device class (GpuDeviceClass); a directory that is
+// a golden (it already holds golden-device.json, or VIXEN_PIXEL_GOLDEN_RECORD is set) is refused on a
+// translated device, and a recording run stamps golden-device.json beside the images.
+bool RecordCaptureDevice(const Vixen::Vulkan::Resources::VulkanDevice& device,
+                         const std::filesystem::path& outputDir, std::string& error) {
+    namespace fs = std::filesystem;
+    const std::string deviceClass = Vixen::RenderGraph::GpuDeviceClassName(device);
+    const bool goldenTarget = fs::exists(outputDir / "golden-device.json") ||
+        std::getenv("VIXEN_PIXEL_GOLDEN_RECORD") != nullptr;
+    if (goldenTarget && deviceClass == "translated") {
+        error = "refusing to record or overwrite a pixel golden on a translated device (Dozen/Venus/"
+                "llvmpipe/SwiftShader); goldens are native Vulkan only: " + outputDir.string();
+        return false;
+    }
+    std::string deviceName, driverName, driverInfo;
+    if (const auto capability = device.GetCapabilityGraph().GetCapability("BuildFact:ObservedDeviceDriverIdentity")) {
+        if (const auto* fact = dynamic_cast<const Vixen::BuildFactCapability*>(capability.get())) {
+            if (const auto* identity = std::get_if<Vixen::DeviceDriverIdentityBuildFact>(&fact->GetValue())) {
+                deviceName = identity->deviceName;
+                driverName = identity->driverName;
+                driverInfo = identity->driverInfo;
+            }
+        }
+    }
+    const auto quote = [](const std::string& text) {
+        std::string quoted = "\"";
+        for (const char c : text) {
+            if (c == '"' || c == '\\') quoted += '\\';
+            quoted += c;
+        }
+        return quoted + '"';
+    };
+    std::ostringstream record;
+    record << "{\"schema\":\"vixen-capture-device/v1\",\"device_class\":" << quote(deviceClass)
+           << ",\"device\":" << quote(deviceName) << ",\"driver\":" << quote(driverName)
+           << ",\"driver_info\":" << quote(driverInfo) << "}\n";
+    for (const char* name : {"capture-device.json", "golden-device.json"}) {
+        if (name[0] == 'g' && !goldenTarget) continue;
+        std::ofstream file(outputDir / name, std::ios::out | std::ios::trunc);
+        file << record.str();
+        if (!file) {
+            error = std::string("could not write ") + name + " in " + outputDir.string();
+            return false;
+        }
+    }
+    return true;
+}
+
 class LookdevCaptureApplication final : public VulkanGraphApplication {
 public:
     LookdevCaptureApplication(std::filesystem::path outputDir,
@@ -1221,16 +1273,23 @@ public:
         SetRenderPathConfig(config);
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     void SetProcessStart(CaptureClock::time_point start) { processStart_ = start; }
+#endif
 
     void BuildRenderGraph() override {
+#if UNDERSET_NATIVE_BENCHMARK
         const auto buildStart = CaptureClock::now();
         buildGraphBeginMs_ = MsBetween(processStart_, buildStart);
+#endif
         BuildRenderGraphTimed();
+#if UNDERSET_NATIVE_BENCHMARK
         buildGraphEndMs_ = MsBetween(processStart_, CaptureClock::now());
+#endif
     }
 
     void PrintTimingSummary() const {
+#if UNDERSET_NATIVE_BENCHMARK
         const double total = frameWallMs_.empty() ? 0.0
             : std::accumulate(frameWallMs_.begin(), frameWallMs_.end(), 0.0);
         std::printf("[CAPTURE_TIMING] startup_to_build_graph_ms=%.1f build_graph_ms=%.1f "
@@ -1243,6 +1302,7 @@ public:
             frameWallMs_.size(), total, Percentile(frameWallMs_, 0.50), Percentile(frameWallMs_, 0.95),
             Percentile(frameWallMs_, 1.0), captureWallMs_);
         std::fflush(stdout);
+#endif
     }
 
     void BuildRenderGraphTimed() {
@@ -1456,8 +1516,26 @@ public:
     }
 
     bool Render() override {
+#if UNDERSET_NATIVE_BENCHMARK
         const auto frameStart = CaptureClock::now();
-        if (frameWallMs_.empty()) firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
+#endif
+        if (framesInScenario_ == 0) {
+#if UNDERSET_NATIVE_BENCHMARK
+            firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
+#endif
+        }
+        // The device record is written once, on the process's first frame; frameWallMs_ is only
+        // filled in benchmark builds, so the first frame is scenario 0, frame 0.
+        if (scenarioIndex_ == 0 && framesInScenario_ == 0) {
+            auto* deviceNode = dynamic_cast<Vixen::RenderGraph::DeviceNode*>(
+                GetRenderGraph()->GetInstanceByName("main_device"));
+            auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+            if (!device) {
+                captureError_ = "missing capture device for the device record";
+                return false;
+            }
+            if (!RecordCaptureDevice(*device, outputDir_, captureError_)) return false;
+        }
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
             camera_->SetYawForTest(scenarios_[scenarioIndex_].yawRadians + 0.002f * float(framesInScenario_));
         // A steady pan for temporal-resolve ghosting checks: frame n of a scenario sits n steps
@@ -1471,7 +1549,7 @@ public:
             // the last frame of capture k lands on k * kRoomWalkCaptureSeconds.
             auto [eye, target] = std::pair{scenarios_[scenarioIndex_].eye, scenarios_[scenarioIndex_].target};
             if (RequestedExposureRoom() == ExposureRoomMode::Walk)
-                std::tie(eye, target) = RoomWalkPose(CaptureStepSeconds() * static_cast<float>(frameWallMs_.size() + 1));
+                std::tie(eye, target) = RoomWalkPose(CaptureStepSeconds() * static_cast<float>(framesInScenario_ + 1));
             camera_->SetPositionForTest(eye);
             camera_->SetLookTargetNoOrbitForTest(target);
         }
@@ -1495,7 +1573,9 @@ public:
                 return false;
             }
         }
+#if UNDERSET_NATIVE_BENCHMARK
         frameWallMs_.push_back(MsBetween(frameStart, CaptureClock::now()));
+#endif
         if (!modulePushChecked_ && std::getenv("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING")) {
             modulePushChecked_ = true;
             auto* graph = GetRenderGraph();
@@ -1560,9 +1640,13 @@ public:
             return false;
         }
         const std::filesystem::path output = outputDir_ / scenario.filename;
+#if UNDERSET_NATIVE_BENCHMARK
         const auto captureStart = CaptureClock::now();
+#endif
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
+#if UNDERSET_NATIVE_BENCHMARK
         captureWallMs_ += MsBetween(captureStart, CaptureClock::now());
+#endif
         if (std::getenv("VIXEN_LOOKDEV_READBACK") && !ExportLightingReadback(scenario)) return false;
         if (std::getenv("VIXEN_LOOKDEV_DEPTH_READBACK") && !ExportDepthReadback(scenario)) return false;
         ++capturedCount_;
@@ -2120,12 +2204,14 @@ private:
     std::filesystem::path outputDir_;
     std::vector<CaptureScenario> scenarios_;
     uint32_t framesPerScenario_ = kDefaultFramesPerScenario;
+#if UNDERSET_NATIVE_BENCHMARK
     CaptureClock::time_point processStart_ = CaptureClock::now();
     double buildGraphBeginMs_ = 0.0;
     double buildGraphEndMs_ = 0.0;
     double firstFrameBeginMs_ = 0.0;
     double captureWallMs_ = 0.0;
     std::vector<double> frameWallMs_;
+#endif
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
     Vixen::RenderGraph::LightingConfigNode* lighting_ = nullptr;
     Vixen::App::SceneLook sceneLook_;
@@ -2156,19 +2242,25 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     }
 
     LookdevCaptureApplication app(outputDir, scenarios, framesPerScenario);
+#if UNDERSET_NATIVE_BENCHMARK
     const auto processStart = CaptureClock::now();
     app.SetProcessStart(processStart);
+#endif
     const uint32_t frameCount = framesPerScenario * static_cast<uint32_t>(scenarios.size());
     // The final capture is published from frame N, issued by the graph owner on N+1, and
     // retired/read by PostTick on N+2. Keep two drain frames so this witness exercises the
     // asynchronous handoff rather than destroying a still-pending request during teardown.
     const int result = app.Run(RunOptions{.exitAfterFrames = frameCount + 2u});
+#if UNDERSET_NATIVE_BENCHMARK
     const double processMs = MsBetween(processStart, CaptureClock::now());
     const double budgetMs = ProcessBudgetMs();
+#endif
     app.PrintTimingSummary();
+#if UNDERSET_NATIVE_BENCHMARK
     std::printf("[CAPTURE_TIMING] frames_per_angle=%u process_total_ms=%.1f budget_ms=%.0f\n",
         framesPerScenario, processMs, budgetMs);
     std::fflush(stdout);
+#endif
     if (result != 0 || app.CapturedCount() != scenarios.size()) {
         error = app.CaptureError().empty()
             ? "application exited before all look-dev captures were written (result=" +
@@ -2177,11 +2269,13 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
             : app.CaptureError();
         return false;
     }
+#if UNDERSET_NATIVE_BENCHMARK
     if (processMs > budgetMs) {
         error = "look-dev capture exceeded its runtime budget: " + std::to_string(processMs) +
             " ms > " + std::to_string(budgetMs) + " ms (default scales with VIXEN_WINDOW_WIDTH*HEIGHT; set VIXEN_LOOKDEV_CAPTURE_BUDGET_MS to override)";
         return false;
     }
+#endif
     for (const auto& scenario : scenarios) {
         const auto path = outputDir / scenario.filename;
         if (!std::filesystem::exists(path) || std::filesystem::file_size(path, ec) == 0) {

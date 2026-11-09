@@ -92,12 +92,11 @@ add_library(FidelityFXFsr3VK STATIC
     "${FFX_BACKEND_SHARED}/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp"
     "${FFX_BACKEND_ROOT}/vk/ffx_vk.cpp"
     "${FFX_COMPONENT_ROOT}/ffx_fsr3upscaler.cpp"
-    "${VIXEN_ROOT}/application/main/source/graph/Fsr3UpscalerOnlyVK.cpp"
     ${FFX_FSR3_SHADER_OUTPUTS})
 add_dependencies(FidelityFXFsr3VK FidelityFXFsr3ShaderBlobs)
 target_compile_features(FidelityFXFsr3VK PUBLIC cxx_std_17)
 target_compile_definitions(FidelityFXFsr3VK PUBLIC FFX_SDK_DEFAULT_CONTEXT_SIZE=1048576)
-target_compile_definitions(FidelityFXFsr3VK PRIVATE FFX_FSR3UPSCALER)
+target_compile_definitions(FidelityFXFsr3VK PRIVATE FFX_FSR3UPSCALER FFX_VK_NO_FRAME_GENERATION)
 if(NOT WIN32)
     target_compile_options(FidelityFXFsr3VK PRIVATE
         "-include" "${CMAKE_CURRENT_LIST_DIR}/FidelityFXFsr3LinuxCompat.h")

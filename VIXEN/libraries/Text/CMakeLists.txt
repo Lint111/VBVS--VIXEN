@@ -4,10 +4,10 @@ project(Text VERSION 1.0.0 LANGUAGES CXX)
 if(NOT DEFINED ENV{UNDERTOW_ROOT} OR "$ENV{UNDERTOW_ROOT}" STREQUAL "")
     message(FATAL_ERROR
         "Text (VIXEN/libraries/Text) needs UNDERTOW_ROOT to find the generated text shader interface, "
-        "and VIXEN/CMakeLists.txt could not derive it: no Undertow checkout with "
-        "core/src/Undertow.Authoring/Schema/schemas.json exists at <projects>/undertow/.claude-worktrees/<lane> "
-        "or <projects>/undertow. Fix: export UNDERTOW_ROOT=<undertow checkout> (or create the paired lane worktree), "
-        "or configure through tools/vixen-native.sh, which forwards it.")
+        "and VIXEN/CMakeLists.txt could not derive a checkout containing "
+        "transpiled/textshader/Text/{Text.g.h,text.g.glsl}. Fix: set UNDERTOW_ROOT to a generated "
+        "Undertow provider (or create the paired lane worktree), then run "
+        "tools/regen.sh core-text-shader-interface --write before configuring VIXEN.")
 endif()
 file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _undertow_root_input)
 get_filename_component(_undertow_root "${_undertow_root_input}" REALPATH)
@@ -17,8 +17,11 @@ set(TEXT_SHADER_CPP_INTERFACE "${TEXT_SHADER_INTERFACE_DIR}/Text.g.h")
 set(TEXT_SHADER_GLSL_INTERFACE "${TEXT_SHADER_INTERFACE_DIR}/text.g.glsl")
 if(NOT EXISTS "${TEXT_SHADER_CPP_INTERFACE}" OR NOT EXISTS "${TEXT_SHADER_GLSL_INTERFACE}")
     message(FATAL_ERROR
-        "Generated text shader interface is missing under ${TEXT_SHADER_INTERFACE_ROOT}; "
-        "run the Undertow text shader interface generator before configuring VIXEN")
+        "Generated text shader interface is missing under ${TEXT_SHADER_INTERFACE_ROOT} "
+        "(expected Text.g.h and text.g.glsl). Fix: run "
+        "tools/regen.sh core-text-shader-interface --write in the UNDERTOW_ROOT checkout, "
+        "or point UNDERTOW_ROOT at a paired provider that already contains those files, "
+        "then reconfigure VIXEN.")
 endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
