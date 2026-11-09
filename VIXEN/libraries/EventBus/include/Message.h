@@ -54,7 +54,7 @@ namespace detail {
             : Fnv1aHash(s + 1, (h ^ static_cast<uint32_t>(static_cast<unsigned char>(*s))) * 16777619u);
     }
 
-    // Stable per-definition-site message-type id: a hash of "__FILE__ + __LINE__".
+    // Stable per-definition-site message-type id: a hash of the path-free source filename and line.
     //
     // CRITICAL: a message type id MUST be identical in every translation unit. The old scheme
     // (MESSAGE_TYPE_BASE + __COUNTER__) was NOT: __COUNTER__ resets per TU and increments per use,
@@ -62,7 +62,16 @@ namespace detail {
     // include order. A message published in one TU then failed to match the same type's
     // subscription in another TU, and the message routed to nobody (this silently broke window-resize
     // -> swapchain-recompile, since publish/subscribe live in different TUs). Hashing the fixed
-    // definition site (file+line) is translation-unit-stable and unique per declaration.
+    // definition site (path-free filename+line) is translation-unit-stable and unique per
+    // declaration while remaining independent of the checkout or dependency-fetch root.
+    constexpr const char* PathFreeFileName(const char* path) {
+        const char* fileName = path;
+        for (const char* cursor = path; *cursor != '\0'; ++cursor) {
+            if (*cursor == '/' || *cursor == '\\') fileName = cursor + 1;
+        }
+        return fileName;
+    }
+
     constexpr MessageType StableMessageTypeId(const char* file, uint32_t line) {
         uint32_t h = Fnv1aHash(file);
         h = (h ^ (line & 0xFFu)) * 16777619u;
@@ -80,7 +89,8 @@ namespace detail {
 
 // Helper macro for declaring message types. The id is derived from the (translation-unit-stable)
 // definition site, NOT __COUNTER__ — see StableMessageTypeId above for why that matters.
-#define AUTO_MESSAGE_TYPE() (::Vixen::EventBus::detail::StableMessageTypeId(__FILE__, __LINE__))
+#define AUTO_MESSAGE_TYPE() (::Vixen::EventBus::detail::StableMessageTypeId( \
+    ::Vixen::EventBus::detail::PathFreeFileName(__FILE__), __LINE__))
 
 // ============================================================================
 // Event Category Bit Flags (64-bit)

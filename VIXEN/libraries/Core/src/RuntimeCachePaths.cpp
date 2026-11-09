@@ -163,6 +163,31 @@ TemporaryDirectoryLifetime& ProcessTemporaryDirectoryLifetime() {
     return lifetime;
 }
 
+std::filesystem::path ExecutableDirectory() {
+    std::error_code ec;
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768);
+    const DWORD length = ::GetModuleFileNameW(nullptr, buffer.data(),
+                                               static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size()) return {};
+    return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+#else
+    const auto executable = std::filesystem::read_symlink("/proc/self/exe", ec);
+    return ec ? std::filesystem::path{} : executable.parent_path();
+#endif
+}
+
+std::filesystem::path ResolveRuntimeCachePath(const std::filesystem::path& configuredPath) {
+    if (configuredPath.is_absolute()) return configuredPath;
+
+    if (const auto executableDirectory = ExecutableDirectory(); !executableDirectory.empty()) {
+        return executableDirectory / configuredPath;
+    }
+
+    std::error_code ec;
+    return std::filesystem::absolute(configuredPath, ec);
+}
+
 } // namespace
 
 std::filesystem::path RuntimeCacheDirectory() {
@@ -171,7 +196,7 @@ std::filesystem::path RuntimeCacheDirectory() {
         return std::filesystem::path(overridePath);
     }
 #ifdef VIXEN_RUNTIME_CACHE_DIR
-    return std::filesystem::path(VIXEN_RUNTIME_CACHE_DIR);
+    return ResolveRuntimeCachePath(std::filesystem::path(VIXEN_RUNTIME_CACHE_DIR));
 #else
     return UserCacheDirectory();
 #endif
