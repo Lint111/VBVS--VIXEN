@@ -164,6 +164,11 @@ add_test(NAME Native.CaptureRootContract
             -P "${VIXEN_ROOT}/cmake/tests/test_capture_root.cmake")
 set_tests_properties(Native.CaptureRootContract PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.AutoMessageTypeUnique
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SOURCE_DIR=${VIXEN_ROOT}"
+            -P "${VIXEN_ROOT}/cmake/tests/test_auto_message_type_unique.cmake")
+set_tests_properties(Native.AutoMessageTypeUnique PROPERTIES LABELS "cpu")
+
 if(VIXEN_RENDERER_BYTE_IDENTITY_TEST)
     set(_renderer_identity_undertow_root "$ENV{UNDERTOW_ROOT}")
     add_test(NAME Native.RendererObjectByteIdentity
