@@ -185,21 +185,46 @@ VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& l
 }
 
 void VulkanLayerAndExtension::FilterUnsupportedExtensions(std::vector<const char*>& extensionNames,
-														  const std::vector<const char*>& mandatory) {
-	// Enumerate the instance extensions the active ICD actually exposes (layer == nullptr).
+                   const std::vector<const char*>& mandatory) {
+	// Enumerate the instance extensions the active ICD and requested layers expose. Validation
+	// extensions such as VK_EXT_validation_features and VK_EXT_debug_report belong to the
+	// validation layer, not the ICD, so querying only layer == nullptr incorrectly treats them as
+	// unsupported and, for extensions appended after this filter, can still make vkCreateInstance
+	// fail with VK_ERROR_EXTENSION_NOT_PRESENT.
 	uint32_t availableCount = 0;
-	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr) != VK_SUCCESS || availableCount == 0) {
-		// Can't enumerate: leave the list untouched and let vkCreateInstance be the arbiter.
-		return;
-	}
-	std::vector<VkExtensionProperties> available(availableCount);
-	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, available.data()) != VK_SUCCESS) {
-		return;
+	std::vector<VkExtensionProperties> available;
+	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr) == VK_SUCCESS &&
+		availableCount != 0) {
+		available.resize(availableCount);
+		if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, available.data()) != VK_SUCCESS) {
+			available.clear();
+		}
 	}
 
-	auto isAvailable = [&available](const char* name) {
+	std::vector<std::string> layerExtensions;
+	for (const char* layerName : appRequestedLayerNames) {
+		uint32_t layerExtensionCount = 0;
+		if (vkEnumerateInstanceExtensionProperties(layerName, &layerExtensionCount, nullptr) != VK_SUCCESS ||
+			layerExtensionCount == 0) {
+			continue;
+		}
+		std::vector<VkExtensionProperties> properties(layerExtensionCount);
+		if (vkEnumerateInstanceExtensionProperties(layerName, &layerExtensionCount, properties.data()) != VK_SUCCESS) {
+			continue;
+		}
+		for (const auto& property : properties) {
+			layerExtensions.emplace_back(property.extensionName);
+		}
+	}
+
+	auto isAvailable = [&available, &layerExtensions](const char* name) {
 		for (const auto& ext : available) {
 			if (!strcmp(name, ext.extensionName)) {
+				return true;
+			}
+		}
+		for (const auto& ext : layerExtensions) {
+			if (ext == name) {
 				return true;
 			}
 		}
@@ -225,7 +250,7 @@ void VulkanLayerAndExtension::FilterUnsupportedExtensions(std::vector<const char
 						std::string(requested));
 			filtered.push_back(requested);
 		} else {
-			LOG_WARNING("Optional instance extension unsupported by ICD, dropping: " +
+			LOG_WARNING("Optional instance extension unsupported by active driver/layers, dropping: " +
 						std::string(requested));
 		}
 	}
