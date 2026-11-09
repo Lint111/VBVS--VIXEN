@@ -23,6 +23,8 @@ get_filename_component(VIXEN_TEST_CLASS_MANIFEST "${VIXEN_TEST_CLASS_MANIFEST}" 
 set(VIXEN_GPU_WITNESS_LAYER_DIR "${CMAKE_CURRENT_BINARY_DIR}/gpu-witness-layer")
 set(_VIXEN_TEST_CLASS_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(_VIXEN_TEST_CLASS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+file(MAKE_DIRECTORY "${VIXEN_TEST_CLASS_DIR}")
+set(VIXEN_TEST_SELECTION_METADATA "${VIXEN_TEST_CLASS_DIR}/registered-tests.tsv")
 
 set(_VIXEN_DEVICE_CALL_REGEX "^[^/]*(vkCreateInstance|vkCreateDevice|vkAllocateMemory|vkQueueSubmit|vmaCreateAllocator)[ \t]*\\(")
 
@@ -39,12 +41,24 @@ endfunction()
 
 # Labels every case in `list_variable` (set by the target's GoogleTest discovery include) when CTest
 # loads the directory.
-function(vixen_test_class_register target list_variable)
+function(vixen_test_class_register target list_variable suite)
+    set_property(TARGET ${target} PROPERTY VIXEN_TEST_SUITE "${suite}")
     file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake" CONTENT
 "set(VIXEN_CLASS_TARGET [==[${target}]==])
+set(VIXEN_CLASS_SUITE [==[${suite}]==])
+set(VIXEN_CLASS_DIRECTORY [==[${CMAKE_CURRENT_SOURCE_DIR}]==])
+set(VIXEN_CLASS_EXECUTABLE [==[$<TARGET_FILE:${target}>]==])
 set(VIXEN_CLASS_LINK [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>]==])
 set(VIXEN_CLASS_FINGERPRINT [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_SOURCE_FP>]==])
 set(VIXEN_CLASS_TESTS \"\${${list_variable}}\")
+if(NOT EXISTS [==[$<TARGET_FILE:${target}>]==]
+   AND (NOT VIXEN_CLASS_TESTS OR VIXEN_CLASS_TESTS MATCHES \"_NOT_BUILT$\"))
+    # GoogleTest's PRE_TEST discovery emits this placeholder when the executable is absent and
+    # drops the TEST_PROPERTIES passed to gtest_discover_tests. The configure-time registry lets
+    # the selector resolve and build this target; the next CTest load sees the built executable and
+    # the normal discovery list replaces this placeholder.
+    set(VIXEN_CLASS_TESTS \"${target}_NOT_BUILT\")
+endif()
 set(VIXEN_CLASS_MANIFEST [==[${VIXEN_TEST_CLASS_MANIFEST}]==])
 include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
 ")
@@ -462,7 +476,15 @@ function(vixen_finalize_test_classes)
         endif()
         string(APPEND _plain_table "${_test}\t${_exe}\t${_plain_fp}\t${_link_class}\t${_link_evidence}\n")
         vixen_test_class_environment_modification(_modification)
-        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY LABELS "${_class}" "${_source}")
+        # Keep the build edge with the test selection. GoogleTest registrations already add this
+        # label in vixen_gtest_discover_tests(); plain tests need the same metadata so a runner can
+        # build exactly the executable(s) their command launches before invoking CTest.
+        set(_build_labels)
+        foreach(_launched_exe IN LISTS _launched)
+            list(APPEND _build_labels "exe:${_launched_exe}")
+        endforeach()
+        set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY LABELS
+            "${_class}" "${_source}" ${_build_labels})
         set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY ENVIRONMENT_MODIFICATION
             ${_modification} "VIXEN_TEST_CLASS=set:${_class}" "VIXEN_TEST_NAME=set:${_test}")
         if(_class STREQUAL "gpu")
@@ -490,6 +512,40 @@ function(vixen_finalize_test_classes)
         string(APPEND _table "${_exe}\t$<TARGET_FILE:${_exe}>\t${_class}\t${_fingerprint}\t${_evidence}\n")
     endforeach()
     file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/exe-classes.tsv" CONTENT "${_table}")
+
+    get_property(_registered_targets GLOBAL PROPERTY VIXEN_REGISTERED_TEST_EXECUTABLES)
+    list(REMOVE_DUPLICATES _registered_targets)
+    set(_selection_metadata "# target<TAB>suite<TAB>class (generated)\n")
+    foreach(_target IN LISTS _registered_targets)
+        get_target_property(_suite ${_target} VIXEN_TEST_SUITE)
+        get_target_property(_class ${_target} VIXEN_TEST_CLASS)
+        if(NOT _class OR _class MATCHES "-NOTFOUND$")
+            set(_class cpu)
+        endif()
+        string(APPEND _selection_metadata "${_target}\t${_suite}\t${_class}\n")
+    endforeach()
+    # Plain add_test entries do not call the GoogleTest registration helper, but their executable
+    # edge is still needed by an unfiltered split run. Include those launched project targets in
+    # the same registry; filtered suite selections continue to use the authoritative CTest labels.
+    set(_plain_targets)
+    foreach(_entry IN LISTS _plain_tests)
+        string(REPLACE "|" ";" _parts "${_entry}")
+        list(GET _parts 0 _directory)
+        list(GET _parts 1 _test)
+        get_property(_plain_target GLOBAL PROPERTY VIXEN_PLAIN_EXE_${_directory}|${_test})
+        if(_plain_target AND NOT _plain_target STREQUAL "-")
+            list(APPEND _plain_targets "${_plain_target}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _plain_targets)
+    foreach(_target IN LISTS _plain_targets)
+        if(_target IN_LIST _registered_targets)
+            continue()
+        endif()
+        _vixen_target_class(${_target} _class)
+        string(APPEND _selection_metadata "${_target}\tplain\t${_class}\n")
+    endforeach()
+    file(WRITE "${VIXEN_TEST_SELECTION_METADATA}" "${_selection_metadata}")
 endfunction()
 
 function(vixen_schedule_test_class_finalize)

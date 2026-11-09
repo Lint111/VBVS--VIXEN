@@ -136,10 +136,25 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     vixen_test_class_environment_modification(_class_modification)
 
+    # Classify the target before PRE_TEST discovery. CTest can load its placeholder or discovery
+    # include before the per-case class hook sees a registered TEST, so the initial link class keeps
+    # selection/build-edge metadata available during --show-only. The deferred hook can replace it
+    # with a manifest-backed class once the case exists.
+    get_target_property(_class_label ${target} VIXEN_TEST_CLASS)
+    if(NOT _class_label OR _class_label MATCHES "-NOTFOUND$")
+        get_target_property(_declared_gpu ${target} VIXEN_DECLARED_GPU)
+        if(_declared_gpu)
+            set(_class_label gpu)
+        else()
+            _vixen_classify_by_link(${target} _class_label _class_evidence)
+        endif()
+        set_property(TARGET ${target} PROPERTY VIXEN_TEST_CLASS "${_class_label}")
+    endif()
+
     # The exe: label names the registering executable so a changed target selects its own cases;
     # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$).
     # GoogleTest re-expands the property list in a second script: escape the label separator.
-    set(_labels "${suite};exe:${target}")
+    set(_labels "${suite};${_class_label};exe:${target}")
     string(REPLACE ";" "\\\\;" _labels "${_labels}")
     set(_properties LABELS "${_labels}")
     # HEADLESS registers a CPU-only test (document/recipe code) with normal discovery, labels and class
@@ -284,7 +299,7 @@ function(vixen_gtest_discover_tests suite target)
 
     # Register after the policy include: the class hook owns the single CTest property write and
     # can append benchmark/on-demand/smoke labels to the class labels and environment it derives.
-    vixen_test_class_register(${target} "${_test_list_variable}")
+    vixen_test_class_register(${target} "${_test_list_variable}" "${suite}")
 endfunction()
 
 # Plain-main() tests check with assert(); Release defines NDEBUG and compiles those checks out, so the
