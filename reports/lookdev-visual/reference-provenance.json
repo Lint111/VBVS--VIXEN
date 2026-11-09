@@ -1,8 +1,8 @@
 {
   "schema": "vixen-lookdev-reference/v1",
   "reference_set": "R432 look-dev turntable",
-  "source_commit": "0775607faed9633401c0eb064b473cbc7bf17e7b",
-  "captured_at": "2026-11-08",
+  "source_commit": "3c08624c36e93ea71ebf2cd033be5aece78aa30a",
+  "captured_at": "2026-11-09",
   "machine": "ws",
   "driver": {
     "device": "AMD Radeon(TM) 8060S Graphics",
@@ -26,9 +26,10 @@
   "states": [
     "midday",
     "late-afternoon",
-    "overcast"
+    "overcast",
+    "night-service"
   ],
-  "capture_mode": "Release (vixen-ninja-release), native Windows Vulkan, one fresh process per state plus one repeat; recorded by cl-goldnative1 with VIXEN_PIXEL_GOLDEN_RECORD=1",
+  "capture_mode": "Release (vixen-ninja-release), native Windows Vulkan, one fresh process per state plus one repeat; recorded by cl-regold1 (all four states re-recorded after the shadow-origin offset fix) with VIXEN_PIXEL_GOLDEN_RECORD=1",
   "known_visual_changes": [
     {
       "commit": "bff5507184efcfb6bbbcaf6a079d1e28b741f2fc",
@@ -57,12 +58,20 @@
     {
       "commit": "652ea869c82e58fce25f4800d86ecda1d96e6c07",
       "title": "bimodal scene look capture set"
+    },
+    {
+      "commit": "4cc248cac58f0ca44aa81c8d84f041d5e87ef675",
+      "title": "stored-SDF shadow origin bias (offset was four primary footprints, i.e. sixteen certified widths: the night-service seam)"
+    },
+    {
+      "commit": "3c08624c36e93ea71ebf2cd033be5aece78aa30a",
+      "title": "contact shadow offset is four certified widths, not sixteen (shadow-edge changes in all four states, night-service seam removed)"
     }
   ],
   "witness": {
-    "source": "cl-goldnative1",
-    "evidence": "/home/liory/codeman-cases/undertow/reports/cl-goldnative1.md",
-    "repeat_pairs": 12,
+    "source": "cl-regold1",
+    "evidence": "/home/liory/codeman-cases/undertow/reports/cl-regold1.md",
+    "repeat_pairs": 16,
     "byte_identical": true
   },
   "device_class": "integrated",

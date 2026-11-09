@@ -1177,11 +1177,18 @@ float instanceMinimumAxisScale(uint instanceIndex) {
 float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
                                 vec3 surfaceNormal, vec3 lightDirection,
                                 float primaryFootprint) {
-    // The primary SDF march certifies a hit at 0.25 * pixel footprint. Four
-    // such widths are the smallest normal offset that makes the secondary
-    // ray independent of that contact footprint. Keep the configured bias as
-    // the floor for callers without a camera-ray footprint.
-    float footprintBias = max(configuredBias, 4.0 * max(primaryFootprint, 0.0));
+    // The primary SDF march certifies a hit at 0.25 * pixel footprint
+    // (CONE_EPSILON_SCALE in SdfRecipes.glsl). Four such widths, one whole
+    // footprint, are the smallest normal offset that makes the secondary ray
+    // independent of that contact footprint. A larger offset slips a lit sliver
+    // under every overhang edge, as thick as the offset (night-service's
+    // worklight seam across the top box). Keep the configured bias as the floor
+    // for callers without a camera-ray footprint.
+    const float kPrimaryCertifiedFootprintFraction = 0.25;
+    const float kContactOffsetCertifiedWidths = 4.0;
+    float footprintBias = max(configuredBias,
+        kContactOffsetCertifiedWidths * kPrimaryCertifiedFootprintFraction *
+        max(primaryFootprint, 0.0));
     if (sourceInstanceIndex >= uint(bodyInstances.length())) return footprintBias;
     BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
     uint octreeIndex = sourceInstance.octreeIndex;
