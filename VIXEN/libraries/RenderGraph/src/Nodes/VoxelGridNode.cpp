@@ -468,8 +468,8 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         const uint32_t farFieldCount = debugCaptureResource_->ReadFarFieldCount(vulkanDevice->device);
         std::cout << "[FarFieldCount] n=" << farFieldCount
                    << " (" << perFrame(farFieldCount) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
-        if (const char* benchmark = std::getenv("UNDERSET_NATIVE_BENCHMARK");
-            benchmark && std::string_view(benchmark) != "0" && std::string_view(benchmark) != "off") {
+#if UNDERSET_NATIVE_BENCHMARK
+        {
             const auto recipeMetrics = debugCaptureResource_->ReadRecipeChunkMetrics(vulkanDevice->device);
             std::cout << "[RecipeChunkMetrics] rays=" << recipeMetrics.rays
                       << " recipes=" << recipeMetrics.recipes
@@ -482,6 +482,7 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
                           static_cast<double>(recipeMetrics.steps) / recipeMetrics.rays : 0.0)
                       << std::endl;
         }
+#endif  // UNDERSET_NATIVE_BENCHMARK
 
         // Round-6 blocker-1 probe: min/max of both far-field gate operands.
         // Not a count -- no per-frame division applies.

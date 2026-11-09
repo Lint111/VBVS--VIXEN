@@ -123,6 +123,30 @@ TEST(RecipeChunkBounds, EmitsGridShellAndCoarseFallback) {
     EXPECT_TRUE(sawCoarseFallback);
 }
 
+TEST(RecipeChunkBounds, KeepsRecipeRangesContiguousForBlasPrimitiveLookup) {
+    const auto chunks = DeriveRecipeChunkBoxes(MakeRegistry());
+    ASSERT_FALSE(chunks.empty());
+
+    // BodyOctreeSceneNode builds one BLAS per contiguous recipe range and stores
+    // the first record as proxyBase. Keep this ordering stable so a TLAS hit's
+    // primitive index can recover the same RecipeChunkAabb without a side table.
+    uint32_t previousRecipe = chunks.front().recipeId;
+    bool closedGridRange = false;
+    for (const auto& chunk : chunks) {
+        EXPECT_GE(chunk.recipeId, previousRecipe);
+        if (chunk.recipeId != previousRecipe) {
+            closedGridRange = previousRecipe == kGridRecipe;
+            previousRecipe = chunk.recipeId;
+        }
+        if (closedGridRange) {
+            EXPECT_EQ(chunk.recipeId, kFallbackRecipe);
+        }
+    }
+    EXPECT_EQ(chunks.front().recipeId, kGridRecipe);
+    EXPECT_EQ(chunks.back().recipeId, kFallbackRecipe);
+    EXPECT_TRUE(closedGridRange);
+}
+
 // Mixed scene: 3 recipe emitters (one dark, filtered), 2 stored octrees (one dark).
 struct Scene {
     RecipeRegistry registry = MakeRegistry();

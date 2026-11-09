@@ -2607,7 +2607,8 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         rtQueryRecipeBlas_.push_back(std::move(blas));
         begin = end;
     }
-    if (envFlagEnabled("UNDERSET_NATIVE_BENCHMARK")) {
+#if UNDERSET_NATIVE_BENCHMARK
+    {
         VkDeviceSize sceneAabbBytes = 0;
         VkDeviceSize sceneBlasBytes = 0;
         for (const auto& blas : rtQueryRecipeBlas_) {
@@ -2624,6 +2625,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
                       " aabbBytes=" + std::to_string(sceneAabbBytes) +
                       " blasBytes=" + std::to_string(sceneBlasBytes));
     }
+#endif  // UNDERSET_NATIVE_BENCHMARK
 
     // --- TLAS: one instance per BodyOctreeSceneNode instance ---
     // The instance owns the parent localToWorld affine; the octree config contributes
