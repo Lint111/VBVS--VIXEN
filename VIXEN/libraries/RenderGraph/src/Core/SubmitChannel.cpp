@@ -275,7 +275,7 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
 #endif
         if (result != VK_SUCCESS) return result;
         const auto [upperCost, meanCost] = batchCosts(batches[i]);
-        timeline.Issued(timeline.NextValue(), upperCost, meanCost, Clock::now());
+        timeline.Issued(timeline.NextValue(), upperCost, meanCost, QueueTimeline::Clock::now());
     }
     return VK_SUCCESS;
 }
