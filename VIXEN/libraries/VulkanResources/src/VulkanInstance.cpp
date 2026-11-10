@@ -1,5 +1,9 @@
 #include "VulkanInstance.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 namespace Vixen::Vulkan::Resources {
 
 VulkanInstance::VulkanInstance() : instance(VK_NULL_HANDLE) {
@@ -14,13 +18,36 @@ VulkanInstance::~VulkanInstance() {
 }
 
 VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
-										std::vector<const char*>& extensionNames,
-										char const*const appName) {
-	// Drop any requested instance extensions the active ICD does not advertise, so a limited driver
+                std::vector<const char*>& extensionNames,
+                char const*const appName) {
+	// Optional layers (validation) are dropped when the loader does not list them; their
+	// layer-owned extensions are then not requested either. Each drop logs once, located.
+	layerExtension.FilterUnsupportedLayers(layerNames);
+	layerExtension.appRequestedLayerNames = layerNames;
+#if VIXEN_VULKAN_VALIDATION
+	const bool validationLayerEnabled = std::any_of(
+		layerNames.begin(), layerNames.end(), [](const char* layer) {
+			return std::strcmp(layer, "VK_LAYER_KHRONOS_validation") == 0;
+		});
+	if (validationLayerEnabled && std::none_of(extensionNames.begin(), extensionNames.end(), [](const char* extension) {
+			return std::strcmp(extension, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
+		})) {
+		extensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+	}
+#endif
+
+	// Drop any requested instance extensions the active driver or enabled layers do not advertise, so a limited driver
 	// (e.g. Mesa Dozen on WSL2, which lacks VK_EXT_surface_maintenance1) cannot make vkCreateInstance
 	// fail with VK_ERROR_EXTENSION_NOT_PRESENT. VK_KHR_surface is mandatory -- without it there is no
 	// presentation path, so its absence stays a hard error rather than being silently swallowed.
 	layerExtension.FilterUnsupportedExtensions(extensionNames, {VK_KHR_SURFACE_EXTENSION_NAME});
+
+#if VIXEN_VULKAN_VALIDATION
+	const bool validationFeaturesEnabled = validationLayerEnabled && std::any_of(
+		extensionNames.begin(), extensionNames.end(), [](const char* extension) {
+			return std::strcmp(extension, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
+		});
+#endif
 
 	//set the instance specific layer and extension information
 	layerExtension.appRequestedExtensionNames = extensionNames;
@@ -50,23 +77,25 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	instInfo.ppEnabledExtensionNames = extensionNames.data();
 
 #if VIXEN_VULKAN_VALIDATION
-	// Synchronization validation: chain VkValidationFeaturesEXT into pNext so the validation layer
-	// reports missing/wrong barriers as errors. VK_EXT_validation_features is provided by the
-	// validation layer itself (not the ICD), so it is appended here — after FilterUnsupportedExtensions
-	// — to avoid being silently dropped by the ICD-only extension filter above.
-	extensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
-	instInfo.enabledExtensionCount = static_cast<uint32_t>(extensionNames.size());
-	instInfo.ppEnabledExtensionNames = extensionNames.data();
-
+	// Declared at function scope: instInfo.pNext points at it until vkCreateInstance returns.
 	static const VkValidationFeatureEnableEXT kSyncvalEnables[] = {
 		VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
 	};
 	VkValidationFeaturesEXT validationFeatures{};
-	validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
-	validationFeatures.enabledValidationFeatureCount = 1;
-	validationFeatures.pEnabledValidationFeatures = kSyncvalEnables;
-	validationFeatures.pNext = instInfo.pNext;  // preserve existing chain (e.g. debug messenger)
-	instInfo.pNext = &validationFeatures;
+	if (validationFeaturesEnabled) {
+		// Synchronization validation: chain VkValidationFeaturesEXT into pNext so the validation
+		// layer reports missing/wrong barriers as errors. This is only legal when the optional
+		// layer-owned extension survived the availability query above.
+		validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+		validationFeatures.enabledValidationFeatureCount = 1;
+		validationFeatures.pEnabledValidationFeatures = kSyncvalEnables;
+		validationFeatures.pNext = instInfo.pNext;  // preserve existing chain (e.g. debug messenger)
+		instInfo.pNext = &validationFeatures;
+	} else {
+		// Located one-line notice (VulkanInstance is not an ILoggable, so no LOG_* macro here).
+		std::fprintf(stderr, "VulkanInstance::CreateInstance: validation features are off (validation layer or "
+		             "VK_EXT_validation_features not provided by this driver); debug labels/sync validation unavailable\n");
+	}
 #endif
 
 	VkResult res = vkCreateInstance(&instInfo, nullptr, &instance);
