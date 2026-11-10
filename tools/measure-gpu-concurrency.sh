@@ -3,7 +3,7 @@
 #
 # Usage: tools/measure-gpu-concurrency.sh BUILD_DIR OUT_DIR SLOTS LABEL [ctest args...]
 #   SLOTS   number of `gpu` resource slots (writes OUT_DIR/gpu-slots-N.json and passes it as
-#           --resource-spec-file), or `lock` to run the build as configured (no spec override).
+#           --resource-spec-file), or `lock` / `default` to run the build as configured (its own spec file, no override).
 #   LABEL   ctest -L regex, e.g. RenderGraph.
 # Writes OUT_DIR: ctest.log, junit.xml, summary.txt (wall seconds, ctest -j, per-label time) and
 # png-sha256.txt (sorted "sha256  relative-path" of every PNG created or changed under BUILD_DIR and UT_QUEUE_CAPTURE_ROOT during the run).
@@ -15,7 +15,7 @@ jobs="${UT_QUEUE_GRANTED_CPUS:-$(nproc)}"
 mkdir -p "$out"
 marker="$out/.start-marker"; : > "$marker"
 spec=()
-if [[ "$slots" != lock ]]; then
+if [[ "$slots" != lock && "$slots" != default ]]; then
   printf '{"version":{"major":1,"minor":0},"local":[{"gpu":[{"id":"0","slots":%s}]}]}\n' "$slots" > "$out/gpu-slots-$slots.json"
   spec=(--resource-spec-file "$out/gpu-slots-$slots.json")
 fi
