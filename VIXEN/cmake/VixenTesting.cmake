@@ -179,40 +179,20 @@ function(vixen_gtest_discover_tests suite target)
     if(VGT_PROCESSORS)
         list(APPEND _properties PROCESSORS "${VGT_PROCESSORS}")
     endif()
-    if(VGT_GPU)
-        list(APPEND _properties RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
-    endif()
-
-    if(VGT_GPU_TESTS)
-        # PRE_TEST discovery creates cases at CTest run time. Its TEST_LIST variable
-        # is available to TEST_INCLUDE_FILES, which can apply locks per discovered case.
-        set(_gpu_test_lock_script "${CMAKE_CURRENT_BINARY_DIR}/vixen_gpu_test_locks_${target}.cmake")
-        set(_gpu_test_lock_content "foreach(_vixen_gpu_test IN LISTS ${_test_list_variable})\n")
-        foreach(_pattern IN LISTS VGT_GPU_TESTS)
-            string(APPEND _gpu_test_lock_content
-                "  if(_vixen_gpu_test MATCHES [==[${_pattern}]==])\n"
-                "    set_tests_properties(\"\${_vixen_gpu_test}\" PROPERTIES RESOURCE_GROUPS \"${VIXEN_GPU_RESOURCE_GROUPS}\")\n"
-                "  endif()\n")
-        endforeach()
-        string(APPEND _gpu_test_lock_content "endforeach()\n")
-        file(WRITE "${_gpu_test_lock_script}" "${_gpu_test_lock_content}")
-
-    endif()
+    # The GPU request itself is made once, by the class stub (vixen_test_class_register below): a
+    # CTest-time set_tests_properties appends a second resource group on every call.
 
     # Stage imported runtime DLLs before POST_BUILD test discovery launches the
     # executable, so discovery itself also works without a PATH workaround.
     vixen_stage_runtime_dlls_for_target(${target})
     set_property(GLOBAL APPEND PROPERTY VIXEN_REGISTERED_TEST_EXECUTABLES "${target}")
     gtest_discover_tests(${target} ${_gtest_arguments} PROPERTIES ${_properties})
-    vixen_test_class_register(${target} "${_test_list_variable}")
-
-    if(VGT_GPU_TESTS)
-        # GoogleTest appends its discovery include while registering the target.
-        # Append after it so the per-case TEST_LIST is populated before filtering.
-        get_property(_directory_test_include_files DIRECTORY PROPERTY TEST_INCLUDE_FILES)
-        if(NOT "${_gpu_test_lock_script}" IN_LIST _directory_test_include_files)
-            set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${_gpu_test_lock_script}")
-        endif()
+    if(VGT_GPU)
+        vixen_test_class_register(${target} "${_test_list_variable}" DECLARED_GPU)
+    elseif(VGT_GPU_TESTS)
+        vixen_test_class_register(${target} "${_test_list_variable}" DECLARED_GPU_PATTERNS ${VGT_GPU_TESTS})
+    else()
+        vixen_test_class_register(${target} "${_test_list_variable}")
     endif()
 endfunction()
 

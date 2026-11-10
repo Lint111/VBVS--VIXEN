@@ -38,8 +38,15 @@ function(vixen_test_class_environment_modification output_variable)
 endfunction()
 
 # Labels every case in `list_variable` (set by the target's GoogleTest discovery include) when CTest
-# loads the directory.
+# loads the directory, and gives each GPU case its one request for the `gpu` resource. A case is a
+# GPU case when its class is gpu, or the registration declared it: DECLARED_GPU (every case) or
+# DECLARED_GPU_PATTERNS (cases matching one of the regexes).
 function(vixen_test_class_register target list_variable)
+    cmake_parse_arguments(PARSE_ARGV 2 VTR "DECLARED_GPU" "" "DECLARED_GPU_PATTERNS")
+    set(_declared "set(VIXEN_CLASS_DECLARED_GPU ${VTR_DECLARED_GPU})\nset(VIXEN_CLASS_DECLARED_GPU_PATTERNS)\n")
+    foreach(_pattern IN LISTS VTR_DECLARED_GPU_PATTERNS)
+        string(APPEND _declared "list(APPEND VIXEN_CLASS_DECLARED_GPU_PATTERNS [==[${_pattern}]==])\n")
+    endforeach()
     file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake" CONTENT
 "set(VIXEN_CLASS_TARGET [==[${target}]==])
 set(VIXEN_CLASS_LINK [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_CLASS>]==])
@@ -47,7 +54,7 @@ set(VIXEN_CLASS_FINGERPRINT [==[$<TARGET_PROPERTY:${target},VIXEN_TEST_SOURCE_FP
 set(VIXEN_CLASS_TESTS \"\${${list_variable}}\")
 set(VIXEN_CLASS_MANIFEST [==[${VIXEN_TEST_CLASS_MANIFEST}]==])
 set(VIXEN_GPU_RESOURCE_GROUPS [==[${VIXEN_GPU_RESOURCE_GROUPS}]==])
-include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
+${_declared}include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
 ")
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake")
 endfunction()
