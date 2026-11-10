@@ -5,6 +5,7 @@
 #
 # Usage: tools/vixen-native.sh [--lane NAME] [--branch NAME] [--direct] [--log FILE] COMMAND [ARGS]
 #   cmd                        print the discovered cmd.exe
+#   jobs                       print how the ninja job count is derived (one line) and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
 #   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
@@ -201,6 +202,56 @@ infer_roots() {
     fi
 }
 
+# Peak memory of one cl.exe at the worst moment of a cold -j4 vixen_lookdev_capture build on ws: the
+# summed cl.exe working sets divided by the cl.exe count at the instant of the peak (3538 MB / 4 = 885;
+# the largest single process was 1203 MB). Measured by reports/sn-nativejobs1-evidence/sample-build.ps1;
+# VIXEN_BUILD_MB_PER_JOB overrides it.
+BUILD_MB_PER_JOB_DEFAULT=900
+
+# Windows logical cores and available memory (MB) as the build sees them; empty when unreadable.
+windows_logical_cores() {
+    local n=""
+    if need_cmd_quiet; then n="$("$cmd_exe" /c "echo %NUMBER_OF_PROCESSORS%" 2>/dev/null | tr -dc '0-9' || true)"; fi
+    echo "${n:-$(nproc)}"
+}
+windows_available_mb() {
+    [[ -z "${VIXEN_NATIVE_AVAILABLE_MB:-}" ]] || { echo "$VIXEN_NATIVE_AVAILABLE_MB"; return 0; }
+    local ps_exe
+    ps_exe="$(find_powershell)" || return 0
+    "$ps_exe" -NoProfile -Command "[int](Get-Counter '\\Memory\\Available MBytes').CounterSamples[0].CookedValue" 2>/dev/null | tr -dc '0-9' || true
+}
+need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
+
+# Sets VIXEN_MAX_BUILD_JOBS (an explicit value wins) and logs how it was derived in one line.
+# Inside the queue (UT_QUEUE_CREDITS set): the granted CPUs (UT_QUEUE_CPUS), capped by the projected
+# memory (UT_QUEUE_MEMORY_MB) divided by the per-compiler-process figure. Outside it: the logical cores,
+# capped by the memory available on Windows the same way.
+resolve_build_jobs() {
+    local cpus mem per jobs by_mem where
+    per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
+    [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
+    if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" ]]; then
+        say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
+        return 0
+    fi
+    if [[ -n "${UT_QUEUE_CREDITS:-}" ]]; then
+        where="queue"; cpus="${UT_QUEUE_CPUS:-}"; mem="${UT_QUEUE_MEMORY_MB:-}"
+        [[ -n "$cpus" ]] || cpus="$(windows_logical_cores)"
+    else
+        where="direct"; cpus="$(windows_logical_cores)"; mem="$(windows_available_mb)"
+    fi
+    [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || die "cannot derive the build job count: CPUs '$cpus' is not a positive integer"
+    jobs="$cpus"
+    if [[ "$mem" =~ ^[0-9]+$ ]]; then
+        by_mem=$((mem / per)); (( by_mem >= 1 )) || by_mem=1
+        (( by_mem < jobs )) && jobs="$by_mem"
+    else
+        mem="unknown"
+    fi
+    export VIXEN_MAX_BUILD_JOBS="$jobs"
+    say "build jobs: $jobs (source=$where cpus=$cpus memory_mb=$mem per_job_mb=$per)"
+}
+
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
 
@@ -243,12 +294,13 @@ run_bat() {
     local cmd_args=() a
     for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
     export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
-    # Lane builds share ws memory and must not fetch into another lane's cache: default the four-job
-    # cap and a checkout-local FetchContent cache here (T-2955); an explicit value still wins.
-    export VIXEN_MAX_BUILD_JOBS="${VIXEN_MAX_BUILD_JOBS:-4}"
+    # Lane builds must not fetch into another lane's cache: default a checkout-local FetchContent cache
+    # here (T-2955); an explicit value still wins. The ninja job count is derived from the CPUs and
+    # memory this run was granted (resolve_build_jobs), not a fixed number.
+    resolve_build_jobs
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
-    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
@@ -355,7 +407,7 @@ while [[ $# -gt 0 ]]; do
         --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
         --direct) direct=1; shift ;;
         --log) log_file="${2:?--log needs a file}"; shift 2 ;;
-        -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) break ;;
     esac
 done
@@ -375,6 +427,7 @@ fi
 
 case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
+    jobs) resolve_build_jobs; echo "$VIXEN_MAX_BUILD_JOBS" ;;
     ps) do_ps "$@" ;;
     rasterize) do_rasterize "$@" ;;
     checkout) do_checkout ;;
