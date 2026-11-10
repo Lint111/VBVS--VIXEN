@@ -6,7 +6,8 @@ the loader reports through vkGetPhysicalDeviceMemoryProperties) and the compute-
 count, divided by the per-test peak. Per-test peaks come from a TSV of "test<TAB>peak_MiB"
 (--peaks); a test without a measured peak uses --default-peak-mib. Output is a CTest resource spec
 (--resource-spec-file) holding one "gpu" resource whose slots are MiB-sized budget units, plus a
-one-line summary on stderr.  Benchmarks keep RESOURCE_LOCK vixen_gpu_device and are not slotted.
+one-line summary on stderr. This is a device-derived budget for the split runner; the build's own
+vixen-gpu-resources.json (VIXEN_GPU_TEST_SLOTS) is the slot count a plain `ctest -j` honours.
 
 Usage: derive-gpu-slots.py [--peaks FILE] [--default-peak-mib 2048] [--headroom 0.8]
                            [--spec-out FILE] [--print-jobs]
