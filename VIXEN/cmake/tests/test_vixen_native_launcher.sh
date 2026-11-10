@@ -101,6 +101,8 @@ mkdir -p "$native/lane-a/VIXEN/.win-native-toolchain"
 touch "$native/lane-a/VIXEN/.win-native-toolchain/ninja-bin.txt" "$native/lane-a/VIXEN/.win-native-toolchain/cmake-exe.txt"
 check "build passes the action, preset and target to build.bat with a Windows batch path" \
     bash -c '"$0" build all vixen-ninja VixenApp >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${a[0]}" = /c && [[ "${a[1]}" == *build.bat ]] && [[ "${a[1]}" == *\\* ]] && test "${a[2]}" = all && test "${a[3]}" = vixen-ninja && test "${a[4]}" = VixenApp' "$launcher"
+check "provision then build: each step re-derives the width; only a caller-set value is an override" \
+    bash -c 'rm -rf "$1/lane-a/VIXEN/.win-native-toolchain"; out="$("$0" build all vixen-ninja VixenApp 2>&1)"; test "$(grep -c "build jobs: 8 (source=" <<<"$out")" = 2 && ! grep -q "explicit VIXEN_MAX_BUILD_JOBS" <<<"$out"' "$launcher" "$native"
 check "an argument with spaces stays one argument" \
     bash -c '"$0" bat build.bat "two words" >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${#a[@]}" = 3 && test "${a[2]}" = "two words"' "$launcher"
 check "YEROKET_ROOT is forwarded into the Windows process as a path" \
