@@ -374,6 +374,14 @@ function(vixen_finalize_test_classes)
                     set(_evidence "${_exe_evidence}")
                 endif()
             endforeach()
+            # A plain test registered with the GPU flag (vixen_set_suite_properties GPU,
+            # vixen_lock_gpu_tests) is gpu even when its command passes the executable inside a
+            # -D argument, which the declared-executable scan deliberately does not read.
+            get_property(_declared_gpu GLOBAL PROPERTY "VIXEN_TEST_DECLARED_GPU_${_test}")
+            if(_declared_gpu AND NOT _class STREQUAL "gpu")
+                set(_class gpu)
+                set(_evidence "declared: registered with the GPU flag")
+            endif()
             _vixen_plain_fingerprint(_plain_fp "${_text}" ${_launched})
             set_property(GLOBAL PROPERTY VIXEN_PLAIN_EXE_${_directory}|${_test} "${_first_exe}")
             set_property(GLOBAL PROPERTY VIXEN_PLAIN_FP_${_directory}|${_test} "${_plain_fp}")

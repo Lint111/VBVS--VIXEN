@@ -311,6 +311,9 @@ function(vixen_set_suite_properties suite)
         list(APPEND _properties ENVIRONMENT "${_environment_value}")
     endif()
     if(VSP_GPU)
+        foreach(_test IN LISTS VSP_TESTS)
+            set_property(GLOBAL PROPERTY "VIXEN_TEST_DECLARED_GPU_${_test}" TRUE)
+        endforeach()
         list(APPEND _properties RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
         # Plain CTest commands do not pass through a target TEST_LAUNCHER. Translated Dzn is a
         # smoke device for discovered GoogleTest families, not a full native-capture witness, so
@@ -329,6 +332,9 @@ function(vixen_lock_gpu_tests)
         message(FATAL_ERROR "vixen_lock_gpu_tests requires TESTS")
     endif()
     vixen_gpu_resource_apply(${VLG_TESTS})
+    foreach(_test IN LISTS VLG_TESTS)
+        set_property(GLOBAL PROPERTY "VIXEN_TEST_DECLARED_GPU_${_test}" TRUE)
+    endforeach()
     # These tests are plain CTest commands and therefore cannot use the discovered-test launcher.
     # On translated Dzn, only one launcher-marked smoke case per GoogleTest family is meaningful;
     # direct application/capture witnesses remain enabled for native configurations.
