@@ -229,11 +229,14 @@ need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
 # queue holders' uncommitted memory - headroom) / per_job_mb)). The queue grant sets admission only. It is
 # read at the start of every build step (each run_bat), so a step that starts later sees a freer node;
 # under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.
+derived_build_jobs=""
 resolve_build_jobs() {
     local cpus mem per jobs other holders where="direct"
     per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
     [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
-    if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" ]]; then
+    # A value this function exported for an earlier step of the same command (provision, then build) is
+    # not an override: each step reads the node again.
+    if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" && "$VIXEN_MAX_BUILD_JOBS" != "$derived_build_jobs" ]]; then
         say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
         return 0
     fi
@@ -253,6 +256,7 @@ resolve_build_jobs() {
         mem="unknown"
     fi
     export VIXEN_MAX_BUILD_JOBS="$jobs"
+    derived_build_jobs="$jobs"
     say "build jobs: $jobs (source=$where cores=$cpus windows_available_mb=$mem per_job_mb=$per)"
 }
 
