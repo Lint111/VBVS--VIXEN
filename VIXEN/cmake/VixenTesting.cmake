@@ -4,6 +4,7 @@
 # gtest_discover_tests() creates one CTest entry per case, so labels, fixtures and environment
 # belong in its PROPERTIES rather than on the executable target.
 
+include("${CMAKE_CURRENT_LIST_DIR}/VixenGpuResource.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/VixenTestClass.cmake")
 
 function(vixen_configure_ctest_gpu_environment output_variable)
@@ -179,7 +180,7 @@ function(vixen_gtest_discover_tests suite target)
         list(APPEND _properties PROCESSORS "${VGT_PROCESSORS}")
     endif()
     if(VGT_GPU)
-        list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")
+        list(APPEND _properties RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
     endif()
 
     if(VGT_GPU_TESTS)
@@ -190,7 +191,7 @@ function(vixen_gtest_discover_tests suite target)
         foreach(_pattern IN LISTS VGT_GPU_TESTS)
             string(APPEND _gpu_test_lock_content
                 "  if(_vixen_gpu_test MATCHES [==[${_pattern}]==])\n"
-                "    set_tests_properties(\"\${_vixen_gpu_test}\" PROPERTIES RESOURCE_LOCK \"vixen_gpu_device\")\n"
+                "    set_tests_properties(\"\${_vixen_gpu_test}\" PROPERTIES RESOURCE_GROUPS \"${VIXEN_GPU_RESOURCE_GROUPS}\")\n"
                 "  endif()\n")
         endforeach()
         string(APPEND _gpu_test_lock_content "endforeach()\n")
@@ -241,7 +242,7 @@ function(vixen_set_suite_properties suite)
         list(APPEND _properties ENVIRONMENT "${_environment_value}")
     endif()
     if(VSP_GPU)
-        list(APPEND _properties RESOURCE_LOCK "vixen_gpu_device")
+        list(APPEND _properties RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
     endif()
     set_tests_properties(${VSP_TESTS} PROPERTIES ${_properties})
 endfunction()
@@ -251,7 +252,7 @@ function(vixen_lock_gpu_tests)
     if(NOT VLG_TESTS)
         message(FATAL_ERROR "vixen_lock_gpu_tests requires TESTS")
     endif()
-    set_tests_properties(${VLG_TESTS} PROPERTIES RESOURCE_LOCK "vixen_gpu_device")
+    vixen_gpu_resource_apply(${VLG_TESTS})
 endfunction()
 
 function(_vixen_collect_subtree_targets directory output_variable)

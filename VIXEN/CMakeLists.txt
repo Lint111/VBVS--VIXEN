@@ -722,6 +722,9 @@ vixen_write_gpu_environment_script("${CMAKE_BINARY_DIR}/vixen-gpu-env.sh" ${VIXE
 # TESTING INFRASTRUCTURE section near the bottom of this file.
 if(BUILD_TESTS)
     enable_testing()
+    # CTest resource spec (slots of the `gpu` resource) lands in DartConfiguration.tcl via CTest.
+    vixen_configure_gpu_resource_spec()
+    include(CTest)
     if(UNIX AND NOT APPLE)
         add_subdirectory(tools/gpu-witness-layer)
     endif()

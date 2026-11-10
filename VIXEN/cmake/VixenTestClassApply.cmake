@@ -1,11 +1,11 @@
 # Runs at CTest load time, once per GoogleTest target, after the target's discovery include has
 # created its cases. Inputs (set by the generated stub): VIXEN_CLASS_TARGET, VIXEN_CLASS_LINK (the
 # target's link-closure class), VIXEN_CLASS_FINGERPRINT (hash of its sources), VIXEN_CLASS_TESTS
-# (the discovered case names) and VIXEN_CLASS_MANIFEST.
+# (the discovered case names), VIXEN_CLASS_MANIFEST and VIXEN_GPU_RESOURCE_GROUPS.
 #
 # Each case takes the manifest class when the manifest has an entry for it written against the same
 # target sources; otherwise it keeps the link-closure class. CTest property commands add to
-# LABELS, ENVIRONMENT_MODIFICATION and RESOURCE_LOCK, and ignore names that do not exist.
+# LABELS, ENVIRONMENT_MODIFICATION and RESOURCE_GROUPS (set, never appended), and ignore names that do not exist.
 #
 # Manifest columns: test, class, target, source-fingerprint, evidence.
 
@@ -42,7 +42,7 @@ if(VIXEN_CLASS_TESTS)
             LABELS "${_vixen_class};${_vixen_source}"
             ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
         if(_vixen_class STREQUAL "gpu")
-            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
+            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
         endif()
     endforeach()
 endif()
