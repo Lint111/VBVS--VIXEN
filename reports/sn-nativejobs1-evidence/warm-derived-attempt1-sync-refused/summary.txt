@@ -1,0 +1,2 @@
+tag=warm-derived rc=2 wall_s=4.3 jobs=derived
+samples=5 unresolved_rows=0 cpu_mean=26.8% cpu_mean_while_cl=0.0% cpu_peak=38% cl_peak_count=0 cl_peak_single_ws_mb=0 cl_peak_sum_ws_mb=0 win_free_mb_min=20775 link_peak_sum_ws_mb=0 win_avail_mb_min=20774 cl_peak_single_private_mb=0 cl_peak_sum_private_mb=0
