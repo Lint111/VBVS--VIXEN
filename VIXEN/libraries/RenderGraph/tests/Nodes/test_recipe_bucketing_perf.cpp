@@ -59,6 +59,7 @@
 #include "MainCacher.h"
 #include "ComputePipelineCacher.h"
 #include "PipelineLayoutCacher.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/MultiDispatchNode.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfInstruction.h"
@@ -225,6 +226,17 @@ std::vector<uint32_t> ReadSpirv(const char* path) {
 class RecipeBucketingPerfTest
     : public Vixen::RenderGraph::Tests::RenderGraphHeavyVulkanTest {
 protected:
+    // Steady-state samples per path. Timing is only representative on a native device (Dozen results
+    // count for correctness), and one bucketed iteration at N=100 costs about 1.1 s on Dozen, so a
+    // translated device takes a short sample: 3 iterations still run the same dispatches and read
+    // back the same hit records, which is what the test asserts.
+    int SteadyIterations() const {
+        VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 props{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &driver};
+        vkGetPhysicalDeviceProperties2(physicalDevice_, &props);
+        return GpuDeviceClassIsNative(GpuDeviceClassName(props.properties.deviceType, driver.driverID)) ? 30 : 3;
+    }
+
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
         return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
                props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
@@ -405,7 +417,7 @@ protected:
         const uint32_t kMaxBuckets = std::max<uint32_t>(256, N + 16);
         constexpr uint32_t kMaxMembersPerBucket = 64;
         constexpr uint32_t kInstancesPerRecipe = kHotnessThreshold;  // exactly-at-threshold: all N promote
-        constexpr int kSteadyIters = 30;
+        const int kSteadyIters = SteadyIterations();
 
         // --- Build N recipes on a grid, spread wide enough in world-space X/Y that their bound
         //     spheres don't screen-overlap (this harness measures dispatch overhead, not
