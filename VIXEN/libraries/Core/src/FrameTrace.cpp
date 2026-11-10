@@ -41,9 +41,6 @@ PerThreadLog<Record>& Log() {
 
 std::atomic<uint64_t> gFrame{0};
 std::atomic<int> gCalibratedExtension{0};
-std::atomic<uint64_t> gCalibDeviceTicks{0};
-std::atomic<uint64_t> gCalibHostNs{0};
-std::atomic<double> gPeriodNs{0.0};
 
 thread_local uint32_t tDepth = 0;
 
@@ -104,15 +101,15 @@ void Add(const char* category, std::string_view name, uint64_t t0Ns, uint64_t t1
     Log().Append(record);
 }
 
-void AddGpu(std::string_view name, uint64_t t0Ns, uint64_t t1Ns) {
+void AddGpuRaw(std::string_view name, uint64_t t0DeviceTicks, uint64_t t1DeviceTicks) {
     if (!Enabled()) return;
     Record record;
-    record.t0 = t0Ns;
-    record.t1 = t1Ns;
+    record.t0 = t0DeviceTicks;
+    record.t1 = t1DeviceTicks;
     record.frame = gFrame.load(std::memory_order_relaxed);
-    record.thread = 0;
+    record.thread = ThreadIndex();
     record.depth = 0;
-    CopyName(record.category, sizeof(record.category), "gpu");
+    CopyName(record.category, sizeof(record.category), "gpuraw");
     CopyName(record.name, sizeof(record.name), name);
     Log().Append(record);
 }
@@ -120,19 +117,17 @@ void AddGpu(std::string_view name, uint64_t t0Ns, uint64_t t1Ns) {
 void SetCalibratedTimestampExtension(int extension) { gCalibratedExtension.store(extension); }
 int CalibratedTimestampExtension() { return gCalibratedExtension.load(); }
 
-void SetGpuCalibration(uint64_t deviceTicks, uint64_t hostNs, double periodNs) {
-    gCalibDeviceTicks.store(deviceTicks);
-    gCalibHostNs.store(hostNs);
-    gPeriodNs.store(periodNs);
-}
-
-uint64_t GpuTicksToHostNs(uint64_t deviceTicks) {
-    const double period = gPeriodNs.load();
-    const uint64_t anchorTicks = gCalibDeviceTicks.load();
-    const uint64_t anchorNs = gCalibHostNs.load();
-    if (period <= 0.0 || anchorNs == 0) return 0;
-    const double deltaNs = (static_cast<double>(deviceTicks) - static_cast<double>(anchorTicks)) * period;
-    return static_cast<uint64_t>(static_cast<double>(anchorNs) + deltaNs);
+void AddCalibration(uint64_t deviceTicks, uint64_t hostNs) {
+    if (!Enabled()) return;
+    Record record;
+    record.t0 = deviceTicks;
+    record.t1 = hostNs;
+    record.frame = gFrame.load(std::memory_order_relaxed);
+    record.thread = ThreadIndex();
+    record.depth = 0;
+    CopyName(record.category, sizeof(record.category), "calib");
+    CopyName(record.name, sizeof(record.name), "pair");
+    Log().Append(record);
 }
 
 uint64_t HostCounterToNs(uint64_t counter) {

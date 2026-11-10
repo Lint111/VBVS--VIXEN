@@ -663,8 +663,8 @@ void VulkanGraphApplication::PostTick() {
         }
     }
 
-    // Frame trace: each pass's latest GPU interval on the host clock (when calibrated timestamps are
-    // available), emitted once per distinct reading. Measurement only; compiled out with the benchmark.
+    // Frame trace: each pass's latest GPU interval as raw device ticks, once per distinct reading;
+    // the reader maps them to the host clock with the calibration pairs. Measurement only.
     if (Vixen::FrameTrace::Enabled()) {
         static std::map<std::string, uint64_t> lastEmittedStart;
         for (const auto& pass : passes) {
@@ -675,9 +675,7 @@ void VulkanGraphApplication::PostTick() {
             auto& last = lastEmittedStart[pass.columnName];
             if (last == startTicks) continue;
             last = startTicks;
-            const uint64_t hostStart = Vixen::FrameTrace::GpuTicksToHostNs(startTicks);
-            const uint64_t hostEnd = Vixen::FrameTrace::GpuTicksToHostNs(endTicks);
-            if (hostStart != 0 && hostEnd != 0) Vixen::FrameTrace::AddGpu(pass.columnName, hostStart, hostEnd);
+            Vixen::FrameTrace::AddGpuRaw(pass.columnName, startTicks, endTicks);
         }
     }
 

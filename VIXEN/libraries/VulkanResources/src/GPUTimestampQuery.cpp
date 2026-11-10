@@ -195,7 +195,7 @@ void GPUTimestampQuery::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frame
 namespace {
 // Frame trace: pair a device tick with the host clock so GPU pass intervals can be drawn on the CPU
 // timeline. Rate limited; any failure disables it (the trace then has no GPU rows).
-void CalibrateFrameTrace(VkDevice device, float periodNs) {
+void CalibrateFrameTrace(VkDevice device) {
     if (!FrameTrace::Enabled() || FrameTrace::CalibratedTimestampExtension() == 0) return;
     static uint64_t lastCalibrationNs = 0;
     static bool failed = false;
@@ -203,7 +203,7 @@ void CalibrateFrameTrace(VkDevice device, float periodNs) {
     static PFN_vkGetCalibratedTimestampsEXT function = nullptr;
     if (failed) return;
     const uint64_t now = FrameTrace::NowNs();
-    if (device == cachedDevice && now - lastCalibrationNs < 20'000'000ull) return;
+    if (device == cachedDevice && now - lastCalibrationNs < 5'000'000ull) return;
     if (device != cachedDevice) {
         cachedDevice = device;
         function = reinterpret_cast<PFN_vkGetCalibratedTimestampsEXT>(
@@ -227,7 +227,7 @@ void CalibrateFrameTrace(VkDevice device, float periodNs) {
     uint64_t stamps[2]{};
     uint64_t deviation = 0;
     if (function(device, 2, infos, stamps, &deviation) != VK_SUCCESS) { failed = true; return; }
-    FrameTrace::SetGpuCalibration(stamps[0], FrameTrace::HostCounterToNs(stamps[1]), static_cast<double>(periodNs));
+    FrameTrace::AddCalibration(stamps[0], FrameTrace::HostCounterToNs(stamps[1]));
     lastCalibrationNs = now;
 }
 }  // namespace
@@ -276,7 +276,7 @@ bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
     }
     frame.resultsValid = true;
 #if UNDERSET_NATIVE_BENCHMARK
-    CalibrateFrameTrace(device_->device, timestampPeriod_);
+    CalibrateFrameTrace(device_->device);
 #endif
     return true;
 }

@@ -2250,6 +2250,19 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
         return false;
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
+    // Measurement only: this test executable keeps the logger's default threshold (DEBUG), unlike the
+    // player's main(), which sets INFO unless VIXEN_LOG_LEVEL says otherwise. Setting the same variable
+    // here lets a run price that difference. Unset, nothing changes.
+    if (const char* levelEnv = std::getenv("VIXEN_LOG_LEVEL")) {
+        const std::string level(levelEnv);
+        using Vixen::Log::LogLevel;
+        if (level == "DEBUG") Vixen::Log::Logger::SetGlobalMinLevel(LogLevel::LOG_DEBUG);
+        else if (level == "INFO") Vixen::Log::Logger::SetGlobalMinLevel(LogLevel::LOG_INFO);
+        else if (level == "WARNING" || level == "WARN") Vixen::Log::Logger::SetGlobalMinLevel(LogLevel::LOG_WARNING);
+        else if (level == "ERROR") Vixen::Log::Logger::SetGlobalMinLevel(LogLevel::LOG_ERROR);
+    }
+#endif
     LookdevCaptureApplication app(outputDir, scenarios, framesPerScenario);
 #if UNDERSET_NATIVE_BENCHMARK
     const auto processStart = CaptureClock::now();

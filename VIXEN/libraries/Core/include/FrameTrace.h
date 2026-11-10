@@ -33,17 +33,17 @@ void SetFrame(uint64_t frame);
 /// Append one interval at the current thread's nesting depth.
 void Add(const char* category, std::string_view name, uint64_t t0Ns, uint64_t t1Ns);
 
-/// Append a GPU pass interval already converted to the steady clock (see GpuTicksToHostNs).
-void AddGpu(std::string_view name, uint64_t t0Ns, uint64_t t1Ns);
+/// Append a GPU pass interval as raw device ticks (category "gpuraw"). A reader maps it to the
+/// steady clock with the calibration pairs below.
+void AddGpuRaw(std::string_view name, uint64_t t0DeviceTicks, uint64_t t1DeviceTicks);
 
 /// Calibrated-timestamp support: 0 none, 1 VK_KHR_calibrated_timestamps, 2 VK_EXT_calibrated_timestamps.
 void SetCalibratedTimestampExtension(int extension);
 [[nodiscard]] int CalibratedTimestampExtension();
 
-/// Record one calibration pair: a device tick value and the steady-clock ns taken together.
-void SetGpuCalibration(uint64_t deviceTicks, uint64_t hostNs, double periodNs);
-/// Steady-clock ns of a device tick value; 0 when no calibration was recorded.
-[[nodiscard]] uint64_t GpuTicksToHostNs(uint64_t deviceTicks);
+/// Record one calibration pair (category "calib"): a device tick value and the steady-clock ns
+/// taken together. The reader fits host ns = a + b * ticks over all pairs.
+void AddCalibration(uint64_t deviceTicks, uint64_t hostNs);
 /// Steady-clock ns of a Windows QueryPerformanceCounter reading (identity elsewhere).
 [[nodiscard]] uint64_t HostCounterToNs(uint64_t counter);
 
