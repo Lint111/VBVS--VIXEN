@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include <cstdio>
 #include <utility>
 #include "Headers.h"
@@ -67,6 +68,14 @@ void DeviceNode::TypedSetupImpl(TypedSetupContext& ctx) {
             }), deviceExtensions.end());
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
+    // Frame trace (VIXEN_FRAME_TRACE): ask for calibrated timestamps so GPU pass intervals can be
+    // placed on the host clock. Measurement only; skipped when the device does not advertise it.
+    if (FrameTrace::Enabled()) {
+        deviceExtensions.push_back("VK_KHR_calibrated_timestamps");
+        deviceExtensions.push_back("VK_EXT_calibrated_timestamps");
+    }
+#endif
     NODE_LOG_INFO("[DeviceNode] Requested " + std::to_string(deviceExtensions.size()) + " device extensions");
     NODE_LOG_INFO("[DeviceNode] Requested " + std::to_string(deviceLayers.size()) + " device layers");
 
@@ -394,6 +403,22 @@ void DeviceNode::CreateLogicalDevice() {
         }
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
+    if (FrameTrace::Enabled()) {
+        const auto has = [&](const char* name) {
+            return std::any_of(allExtensions.begin(), allExtensions.end(),
+                [&](const char* enabled) { return strcmp(enabled, name) == 0; });
+        };
+        if (has("VK_KHR_calibrated_timestamps")) {
+            allExtensions.erase(std::remove_if(allExtensions.begin(), allExtensions.end(),
+                [](const char* enabled) { return strcmp(enabled, "VK_EXT_calibrated_timestamps") == 0; }),
+                allExtensions.end());
+            FrameTrace::SetCalibratedTimestampExtension(1);
+        } else if (has("VK_EXT_calibrated_timestamps")) {
+            FrameTrace::SetCalibratedTimestampExtension(2);
+        }
+    }
+#endif
     NODE_LOG_INFO("[DeviceNode] Validated " + std::to_string(allExtensions.size()) + " base device extensions");
 
     // rtperf S1: enable the minimal ray-query lighting bundle independently of the

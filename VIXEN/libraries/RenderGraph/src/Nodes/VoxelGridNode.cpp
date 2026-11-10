@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Core/NodeRegistration.h"
 #include "SceneGenerator.h"
@@ -374,7 +375,10 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // being detected as debug-capturable by DescriptorResourceGathererNode every frame.
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
-        debugCaptureResource_->Reset(vulkanDevice->device);
+        {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "debug-capture-reset");
+            debugCaptureResource_->Reset(vulkanDevice->device);
+        }
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get(),
                              static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
     }
@@ -382,7 +386,10 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output shader counters buffer (wrapper with conversion_type = VkBuffer)
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         // Reset counters before each frame
-        shaderCountersResource_->Reset(vulkanDevice->device);
+        {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "shader-counters-reset");
+            shaderCountersResource_->Reset(vulkanDevice->device);
+        }
         ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
     }
 

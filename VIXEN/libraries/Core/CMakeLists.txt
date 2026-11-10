@@ -10,6 +10,7 @@ add_library(Core STATIC
     src/MortonEncoding.cpp
     src/RuntimeCachePaths.cpp
     src/CacheEnvelope.cpp
+    src/FrameTrace.cpp
 )
 
 # Scope the runtime-cache default to the one source that reads it (and keep that source out of the

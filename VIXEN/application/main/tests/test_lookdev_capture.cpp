@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "FrameTrace.h"
 #include "graph/LookdevSceneDefinition.h"
 #include "Nodes/CameraNode.h"
 #include "Nodes/LightingConfigNode.h"
@@ -1519,6 +1520,8 @@ public:
 #if UNDERSET_NATIVE_BENCHMARK
         const auto frameStart = CaptureClock::now();
 #endif
+        // Frame trace: the capture test's own per-frame work, before and after the engine's Render().
+        VIXEN_FRAME_TRACE_BEGIN(harnessPre, "harness", "capture-pre-render");
         if (framesInScenario_ == 0) {
 #if UNDERSET_NATIVE_BENCHMARK
             firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
@@ -1534,6 +1537,7 @@ public:
                 captureError_ = "missing capture device for the device record";
                 return false;
             }
+            VIXEN_FRAME_TRACE_SCOPE("harness", "record-device");
             if (!RecordCaptureDevice(*device, outputDir_, captureError_)) return false;
         }
         if (std::getenv("VIXEN_LOOKDEV_MOTION_PROBE") && camera_)
@@ -1559,7 +1563,9 @@ public:
             SetReconstructionViewportActive(true);
             NotifyReconstructionCameraCut();
         }
+        VIXEN_FRAME_TRACE_END(harnessPre);
         if (!captureError_.empty() || !VulkanGraphApplication::Render()) return false;
+        VIXEN_FRAME_TRACE_BEGIN(harnessPost, "harness", "capture-post-render");
         // The two drain ticks still render so the queue owner can issue and retire the
         // final readback, but must not count the last scenario again after it was captured.
         if (capturedCount_ >= scenarios_.size()) return true;
@@ -1635,15 +1641,18 @@ public:
         const auto& scenario = scenarios_[scenarioIndex_];
         // Verifying every LightingConfig ring slot needs each slot rewritten at least once;
         // a capture shorter than the ring only exercises rendering.
-        if (scenarioIndex_ == 0 && framesPerScenario_ >= kRingSlotCount &&
-            !VerifyUploadedExposure(scenario)) {
-            return false;
+        if (scenarioIndex_ == 0 && framesPerScenario_ >= kRingSlotCount) {
+            VIXEN_FRAME_TRACE_SCOPE("harness", "verify-exposure");
+            if (!VerifyUploadedExposure(scenario)) return false;
         }
         const std::filesystem::path output = outputDir_ / scenario.filename;
 #if UNDERSET_NATIVE_BENCHMARK
         const auto captureStart = CaptureClock::now();
 #endif
-        if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
+        {
+            VIXEN_FRAME_TRACE_SCOPE("harness", "capture-png");
+            if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
+        }
 #if UNDERSET_NATIVE_BENCHMARK
         captureWallMs_ += MsBetween(captureStart, CaptureClock::now());
 #endif

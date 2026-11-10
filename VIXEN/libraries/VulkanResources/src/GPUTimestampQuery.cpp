@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "GPUTimestampQuery.h"
 #include "VulkanDevice.h"
 #include "ConfiguredOptionalPath.h"
@@ -190,6 +191,48 @@ void GPUTimestampQuery::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frame
 // RESULT RETRIEVAL
 // ============================================================================
 
+#if UNDERSET_NATIVE_BENCHMARK
+namespace {
+// Frame trace: pair a device tick with the host clock so GPU pass intervals can be drawn on the CPU
+// timeline. Rate limited; any failure disables it (the trace then has no GPU rows).
+void CalibrateFrameTrace(VkDevice device, float periodNs) {
+    if (!FrameTrace::Enabled() || FrameTrace::CalibratedTimestampExtension() == 0) return;
+    static uint64_t lastCalibrationNs = 0;
+    static bool failed = false;
+    static VkDevice cachedDevice = VK_NULL_HANDLE;
+    static PFN_vkGetCalibratedTimestampsEXT function = nullptr;
+    if (failed) return;
+    const uint64_t now = FrameTrace::NowNs();
+    if (device == cachedDevice && now - lastCalibrationNs < 20'000'000ull) return;
+    if (device != cachedDevice) {
+        cachedDevice = device;
+        function = reinterpret_cast<PFN_vkGetCalibratedTimestampsEXT>(
+            vkGetDeviceProcAddr(device, "vkGetCalibratedTimestampsKHR"));
+        if (!function) {
+            function = reinterpret_cast<PFN_vkGetCalibratedTimestampsEXT>(
+                vkGetDeviceProcAddr(device, "vkGetCalibratedTimestampsEXT"));
+        }
+    }
+    if (!function) { failed = true; return; }
+#if defined(_WIN32)
+    constexpr VkTimeDomainEXT hostDomain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
+#else
+    constexpr VkTimeDomainEXT hostDomain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT;
+#endif
+    VkCalibratedTimestampInfoEXT infos[2]{};
+    infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
+    infos[0].timeDomain = VK_TIME_DOMAIN_DEVICE_EXT;
+    infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
+    infos[1].timeDomain = hostDomain;
+    uint64_t stamps[2]{};
+    uint64_t deviation = 0;
+    if (function(device, 2, infos, stamps, &deviation) != VK_SUCCESS) { failed = true; return; }
+    FrameTrace::SetGpuCalibration(stamps[0], FrameTrace::HostCounterToNs(stamps[1]), static_cast<double>(periodNs));
+    lastCalibrationNs = now;
+}
+}  // namespace
+#endif
+
 bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
     if (!timestampSupported_ || frameIndex >= framesInFlight_) {
         return false;
@@ -232,6 +275,9 @@ bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
         frame.available[i] = (readScratch_[i * 2 + 1] != 0) ? 1 : 0;
     }
     frame.resultsValid = true;
+#if UNDERSET_NATIVE_BENCHMARK
+    CalibrateFrameTrace(device_->device, timestampPeriod_);
+#endif
     return true;
 }
 

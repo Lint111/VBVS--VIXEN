@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/ComputeDispatchNode.h"
 #include "Core/NodeRegistration.h"
@@ -220,7 +221,10 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Collect GPU performance results for this frame-in-flight (after fence wait)
     // The fence for this frame index was waited on, so previous frame's results are ready
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->CollectResults(currentFrameIndex);
+        {
+            VIXEN_FRAME_TRACE_SCOPE("perf", GetInstanceName());
+            gpuPerfLogger_->CollectResults(currentFrameIndex);
+        }
 
         // Sprint 6.5: Feed GPU timing to task profile for cost learning
         if (gpuProfile_) {
@@ -280,7 +284,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), so the per-flight fence FrameSyncNode already
     // waited guards its reuse; the image-derived values RecordComputeCommands reads stay imageIndex.
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(currentFrameIndex);
+    VIXEN_FRAME_TRACE_BEGIN(recordTrace, "record", GetInstanceName());
     const auto recordedBuffers = RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral, writesNoImage);
+    VIXEN_FRAME_TRACE_END(recordTrace);
     commandBuffers.MarkReady(currentFrameIndex);
 
     // P5b M1: read timeline primitives from FrameSyncNode slots (Optional — VK_NULL_HANDLE / 0 if not wired)

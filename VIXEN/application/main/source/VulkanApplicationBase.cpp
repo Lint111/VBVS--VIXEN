@@ -1,5 +1,6 @@
 #include "VulkanApplicationBase.h"
 #include "VulkanGlobalNames.h"
+#include "FrameTrace.h"
 
 #include <array>
 #include <algorithm>
@@ -153,10 +154,26 @@ void VulkanApplicationBase::InitializeVulkanCore() {
 }
 
 TickStatus VulkanApplicationBase::Tick() {
-    PreTick();                 // host prologue (default no-op)
-    Update();                  // existing per-frame update (derived)
-    const bool ok = Render();  // existing per-frame render + device-loss policy (derived)
-    PostTick();                // host epilogue (default no-op)
+    ::Vixen::FrameTrace::SetFrame(frameCounter_);
+    VIXEN_FRAME_TRACE_BEGIN(tickTrace, "app", "tick");
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "pre-tick");
+        PreTick();             // host prologue (default no-op)
+    }
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "update");
+        Update();              // existing per-frame update (derived)
+    }
+    bool ok;
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "render");
+        ok = Render();         // existing per-frame render + device-loss policy (derived)
+    }
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "post-tick");
+        PostTick();            // host epilogue (default no-op)
+    }
+    VIXEN_FRAME_TRACE_END(tickTrace);
     ++frameCounter_;
 
     if (ok) {
