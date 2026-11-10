@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "VulkanLayerAndExtension.h"
 #include "VulkanInstance.h"
 #include <iostream>
@@ -217,44 +218,65 @@ void VulkanLayerAndExtension::FilterUnsupportedExtensions(std::vector<const char
 		}
 	}
 
-	auto isAvailable = [&available, &layerExtensions](const char* name) {
-		for (const auto& ext : available) {
-			if (!strcmp(name, ext.extensionName)) {
-				return true;
-			}
-		}
-		for (const auto& ext : layerExtensions) {
-			if (ext == name) {
-				return true;
-			}
-		}
-		return false;
-	};
-	auto isMandatory = [&mandatory](const char* name) {
-		for (const char* m : mandatory) {
-			if (!strcmp(name, m)) {
-				return true;
-			}
-		}
-		return false;
-	};
+	std::vector<std::string> availableNames;
+	availableNames.reserve(available.size() + layerExtensions.size());
+	for (const auto& ext : available) {
+		availableNames.emplace_back(ext.extensionName);
+	}
+	availableNames.insert(availableNames.end(), layerExtensions.begin(), layerExtensions.end());
 
-	std::vector<const char*> filtered;
-	filtered.reserve(extensionNames.size());
-	for (const char* requested : extensionNames) {
-		if (isAvailable(requested)) {
-			filtered.push_back(requested);
-		} else if (isMandatory(requested)) {
-			// Keep it: a missing mandatory extension is a genuine error vkCreateInstance must surface.
-			LOG_WARNING("Mandatory instance extension not advertised by ICD, keeping anyway: " +
-						std::string(requested));
-			filtered.push_back(requested);
-		} else {
-			LOG_WARNING("Optional instance extension unsupported by active driver/layers, dropping: " +
-						std::string(requested));
+	std::vector<const char*> dropped;
+	for (const char* m : mandatory) {
+		if (std::find(availableNames.begin(), availableNames.end(), m) == availableNames.end()) {
+			// A missing mandatory extension is a genuine error vkCreateInstance must surface.
+			LOG_WARNING("Mandatory instance extension not advertised by ICD, keeping anyway: " + std::string(m));
 		}
 	}
-	extensionNames = filtered;
+	extensionNames = SelectAvailableNames(extensionNames, availableNames, mandatory, dropped);
+	for (const char* name : dropped) {
+		LOG_WARNING("Optional instance extension unsupported by active driver/layers, dropping (feature that needs it is off): " +
+					std::string(name));
+	}
+}
+
+std::vector<const char*> VulkanLayerAndExtension::SelectAvailableNames(
+		const std::vector<const char*>& requested, const std::vector<std::string>& available,
+		const std::vector<const char*>& mandatory, std::vector<const char*>& dropped) {
+	std::vector<const char*> kept;
+	kept.reserve(requested.size());
+	for (const char* name : requested) {
+		const bool isAvailable = std::find(available.begin(), available.end(), name) != available.end();
+		const bool isMandatory = std::any_of(mandatory.begin(), mandatory.end(),
+			[name](const char* m) { return !strcmp(name, m); });
+		if (isAvailable || isMandatory) {
+			kept.push_back(name);
+		} else {
+			dropped.push_back(name);
+		}
+	}
+	return kept;
+}
+
+void VulkanLayerAndExtension::FilterUnsupportedLayers(std::vector<const char*>& layerNames) {
+	if (layerNames.empty()) {
+		return;
+	}
+	uint32_t layerCount = 0;
+	std::vector<std::string> available;
+	if (vkEnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS && layerCount != 0) {
+		std::vector<VkLayerProperties> props(layerCount);
+		if (vkEnumerateInstanceLayerProperties(&layerCount, props.data()) == VK_SUCCESS) {
+			for (uint32_t i = 0; i < layerCount; ++i) {
+				available.emplace_back(props[i].layerName);
+			}
+		}
+	}
+	std::vector<const char*> dropped;
+	layerNames = SelectAvailableNames(layerNames, available, {}, dropped);
+	for (const char* name : dropped) {
+		LOG_WARNING("VulkanInstance::CreateInstance: optional instance layer " + std::string(name) +
+					" is not installed on this driver; layer disabled (validation/debug features that need it are off)");
+	}
 }
 
 VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance) {

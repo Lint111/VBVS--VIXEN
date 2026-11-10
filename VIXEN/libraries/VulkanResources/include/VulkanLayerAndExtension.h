@@ -37,6 +37,19 @@ public:
     void FilterUnsupportedExtensions(std::vector<const char *> &extensionNames,
                                      const std::vector<const char *> &mandatory = {});
 
+    // Drop requested instance layers the loader does not list (vkEnumerateInstanceLayerProperties),
+    // so an optional layer such as VK_LAYER_KHRONOS_validation cannot make vkCreateInstance fail with
+    // VK_ERROR_LAYER_NOT_PRESENT. Each dropped layer is reported once with a located message.
+    void FilterUnsupportedLayers(std::vector<const char *> &layerNames);
+
+    // Pure selection step shared by the layer and extension filters (no Vulkan calls, unit-testable):
+    // keeps the `requested` names that appear in `available`, keeps `mandatory` names even when absent
+    // (so vkCreateInstance reports them), and appends every dropped name to `dropped`.
+    static std::vector<const char *> SelectAvailableNames(const std::vector<const char *> &requested,
+                                                          const std::vector<std::string> &available,
+                                                          const std::vector<const char *> &mandatory,
+                                                          std::vector<const char *> &dropped);
+
     VkResult CreateDebugReportCallBack(VkInstance instance);
 
     static uint32_t DebugFunction(VkFlags msgFlags,

@@ -20,9 +20,9 @@ VulkanInstance::~VulkanInstance() {
 VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
                 std::vector<const char*>& extensionNames,
                 char const*const appName) {
-	// The optional validation extensions are provided by the validation layer, not necessarily by
-	// the active driver. Make the layer list visible to the extension filter before it queries both
-	// global and layer-owned extension sets.
+	// Optional layers (validation) are dropped when the loader does not list them; their
+	// layer-owned extensions are then not requested either. Each drop logs once, located.
+	layerExtension.FilterUnsupportedLayers(layerNames);
 	layerExtension.appRequestedLayerNames = layerNames;
 #if VIXEN_VULKAN_VALIDATION
 	const bool validationLayerEnabled = std::any_of(
@@ -91,9 +91,10 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 		validationFeatures.pEnabledValidationFeatures = kSyncvalEnables;
 		validationFeatures.pNext = instInfo.pNext;  // preserve existing chain (e.g. debug messenger)
 		instInfo.pNext = &validationFeatures;
-	} else if (!validationLayerEnabled) {
-		// VulkanInstance is not an ILoggable, so the LOG_* macros are unavailable here.
-		std::fprintf(stderr, "VulkanInstance: optional validation layer is unavailable; validation features disabled\n");
+	} else {
+		// Located one-line notice (VulkanInstance is not an ILoggable, so no LOG_* macro here).
+		std::fprintf(stderr, "VulkanInstance::CreateInstance: validation features are off (validation layer or "
+		             "VK_EXT_validation_features not provided by this driver); debug labels/sync validation unavailable\n");
 	}
 #endif
 
