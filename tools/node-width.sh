@@ -68,6 +68,8 @@ nw_other_uncommitted_mb() {
         (( committed > current )) && total=$((total + committed - current))
         holders=$((holders + 1))
     done
+    # The queue will export other jobs' unspent reservations itself; never size below that figure.
+    [[ "${UT_QUEUE_RESERVED_OTHERS_MB:-}" =~ ^[0-9]+$ ]] && (( UT_QUEUE_RESERVED_OTHERS_MB > total )) && total="$UT_QUEUE_RESERVED_OTHERS_MB"
     echo "$total $holders"
 }
 
