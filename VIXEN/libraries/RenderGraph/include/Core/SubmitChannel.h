@@ -288,7 +288,7 @@ struct QueueTimeline {
     /// error leaves the ring. Warm-up (cold batches, fewer than kPredictionWarmup samples, a reset
     /// after a pipeline or resolution change) yields no window.
     /// Both lengths are multiples of the flight count. kPredictionHistory (3 flights) and
-    /// kPredictionRangeFactor were chosen offline on 24 native runs (500 and 1080x1080; look-dev
+    /// kPredictionRangeFactor were chosen offline on 18 native runs (500 and 1080x1080; look-dev
     /// midday angles 0-2; two repeats; two predictor versions) as the highest-utilisation pair with
     /// zero violations there: the exact smallest factor was 2.33, rounded up to 2.4. The 12
     /// held-out 1920x1080 runs needed at most 2.24, so they also give zero (reports/sn-gpuwinpredict5.md).
