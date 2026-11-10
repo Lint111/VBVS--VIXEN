@@ -276,18 +276,23 @@ struct QueueTimeline {
     FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
     Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
     /// Window derivation (R613: last-frame data only; owner 11-10: the margin is derived, never
-    /// tuned). A window is a command's remaining time to retire, bounded by two quantities learned
+    /// tuned). A window is a command's remaining time to retire, bounded by quantities learned
     /// from that command's own recent windows (issue ordinal within the frame is the command key):
-    ///   1. the raw prediction scaled by (1 - worst relative early-retire error seen), so the margin
-    ///      is the largest recent over-prediction of this command;
+    ///   1. q = actual / raw per ring sample. The raw prediction is scaled by
+    ///      min(1, minQ - kPredictionRangeFactor * (maxQ - minQ)): the window ends below the lowest
+    ///      q seen by the range of q seen, so spread (late outliers included) widens the margin;
     ///   2. the last observed wait scaled by the worst consecutive shrink ratio seen, so a command
     ///      whose waits are falling is not predicted from a stale larger value.
     /// The window is the smaller bound, minus time already elapsed in it. History is the last
     /// kPredictionHistory non-cold windows of that command, so a bound decays once the large
     /// error leaves the ring. Warm-up (cold batches, fewer than kPredictionWarmup samples, a reset
     /// after a pipeline or resolution change) yields no window.
+    /// kPredictionRangeFactor = 1 (one observed range) was derived offline on 18 native runs
+    /// (500, 1080x1080, 1920x1080; look-dev midday angles 0-2; two repeats): the smallest factor
+    /// that gives zero violations on each run needed at most 0.73 (reports/sn-gpuwinpredict5.md).
     static constexpr std::size_t kPredictionWarmup = 2 * FrameWaitLedger::kFlightCount;
     static constexpr std::size_t kPredictionHistory = 6 * FrameWaitLedger::kFlightCount;
+    static constexpr double kPredictionRangeFactor = 1.0;
     static constexpr std::size_t kMaxPredictionKeys = 64;
     struct PredictionHistory {
         struct Sample { uint64_t rawNs = 0; uint64_t actualNs = 0; };

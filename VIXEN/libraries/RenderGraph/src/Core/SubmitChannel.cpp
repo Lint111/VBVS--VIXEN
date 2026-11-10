@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <limits>
 
 namespace Vixen::RenderGraph {
 
@@ -202,22 +203,26 @@ uint64_t QueueTimeline::PredictRetireNs(uint64_t value, Clock::time_point now,
     const uint64_t raw = PredictRetireRawNs(value, now);
     if (!raw) return 0;
 
-    // Walk the ring oldest to newest.
+    // Walk the ring oldest to newest. q = actual / raw is the factor by which this command's wait
+    // came in against the raw prediction.
     const uint32_t first = history.count < kPredictionHistory ? 0 : history.next;
-    double worstEarlyRetire = 0.0;  // largest (raw - actual) / raw
-    double worstShrink = 1.0;       // smallest actual / previous actual
+    double minQ = std::numeric_limits<double>::max();
+    double maxQ = 0.0;
+    double worstShrink = 1.0;  // smallest actual / previous actual
     uint64_t previousActual = 0;
     for (uint32_t i = 0; i < history.count; ++i) {
         const auto& sample = history.samples[(first + i) % kPredictionHistory];
-        if (sample.rawNs > sample.actualNs)
-            worstEarlyRetire = std::max(worstEarlyRetire,
-                static_cast<double>(sample.rawNs - sample.actualNs) / static_cast<double>(sample.rawNs));
+        const double q = static_cast<double>(sample.actualNs) / static_cast<double>(sample.rawNs);
+        minQ = std::min(minQ, q);
+        maxQ = std::max(maxQ, q);
         if (previousActual)
             worstShrink = std::min(worstShrink,
                 static_cast<double>(sample.actualNs) / static_cast<double>(previousActual));
         previousActual = sample.actualNs;
     }
-    const double marginBound = static_cast<double>(raw) * (1.0 - worstEarlyRetire);
+    // The next q is expected no lower than kPredictionRangeFactor observed ranges below the ring minimum.
+    const double marginBound = static_cast<double>(raw) *
+        std::min(1.0, minQ - kPredictionRangeFactor * (maxQ - minQ));
     const double elapsed = static_cast<double>(ElapsedNs(windowStarted, now));
     const double shrinkBound = static_cast<double>(previousActual) * worstShrink - elapsed;
     const double window = std::min(marginBound, shrinkBound);
