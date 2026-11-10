@@ -248,7 +248,13 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
     // R715: through the graph's single submission point, not a node-held VK2.
-    const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo(submitInfo, inFlightFence));
+    auto record = SubmitRecord::FromSubmitInfo(submitInfo, inFlightFence);
+    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
+        const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
+        record.commandCostMeanNs.push_back(expectedNs);
+        record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
+    }
+    const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
     if (result != VK_SUCCESS) {
         NODE_LOG_ERROR("GeometryRenderNode: Failed to submit command buffer: " + std::to_string(result));
         GetOwningGraph()->ReportGpuFault("GeometryRenderNode::ExecuteImpl vkQueueSubmit", result);

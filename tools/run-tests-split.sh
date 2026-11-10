@@ -215,7 +215,7 @@ run_gpu_shards() {
   local started=$SECONDS
   mkdir -p "$shard_dir"
 
-  # RESOURCE_LOCK is scoped to one CTest process. Generate exact-name regexes from the
+  # The `gpu` resource slots (RESOURCE_GROUPS) are allocated per CTest process. Generate exact-name regexes from the
   # filtered listing, then let the box queue admit each independent process as its own
   # shared GPU holder. The helper keeps fixture/dependency cases in shard zero.
   if ! ctest --test-dir "$build_dir" --show-only=json-v1 -L '^gpu$' \

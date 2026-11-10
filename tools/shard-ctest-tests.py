@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Partition a filtered CTest JSON listing into independent regex shards.
 
-CTest's RESOURCE_LOCK is scoped to one CTest invocation.  The GPU suite therefore
+CTest's `gpu` resource slots (RESOURCE_GROUPS) are allocated within one CTest invocation.  The GPU suite therefore
 needs separate invocations when the outer queue is the resource arbiter.  Cases that
 declare a fixture or dependency stay together in shard zero; the remaining cases are
 spread by cost (longest first onto the least-loaded shard) so one unusually long

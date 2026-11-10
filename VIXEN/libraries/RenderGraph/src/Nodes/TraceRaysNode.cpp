@@ -492,8 +492,12 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     info.pSignalSemaphoreInfos = &present;
     auto record = SubmitRecord::FromSubmitInfo2(info, inFlightFence);
     record.submissionBudgetNs = budgetNs;
-    for (uint64_t pixelCount : pixels)
+    for (std::size_t command = 0; command < pixels.size(); ++command) {
+        const uint64_t pixelCount = pixels[command];
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(pixelCount));
+        const uint64_t lastFrame = frameCommandTimings_.Last(currentFrame, command, pixelCount);
+        record.commandCostMeanNs.push_back(lastFrame ? lastFrame : chunkCost_.MeanEstimate(pixelCount));
+    }
     submissionBatches_[currentFrame] = record.SubmissionBatches();
     const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
 
@@ -514,13 +518,17 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 void TraceRaysNode::CollectTileTiming(uint32_t frame) {
     auto& query = tileQueries_[frame];
     if (!query || !query->ReadResults(0)) return;
+    frameCommandTimings_.Begin(frame);
 #if UNDERSET_NATIVE_BENCHMARK
     double total = 0, maximum = 0;
 #endif
     for (uint32_t i = 0; i < tileCounts_[frame]; ++i) {
         const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
-        if (tilePixelCounts_[frame][i])
+        if (tilePixelCounts_[frame][i]) {
+            frameCommandTimings_.Record(frame, i, tilePixelCounts_[frame][i],
+                query->GetElapsedNs(0, i * 4, i * 4 + 3));
             chunkCost_.Observe(tilePixelCounts_[frame][i], tileNominalPixelCounts_[frame], ms * 1.0e6);
+        }
 #if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
             NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +

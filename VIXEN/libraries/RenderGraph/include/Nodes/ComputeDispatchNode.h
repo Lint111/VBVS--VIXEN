@@ -126,6 +126,7 @@ private:
     std::array<uint64_t, 4> tileBudgets_{};
     std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
     std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
+    FrameCommandTimingLedger frameCommandTimings_;
     std::array<uint32_t, 4> tileNominalWorkGroupCounts_{};
     std::array<uint32_t, 4> tileQueryCapacities_{};
     std::array<std::string, 4> tileExtentKeys_;

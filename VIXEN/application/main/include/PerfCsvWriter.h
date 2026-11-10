@@ -18,6 +18,8 @@ public:
     template <typename... Args>
     constexpr void RecordFrame(Args&&...) noexcept {}
     constexpr void Flush() noexcept {}
+    template <typename... Args>
+    constexpr void RecordWindowSamples(Args&&...) noexcept {}
 };
 
 #else
@@ -68,6 +70,37 @@ public:
         Vixen::RenderGraph::GPUPerformanceLogger* logger = nullptr;  // non-owning; may be nullptr (timing unsupported)
     };
 
+    struct WindowMetrics {
+        double gpuWaitMs = 0.0;
+        double paceWaitMs = 0.0;
+        double gpuBoundShare = 0.0;
+        uint64_t windowCount = 0;
+        double windowPredictedMs = 0.0;
+        double windowActualMs = 0.0;
+        double windowErrorP95Ms = 0.0;
+        double windowErrorP50Relative = 0.0;
+        double windowErrorP95Relative = 0.0;
+        double windowErrorP50Ms = 0.0;
+        // Violation = predicted > actual per window (must be 0); unused = actual - predicted
+        // where actual >= predicted; utilisation = sum(min(predicted, actual)) / sum(actual).
+        uint64_t windowViolationCount = 0;
+        double windowViolationMs = 0.0;
+        double windowUnusedMs = 0.0;
+        double windowUtilisation = 0.0;
+    };
+
+    // One idle window, exported to "<VIXEN_PERF_CSV>.windows.csv" so misses can be attributed.
+    struct WindowSample {
+        uint64_t frame = 0;
+        const char* kind = "";
+        uint64_t command = 0;
+        bool cold = false;
+        double rawPredictedMs = 0.0;
+        double predictedMs = 0.0;
+        double actualMs = 0.0;
+        bool violation = false;
+    };
+
     // Reads VIXEN_PERF_CSV; IsEnabled()==false when unset (the only env access this class does).
     PerfCsvWriter();
 
@@ -82,12 +115,16 @@ public:
     void RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                      uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                      double wholeFrameGpuSpanMs,
+                     WindowMetrics windowMetrics,
                      WholesaleMetrics wholesale);
 
     // Writes the accumulated rows to VIXEN_PERF_CSV. Safe to call once at shutdown; no-op if
     // disabled or already flushed (idempotent — DeInitialize() may run more than once-guarded,
     // but this class doesn't rely on that).
     void Flush();
+
+    // Buffers this frame's window samples (call after RecordFrame; frame = the row just recorded).
+    void RecordWindowSamples(const std::vector<WindowSample>& samples);
 
 private:
     struct Row {
@@ -97,12 +134,26 @@ private:
         uint64_t bootBytesUploaded = 0;
         uint64_t steadyStateBytesUploaded = 0;
         double wholeFrameGpuSpanMs = 0.0;  // Task 0.1: first CB start -> last CB end, this frame
+        WindowMetrics windowMetrics;
         WholesaleMetrics wholesale;
         std::vector<std::pair<std::string, double>> passMs;  // (columnName, ms) — same set every row
     };
 
     std::string path_;
     std::vector<Row> rows_;
+    std::vector<WindowSample> windowSamples_;
+    // Whole-run window totals, every recorded frame from frame 0 (cold windows have no window and
+    // are counted separately). Printed as one [WINDOWSUMMARY] line at Flush.
+    struct RunWindowSummary {
+        uint64_t frames = 0;
+        uint64_t windows = 0;       ///< every wait recorded, cold ones included
+        uint64_t coldWindows = 0;   ///< waits with no last-frame timing: no window, cannot violate
+        uint64_t violations = 0;    ///< predicted > actual, over all frames
+        double violationMs = 0.0;
+        double actualMs = 0.0;
+        double unusedMs = 0.0;
+        double gpuWaitMs = 0.0;
+    } runSummary_;
     bool flushed_ = false;
     std::set<std::string> warnedNoSlot_;  // columns already reported as slot-less
 

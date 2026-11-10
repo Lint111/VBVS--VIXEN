@@ -276,7 +276,13 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // R715: the graph's single submission point (published on the lowered executor, issued by the
     // owner at once on the sequential one).
-    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, submitFence));
+    auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
+    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
+        const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
+        record.commandCostMeanNs.push_back(expectedNs);
+        record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
+    }
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
         result != VK_SUCCESS) {
         NODE_LOG_ERROR("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
         GetOwningGraph()->ReportGpuFault("ComputeStageNode::ExecuteImpl vkQueueSubmit2", result);
