@@ -13,7 +13,11 @@
 # three times on the same case (the suite flag, the per-case filter and the class stub each added
 # it). A property SET (never APPEND) keeps one request per case.
 
-set(VIXEN_GPU_TEST_SLOTS "1" CACHE STRING
+# Default 8: the RenderGraph suite (1507 tests, 1047 GPU) gave byte-identical PNGs and the same
+# pass/fail set at 1, 2, 4 and 8 slots, three repeats each, on Dozen and on the native Windows Debug
+# build (reports/sn-rgconc1.md). Peak memory of one ctest process grew 2.5 GB -> 5.8 GB from 1 to 8
+# slots on Dozen, inside the queue's 7 GB admission.
+set(VIXEN_GPU_TEST_SLOTS "8" CACHE STRING
     "GPU tests CTest may run concurrently: slots of the `gpu` resource in the generated resource spec")
 
 # Value of the CTest RESOURCE_GROUPS property on a GPU test. Also handed to the class stub, which
