@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <iostream>
 
 #include <algorithm>
 #include <array>
@@ -11,6 +12,8 @@
 #include "CapabilityGraph.h"
 #include "ConfiguredOptionalPath.h"
 #include "VulkanCapabilityConfig.h"
+#include "VulkanLayerAndExtension.h"
+#include "VulkanInstance.h"
 
 TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureSet) {
     Vixen::CapabilityGraph graph;
@@ -525,4 +528,55 @@ TEST(VulkanResources_CapabilityGraph, BackgroundGpuFailsClosedWithoutCandidate) 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(VulkanResources_InstanceSelection, DriverWithoutDebugExtensionsDropsOptionalKeepsMandatory) {
+    using Vixen::Vulkan::Resources::VulkanLayerAndExtension;
+    const std::vector<const char*> requested = {
+        "VK_KHR_surface", "VK_EXT_debug_report", "VK_EXT_validation_features", "VK_KHR_xcb_surface"};
+    // A driver list like Mesa dzn: surface extensions, no debug or validation extensions.
+    const std::vector<std::string> driver = {"VK_KHR_surface", "VK_KHR_xcb_surface"};
+    std::vector<const char*> dropped;
+
+    const auto kept = VulkanLayerAndExtension::SelectAvailableNames(
+        requested, driver, {"VK_KHR_surface"}, dropped);
+
+    EXPECT_EQ(kept, (std::vector<const char*>{"VK_KHR_surface", "VK_KHR_xcb_surface"}));
+    ASSERT_EQ(dropped.size(), 2u);
+    EXPECT_STREQ(dropped[0], "VK_EXT_debug_report");
+    EXPECT_STREQ(dropped[1], "VK_EXT_validation_features");
+}
+
+TEST(VulkanResources_InstanceSelection, MissingMandatoryExtensionStaysRequestedSoCreateFailsClearly) {
+    using Vixen::Vulkan::Resources::VulkanLayerAndExtension;
+    std::vector<const char*> dropped;
+    const auto kept = VulkanLayerAndExtension::SelectAvailableNames(
+        {"VK_KHR_surface"}, {}, {"VK_KHR_surface"}, dropped);
+    EXPECT_EQ(kept.size(), 1u);
+    EXPECT_TRUE(dropped.empty());
+}
+
+TEST(VulkanResources_InstanceSelection, MissingValidationLayerIsDropped) {
+    using Vixen::Vulkan::Resources::VulkanLayerAndExtension;
+    std::vector<const char*> dropped;
+    const auto kept = VulkanLayerAndExtension::SelectAvailableNames(
+        {"VK_LAYER_KHRONOS_validation"}, {"VK_LAYER_MESA_overlay"}, {}, dropped);
+    EXPECT_TRUE(kept.empty());
+    ASSERT_EQ(dropped.size(), 1u);
+}
+
+// Live driver check: requesting the validation layer and its extensions must succeed whether or not
+// the driver/loader provides them (layer present: validation on; absent: dropped, instance still created).
+TEST(VulkanResources_InstanceSelection, DebugStyleRequestCreatesInstanceWithOrWithoutValidationLayer) {
+    using Vixen::Vulkan::Resources::VulkanInstance;
+    VulkanInstance inst;
+    std::vector<const char*> layers = {"VK_LAYER_KHRONOS_validation"};
+    std::vector<const char*> exts = {VK_EXT_DEBUG_REPORT_EXTENSION_NAME};
+    const VkResult res = inst.CreateInstance(layers, exts, "selection-test");
+    if (res == VK_ERROR_INCOMPATIBLE_DRIVER || res == VK_ERROR_INITIALIZATION_FAILED) {
+        GTEST_SKIP() << "no Vulkan driver available";
+    }
+    ASSERT_EQ(res, VK_SUCCESS);
+    const bool layerKept = !layers.empty();
+    std::cout << "[ info ] validation layer " << (layerKept ? "PRESENT (kept)" : "ABSENT (dropped)") << std::endl;
 }

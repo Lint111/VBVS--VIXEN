@@ -1,0 +1,6 @@
+tag=cold-derived rc=0 wall_s=419.2 jobs=derived
+samples=187 unresolved_rows=0 cpu_mean=37.6% cpu_mean_while_cl=39.6% cpu_peak=79% cl_peak_count=6 cl_peak_single_ws_mb=1208 cl_peak_sum_ws_mb=4393 win_free_mb_min=13550 link_peak_sum_ws_mb=3705 win_avail_mb_min=13545 cl_peak_single_private_mb=1278 cl_peak_sum_private_mb=5111
+warning_lines(any case, incl. CMake notices)=8
+[configure] Configure lock acquired (was free).
+[build] Max parallel jobs: 6 (of 32 logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)
+[build] ============================== BUILD SUMMARY ==============================

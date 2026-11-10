@@ -19,7 +19,7 @@
 #   --all-correctness-labels  include every suite label containing cpu/gpu tests (the default)
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
-#   --cpu-jobs N      ctest -j for the cpu part (default: nproc/2, max 8)
+#   --cpu-jobs N      ctest -j for the cpu part (default: node width capped by available memory, R847.4)
 #   --gpu-jobs N      concurrent queued GPU shards (default 6; capped at the shared GPU limit)
 #   --out DIR         logs and junit land here (default <build-dir>/split-run)
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
@@ -39,9 +39,10 @@ regex=""
 suite_label=""
 all_correctness_labels=1
 agent="$(basename "$root")"
-cpu_jobs="$(( $(nproc) / 2 ))"
-(( cpu_jobs < 1 )) && cpu_jobs=1
-(( cpu_jobs > 8 )) && cpu_jobs=8
+# Node width capped by the memory available now (R847.4); the queue grant sets admission only. 2048 MB per
+# CPU test process is an unmeasured conservative starting point. --cpu-jobs overrides.
+source "$(dirname "${BASH_SOURCE[0]}")/node-width.sh"
+cpu_jobs="$(nw_jobs "$(nw_logical_cores)" "$(nw_wsl_available_mb)" 2048)"
 gpu_jobs=""   # empty = derive from the device (tools/derive-gpu-slots.py), R837.7
 out_dir=""
 witness=0
@@ -275,7 +276,7 @@ run_gpu_shards() {
   local started=$SECONDS
   mkdir -p "$shard_dir"
 
-  # RESOURCE_LOCK is scoped to one CTest process. Generate exact-name regexes from the
+  # The `gpu` resource slots (RESOURCE_GROUPS) are allocated per CTest process. Generate exact-name regexes from the
   # filtered listing, then let the box queue admit each independent process as its own
   # shared GPU holder. The helper keeps fixture/dependency cases in shard zero.
   if ! ctest --test-dir "$build_dir" --show-only=json-v1 -L '^gpu$' \

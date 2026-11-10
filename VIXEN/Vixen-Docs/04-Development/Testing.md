@@ -104,7 +104,7 @@ for t in test_*.exe; do ./$t --gtest_brief=1; done
 
 ### 3.3 Via CTest
 
-GPU-device tests share the `vixen_gpu_device` resource lock so CTest can keep CPU-only tests parallel. Device loss under concurrency is under diagnosis.
+GPU-device tests each request one slot of the CTest `gpu` resource (`RESOURCE_GROUPS gpu:1`, defined once in `cmake/VixenGpuResource.cmake`). The slot count, how many GPU tests run at once under `ctest -j`, is `VIXEN_GPU_TEST_SLOTS` (default 8); configure writes it to `<build>/vixen-gpu-resources.json` and `DartConfiguration.tcl` points CTest at it. Use `ctest --resource-spec-file <file>` for a one-off count, or `-DVIXEN_GPU_TEST_SLOTS=1` to serialize. CPU-only tests are not affected. `tools/measure-gpu-concurrency.sh` measures one slot count.
 
 ```bash
 # All tests

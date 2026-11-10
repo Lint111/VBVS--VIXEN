@@ -40,9 +40,16 @@ function(vixen_test_class_environment_modification output_variable)
 endfunction()
 
 # Labels every case in `list_variable` (set by the target's GoogleTest discovery include) when CTest
-# loads the directory.
+# loads the directory, and gives each GPU case its one request for the `gpu` resource. A case is a
+# GPU case when its class is gpu, or the registration declared it: DECLARED_GPU (every case) or
+# DECLARED_GPU_PATTERNS (cases matching one of the regexes).
 function(vixen_test_class_register target list_variable suite)
+    cmake_parse_arguments(PARSE_ARGV 3 VTR "DECLARED_GPU" "" "DECLARED_GPU_PATTERNS")
     set_property(TARGET ${target} PROPERTY VIXEN_TEST_SUITE "${suite}")
+    set(_declared "set(VIXEN_CLASS_DECLARED_GPU ${VTR_DECLARED_GPU})\nset(VIXEN_CLASS_DECLARED_GPU_PATTERNS)\n")
+    foreach(_pattern IN LISTS VTR_DECLARED_GPU_PATTERNS)
+        string(APPEND _declared "list(APPEND VIXEN_CLASS_DECLARED_GPU_PATTERNS [==[${_pattern}]==])\n")
+    endforeach()
     file(GENERATE OUTPUT "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake" CONTENT
 "set(VIXEN_CLASS_TARGET [==[${target}]==])
 set(VIXEN_CLASS_SUITE [==[${suite}]==])
@@ -60,7 +67,8 @@ if(NOT EXISTS [==[$<TARGET_FILE:${target}>]==]
     set(VIXEN_CLASS_TESTS \"${target}_NOT_BUILT\")
 endif()
 set(VIXEN_CLASS_MANIFEST [==[${VIXEN_TEST_CLASS_MANIFEST}]==])
-include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
+set(VIXEN_GPU_RESOURCE_GROUPS [==[${VIXEN_GPU_RESOURCE_GROUPS}]==])
+${_declared}include([==[${_VIXEN_TEST_CLASS_MODULE_DIR}/VixenTestClassApply.cmake]==])
 ")
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${VIXEN_TEST_CLASS_DIR}/stub-${target}.cmake")
 endfunction()
@@ -467,7 +475,7 @@ function(vixen_finalize_test_classes)
         set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY ENVIRONMENT_MODIFICATION
             ${_modification} "VIXEN_TEST_CLASS=set:${_class}" "VIXEN_TEST_NAME=set:${_test}")
         if(_class STREQUAL "gpu")
-            set_property(TEST ${_test} DIRECTORY "${_directory}" APPEND PROPERTY RESOURCE_LOCK vixen_gpu_device)
+            set_property(TEST ${_test} DIRECTORY "${_directory}" PROPERTY RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
             # Plain CTest commands cannot pass through the discovered-test launcher. On the
             # translated Dzn configuration, keep them out of the correctness run; GPU GoogleTest
             # families receive their one launcher-marked smoke case instead. Native configurations

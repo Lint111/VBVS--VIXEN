@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "VulkanLayerAndExtension.h"
 #include "VulkanInstance.h"
 #include <iostream>
@@ -185,51 +186,97 @@ VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& l
 }
 
 void VulkanLayerAndExtension::FilterUnsupportedExtensions(std::vector<const char*>& extensionNames,
-														  const std::vector<const char*>& mandatory) {
-	// Enumerate the instance extensions the active ICD actually exposes (layer == nullptr).
+                   const std::vector<const char*>& mandatory) {
+	// Enumerate the instance extensions the active ICD and requested layers expose. Validation
+	// extensions such as VK_EXT_validation_features and VK_EXT_debug_report belong to the
+	// validation layer, not the ICD, so querying only layer == nullptr incorrectly treats them as
+	// unsupported and, for extensions appended after this filter, can still make vkCreateInstance
+	// fail with VK_ERROR_EXTENSION_NOT_PRESENT.
 	uint32_t availableCount = 0;
-	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr) != VK_SUCCESS || availableCount == 0) {
-		// Can't enumerate: leave the list untouched and let vkCreateInstance be the arbiter.
-		return;
-	}
-	std::vector<VkExtensionProperties> available(availableCount);
-	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, available.data()) != VK_SUCCESS) {
-		return;
+	std::vector<VkExtensionProperties> available;
+	if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr) == VK_SUCCESS &&
+		availableCount != 0) {
+		available.resize(availableCount);
+		if (vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, available.data()) != VK_SUCCESS) {
+			available.clear();
+		}
 	}
 
-	auto isAvailable = [&available](const char* name) {
-		for (const auto& ext : available) {
-			if (!strcmp(name, ext.extensionName)) {
-				return true;
-			}
+	std::vector<std::string> layerExtensions;
+	for (const char* layerName : appRequestedLayerNames) {
+		uint32_t layerExtensionCount = 0;
+		if (vkEnumerateInstanceExtensionProperties(layerName, &layerExtensionCount, nullptr) != VK_SUCCESS ||
+			layerExtensionCount == 0) {
+			continue;
 		}
-		return false;
-	};
-	auto isMandatory = [&mandatory](const char* name) {
-		for (const char* m : mandatory) {
-			if (!strcmp(name, m)) {
-				return true;
-			}
+		std::vector<VkExtensionProperties> properties(layerExtensionCount);
+		if (vkEnumerateInstanceExtensionProperties(layerName, &layerExtensionCount, properties.data()) != VK_SUCCESS) {
+			continue;
 		}
-		return false;
-	};
+		for (const auto& property : properties) {
+			layerExtensions.emplace_back(property.extensionName);
+		}
+	}
 
-	std::vector<const char*> filtered;
-	filtered.reserve(extensionNames.size());
-	for (const char* requested : extensionNames) {
-		if (isAvailable(requested)) {
-			filtered.push_back(requested);
-		} else if (isMandatory(requested)) {
-			// Keep it: a missing mandatory extension is a genuine error vkCreateInstance must surface.
-			LOG_WARNING("Mandatory instance extension not advertised by ICD, keeping anyway: " +
-						std::string(requested));
-			filtered.push_back(requested);
+	std::vector<std::string> availableNames;
+	availableNames.reserve(available.size() + layerExtensions.size());
+	for (const auto& ext : available) {
+		availableNames.emplace_back(ext.extensionName);
+	}
+	availableNames.insert(availableNames.end(), layerExtensions.begin(), layerExtensions.end());
+
+	std::vector<const char*> dropped;
+	for (const char* m : mandatory) {
+		if (std::find(availableNames.begin(), availableNames.end(), m) == availableNames.end()) {
+			// A missing mandatory extension is a genuine error vkCreateInstance must surface.
+			LOG_WARNING("Mandatory instance extension not advertised by ICD, keeping anyway: " + std::string(m));
+		}
+	}
+	extensionNames = SelectAvailableNames(extensionNames, availableNames, mandatory, dropped);
+	for (const char* name : dropped) {
+		LOG_WARNING("Optional instance extension unsupported by active driver/layers, dropping (feature that needs it is off): " +
+					std::string(name));
+	}
+}
+
+std::vector<const char*> VulkanLayerAndExtension::SelectAvailableNames(
+		const std::vector<const char*>& requested, const std::vector<std::string>& available,
+		const std::vector<const char*>& mandatory, std::vector<const char*>& dropped) {
+	std::vector<const char*> kept;
+	kept.reserve(requested.size());
+	for (const char* name : requested) {
+		const bool isAvailable = std::find(available.begin(), available.end(), name) != available.end();
+		const bool isMandatory = std::any_of(mandatory.begin(), mandatory.end(),
+			[name](const char* m) { return !strcmp(name, m); });
+		if (isAvailable || isMandatory) {
+			kept.push_back(name);
 		} else {
-			LOG_WARNING("Optional instance extension unsupported by ICD, dropping: " +
-						std::string(requested));
+			dropped.push_back(name);
 		}
 	}
-	extensionNames = filtered;
+	return kept;
+}
+
+void VulkanLayerAndExtension::FilterUnsupportedLayers(std::vector<const char*>& layerNames) {
+	if (layerNames.empty()) {
+		return;
+	}
+	uint32_t layerCount = 0;
+	std::vector<std::string> available;
+	if (vkEnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS && layerCount != 0) {
+		std::vector<VkLayerProperties> props(layerCount);
+		if (vkEnumerateInstanceLayerProperties(&layerCount, props.data()) == VK_SUCCESS) {
+			for (uint32_t i = 0; i < layerCount; ++i) {
+				available.emplace_back(props[i].layerName);
+			}
+		}
+	}
+	std::vector<const char*> dropped;
+	layerNames = SelectAvailableNames(layerNames, available, {}, dropped);
+	for (const char* name : dropped) {
+		LOG_WARNING("VulkanInstance::CreateInstance: optional instance layer " + std::string(name) +
+					" is not installed on this driver; layer disabled (validation/debug features that need it are off)");
+	}
 }
 
 VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance) {

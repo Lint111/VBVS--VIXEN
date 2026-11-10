@@ -103,6 +103,7 @@ private:
     std::vector<uint64_t> tileBudgets_;
     std::vector<std::vector<uint64_t>> tilePixelCounts_;
     std::vector<std::vector<SubmitRecord::Batch>> submissionBatches_;
+    FrameCommandTimingLedger frameCommandTimings_;
     std::vector<uint64_t> tileNominalPixelCounts_;
     std::vector<uint32_t> tileQueryCapacities_;
     GpuChunkCost chunkCost_;

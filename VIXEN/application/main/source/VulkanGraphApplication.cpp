@@ -699,7 +699,37 @@ void VulkanGraphApplication::PostTick() {
         wholesale.residentSignatureFnv64 = signature;
     }
 
-    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs, wholesale);
+    const auto& waitLedger = renderGraph->GetLastFrameWaitLedger();
+    const double gpuWaitMs = static_cast<double>(waitLedger.gpuRetireWaitNs) / 1'000'000.0;
+    const double paceWaitMs = static_cast<double>(waitLedger.framePaceWaitNs) / 1'000'000.0;
+    const PerfCsvWriter::WindowMetrics windowMetrics{
+        gpuWaitMs,
+        paceWaitMs,
+        cpuFrameTimeMs > 0.0 ? gpuWaitMs / cpuFrameTimeMs : 0.0,
+        waitLedger.windowCount,
+        static_cast<double>(waitLedger.windowPredictedNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.windowActualNs) / 1'000'000.0,
+        waitLedger.ErrorP95Ms(),
+        waitLedger.ErrorP50Relative(),
+        waitLedger.ErrorP95Relative(),
+        waitLedger.ErrorP50Ms(),
+        waitLedger.violationCount,
+        static_cast<double>(waitLedger.violationNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.unusedNs) / 1'000'000.0,
+        waitLedger.Utilisation()};
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
+                               windowMetrics, wholesale);
+    std::vector<PerfCsvWriter::WindowSample> windowSamples;
+    windowSamples.reserve(waitLedger.waitSampleCount);
+    for (uint32_t i = 0; i < waitLedger.waitSampleCount; ++i) {
+        const auto& w = waitLedger.waits[i];
+        windowSamples.push_back(PerfCsvWriter::WindowSample{0,
+            w.kind == Vixen::RenderGraph::IdleWindow::Kind::GpuRetire ? "gpu-retire" : "frame-pace",
+            w.commandKey, w.cold, static_cast<double>(w.rawPredictedNs) / 1'000'000.0,
+            static_cast<double>(w.predictedNs) / 1'000'000.0,
+            static_cast<double>(w.actualNs) / 1'000'000.0, w.violation});
+    }
+    perfCsvWriter_.RecordWindowSamples(windowSamples);
 #endif  // UNDERSET_NATIVE_BENCHMARK
 }
 

@@ -425,8 +425,15 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
         // R715: the graph's single submission point (published on the lowered executor, issued by
         // the owner at once on the sequential one).
-        if (const VkResult result = GetOwningGraph()->SubmitNodeWork(
-                this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE));
+        auto record = SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE);
+        for (std::size_t command = 0; command < record.commandBuffers.size(); ++command) {
+            const uint32_t flight = slot % FrameCommandTimingLedger::kFlightCount;
+            const uint64_t lastFrame = frameCommandTimings_.Last(flight, command, command + 1);
+            if (lastFrame) record.commandCostMeanNs.push_back(lastFrame);
+            else record.commandCostMeanNs.push_back(frameTimingData_.GetValue(imageIndex).lastMeasuredGPUTimeNs /
+                                                     std::max<std::size_t>(1, record.commandBuffers.size()));
+        }
+        if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
             result != VK_SUCCESS) {
             NODE_LOG_ERROR("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
                            std::to_string(result));
@@ -473,15 +480,18 @@ void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // ============================================================================
 
 void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
-#if !UNDERSET_NATIVE_BENCHMARK
-    (void)slot;
-    return;
-#else
     auto& query = chunkQueries_[slot];
     if (!query || !query->ReadResults(0)) return;
+    const uint32_t flight = slot % FrameCommandTimingLedger::kFlightCount;
+    frameCommandTimings_.Begin(flight);
+#if UNDERSET_NATIVE_BENCHMARK
     double total = 0, peak = 0;
+#endif
     for (uint32_t i = 0; i < chunkCounts_[slot]; ++i) {
         const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+        frameCommandTimings_.Record(flight, i, i + 1,
+            query->GetElapsedNs(0, i * 4, i * 4 + 3));
+#if UNDERSET_NATIVE_BENCHMARK
         total += ms;
         peak = std::max(peak, ms);
         if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
@@ -494,7 +504,11 @@ void MultiDispatchNode::CollectChunkTiming(uint32_t slot) {
                 " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
                 " elapsed_gpu_ms=" + std::to_string(ms));
         }
+#else
+        (void)ms;
+#endif
     }
+#if UNDERSET_NATIVE_BENCHMARK
     NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
         " submissions=" + std::to_string(chunkCounts_[slot]) +
         " total_gpu_ms=" + std::to_string(total) +

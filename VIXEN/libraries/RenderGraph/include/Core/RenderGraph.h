@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <chrono>
 #include <functional>
 #include <thread>
 
@@ -869,6 +871,16 @@ public:
     // signals the queue's QueueTimeline; R503's cap waits only for the oldest outstanding batch.
     [[nodiscard]] bool SubmitChannelActive() const { return submitChannel_.IsConfigured() && submitChannelDraining_; }
 
+    /// Register the interim idle-window seam. The callback is never invoked unless a wait is
+    /// actually pending; an empty callback preserves the existing single bounded wait behavior.
+    void SetIdleWindowFiller(IdleWindowFiller filler);
+
+    /// Telemetry for the frame most recently completed by RenderFrame(). The row is backed by the
+    /// preallocated frames-in-flight ledger and is safe to read from the host's PostTick phase.
+    [[nodiscard]] const FrameWaitLedger& GetLastFrameWaitLedger() const {
+        return frameWaitLedgers_[lastWaitLedgerIndex_];
+    }
+
     /// The one node submission point. Returns the submit/present result when issued at once, and
     /// VK_SUCCESS when published (a deferred failure surfaces as the frame's channel fault).
     VkResult SubmitNodeWork(NodeInstance* producer, SubmitRecord&& record);
@@ -986,6 +998,10 @@ private:
     std::vector<SubmitRecord> offGraphSubmits_;
     // R715/R503: the retirement timeline of each queue the owner submits to (graph thread only).
     std::unordered_map<VkQueue, QueueTimeline> queueTimelines_;
+    IdleWindowFiller idleWindowFiller_;
+    std::array<FrameWaitLedger, FrameWaitLedger::kFlightCount> frameWaitLedgers_{};
+    std::size_t activeWaitLedgerIndex_ = 0;
+    std::size_t lastWaitLedgerIndex_ = 0;
     /// The owner's issue of one record (submit or present) on the graph thread.
     VkResult IssueRecord(SubmitRecord& record);
     /// Run the releases whose timeline value is reached. Never blocks.
@@ -1105,6 +1121,7 @@ private:
     void BuildExecutionOrder();
     void BuildExecutionTaskPlan();
     VkResult ExecuteLoweredFrame();
+    void PaceFrameUntil(std::chrono::steady_clock::time_point deadline);
     [[nodiscard]] bool UseLoweredGraph() const;
     [[nodiscard]] int GraphWorkerCount() const;
     void ComputeDependentCounts();

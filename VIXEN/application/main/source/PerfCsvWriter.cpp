@@ -3,6 +3,7 @@
 #include "Core/GPUPerformanceLogger.h"
 
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>  // std::getenv
 #include <numeric>  // std::accumulate
 
@@ -15,6 +16,7 @@ PerfCsvWriter::PerfCsvWriter() {
 void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                                 uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                                 double wholeFrameGpuSpanMs,
+                                WindowMetrics windowMetrics,
                                 WholesaleMetrics wholesale) {
     if (!IsEnabled()) return;
 
@@ -27,7 +29,15 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.bootBytesUploaded = bootBytesUploaded;
     row.steadyStateBytesUploaded = steadyStateBytesUploaded;
     row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
+    row.windowMetrics = windowMetrics;
     row.wholesale = wholesale;
+    ++runSummary_.frames;
+    runSummary_.windows += windowMetrics.windowCount;
+    runSummary_.violations += windowMetrics.windowViolationCount;
+    runSummary_.violationMs += windowMetrics.windowViolationMs;
+    runSummary_.actualMs += windowMetrics.windowActualMs;
+    runSummary_.unusedMs += windowMetrics.windowUnusedMs;
+    runSummary_.gpuWaitMs += windowMetrics.gpuWaitMs;
 
     // Steady-state FPS: rolling average over the last kFpsWindow frames (or however many
     // have run so far, before the window fills) — mirrors VulkanApplicationBase::FrameTimer's
@@ -50,9 +60,39 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     rows_.push_back(std::move(row));
 }
 
+void PerfCsvWriter::RecordWindowSamples(const std::vector<WindowSample>& samples) {
+    if (!IsEnabled()) return;
+    for (WindowSample sample : samples) {
+        sample.frame = frameCounter_;
+        if (sample.cold) ++runSummary_.coldWindows;
+        windowSamples_.push_back(sample);
+    }
+}
+
 void PerfCsvWriter::Flush() {
     if (!IsEnabled() || flushed_) return;
     flushed_ = true;
+
+    // used = actual - unused: a violating window has unused 0 and used = actual.
+    const double used = runSummary_.actualMs - runSummary_.unusedMs;
+    std::fprintf(stderr,
+        "[WINDOWSUMMARY] frames=%llu windows=%llu cold=%llu violations=%llu violation_ms=%.6f "
+        "actual_ms=%.6f used_ms=%.6f utilisation=%.6f gpu_wait_ms=%.6f\n",
+        static_cast<unsigned long long>(runSummary_.frames),
+        static_cast<unsigned long long>(runSummary_.windows),
+        static_cast<unsigned long long>(runSummary_.coldWindows),
+        static_cast<unsigned long long>(runSummary_.violations), runSummary_.violationMs,
+        runSummary_.actualMs, used,
+        runSummary_.actualMs > 0.0 ? used / runSummary_.actualMs : 0.0, runSummary_.gpuWaitMs);
+
+    if (std::ofstream windows(path_ + ".windows.csv"); windows.is_open()) {
+        windows << "frame,kind,command,cold,raw_predicted_ms,predicted_ms,actual_ms,violation\n";
+        for (const auto& w : windowSamples_) {
+            windows << w.frame << "," << w.kind << "," << w.command << "," << (w.cold ? 1 : 0) << ","
+                    << w.rawPredictedMs << "," << w.predictedMs << "," << w.actualMs << ","
+                    << (w.violation ? 1 : 0) << "\n";
+        }
+    }
 
     std::ofstream out(path_);
     if (!out.is_open()) return;  // best-effort: don't throw during shutdown
@@ -69,7 +109,11 @@ void PerfCsvWriter::Flush() {
            "populated_shader_readable_bytes,reusable_populated_bytes,boot_bytes_uploaded_ledger,"
            "steady_state_bytes_uploaded_ledger,whole_buffer_upload_bytes,"
            "channel_pool_populated_bytes,brick_lookup_populated_bytes,mip_pool_populated_bytes,"
-           "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64";
+           "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64,"
+           "gpu_wait_ms,pace_wait_ms,gpu_bound_share,window_count,window_predicted_ms,"
+           "window_actual_ms,window_error_p95_ms,window_error_p50_relative,"
+           "window_error_p95_relative,window_error_p50_ms,window_violation_count,"
+           "window_violation_ms,window_unused_ms,window_utilisation";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -88,7 +132,18 @@ void PerfCsvWriter::Flush() {
             << row.wholesale.wholeBufferUploadBytes << ","
             << row.wholesale.channelPoolPopulatedBytes << "," << row.wholesale.brickLookupPopulatedBytes << ","
             << row.wholesale.mipPoolPopulatedBytes << "," << row.wholesale.tierRefPopulatedBytes << ","
-            << row.wholesale.occupancyGridPopulatedBytes << "," << row.wholesale.residentSignatureFnv64;
+            << row.wholesale.occupancyGridPopulatedBytes << "," << row.wholesale.residentSignatureFnv64
+            << "," << row.windowMetrics.gpuWaitMs << "," << row.windowMetrics.paceWaitMs
+            << "," << row.windowMetrics.gpuBoundShare << "," << row.windowMetrics.windowCount
+            << "," << row.windowMetrics.windowPredictedMs << "," << row.windowMetrics.windowActualMs
+            << "," << row.windowMetrics.windowErrorP95Ms
+            << "," << row.windowMetrics.windowErrorP50Relative
+            << "," << row.windowMetrics.windowErrorP95Relative
+            << "," << row.windowMetrics.windowErrorP50Ms
+            << "," << row.windowMetrics.windowViolationCount
+            << "," << row.windowMetrics.windowViolationMs
+            << "," << row.windowMetrics.windowUnusedMs
+            << "," << row.windowMetrics.windowUtilisation;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }

@@ -56,7 +56,11 @@ fi
 # aborts on hosts without libicu otherwise.
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="${DOTNET_SYSTEM_GLOBALIZATION_INVARIANT:-1}"
 echo "[check-vixen-codegen] ${#targets[@]} check targets in $build_dir"
-if ! nice -n 10 ninja -C "$build_dir" -j4 -k 0 "${targets[@]}"; then
+# Node width capped by the memory available now (R847.4); 2048 MB per check job is an unmeasured conservative start.
+source "$root/tools/node-width.sh"
+check_jobs="$(nw_jobs "$(nw_logical_cores)" "$(nw_wsl_available_mb)" 2048)"
+echo "[check-vixen-codegen] ninja -j$check_jobs (cores=$(nw_logical_cores) available_mb=$(nw_wsl_available_mb) per_job_mb=2048)"
+if ! nice -n 10 ninja -C "$build_dir" -j"$check_jobs" -k 0 "${targets[@]}"; then
   echo "[check-vixen-codegen] FAILED: a check target failed in $build_dir (either generated output drifted from canonical, or the codegen tool itself failed to build/run: read the first FAILED: block above)." >&2
   echo "[check-vixen-codegen] FIX: for drift run the matching <name>_regen target (ninja -C $build_dir <name>_regen) and commit the result; for a tool failure fix the toolchain named in the block." >&2
   exit 1

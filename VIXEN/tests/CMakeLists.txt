@@ -102,6 +102,9 @@ if(UNIX)
         COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_vixen_native_launcher.sh" "${VIXEN_ROOT}/.."
                 "${CMAKE_CURRENT_BINARY_DIR}/wsl-route-launcher")
     set_tests_properties(Native.WslRouteLauncher PROPERTIES LABELS "cpu")
+    add_test(NAME Native.NodeWidth
+        COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_node_width.sh" "${VIXEN_ROOT}/..")
+    set_tests_properties(Native.NodeWidth PROPERTIES LABELS "cpu")
 endif()
 
 # Common test compile options

@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "24fec7d79d3888a73c97da992531eceed662bc6d")
+set(_vixen_tracked_yeroket_kernel_sha "b7d846209a99ecfe4cfb2d281b9fc56a5969e399")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -802,6 +802,11 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             "${_yk_root}/.archive-complete"
         COMMENT "[codegen] materializing cached kernel CodegenTool"
         JOB_POOL msbuild VERBATIM)
+    # engine_codegen_tool is the single declared tool step. Its stamp (${_tool_stamp}) names the
+    # immutable cache entry it was copied from; that entry is keyed by kernel pin / host RID / SDK /
+    # TFM / materializer recipe (vixen_kernel_codegen_tool_key), so a pin or tool change is the only
+    # thing that rebuilds it. Checks and regen targets depend on this target and run the staged DLL;
+    # none of them restores or builds the managed tool. Regeneration stays its own *_regen step.
     add_custom_target(engine_codegen_tool DEPENDS "${_tool_stamp}" "${_yk_dll}")
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_yk_dll}" _yk_dll_run)

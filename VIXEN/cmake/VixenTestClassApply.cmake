@@ -1,13 +1,14 @@
 # Runs at CTest load time, once per GoogleTest target, after the target's discovery include has
 # created its cases. Inputs (set by the generated stub): VIXEN_CLASS_TARGET, VIXEN_CLASS_LINK (the
 # target's link-closure class), VIXEN_CLASS_FINGERPRINT (hash of its sources), VIXEN_CLASS_TESTS
-# (the discovered case names) and VIXEN_CLASS_MANIFEST.
+# (the discovered case names), VIXEN_CLASS_MANIFEST, VIXEN_GPU_RESOURCE_GROUPS and the cases the
+# registration declared GPU: VIXEN_CLASS_DECLARED_GPU (all) / VIXEN_CLASS_DECLARED_GPU_PATTERNS (regexes).
 #
 # Each case takes the manifest class when the manifest has an entry for it written against the same
 # target sources; otherwise it keeps the link-closure class. The discovery include supplies only
 # suite/executable metadata. This hook writes the complete label and environment values in one
 # operation because CTest's load context cannot read TEST or DIRECTORY TESTS properties and LABELS
-# writes append there.
+# writes append there. RESOURCE_GROUPS appends too, so a GPU case gets its one request exactly once.
 #
 # Manifest columns: test, class, target, source-fingerprint, evidence.
 
@@ -69,8 +70,20 @@ if(VIXEN_CLASS_TESTS)
         set_tests_properties("${_vixen_test}" PROPERTIES
             LABELS "${_vixen_labels}"
             ENVIRONMENT_MODIFICATION "${_vixen_environment_modification}")
-        if(_vixen_class STREQUAL "gpu")
-            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
+        set(_vixen_gpu_case OFF)
+        if(_vixen_class STREQUAL "gpu" OR VIXEN_CLASS_DECLARED_GPU)
+            set(_vixen_gpu_case ON)
+        endif()
+        foreach(_vixen_pattern IN LISTS VIXEN_CLASS_DECLARED_GPU_PATTERNS)
+            if(_vixen_test MATCHES "${_vixen_pattern}")
+                set(_vixen_gpu_case ON)
+            endif()
+        endforeach()
+        # One request per case: every CTest-time set_tests_properties appends another resource group,
+        # also when two targets of this directory list the same case name.
+        if(_vixen_gpu_case AND NOT "${_vixen_test}" IN_LIST _VIXEN_GPU_REQUESTED)
+            list(APPEND _VIXEN_GPU_REQUESTED "${_vixen_test}")
+            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
         endif()
     endforeach()
 endif()

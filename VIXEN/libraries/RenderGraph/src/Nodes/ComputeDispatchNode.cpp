@@ -370,8 +370,11 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // order after the wave (a fault there surfaces device-loss). Inactive channel -> guarded submit.
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
     record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
-    for (uint32_t groups : tileWorkGroupCounts_[currentFrameIndex]) {
+    for (std::size_t command = 0; command < tileWorkGroupCounts_[currentFrameIndex].size(); ++command) {
+        const uint32_t groups = tileWorkGroupCounts_[currentFrameIndex][command];
         record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
+        const uint64_t lastFrame = frameCommandTimings_.Last(currentFrameIndex, command, groups);
+        record.commandCostMeanNs.push_back(lastFrame ? lastFrame : chunkCost_.MeanEstimate(groups));
     }
     submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
     if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
@@ -402,6 +405,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
 void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
     if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
+        frameCommandTimings_.Begin(frameIndex);
 #if UNDERSET_NATIVE_BENCHMARK
         double totalMs = 0, maximumMs = 0;
 #endif
@@ -426,6 +430,9 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             totalMs += ms;
 #endif
             if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
+                frameCommandTimings_.Record(frameIndex, i,
+                    tileWorkGroupCounts_[frameIndex][i],
+                    query->GetElapsedNs(0, i * 4, i * 4 + 3));
                 if (tileWorkGroupCounts_[frameIndex][i] == tileNominalWorkGroupCounts_[frameIndex]) {
                     fullTileMs += ms;
                     ++fullTiles;
@@ -440,7 +447,8 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
         // persists it per device at shutdown, keyed by this flight's extent.
         if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
             chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
-                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs(), chunkCost_.MeanUnitNs()});
+                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs(),
+                 chunkCost_.MeanUnitNs(), chunkCost_.MeanFixedNs()});
 #if UNDERSET_NATIVE_BENCHMARK
         totalMs = 0;
 #endif
@@ -535,17 +543,20 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         std::string seed = "cold";
         if (chunkProfile_) {
             if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
-                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs, restored->meanUnitNs);
+                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs,
+                                  restored->meanUnitNs, restored->meanFixedNs);
                 seed = "persisted";
             }
         }
         if (!chunkCost_.Calibrated() && previous.Calibrated()) {
-            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(), previous.MeanUnitNs());
+            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(),
+                              previous.MeanUnitNs(), previous.MeanFixedNs());
             seed = "previous-extent";
         }
         if (!chunkCost_.Calibrated() && chunkProfile_) {
             if (const auto neighbour = chunkProfile_->NearestChunkCalibration(extentKey)) {
-                chunkCost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs, neighbour->meanUnitNs);
+                chunkCost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs,
+                                  neighbour->meanUnitNs, neighbour->meanFixedNs);
                 seed = "nearest-persisted";
             }
         }

@@ -33,11 +33,17 @@
 // "idle handling becomes a quiescent row" seen from the submit side.
 // ============================================================================
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <string>
+#include <stop_token>
 #include <utility>
 #include <vector>
 
@@ -48,33 +54,301 @@ namespace Vixen::Vulkan::Resources { class VulkanDevice; }
 
 namespace Vixen::RenderGraph {
 
+/// A bounded host interval in which the graph would otherwise wait for a GPU value or a clock.
+/// The stop token is requested by the owner as soon as the awaited event is observed reached.
+struct IdleWindow {
+    enum class Kind : uint8_t { GpuRetire, FramePace };
+
+    Kind kind = Kind::GpuRetire;
+    uint64_t frameIndex = 0;
+    uint64_t predictedNs = 0;
+    uint64_t waitValue = 0;
+    std::stop_token closed;
+};
+
+using IdleWindowFiller = std::function<void(const IdleWindow&)>;
+
+/// Fixed-capacity telemetry for one completed graph frame. The rows are rotated with the
+/// frames-in-flight ring, so recording a wait never grows a container or allocates.
+struct FrameWaitLedger {
+    static constexpr std::size_t kFlightCount = 4;
+    static constexpr std::size_t kMaxWaitsPerFrame = 64;
+    static constexpr std::size_t kErrorHistogramBuckets = 16;
+
+    struct WaitSample {
+        IdleWindow::Kind kind = IdleWindow::Kind::GpuRetire;
+        uint64_t predictedNs = 0;
+        uint64_t actualNs = 0;
+        int64_t errorNs = 0;          ///< actual - predicted, signed
+        double relativeError = 0.0;
+        uint64_t commandKey = 0;      ///< issue ordinal of the awaited batch within its frame (0 = unkeyed)
+        uint64_t rawPredictedNs = 0;  ///< prediction before the derived margin was subtracted
+        bool cold = false;            ///< the awaited batch had no last-frame timing
+        bool violation = false;       ///< predicted > actual: the window would outlive the GPU work
+    };
+
+    uint64_t frameIndex = 0;
+    uint64_t gpuRetireWaitCount = 0;
+    uint64_t gpuRetireWaitNs = 0;
+    uint64_t framePaceWaitNs = 0;
+    uint64_t windowCount = 0;
+    uint64_t windowPredictedNs = 0;
+    uint64_t windowActualNs = 0;
+    uint64_t filledNs = 0;
+    // A violation is predicted > actual, per window (owner 11-10). It must be zero: the window may
+    // never end after the GPU work it waits on retires. Unused time is the safe remainder.
+    uint64_t violationCount = 0;
+    uint64_t violationNs = 0;   ///< sum of (predicted - actual) over violating windows
+    uint64_t unusedNs = 0;      ///< sum of (actual - predicted) over windows with actual >= predicted
+    uint64_t usedNs = 0;        ///< sum of min(predicted, actual): window time actually usable
+    int64_t errorMinNs = 0;
+    int64_t errorMaxNs = 0;
+    int64_t errorSumNs = 0;
+    uint64_t errorCount = 0;
+    std::array<uint32_t, kErrorHistogramBuckets> errorHistogram{};
+    std::array<WaitSample, kMaxWaitsPerFrame> waits{};
+    uint32_t waitSampleCount = 0;
+
+    void Reset(uint64_t newFrameIndex) {
+        *this = FrameWaitLedger{};
+        frameIndex = newFrameIndex;
+    }
+
+    void RecordWait(IdleWindow::Kind kind, uint64_t predictedNs, uint64_t actualNs,
+                    uint64_t commandKey = 0, uint64_t rawPredictedNs = 0, bool cold = false) {
+        const int64_t errorNs = actualNs >= predictedNs
+            ? static_cast<int64_t>(actualNs - predictedNs)
+            : -static_cast<int64_t>(predictedNs - actualNs);
+        const uint64_t absoluteErrorNs = actualNs >= predictedNs
+            ? actualNs - predictedNs : predictedNs - actualNs;
+        const double relativeError = predictedNs
+            ? static_cast<double>(absoluteErrorNs) / static_cast<double>(predictedNs) : 0.0;
+        if (waitSampleCount < waits.size()) {
+            waits[waitSampleCount++] = WaitSample{kind, predictedNs, actualNs, errorNs, relativeError,
+                commandKey, rawPredictedNs ? rawPredictedNs : predictedNs, cold, predictedNs > actualNs};
+        }
+        ++windowCount;
+        windowPredictedNs += predictedNs;
+        windowActualNs += actualNs;
+        if (predictedNs > actualNs) {
+            violationNs += predictedNs - actualNs;
+            ++violationCount;
+            usedNs += actualNs;
+        } else {
+            unusedNs += actualNs - predictedNs;
+            usedNs += predictedNs;
+        }
+        if (kind == IdleWindow::Kind::GpuRetire) {
+            ++gpuRetireWaitCount;
+            gpuRetireWaitNs += actualNs;
+        } else {
+            framePaceWaitNs += actualNs;
+        }
+        if (errorCount++ == 0) {
+            errorMinNs = errorMaxNs = errorNs;
+        } else {
+            errorMinNs = std::min(errorMinNs, errorNs);
+            errorMaxNs = std::max(errorMaxNs, errorNs);
+        }
+        errorSumNs += errorNs;
+        // Sixteen signed one-millisecond buckets: [-8,-7), ... [-1,0),
+        // [0,1), ... [7,+inf). This keeps early and late errors visible without
+        // allocating a histogram whose range depends on a frame.
+        const int64_t errorMs = errorNs / 1'000'000;
+        const int bucket = std::clamp(static_cast<int>(errorMs) + 8, 0,
+                                      static_cast<int>(kErrorHistogramBuckets - 1));
+        ++errorHistogram[static_cast<std::size_t>(bucket)];
+    }
+
+    [[nodiscard]] double ErrorP95Ms() const {
+        if (!errorCount) return 0.0;
+        std::array<int64_t, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) sorted[i] = waits[i].errorNs;
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(0.95 * static_cast<double>(count - 1) + 0.5));
+        return static_cast<double>(sorted[index]) / 1'000'000.0;
+    }
+
+    [[nodiscard]] double AbsoluteErrorPercentileMs(double percentile) const {
+        if (!waitSampleCount) return 0.0;
+        std::array<uint64_t, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const int64_t error = waits[i].errorNs;
+            sorted[i] = error < 0 ? static_cast<uint64_t>(-error) : static_cast<uint64_t>(error);
+        }
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(percentile * static_cast<double>(count - 1) + 0.5));
+        return static_cast<double>(sorted[index]) / 1'000'000.0;
+    }
+
+    [[nodiscard]] double RelativeErrorPercentile(double percentile) const {
+        if (!waitSampleCount) return 0.0;
+        std::array<double, kMaxWaitsPerFrame> sorted{};
+        const std::size_t count = std::min<std::size_t>(waitSampleCount, sorted.size());
+        for (std::size_t i = 0; i < count; ++i) sorted[i] = waits[i].relativeError;
+        std::sort(sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(count));
+        const std::size_t index = std::min(count - 1,
+            static_cast<std::size_t>(percentile * static_cast<double>(count - 1) + 0.5));
+        return sorted[index];
+    }
+
+    [[nodiscard]] double ErrorP50Ms() const { return AbsoluteErrorPercentileMs(0.50); }
+    [[nodiscard]] double ErrorP95AbsoluteMs() const { return AbsoluteErrorPercentileMs(0.95); }
+    [[nodiscard]] double ErrorP50Relative() const { return RelativeErrorPercentile(0.50); }
+    [[nodiscard]] double ErrorP95Relative() const { return RelativeErrorPercentile(0.95); }
+    /// Σused / Σactual wait over this frame's windows; the figure to maximise at zero violations.
+    [[nodiscard]] double Utilisation() const {
+        return windowActualNs ? static_cast<double>(usedNs) / static_cast<double>(windowActualNs) : 0.0;
+    }
+};
+
+/// Fixed per-flight command samples. A producer clears the row when it successfully reads the
+/// previous flight's timestamps, then records one sample per command. The next recording pass uses
+/// the same command key, so a missing or reshaped command falls back to the model mean. This keeps
+/// the steady-state prediction path allocation-free and rotates storage with the flight ring.
+struct FrameCommandTimingLedger {
+    static constexpr std::size_t kFlightCount = FrameWaitLedger::kFlightCount;
+    static constexpr std::size_t kMaxCommands = 256;
+
+    struct Sample {
+        uint64_t commandKey = 0;
+        uint64_t elapsedNs = 0;
+    };
+
+    std::array<std::array<Sample, kMaxCommands>, kFlightCount> rows{};
+    std::array<uint32_t, kFlightCount> counts{};
+
+    void Begin(uint32_t flight) {
+        if (flight >= kFlightCount) return;
+        rows[flight].fill(Sample{});
+        counts[flight] = 0;
+    }
+
+    void Record(uint32_t flight, std::size_t command, uint64_t commandKey, uint64_t elapsedNs) {
+        if (flight >= kFlightCount || command >= kMaxCommands || !commandKey || !elapsedNs) return;
+        rows[flight][command] = Sample{commandKey, elapsedNs};
+        counts[flight] = std::max(counts[flight], static_cast<uint32_t>(command + 1));
+    }
+
+    [[nodiscard]] uint64_t Last(uint32_t flight, std::size_t command, uint64_t commandKey) const {
+        if (flight >= kFlightCount || command >= kMaxCommands || !commandKey ||
+            rows[flight][command].commandKey != commandKey)
+            return 0;
+        return rows[flight][command].elapsedNs;
+    }
+};
+
 /// R715 pattern 5: the retirement timeline of one VkQueue, owned by the graph's single submission
 /// point (one owner, one thread). Every batch the owner issues signals the next value. R503 caps the
 /// outstanding batches at SubmitRecord::kOutstandingBatchCap: when the cap is reached the owner first
 /// polls the counter and only waits (bounded) for the OLDEST outstanding batch, never for the whole
 /// queue. A release (a one-shot command buffer, a staging buffer) runs once its value is reached.
 struct QueueTimeline {
+    using Clock = std::chrono::steady_clock;
     using CounterFn = VkResult (*)(VkDevice, VkSemaphore, uint64_t*);
     using WaitFn = VkResult (*)(VkDevice, VkSemaphore, uint64_t value, uint64_t boundNs);
+
+    struct IssuedBatch {
+        uint64_t value = 0;
+        Clock::time_point issuedAt{};
+        uint64_t upperBoundNs = 0;
+        uint64_t meanCostNs = 0;
+        uint64_t commandKey = 0;  ///< 1-based issue ordinal within the frame that issued it
+        bool cold = false;        ///< no last-frame timing: the mean fell back to the upper bound
+    };
 
     VkDevice device = VK_NULL_HANDLE;
     VkSemaphore semaphore = VK_NULL_HANDLE;
     uint64_t lastSignaled = 0;           ///< value of the newest issued batch
     uint64_t completed = 0;              ///< newest value observed reached
     std::deque<uint64_t> outstanding;    ///< issued values not yet observed reached, oldest first
+    std::deque<IssuedBatch> issuedBatches; ///< prediction metadata aligned with outstanding
     std::deque<std::pair<uint64_t, std::function<void()>>> releases;  ///< ordered by value
     CounterFn counterFn = nullptr;       ///< vkGetSemaphoreCounterValue when null; injectable for tests
     WaitFn waitFn = nullptr;             ///< bounded vkWaitSemaphores when null; injectable for tests
     uint64_t blockingWaits = 0;          ///< cap waits that found the oldest batch still running
+    uint64_t frameIndex = 0;             ///< graph frame associated with the active window
+    IdleWindowFiller* idleWindowFiller = nullptr; ///< graph-owned, never copied on the frame path
+    FrameWaitLedger* frameLedger = nullptr;       ///< graph-owned rotating row, if configured
+    Clock::time_point lastReachedAt_{};   ///< observed reach time used to chain later predictions
+    /// Window derivation (R613: last-frame data only; owner 11-10: the margin is derived, never
+    /// tuned). A window is a command's remaining time to retire, bounded by quantities learned
+    /// from that command's own recent windows (issue ordinal within the frame is the command key):
+    ///   1. q = actual / raw per ring sample. The raw prediction is scaled by
+    ///      min(1, minQ - kPredictionRangeFactor * (maxQ - minQ)): the window ends below the lowest
+    ///      q seen by the range of q seen, so spread (late outliers included) widens the margin;
+    ///   2. the last observed wait scaled by the worst consecutive shrink ratio seen, so a command
+    ///      whose waits are falling is not predicted from a stale larger value.
+    /// The window is the smaller bound, minus time already elapsed in it. History is the last
+    /// kPredictionHistory non-cold windows of that command, so a bound decays once the large
+    /// error leaves the ring. Warm-up (cold batches, fewer than kPredictionWarmup samples, a reset
+    /// after a pipeline or resolution change) yields no window.
+    /// Both lengths are multiples of the flight count. kPredictionHistory (3 flights) and
+    /// kPredictionRangeFactor were chosen offline on 18 native runs (500 and 1080x1080; look-dev
+    /// midday angles 0-2; two repeats; two predictor versions) as the highest-utilisation pair with
+    /// zero violations there: the exact smallest factor was 2.33, rounded up to 2.4. The 12
+    /// held-out 1920x1080 runs needed at most 2.24, so they also give zero (reports/sn-gpuwinpredict5.md).
+    static constexpr std::size_t kPredictionWarmup = 2 * FrameWaitLedger::kFlightCount;
+    static constexpr std::size_t kPredictionHistory = 3 * FrameWaitLedger::kFlightCount;
+    static constexpr double kPredictionRangeFactor = 2.4;
+    static constexpr std::size_t kMaxPredictionKeys = 64;
+    struct PredictionHistory {
+        struct Sample { uint64_t rawNs = 0; uint64_t actualNs = 0; };
+        std::array<Sample, kPredictionHistory> samples{};  ///< ring, oldest at `next` once full
+        uint32_t count = 0;
+        uint32_t next = 0;
+    };
+    std::array<PredictionHistory, kMaxPredictionKeys> predictionHistory_{};
+    uint64_t issueFrameIndex_ = ~uint64_t{0};
+    uint64_t issueOrdinal_ = 0;
+
+    [[nodiscard]] static std::size_t HistorySlot(uint64_t commandKey) {
+        return static_cast<std::size_t>(commandKey % kMaxPredictionKeys);
+    }
+    /// Forget all learned errors (pipeline or resolution change): the next frames are warm-up.
+    void ResetPredictionHistory() { predictionHistory_ = {}; }
 
     /// Refresh `completed` from the counter and drop reached values. Never blocks.
     VkResult Poll();
     /// Make room for one more batch under the R503 cap: poll, then wait for the oldest value only.
     VkResult ReserveBatch(uint32_t cap);
+    /// Remaining time until `value` from the chained issue-time mean costs, before any bound.
+    [[nodiscard]] uint64_t PredictRetireRawNs(uint64_t value, Clock::time_point now) const;
+    /// The window to expose for `value`: 0 while warming up. `windowStarted` is when the window
+    /// opened, so the last-wait bound shrinks as the window is consumed.
+    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now,
+                                           Clock::time_point windowStarted) const;
+    [[nodiscard]] uint64_t PredictRetireNs(uint64_t value, Clock::time_point now) const {
+        return PredictRetireNs(value, now, now);
+    }
+    /// Learn from a completed window. Cold batches, unkeyed batches and windows with no raw
+    /// prediction are warm-up and ignored.
+    void ObservePredictionError(uint64_t commandKey, bool cold, uint64_t rawPredictedNs,
+                                uint64_t actualNs) {
+        if (cold || !commandKey || !rawPredictedNs) return;
+        PredictionHistory& history = predictionHistory_[HistorySlot(commandKey)];
+        history.samples[history.next] = {rawPredictedNs, actualNs};
+        history.next = (history.next + 1) % kPredictionHistory;
+        history.count = std::min<uint32_t>(history.count + 1, kPredictionHistory);
+    }
     /// The value the next issued batch signals (call once per issued batch, after ReserveBatch).
     uint64_t NextValue() { return ++lastSignaled; }
     /// Record a successfully issued batch value.
-    void Issued(uint64_t value) { outstanding.push_back(value); }
+    void Issued(uint64_t value, uint64_t upperBoundNs = 0, uint64_t meanCostNs = 0,
+                Clock::time_point issuedAt = Clock::now(), bool cold = false) {
+        if (frameIndex != issueFrameIndex_) {
+            issueFrameIndex_ = frameIndex;
+            issueOrdinal_ = 0;
+        }
+        outstanding.push_back(value);
+        issuedBatches.push_back(IssuedBatch{value, issuedAt, upperBoundNs,
+                                            meanCostNs ? meanCostNs : upperBoundNs,
+                                            ++issueOrdinal_, cold || !meanCostNs});
+    }
     /// Run `release` once `value` is reached (immediately when it already is).
     void Defer(uint64_t value, std::function<void()> release);
     /// Run every release whose value is reached. Returns them collected so the caller may run them
@@ -94,6 +368,10 @@ struct SubmitRecord {
     // Calibrated upper bounds supplied by the existing producer's timestamp history.
     // Missing/zero entries reserve a whole submission; they can never enable batching.
     std::vector<uint64_t> commandCostUpperBoundsNs;
+    // Producer expected-time estimates, normally the same command's last-frame timestamp and
+    // otherwise the windowed model mean. Missing/zero entries fall back to the corresponding
+    // upper bound at issue time. Safety margin is owned by QueueTimeline at window placement.
+    std::vector<uint64_t> commandCostMeanNs;
     uint64_t submissionBudgetNs = 2'000'000;
     struct Batch { std::size_t first, count; };
     [[nodiscard]] std::vector<Batch> SubmissionBatches() const;
@@ -125,11 +403,12 @@ struct SubmitRecord {
     // existing entry/exit barriers retain the original graph dependency contract.
     // R503: at most two submitted batches are outstanding on the queue, so one
     // batch executes while the next is queued and a pass boundary no longer costs
-    // a host round trip. Worst queued work is two submission budgets (4 ms), inside
-    // R494's 4.17 ms desktop reserve. The final semaphore/fence remains owned by the
-    // final batch. The queue-wide count lives in the owner's QueueTimeline, shared by
-    // both executors, so no record has to assume a full queue; reaching the cap waits
-    // for the oldest outstanding batch value, not for the queue to drain.
+    // a host round trip. On native devices a batch is now a whole pass, so this cap
+    // intentionally bounds whole-pass submissions rather than tile-sized work. The
+    // final semaphore/fence remains owned by the final batch. The queue-wide count
+    // lives in the owner's QueueTimeline, shared by both executors, so no record has
+    // to assume a full queue; reaching the cap waits for the oldest outstanding batch
+    // value, not for the queue to drain.
     static constexpr uint32_t kOutstandingBatchCap = 2;
     /// Issue every batch through `issue` (one VkSubmitInfo2 + fence per call), each signalling the
     /// queue's timeline; the final batch also carries the record's own signals and fence. The cap

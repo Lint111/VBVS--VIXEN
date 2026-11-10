@@ -45,7 +45,7 @@
 namespace Vixen::RenderGraph {
 
 namespace {
-void PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+void WaitUntil(std::chrono::steady_clock::time_point deadline) {
 #ifdef _WIN32
     struct Timer {
         HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr,
@@ -165,6 +165,59 @@ RenderGraph::RenderGraph(
 
     // Sprint 6.5: Initialize profile registry with built-in factories
     taskProfileRegistry_.Init();
+}
+
+void RenderGraph::SetIdleWindowFiller(IdleWindowFiller filler) {
+    idleWindowFiller_ = std::move(filler);
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.idleWindowFiller = &idleWindowFiller_;
+    }
+}
+
+void RenderGraph::PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+    FrameWaitLedger& ledger = frameWaitLedgers_[activeWaitLedgerIndex_];
+    const auto windowStarted = std::chrono::steady_clock::now();
+    const auto remaining = deadline - windowStarted;
+    if (remaining <= std::chrono::steady_clock::duration::zero()) return;
+    const uint64_t initialPrediction = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count());
+    const uint64_t frameIndex = ledger.frameIndex;
+    const bool hasFiller = static_cast<bool>(idleWindowFiller_);
+    if (!hasFiller) {
+        WaitUntil(deadline);
+        ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                          static_cast<uint64_t>(std::max<int64_t>(0,
+                              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::steady_clock::now() - windowStarted).count())));
+        return;
+    }
+
+    for (;;) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                              static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  now - windowStarted).count()));
+            return;
+        }
+        const uint64_t predicted = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now).count());
+        std::stop_source closed;
+        const IdleWindow window{IdleWindow::Kind::FramePace, frameIndex, predicted, 0,
+                                closed.get_token()};
+        if (predicted > 0) idleWindowFiller_(window);
+        const auto afterFill = std::chrono::steady_clock::now();
+        if (afterFill >= deadline) {
+            closed.request_stop();
+            ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                              static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  afterFill - windowStarted).count()));
+            return;
+        }
+        const uint64_t boundNs = std::min(predicted, GpuWaitBoundNs());
+        WaitUntil(std::min(deadline, afterFill + std::chrono::nanoseconds(boundNs)));
+    }
 }
 
 size_t RenderGraph::LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
@@ -1350,6 +1403,9 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
     QueueTimeline& timeline = queueTimelines_[device->queue];
+    timeline.frameIndex = frameWaitLedgers_[activeWaitLedgerIndex_].frameIndex;
+    timeline.frameLedger = &frameWaitLedgers_[activeWaitLedgerIndex_];
+    timeline.idleWindowFiller = &idleWindowFiller_;
     if (timeline.semaphore == VK_NULL_HANDLE) {
         VkSemaphoreTypeCreateInfo typeInfo{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
         typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
@@ -1712,6 +1768,14 @@ VkResult RenderGraph::RenderFrame() {
         messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process immediately so listeners capture state
     }
+    activeWaitLedgerIndex_ = static_cast<std::size_t>(globalFrameIndex % FrameWaitLedger::kFlightCount);
+    frameWaitLedgers_[activeWaitLedgerIndex_].Reset(globalFrameIndex);
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.frameIndex = globalFrameIndex;
+        timeline.frameLedger = &frameWaitLedgers_[activeWaitLedgerIndex_];
+        timeline.idleWindowFiller = &idleWindowFiller_;
+    }
     // R723 fixed queue-owner phase: requests published by workers or caches are issued before this
     // frame's graph work. Queue order therefore preserves producer-before-consumer semantics while
     // no producer needs a queue mutex or a host wait.
@@ -1858,6 +1922,7 @@ VkResult RenderGraph::RenderFrame() {
 #endif
 
     // Increment frame counter for next frame
+    lastWaitLedgerIndex_ = activeWaitLedgerIndex_;
     globalFrameIndex++;
 
     // AR#1 Phase 3: if a node latched device-loss mid-frame (e.g. a submit/wait returned
@@ -2755,6 +2820,11 @@ void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg
     // subscribe to WindowResizedMessage and mark themselves dirty.
     // Downstream consumers (DepthBufferNode, FramebufferNode, etc.) are automatically
     // marked dirty by the recompilation system when their dependencies change.
+    // The new resolution changes every command's cost: the learned window margins are warm-up again.
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.ResetPredictionHistory();
+    }
 }
 
 void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {

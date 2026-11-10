@@ -5,6 +5,7 @@
 #
 # Usage: tools/vixen-native.sh [--lane NAME] [--branch NAME] [--direct] [--log FILE] COMMAND [ARGS]
 #   cmd                        print the discovered cmd.exe
+#   jobs                       print how the ninja job count is derived (node width capped by memory, R847.4) and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
 #   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
@@ -22,6 +23,7 @@
 # build.bat are forwarded into the Windows process; the two roots are forwarded as paths.
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/node-width.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 native_base="${VIXEN_NATIVE_ROOT:-/mnt/c/vixen-native}"
 lane="$(basename "$repo_root")"
@@ -201,6 +203,63 @@ infer_roots() {
     fi
 }
 
+# Peak memory of one cl.exe at the worst moment of a cold -j4 vixen_lookdev_capture build on ws: the
+# summed cl.exe working sets divided by the cl.exe count at the instant of the peak (3538 MB / 4 = 885;
+# the largest single process was 1203 MB). Measured by reports/sn-nativejobs1-evidence/sample-build.ps1;
+# VIXEN_BUILD_MB_PER_JOB overrides it.
+BUILD_MB_PER_JOB_DEFAULT=900
+
+# Windows logical cores and available memory (MB) as the build sees them; empty when unreadable.
+# shellcheck source=node-width.sh
+windows_logical_cores() {
+    local n=""
+    if need_cmd_quiet; then n="$("$cmd_exe" /c "echo %NUMBER_OF_PROCESSORS%" 2>/dev/null | tr -dc '0-9' || true)"; fi
+    echo "${n:-$(nproc)}"
+}
+windows_available_mb() {
+    [[ -z "${VIXEN_NATIVE_AVAILABLE_MB:-}" ]] || { echo "$VIXEN_NATIVE_AVAILABLE_MB"; return 0; }
+    local ps_exe
+    ps_exe="$(find_powershell)" || return 0
+    "$ps_exe" -NoProfile -Command "[int](Get-Counter '\\Memory\\Available MBytes').CounterSamples[0].CookedValue" 2>/dev/null | tr -dc '0-9' || true
+}
+need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
+
+# Sets VIXEN_MAX_BUILD_JOBS (an explicit value wins) and logs how it was derived in one line (R847.4):
+# node width, capped by memory. jobs = max(1, min(Windows logical cores, (Windows available MB - other
+# queue holders' uncommitted memory - headroom) / per_job_mb)). The queue grant sets admission only. It is
+# read at the start of every build step (each run_bat), so a step that starts later sees a freer node;
+# under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.
+derived_build_jobs=""
+resolve_build_jobs() {
+    local cpus mem per jobs other holders where="direct"
+    per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
+    [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
+    # A value this function exported for an earlier step of the same command (provision, then build) is
+    # not an override: each step reads the node again.
+    if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" && "$VIXEN_MAX_BUILD_JOBS" != "$derived_build_jobs" ]]; then
+        say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
+        return 0
+    fi
+    [[ -z "${UT_QUEUE_HOLDER_PID:-}" ]] || where="queue"
+    cpus="$(windows_logical_cores)"
+    [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || die "cannot derive the build job count: CPUs '$cpus' is not a positive integer"
+    nw_claim_begin
+    mem="$(windows_available_mb)"
+    if [[ "$mem" =~ ^[0-9]+$ ]]; then
+        read -r other holders <<<"$(nw_other_uncommitted_mb)"
+        jobs="$(nw_jobs "$cpus" $(( mem > other ? mem - other : 0 )) "$per")"
+        nw_claim_end $(( jobs * per )) "${UT_AGENT_ID:-vixen}:native-build"
+        mem="$mem other_uncommitted_mb=$other other_holders=$holders"
+    else
+        jobs="$cpus"
+        nw_claim_end 0 "${UT_AGENT_ID:-vixen}:native-build"
+        mem="unknown"
+    fi
+    export VIXEN_MAX_BUILD_JOBS="$jobs"
+    derived_build_jobs="$jobs"
+    say "build jobs: $jobs (source=$where cores=$cpus windows_available_mb=$mem per_job_mb=$per)"
+}
+
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
 base_dir() { if [[ "$direct" == 1 ]]; then echo "$repo_root"; else native_dir; fi; }
 
@@ -243,12 +302,13 @@ run_bat() {
     local cmd_args=() a
     for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
     export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
-    # Lane builds share ws memory and must not fetch into another lane's cache: default the four-job
-    # cap and a checkout-local FetchContent cache here (T-2955); an explicit value still wins.
-    export VIXEN_MAX_BUILD_JOBS="${VIXEN_MAX_BUILD_JOBS:-4}"
+    # Lane builds must not fetch into another lane's cache: default a checkout-local FetchContent cache
+    # here (T-2955); an explicit value still wins. The ninja job count is derived from the CPUs and
+    # memory this run was granted (resolve_build_jobs), not a fixed number.
+    resolve_build_jobs
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
-    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
@@ -281,6 +341,7 @@ run_bat() {
     trap - TERM INT HUP
     kill "$heartbeat_pid" 2>/dev/null || true
     wait "$heartbeat_pid" 2>/dev/null || true
+    nw_claim_release
     rm -f "$pid_file"
     say "exit code $rc"
     return "$rc"
@@ -355,7 +416,7 @@ while [[ $# -gt 0 ]]; do
         --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
         --direct) direct=1; shift ;;
         --log) log_file="${2:?--log needs a file}"; shift 2 ;;
-        -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) break ;;
     esac
 done
@@ -375,6 +436,7 @@ fi
 
 case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
+    jobs) resolve_build_jobs; nw_claim_release; echo "$VIXEN_MAX_BUILD_JOBS" ;;
     ps) do_ps "$@" ;;
     rasterize) do_rasterize "$@" ;;
     checkout) do_checkout ;;

@@ -79,6 +79,28 @@ function(vixen_fresh_capture_shell out_var glob_pattern)
     set(${out_var}_CHECK "for frame in ${_frame_list}; do test -s \"\${capture_dir}/${glob_pattern}\${frame}.png\" || { echo \"stale or missing capture ${glob_pattern}\${frame}.png in \${capture_dir}: the producer exited without writing it; see its log\" >&2; exit 1; }; done" PARENT_SCOPE)
 endfunction()
 
+# A producer needs frames only up to its last capture: the capture is written while that frame is
+# rendered, so every later frame is GPU time (about 2.5 s each at 1920x1080 on Dozen) that changes no
+# PNG. One frame past the last capture lets the capture flush and the app exit through its normal path.
+# Args: <out var> <capture frames...>
+function(vixen_exit_after_last_capture out_var)
+    set(_last 0)
+    foreach(_frame IN LISTS ARGN)
+        if(_frame GREATER _last)
+            set(_last ${_frame})
+        endif()
+    endforeach()
+    math(EXPR _exit_after "${_last} + 1")
+    set(${out_var} ${_exit_after} PARENT_SCOPE)
+endfunction()
+
+# Longest-first start order. CTest starts tests by descending COST, using recorded timings once a
+# build tree has run before and this value on a fresh tree. Without it a fresh tree started the
+# 140 s text producer last (measured), so the suite wall was the rest of the suite plus 140 s.
+set(VIXEN_TEXT_SHADER_PRODUCER_COST 140)
+set(VIXEN_HUD_PRODUCER_COST 31)
+set(VIXEN_EDITOR_PRODUCER_COST 27)
+
 # CTest fixtures produce the live editor and main-app captures before their file-assertion cases.
 # The build-tree directories are the non-queue fallback; Linux command wrappers switch each GPU
 # process to VIXEN_CAPTURE_ROOT (else UT_QUEUE_CAPTURE_ROOT) at run time so documents, logs, and captures stay together.
@@ -142,6 +164,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
     vixen_gpu_fixture_timeout(_editor_timeout 360)
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
+        COST ${VIXEN_EDITOR_PRODUCER_COST}
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
         TIMEOUT ${_editor_timeout})
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_editor_capture_producer
@@ -191,7 +214,10 @@ endif()
 if(BUILD_TESTS AND TARGET VIXEN)
     set(VIXEN_HUD_CAPTURE_DIR "${VIXEN_CAPTURE_DEFAULT_ROOT}/hud")
     file(MAKE_DIRECTORY "${VIXEN_HUD_CAPTURE_DIR}")
-    vixen_fresh_capture_shell(VIXEN_HUD_FRESH hud_capture_ 5 45 75)
+    set(VIXEN_HUD_CAPTURE_FRAMES 5 45 75)
+    string(JOIN "," VIXEN_HUD_CAPTURE_FRAMES_ENV ${VIXEN_HUD_CAPTURE_FRAMES})
+    vixen_exit_after_last_capture(VIXEN_HUD_EXIT_AFTER_FRAMES ${VIXEN_HUD_CAPTURE_FRAMES})
+    vixen_fresh_capture_shell(VIXEN_HUD_FRESH hud_capture_ ${VIXEN_HUD_CAPTURE_FRAMES})
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_hud_capture_producer
             COMMAND bash -c
@@ -211,16 +237,17 @@ if(BUILD_TESTS AND TARGET VIXEN)
     vixen_gpu_fixture_timeout(_hud_timeout 180)
     set_tests_properties(vixen_hud_capture_producer PROPERTIES
         FIXTURES_SETUP VixenHudCapture
+        COST ${VIXEN_HUD_PRODUCER_COST}
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         TIMEOUT ${_hud_timeout})
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_hud_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_HUD_SCRIPT=A@30,B@60"
-            "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
+            "VIXEN_HUD_CAPTURE_FRAMES=${VIXEN_HUD_CAPTURE_FRAMES_ENV}"
             "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
-            "VIXEN_EXIT_AFTER_FRAMES=85")
+            "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_HUD_EXIT_AFTER_FRAMES}")
     set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
 
     # Separate opt-in producer for the generated MSDF text shader. Its own directory and label keep
@@ -228,7 +255,10 @@ if(BUILD_TESTS AND TARGET VIXEN)
     # 5 and 45.
     set(VIXEN_TEXT_SHADER_CAPTURE_DIR "${VIXEN_CAPTURE_DEFAULT_ROOT}/textshader")
     file(MAKE_DIRECTORY "${VIXEN_TEXT_SHADER_CAPTURE_DIR}")
-    vixen_fresh_capture_shell(VIXEN_TEXT_FRESH hud_capture_ 5 45)
+    set(VIXEN_TEXT_CAPTURE_FRAMES 5 45)
+    string(JOIN "," VIXEN_TEXT_CAPTURE_FRAMES_ENV ${VIXEN_TEXT_CAPTURE_FRAMES})
+    vixen_exit_after_last_capture(VIXEN_TEXT_EXIT_AFTER_FRAMES ${VIXEN_TEXT_CAPTURE_FRAMES})
+    vixen_fresh_capture_shell(VIXEN_TEXT_FRESH hud_capture_ ${VIXEN_TEXT_CAPTURE_FRAMES})
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_text_shader_capture_producer
             COMMAND bash -c
@@ -248,6 +278,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
     vixen_gpu_fixture_timeout(_text_timeout 300)
     set_tests_properties(vixen_text_shader_capture_producer PROPERTIES
         FIXTURES_SETUP VixenTextShaderCapture
+        COST ${VIXEN_TEXT_SHADER_PRODUCER_COST}
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         # The translated D3D12 path submits ~700 primary-dispatch chunks per 1920x1080
         # frame; the 55-frame text animation therefore needs a little more than 180s on
@@ -256,13 +287,13 @@ if(BUILD_TESTS AND TARGET VIXEN)
     vixen_set_suite_properties(RenderGraph GPU TESTS vixen_text_shader_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_TEXT_SHADER_CAPTURE=1"
-            "VIXEN_HUD_CAPTURE_FRAMES=5,45"
+            "VIXEN_HUD_CAPTURE_FRAMES=${VIXEN_TEXT_CAPTURE_FRAMES_ENV}"
             "VIXEN_HUD_CAPTURE_DIR=${VIXEN_TEXT_SHADER_CAPTURE_DIR}"
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
             "VIXEN_WINDOW_WIDTH=1920"
             "VIXEN_WINDOW_HEIGHT=1080"
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
-            "VIXEN_EXIT_AFTER_FRAMES=55")
+            "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_TEXT_EXIT_AFTER_FRAMES}")
     set_property(TEST vixen_text_shader_capture_producer APPEND PROPERTY LABELS VIXEN_TEXT_SHADER_CAPTURE)
 endif()
 
