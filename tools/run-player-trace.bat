@@ -38,7 +38,8 @@ for /f "tokens=1,* delims=:" %%A in ("%~1") do set "%%A=%%B"
 shift
 goto args
 :run
-cd /d "%ROOT%"
-"%ROOT%\binaries\VIXEN.exe" > "%OUT%\run.log" 2>&1
+set "PLAYER_DIR=%ROOT%\build\ninja-release\binaries"
+cd /d "%PLAYER_DIR%"
+"%PLAYER_DIR%\VIXEN.exe" > "%OUT%\run.log" 2>&1
 echo exit %errorlevel%
 exit /b %errorlevel%
