@@ -5,7 +5,7 @@
 #
 # Usage: tools/vixen-native.sh [--lane NAME] [--branch NAME] [--direct] [--log FILE] COMMAND [ARGS]
 #   cmd                        print the discovered cmd.exe
-#   jobs                       print how the ninja job count is derived (one line) and the count
+#   jobs                       print how the ninja job count is derived (node width capped by memory, R847.4) and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
 #   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
@@ -23,6 +23,7 @@
 # build.bat are forwarded into the Windows process; the two roots are forwarded as paths.
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/node-width.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 native_base="${VIXEN_NATIVE_ROOT:-/mnt/c/vixen-native}"
 lane="$(basename "$repo_root")"
@@ -209,6 +210,7 @@ infer_roots() {
 BUILD_MB_PER_JOB_DEFAULT=900
 
 # Windows logical cores and available memory (MB) as the build sees them; empty when unreadable.
+# shellcheck source=node-width.sh
 windows_logical_cores() {
     local n=""
     if need_cmd_quiet; then n="$("$cmd_exe" /c "echo %NUMBER_OF_PROCESSORS%" 2>/dev/null | tr -dc '0-9' || true)"; fi
@@ -222,34 +224,36 @@ windows_available_mb() {
 }
 need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
 
-# Sets VIXEN_MAX_BUILD_JOBS (an explicit value wins) and logs how it was derived in one line.
-# Inside the queue (UT_QUEUE_CREDITS set): the granted CPUs (UT_QUEUE_CPUS), capped by the projected
-# memory (UT_QUEUE_MEMORY_MB) divided by the per-compiler-process figure. Outside it: the logical cores,
-# capped by the memory available on Windows the same way.
+# Sets VIXEN_MAX_BUILD_JOBS (an explicit value wins) and logs how it was derived in one line (R847.4):
+# node width, capped by memory. jobs = max(1, min(Windows logical cores, (Windows available MB - other
+# queue holders' uncommitted memory - headroom) / per_job_mb)). The queue grant sets admission only. It is
+# read at the start of every build step (each run_bat), so a step that starts later sees a freer node;
+# under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.
 resolve_build_jobs() {
-    local cpus mem per jobs by_mem where
+    local cpus mem per jobs other holders where="direct"
     per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
     [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
     if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" ]]; then
         say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
         return 0
     fi
-    if [[ -n "${UT_QUEUE_CREDITS:-}" ]]; then
-        where="queue"; cpus="${UT_QUEUE_CPUS:-}"; mem="${UT_QUEUE_MEMORY_MB:-}"
-        [[ -n "$cpus" ]] || cpus="$(windows_logical_cores)"
-    else
-        where="direct"; cpus="$(windows_logical_cores)"; mem="$(windows_available_mb)"
-    fi
+    [[ -z "${UT_QUEUE_HOLDER_PID:-}" ]] || where="queue"
+    cpus="$(windows_logical_cores)"
     [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || die "cannot derive the build job count: CPUs '$cpus' is not a positive integer"
-    jobs="$cpus"
+    nw_claim_begin
+    mem="$(windows_available_mb)"
     if [[ "$mem" =~ ^[0-9]+$ ]]; then
-        by_mem=$((mem / per)); (( by_mem >= 1 )) || by_mem=1
-        (( by_mem < jobs )) && jobs="$by_mem"
+        read -r other holders <<<"$(nw_other_uncommitted_mb)"
+        jobs="$(nw_jobs "$cpus" $(( mem > other ? mem - other : 0 )) "$per")"
+        nw_claim_end $(( jobs * per )) "${UT_AGENT_ID:-vixen}:native-build"
+        mem="$mem other_uncommitted_mb=$other other_holders=$holders"
     else
+        jobs="$cpus"
+        nw_claim_end 0 "${UT_AGENT_ID:-vixen}:native-build"
         mem="unknown"
     fi
     export VIXEN_MAX_BUILD_JOBS="$jobs"
-    say "build jobs: $jobs (source=$where cpus=$cpus memory_mb=$mem per_job_mb=$per)"
+    say "build jobs: $jobs (source=$where cores=$cpus windows_available_mb=$mem per_job_mb=$per)"
 }
 
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
@@ -333,6 +337,7 @@ run_bat() {
     trap - TERM INT HUP
     kill "$heartbeat_pid" 2>/dev/null || true
     wait "$heartbeat_pid" 2>/dev/null || true
+    nw_claim_release
     rm -f "$pid_file"
     say "exit code $rc"
     return "$rc"
@@ -427,7 +432,7 @@ fi
 
 case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
-    jobs) resolve_build_jobs; echo "$VIXEN_MAX_BUILD_JOBS" ;;
+    jobs) resolve_build_jobs; nw_claim_release; echo "$VIXEN_MAX_BUILD_JOBS" ;;
     ps) do_ps "$@" ;;
     rasterize) do_rasterize "$@" ;;
     checkout) do_checkout ;;
