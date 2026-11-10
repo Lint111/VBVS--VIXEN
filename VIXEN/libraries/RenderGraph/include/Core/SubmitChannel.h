@@ -287,12 +287,14 @@ struct QueueTimeline {
     /// kPredictionHistory non-cold windows of that command, so a bound decays once the large
     /// error leaves the ring. Warm-up (cold batches, fewer than kPredictionWarmup samples, a reset
     /// after a pipeline or resolution change) yields no window.
-    /// kPredictionRangeFactor = 1 (one observed range) was derived offline on 18 native runs
-    /// (500, 1080x1080, 1920x1080; look-dev midday angles 0-2; two repeats): the smallest factor
-    /// that gives zero violations on each run needed at most 0.73 (reports/sn-gpuwinpredict5.md).
+    /// Both lengths are multiples of the flight count. kPredictionHistory (3 flights) and
+    /// kPredictionRangeFactor were chosen offline on 24 native runs (500 and 1080x1080; look-dev
+    /// midday angles 0-2; two repeats; two predictor versions) as the highest-utilisation pair with
+    /// zero violations there: the exact smallest factor was 2.33, rounded up to 2.4. The 12
+    /// held-out 1920x1080 runs needed at most 2.24, so they also give zero (reports/sn-gpuwinpredict5.md).
     static constexpr std::size_t kPredictionWarmup = 2 * FrameWaitLedger::kFlightCount;
-    static constexpr std::size_t kPredictionHistory = 6 * FrameWaitLedger::kFlightCount;
-    static constexpr double kPredictionRangeFactor = 1.0;
+    static constexpr std::size_t kPredictionHistory = 3 * FrameWaitLedger::kFlightCount;
+    static constexpr double kPredictionRangeFactor = 2.4;
     static constexpr std::size_t kMaxPredictionKeys = 64;
     struct PredictionHistory {
         struct Sample { uint64_t rawNs = 0; uint64_t actualNs = 0; };

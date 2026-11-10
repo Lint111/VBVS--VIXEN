@@ -612,10 +612,10 @@ TEST(QueueTimeline, WindowIsWarmUpThenBoundedByWorstEarlyRetireAndShrink) {
     EXPECT_EQ(timeline.PredictRetireNs(1, now), 1'000'000'000u);
 
     // One window retired at 80% of its prediction: q ranges over [0.8, 1], so the window ends one
-    // range (0.2) below the lowest q: raw * (0.8 - 0.2) = 0.6 raw.
+    // observed range (0.2) times kPredictionRangeFactor below the lowest q: raw * (0.8 - 2.4 * 0.2) = 0.32 raw.
     timeline.ObservePredictionError(1, false, 1'000'000'000, 800'000'000);
     const uint64_t covered = timeline.PredictRetireNs(1, now);
-    EXPECT_LE(covered, static_cast<uint64_t>(0.6 * static_cast<double>(raw)) + 1);
+    EXPECT_LE(covered, static_cast<uint64_t>(0.32 * static_cast<double>(raw)) + 1);
     EXPECT_GT(covered, 0u);
 
     // The large error leaves the ring and the window recovers (decay).
@@ -640,7 +640,7 @@ TEST(QueueTimeline, SpreadWidensTheMarginWhetherTheOutlierIsEarlyOrLate) {
     const uint64_t steady = timeline.PredictRetireNs(1, now);
     EXPECT_GT(steady, 0u);
     // A wait three times the raw prediction (q = 3) never retired early, but the spread of q is 2:
-    // one range below the lowest q (1) is negative, so no window opens until the outlier leaves.
+    // the factor times that range below the lowest q (1) is negative, so no window opens until the outlier leaves.
     timeline.ObservePredictionError(1, false, 1'000'000'000, 3'000'000'000);
     EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
     for (std::size_t i = 0; i < QueueTimeline::kPredictionHistory; ++i)
