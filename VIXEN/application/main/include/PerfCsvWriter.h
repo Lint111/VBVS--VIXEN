@@ -142,6 +142,18 @@ private:
     std::string path_;
     std::vector<Row> rows_;
     std::vector<WindowSample> windowSamples_;
+    // Whole-run window totals, every recorded frame from frame 0 (cold windows have no window and
+    // are counted separately). Printed as one [WINDOWSUMMARY] line at Flush.
+    struct RunWindowSummary {
+        uint64_t frames = 0;
+        uint64_t windows = 0;       ///< every wait recorded, cold ones included
+        uint64_t coldWindows = 0;   ///< waits with no last-frame timing: no window, cannot violate
+        uint64_t violations = 0;    ///< predicted > actual, over all frames
+        double violationMs = 0.0;
+        double actualMs = 0.0;
+        double unusedMs = 0.0;
+        double gpuWaitMs = 0.0;
+    } runSummary_;
     bool flushed_ = false;
     std::set<std::string> warnedNoSlot_;  // columns already reported as slot-less
 

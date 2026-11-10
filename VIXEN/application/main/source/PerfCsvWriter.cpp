@@ -31,6 +31,13 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
     row.windowMetrics = windowMetrics;
     row.wholesale = wholesale;
+    ++runSummary_.frames;
+    runSummary_.windows += windowMetrics.windowCount;
+    runSummary_.violations += windowMetrics.windowViolationCount;
+    runSummary_.violationMs += windowMetrics.windowViolationMs;
+    runSummary_.actualMs += windowMetrics.windowActualMs;
+    runSummary_.unusedMs += windowMetrics.windowUnusedMs;
+    runSummary_.gpuWaitMs += windowMetrics.gpuWaitMs;
 
     // Steady-state FPS: rolling average over the last kFpsWindow frames (or however many
     // have run so far, before the window fills) — mirrors VulkanApplicationBase::FrameTimer's
@@ -57,6 +64,7 @@ void PerfCsvWriter::RecordWindowSamples(const std::vector<WindowSample>& samples
     if (!IsEnabled()) return;
     for (WindowSample sample : samples) {
         sample.frame = frameCounter_;
+        if (sample.cold) ++runSummary_.coldWindows;
         windowSamples_.push_back(sample);
     }
 }
@@ -64,6 +72,18 @@ void PerfCsvWriter::RecordWindowSamples(const std::vector<WindowSample>& samples
 void PerfCsvWriter::Flush() {
     if (!IsEnabled() || flushed_) return;
     flushed_ = true;
+
+    // used = actual - unused: a violating window has unused 0 and used = actual.
+    const double used = runSummary_.actualMs - runSummary_.unusedMs;
+    std::fprintf(stderr,
+        "[WINDOWSUMMARY] frames=%llu windows=%llu cold=%llu violations=%llu violation_ms=%.6f "
+        "actual_ms=%.6f used_ms=%.6f utilisation=%.6f gpu_wait_ms=%.6f\n",
+        static_cast<unsigned long long>(runSummary_.frames),
+        static_cast<unsigned long long>(runSummary_.windows),
+        static_cast<unsigned long long>(runSummary_.coldWindows),
+        static_cast<unsigned long long>(runSummary_.violations), runSummary_.violationMs,
+        runSummary_.actualMs, used,
+        runSummary_.actualMs > 0.0 ? used / runSummary_.actualMs : 0.0, runSummary_.gpuWaitMs);
 
     if (std::ofstream windows(path_ + ".windows.csv"); windows.is_open()) {
         windows << "frame,kind,command,cold,raw_predicted_ms,predicted_ms,actual_ms,violation\n";
