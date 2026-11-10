@@ -7,6 +7,7 @@
 #   LABEL   ctest -L regex, e.g. RenderGraph.
 # Writes OUT_DIR: ctest.log, junit.xml, summary.txt (wall seconds, ctest -j, per-label time) and
 # png-sha256.txt (sorted "sha256  relative-path" of every PNG created or changed under BUILD_DIR and UT_QUEUE_CAPTURE_ROOT during the run).
+# MEASURE_FRESH_COST=1 removes CTest's recorded timings before the run (fresh-tree start order).
 # Run it inside a queue GPU job; the queue grant is the ctest width.
 set -u
 build="$1"; out="$2"; slots="$3"; label="$4"; shift 4
@@ -18,6 +19,9 @@ if [[ "$slots" != lock ]]; then
   printf '{"version":{"major":1,"minor":0},"local":[{"gpu":[{"id":"0","slots":%s}]}]}\n' "$slots" > "$out/gpu-slots-$slots.json"
   spec=(--resource-spec-file "$out/gpu-slots-$slots.json")
 fi
+# MEASURE_FRESH_COST=1 drops CTest's recorded timings first, so the run starts tests in the order a
+# fresh build tree would (COST property only).
+[[ "${MEASURE_FRESH_COST:-0}" == 1 ]] && rm -f "$build/Testing/Temporary/CTestCostData.txt"
 started=$SECONDS
 ctest --test-dir "$build" -L "$label" -j "$jobs" ${spec[@]+"${spec[@]}"} --output-junit "$out/junit.xml" \
   --output-log "$out/ctest.log" "$@" > "$out/ctest-stdout.log" 2>&1
