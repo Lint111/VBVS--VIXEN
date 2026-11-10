@@ -6,7 +6,7 @@ REM usage: run-player-trace.bat --evidence-root ROOT NAME FRAMES [KEY:VALUE ...]
 REM   Runs the native player (VIXEN.exe: its own main(), default scene, no capture test, no PNG or file
 REM   output) for FRAMES frames with the frame trace and the perf CSV written into ROOT\NAME\.
 REM   ROOT\NAME must not exist (earlier evidence is never overwritten). Measurement helper for the
-REM   benchmark build (UNDERSET_NATIVE_BENCHMARK); same hidden-window settings as run-capture.bat.
+REM   benchmark build (UNDERSET_NATIVE_BENCHMARK); offscreen presentation (see below).
 set "CAPTURE_ROOT="
 if /i "%~1"=="--evidence-root" (
     set "CAPTURE_ROOT=%~2"
@@ -24,7 +24,9 @@ if exist "%OUT%" (
     exit /b 2
 )
 mkdir "%OUT%"
-set VIXEN_HIDDEN_WINDOW=1
+REM Offscreen presentation (no window, no swapchain): a hidden window reports a zero-extent surface on
+REM the workstation driver, so the player cannot start with one. Everything else is the player's path.
+set VIXEN_HUD_OFFSCREEN_CAPTURE=1
 set VIXEN_HUD_SUPPRESS=1
 set "VIXEN_EXIT_AFTER_FRAMES=%~2"
 set "VIXEN_PERF_CSV=%OUT%\perf.csv"
