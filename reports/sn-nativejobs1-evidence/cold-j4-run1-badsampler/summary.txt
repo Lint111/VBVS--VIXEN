@@ -1,0 +1,6 @@
+tag=cold-j4 rc=0 wall_s=655.0 samples=289 cpu_mean_pct=31.5 cpu_mean_while_cl_running_pct=33.8 cl_peak_count=4 cl_peak_single_ws_mb=974 cl_peak_sum_ws_mb=998 link_peak_sum_ws_mb=989 free_mb_min=1 free_mb_max=896
+warning_lines=2
+[configure] Configure lock acquired (was free).
+[build] Build lock acquired (was free).
+[build] Max parallel jobs: 4 (of 32 logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)
+[build] ============================== BUILD SUMMARY ==============================
