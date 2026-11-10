@@ -1,5 +1,7 @@
 @echo off
 setlocal EnableExtensions
+REM %~dp0 must be read before any shift (shift moves %0 too).
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 REM usage: run-capture.bat --evidence-root ROOT NAME STATE ANGLE [KEY:VALUE ...]
 REM   --evidence-root ROOT   directory that receives NAME\ (required; VIXEN_CAPTURE_EVIDENCE_ROOT is
 REM                          the fallback). ROOT\NAME must not exist: an earlier capture's evidence is
@@ -21,7 +23,6 @@ if exist "%OUT%" (
     exit /b 2
 )
 mkdir "%OUT%"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "EXE=%ROOT%\build\ninja-release\application\main\vixen_lookdev_capture.exe"
 set VIXEN_HIDDEN_WINDOW=1
 set VIXEN_HDR_EXPOSURE=1
