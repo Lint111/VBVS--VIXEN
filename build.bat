@@ -48,9 +48,9 @@ REM   VIXEN_BINARY_DIR         configure and build in this directory instead of 
 REM                             A fresh one sidesteps a build tree whose Ninja metadata is unusable
 REM                             (e.g. "ninja: error: failed recompaction: Permission denied").
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
-REM                             logical cores; tools/vixen-native.sh derives it from the
-REM                             queue's CPU and memory grant) so a build leaves the machine
-REM                             usable instead of pegging every core
+REM                             logical cores; tools/vixen-native.sh derives it as node
+REM                             width capped by the Windows memory available when the build
+REM                             starts, R847.4; the queue grant sets admission only)
 REM   VIXEN_QUEUE_TICKET_ID     if you registered a build_queue.ps1 ticket before
 REM                             calling this script, set this to its TicketId and
 REM                             it is auto-released when the build finishes/fails/
