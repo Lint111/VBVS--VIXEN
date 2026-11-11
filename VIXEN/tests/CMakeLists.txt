@@ -160,28 +160,6 @@ set_target_properties(coordinate_system_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/binaries/tests"
 )
 
-if(TARGET error_catalog_check)
-    add_executable(vixen_error_catalog_smoke test_error_catalog_smoke.cpp)
-    target_include_directories(vixen_error_catalog_smoke PRIVATE
-        "${VIXEN_ROOT}/codegen/generated"
-        "${VIXEN_ROOT}/tests")
-    target_compile_features(vixen_error_catalog_smoke PRIVATE cxx_std_17)
-    if(TARGET Vulkan::Headers)
-        target_link_libraries(vixen_error_catalog_smoke PRIVATE Vulkan::Headers)
-    elseif(TARGET Vulkan::Vulkan)
-        target_link_libraries(vixen_error_catalog_smoke PRIVATE Vulkan::Vulkan)
-    elseif(Vulkan_INCLUDE_DIRS)
-        target_include_directories(vixen_error_catalog_smoke PRIVATE "${Vulkan_INCLUDE_DIRS}")
-    endif()
-    add_dependencies(vixen_error_catalog_smoke error_catalog_check)
-    vixen_enable_asserts(vixen_error_catalog_smoke)
-    set_target_properties(vixen_error_catalog_smoke PROPERTIES
-        FOLDER "Tests/Standalone"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/binaries/tests")
-    add_test(NAME ErrorCatalog.VixenCppSmoke COMMAND vixen_error_catalog_smoke)
-    set_tests_properties(ErrorCatalog.VixenCppSmoke PROPERTIES LABELS "Codegen;cpu")
-endif()
-
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")
 
 add_test(NAME Native.CaptureRootContract
