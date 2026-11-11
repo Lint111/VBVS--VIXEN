@@ -317,7 +317,12 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
 #if UNDERSET_NATIVE_BENCHMARK
         const auto started = trace ? Clock::now() : Clock::time_point{};
 #endif
-        const VkResult result = issue(si, last ? fence : VK_NULL_HANDLE);
+        VkResult result;
+        {
+            VIXEN_FRAME_TRACE_SCOPE("submit", "vkQueueSubmit2");
+            VIXEN_FRAME_COUNT(QueueSubmits, 1);
+            result = issue(si, last ? fence : VK_NULL_HANDLE);
+        }
 #if UNDERSET_NATIVE_BENCHMARK
         if (trace) {
             std::fprintf(stderr, "[GPUYIELD_HOST] operation=submit chunk=%zu chunks=%zu start_ns=%lld end_ns=%lld result=%d\n",

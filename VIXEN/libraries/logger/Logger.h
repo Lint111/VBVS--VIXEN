@@ -52,6 +52,11 @@ public:
     static void SetGlobalMinLevel(LogLevel level) { globalMinLevel = level; }
     static LogLevel GetGlobalMinLevel() { return globalMinLevel; }
 
+    // Set the process-wide minimum level from VIXEN_LOG_LEVEL (DEBUG | INFO | WARNING | WARN | ERROR |
+    // CRITICAL), or to `fallback` when the variable is unset or unrecognised. Test and capture
+    // executables call this with LOG_INFO (R851.7) so they do not pay for per-frame DEBUG logging.
+    static void ApplyLevelFromEnvironment(LogLevel fallback);
+
     // Process-wide opt-in: when true, every instance prints to the terminal regardless of its
     // own SetTerminalOutput/SetEnabled state (still subject to SetGlobalMinLevel). Off by default.
     static void SetGlobalTerminalOutput(bool enable) { globalTerminalOutput = enable; }

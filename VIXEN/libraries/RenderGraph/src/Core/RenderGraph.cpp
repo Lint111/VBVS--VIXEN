@@ -7,6 +7,7 @@
 #include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
 #include "Core/PhaseTiming.h"
+#include "FrameTrace.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
@@ -1442,6 +1443,7 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
             const auto started = std::chrono::steady_clock::now();
 #endif
             if (rec.presentFn) {
+                VIXEN_FRAME_TRACE_SCOPE("present", "vkQueuePresentKHR");
                 result = rec.presentFn(device->queue, &presentInfo);
             } else {
                 result = VK_ERROR_INITIALIZATION_FAILED;
@@ -1722,13 +1724,16 @@ VkResult RenderGraph::RenderFrame() {
     // rendering is paused (minimize / swapchain recreation) — the whole point of decoupling the
     // 30Hz logic cadence from render fps. globalFrameIndex is incremented at frame-end (below), so
     // only SetCurrentFrame is called here, not another increment.
-    loopManager.SetCurrentFrame(globalFrameIndex);
-    loopManager.UpdateLoops(frameTimer.GetDeltaTime());
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "loops-commit");
+        loopManager.SetCurrentFrame(globalFrameIndex);
+        loopManager.UpdateLoops(frameTimer.GetDeltaTime());
 
-    // Publish completed immutable-snapshot work from the preceding frame in submission order.
-    // Multi-rate domains are admitted by their LoopDomainMetadata; no worker may publish directly
-    // into live graph state between these graph-owned boundaries.
-    if (framePipeline_) framePipeline_->CommitReady(false);
+        // Publish completed immutable-snapshot work from the preceding frame in submission order.
+        // Multi-rate domains are admitted by their LoopDomainMetadata; no worker may publish directly
+        // into live graph state between these graph-owned boundaries.
+        if (framePipeline_) framePipeline_->CommitReady(false);
+    }
 
     // Event processing now handled in application's Update() phase
     // This allows updating without rendering and different frame rates
@@ -1743,6 +1748,8 @@ VkResult RenderGraph::RenderFrame() {
     // Sprint 4 Phase B: Per-frame resource lifecycle management
     // Sprint 6.3 Phase 6: Event-driven systems handle their own lifecycle
     // ========================================================================
+
+    VIXEN_FRAME_TRACE_BEGIN(frameStartTrace, "graph", "frame-start");
 
     // Process deferred destructions from previous frames
     // When event-driven (autoPressureAdjustment_), handled by FrameStartEvent subscription
@@ -1776,10 +1783,14 @@ VkResult RenderGraph::RenderFrame() {
         timeline.frameLedger = &frameWaitLedgers_[activeWaitLedgerIndex_];
         timeline.idleWindowFiller = &idleWindowFiller_;
     }
+    VIXEN_FRAME_TRACE_END(frameStartTrace);
     // R723 fixed queue-owner phase: requests published by workers or caches are issued before this
     // frame's graph work. Queue order therefore preserves producer-before-consumer semantics while
     // no producer needs a queue mutex or a host wait.
-    DrainOffGraphSubmits();
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "drain-offgraph");
+        DrainOffGraphSubmits();
+    }
 
     // The render graph orchestrates the frame by calling specialized nodes:
     //
@@ -1804,7 +1815,10 @@ VkResult RenderGraph::RenderFrame() {
     frameFault_ = VK_SUCCESS;
     BeginExecutionEpoch();
     // Owner phase, graph thread, before any node runs: release the one-shots the GPU has finished.
-    RetireCompletedSubmissions();
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "retire-completed");
+        RetireCompletedSubmissions();
+    }
 
     // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
     // counters at frame end. Two clock reads per frame; kept unconditional so the CSV columns
@@ -1813,6 +1827,7 @@ VkResult RenderGraph::RenderFrame() {
 
     // The default path remains the comparison oracle; the opt-in path runs the compiled node DAG
     // through KernelDispatch and commits effects in the same graph order below.
+    VIXEN_FRAME_TRACE_BEGIN(executeTrace, "graph", "execute-nodes");
     if (UseLoweredGraph()) {
         frameResult = ExecuteLoweredFrame();
     } else {
@@ -1841,6 +1856,7 @@ VkResult RenderGraph::RenderFrame() {
                 const auto executeStart = PhaseTiming::Enabled() ? PhaseTiming::Clock::now()
                                                                  : PhaseTiming::Clock::time_point{};
                 try {
+                    VIXEN_FRAME_TRACE_SCOPE("node", node->GetInstanceName());
                     node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
                     if (PhaseTiming::Enabled())
                         PhaseTiming::AddExecute(node->GetInstanceName(), PhaseTiming::MsSince(executeStart));
@@ -1875,9 +1891,13 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
+    VIXEN_FRAME_TRACE_END(executeTrace);
+
     // ========================================================================
     // Sprint 4 Phase B: End frame scope and cleanup
     // ========================================================================
+
+    VIXEN_FRAME_TRACE_BEGIN(frameEndTrace, "graph", "frame-end");
 
     // Publish FrameEndEvent for allocation tracking and other frame-aware systems
     // In event-driven mode (autoPressureAdjustment_), this triggers:
@@ -1913,6 +1933,8 @@ VkResult RenderGraph::RenderFrame() {
     // that is not ready remains queued for the next frame and can overlap the next admission.
     if (framePipeline_) framePipeline_->CommitReady(false);
 
+    VIXEN_FRAME_TRACE_END(frameEndTrace);
+
     // Lock census sample for this frame (no-op unless VIXEN_LOCK_CENSUS). Taken after the frame's
     // own bus dispatch/cleanup so the per-frame deltas include every acquisition the frame caused.
 #if VIXEN_LOCK_CENSUS
@@ -1946,7 +1968,7 @@ VkResult RenderGraph::RenderFrame() {
         const auto paceStart = std::chrono::steady_clock::now();
 #endif
         {
-            PhaseTiming::ScopedWait paceTimer("frame-pace");
+            PhaseTiming::ScopedWait paceTimer("frame-pace");  // also traced as a "wait" interval
             PaceFrameUntil(frameExecuteStart + frameBudget);
         }
 #if UNDERSET_NATIVE_BENCHMARK

@@ -13,6 +13,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "FrameTrace.h"
+
 namespace Vixen::RenderGraph {
 
 enum class GpuFaultKind : uint8_t {
@@ -98,12 +100,14 @@ struct GpuWaitResult {
     info.semaphoreCount = 1;
     info.pSemaphores = &semaphore;
     info.pValues = &value;
+    VIXEN_FRAME_TRACE_SCOPE("gpuwait", "vkWaitSemaphores");
     return MakeWaitResult(vkWaitSemaphores(device, &info, boundNs));
 }
 
 /// vkWaitForFences bounded by GpuWaitBoundNs(). A timeout is reported as WatchdogTimeout.
 [[nodiscard]] inline GpuWaitResult BoundedWaitFence(
     VkDevice device, VkFence fence, uint64_t boundNs = GpuWaitBoundNs()) {
+    VIXEN_FRAME_TRACE_SCOPE("gpuwait", "vkWaitForFences");
     return MakeWaitResult(vkWaitForFences(device, 1, &fence, VK_TRUE, boundNs));
 }
 

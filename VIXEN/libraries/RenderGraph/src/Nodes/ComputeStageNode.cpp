@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync FrameGraph P5b M2: generic single-compute-pass submit node.
@@ -172,6 +173,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Collect GPU performance results for this frame-in-flight (after fence wait) — same
     // placement as ComputeDispatchNode::ExecuteImpl.
     if (gpuPerfLogger_) {
+        VIXEN_FRAME_TRACE_SCOPE("perf", GetInstanceName());
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
@@ -190,7 +192,12 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; RecordComputeCommands still selects image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
-    if (!RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer)) {
+    bool recorded;
+    {
+        VIXEN_FRAME_TRACE_SCOPE("record", GetInstanceName());
+        recorded = RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
+    }
+    if (!recorded) {
         return;  // fault already reported (R213); nothing recorded to submit this frame.
     }
     commandBuffers_.MarkReady(currentFrameIndex);
@@ -305,6 +312,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                              uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VIXEN_FRAME_COUNT(CommandRecordings, 1);
     if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
         GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands vkBeginCommandBuffer",
                                          beginResult);

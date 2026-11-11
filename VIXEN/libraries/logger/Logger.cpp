@@ -75,6 +75,20 @@ void Logger::RemoveChild(Logger *child)
     }
 }
 
+void Logger::ApplyLevelFromEnvironment(LogLevel fallback)
+{
+    LogLevel level = fallback;
+    if (const char* env = std::getenv("VIXEN_LOG_LEVEL")) {
+        const std::string value(env);
+        if (value == "DEBUG") level = LogLevel::LOG_DEBUG;
+        else if (value == "INFO") level = LogLevel::LOG_INFO;
+        else if (value == "WARNING" || value == "WARN") level = LogLevel::LOG_WARNING;
+        else if (value == "ERROR") level = LogLevel::LOG_ERROR;
+        else if (value == "CRITICAL") level = LogLevel::LOG_CRITICAL;
+    }
+    SetGlobalMinLevel(level);
+}
+
 void Logger::Log(LogLevel level, const std::string& message)
 {
     // Error/Critical bypass the per-instance enabled/terminalOutput gates so an engine-detected
