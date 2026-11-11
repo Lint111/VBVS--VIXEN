@@ -21,6 +21,24 @@
 
 NW_HEADROOM_MB_DEFAULT=1024
 
+# A manual queue grant (with-test-lock.sh --regrant, sn-qregrant1): the owner's explicit choice of width for this job. The grant file
+# (UT_QUEUE_GRANT_FILE, the job's status row, rewritten atomically on every change) is read fresh on every call, so each build step sees
+# the current value. Prints the CPUs and returns 0 only when the row says grant-manual=1; an automatic grant (R847.4: the payload sizes
+# itself from the node), a missing file or an unreadable row print nothing and return 1.
+nw_manual_grant_cpus() {
+    local file="${UT_QUEUE_GRANT_FILE:-}" row field cpus="" manual=false
+    [[ -n "$file" && -r "$file" ]] || return 1
+    IFS= read -r row <"$file" 2>/dev/null || [[ -n "$row" ]] || return 1
+    for field in $row; do
+        case "$field" in
+            grant-manual=1) manual=true ;;
+            grant-cpus=*) cpus="${field#grant-cpus=}" ;;
+        esac
+    done
+    [[ "$manual" == true && "$cpus" =~ ^[1-9][0-9]*$ ]] || return 1
+    printf '%s' "$cpus"
+}
+
 nw_state_dir() { printf '%s' "${UT_QUEUE_STATE_DIR:-/tmp}"; }
 
 nw_logical_cores() {
