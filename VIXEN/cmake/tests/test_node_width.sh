@@ -43,4 +43,18 @@ expect 1 "$second" "second heavy step sizes to what is left, not the whole node"
 UT_QUEUE_HOLDER_PID=$a nw_claim_release
 rm -f "$state/undertow-width-claim.$b"
 expect 18 "$(size_and_claim "$b")" "a later step sees the freed node"
+
+# Windows-side sizing (sn-vxjobs1): reservations are ignored, other builds' claims count, the floor holds.
+rm -f "$state"/undertow-width-claim.*
+printf '30000\npid=%s\ncurrent=1000\nstart_ticks=%s\n' "$a" "$(ticks "$a")" > "$state/undertow-box-memory-reservation.$a"
+expect "0 0" "$(UT_QUEUE_RESERVED_OTHERS_MB=45589 nw_other_claims_mb)" "claims sizer ignores reservations and the queue's reserved-others export"
+rm -f "$state"/undertow-box-memory-reservation.*
+printf '3600\npid=%s\nstart_ticks=%s\n' "$a" "$(ticks "$a")" > "$state/undertow-width-claim.$a"
+expect "3600 1" "$(nw_other_claims_mb)" "another live build's claim counts"
+expect "0 0" "$(UT_QUEUE_HOLDER_PID=$a nw_other_claims_mb)" "own claim is skipped"
+rm -f "$state/undertow-width-claim.$a"
+expect 4 "$(nw_floor_jobs 1 32 4000 900)" "floor lifts 1 to 4 when memory covers 4 jobs"
+expect 1 "$(nw_floor_jobs 1 32 3500 900)" "floor yields when memory is below 4 * per_job"
+expect 6 "$(nw_floor_jobs 6 32 9000 900)" "floor never lowers a wider answer"
+expect 2 "$(nw_floor_jobs 1 2 5000 900)" "floor is capped at cores"
 exit "$failures"

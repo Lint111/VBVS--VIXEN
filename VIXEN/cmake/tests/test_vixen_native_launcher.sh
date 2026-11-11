@@ -113,13 +113,31 @@ check "a one-token queue grant does not narrow the job count" \
     bash -c 'UT_QUEUE_CREDITS=1 UT_QUEUE_CPUS=2 UT_QUEUE_GRANTED_CPUS=2 "$0" jobs 2>/dev/null | tail -1 | grep -qx 8' "$launcher"
 check "available memory caps the job count: (3000 - 1024 headroom) / 900 = 2" \
     bash -c 'VIXEN_NATIVE_AVAILABLE_MB=3000 "$0" jobs 2>/dev/null | tail -1 | grep -qx 2' "$launcher"
-check "memory another live queue holder reserved and has not used comes off the budget" \
+check "another holder's unspent reservation (Linux-side admission) does not come off the Windows budget" \
     bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
         t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
         printf "9000\npid=%s\ncurrent=1000\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$other"
-        # 20000 - 8000 uncommitted = 12000; (12000 - 1024) / 4000 = 2
+        # (20000 - 1024) / 4000 = 4; the 8000 unspent MB is not subtracted
         out="$(VIXEN_BUILD_MB_PER_JOB=4000 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$other"
-        echo "$out" | tail -1 | grep -qx 2 && echo "$out" | grep -q "other_uncommitted_mb=8000 other_holders=1"' "$launcher"
+        echo "$out" | tail -1 | grep -qx 4 && echo "$out" | grep -q "other_claims_mb=0 other_holders=0"' "$launcher"
+check "another native build's width claim comes off the budget" \
+    bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
+        t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
+        printf "8000\npid=%s\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        # 20000 - 8000 claimed = 12000; (12000 - 1024) / 4000 = 2
+        out="$(VIXEN_BUILD_MB_PER_JOB=4000 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        echo "$out" | tail -1 | grep -qx 2 && echo "$out" | grep -q "other_claims_mb=8000 other_holders=1"' "$launcher"
+check "sn-landvx5 23:07 fixture (windows 8019 MB, 7 holders, 45589 MB Linux-side unspent) sizes 7 jobs, not 1" \
+    bash -c 'pids=(); for i in 1 2 3 4 5 6 7; do sleep 30 & pids+=($!); done; trap "kill ${pids[*]}" EXIT
+        for p in "${pids[@]}"; do t="$(sed "s/.*) //" /proc/$p/stat | awk "{print \$20}")"
+            printf "10000\npid=%s\ncurrent=3500\nstart_ticks=%s\n" "$p" "$t" > "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$p"; done
+        out="$(UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=8019 UT_QUEUE_RESERVED_OTHERS_MB=45589 "$0" jobs 2>&1)"
+        rm -f "$UT_QUEUE_STATE_DIR"/undertow-box-memory-reservation.*
+        echo "$out" | tail -1 | grep -qx 7 && echo "$out" | grep -q "windows_available_mb=8019 other_claims_mb=0"' "$launcher"
+check "a queue-admitted build keeps the 4-job floor while Windows memory covers 4 * per_job" \
+    bash -c 'UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=3700 "$0" jobs 2>/dev/null | tail -1 | grep -qx 4' "$launcher"
+check "the floor yields when Windows memory is below 4 * per_job (3500 < 3600 -> 2 jobs by memory)" \
+    bash -c 'UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=3500 "$0" jobs 2>/dev/null | tail -1 | grep -qx 2' "$launcher"
 check "a queue holder claims its width for the build and releases it afterwards" \
     bash -c 'UT_QUEUE_HOLDER_PID=$$ "$0" build >/dev/null; test ! -e "$UT_QUEUE_STATE_DIR/undertow-width-claim.$$"' "$launcher"
 check "explicit job cap and fetch cache are kept" \
