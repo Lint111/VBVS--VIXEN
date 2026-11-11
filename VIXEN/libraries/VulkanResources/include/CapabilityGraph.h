@@ -251,10 +251,6 @@ struct UpscalerMachineProfile {
     std::vector<std::string> providerCompileSet;
     UpscalerPolicyRecord policy;
     UpscalerRuntimeProfileMatch runtimeMatch;
-    // The profile's interactive default. An explicit VIXEN_UPSCALER or render-path config
-    // remains authoritative; these values only fill an otherwise native, full-resolution path.
-    std::string_view defaultUpscaler = "native";
-    float defaultRenderScale = 1.0f;
 };
 
 /// Stable, read-only table of machine profiles used by build and selection tooling.

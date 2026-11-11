@@ -269,27 +269,6 @@ std::string_view RuntimeOperatingSystem() noexcept {
 #endif
 }
 
-std::string_view UpscalerKindId(VulkanGraphApplication::UpscalerKind kind) noexcept {
-    switch (kind) {
-    case VulkanGraphApplication::UpscalerKind::Linear: return "linear";
-    case VulkanGraphApplication::UpscalerKind::Fsr1: return "fsr1";
-    case VulkanGraphApplication::UpscalerKind::Fsr3: return "fsr3";
-    case VulkanGraphApplication::UpscalerKind::None: return "native";
-    }
-    return "native";
-}
-
-VulkanGraphApplication::UpscalerKind ParseUpscalerKind(std::string_view id) noexcept {
-    if (id == "linear") return VulkanGraphApplication::UpscalerKind::Linear;
-    if (id == "fsr1") return VulkanGraphApplication::UpscalerKind::Fsr1;
-    if (id == "fsr3") return VulkanGraphApplication::UpscalerKind::Fsr3;
-    return VulkanGraphApplication::UpscalerKind::None;
-}
-
-float DefaultUpscalerRenderScale(VulkanGraphApplication::UpscalerKind kind) noexcept {
-    return kind == VulkanGraphApplication::UpscalerKind::None ? 1.0f : 2.0f / 3.0f;
-}
-
 bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     const char* raw = std::getenv(name);
     if (raw == nullptr) return defaultValue;
@@ -436,33 +415,6 @@ void VulkanGraphApplication::SelectNativeUpscalerForModulelessGraph() {
 void VulkanGraphApplication::BuildRenderGraph() {
     upscalerPerfPasses_.clear();
     proceduralShaderLibNodes_.clear();
-    if (!renderGraph) {
-        mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
-        return;
-    }
-
-    // Resolve the machine profile before any render-target extent or dispatch is derived. The
-    // profile supplies a performance default only when the host did not explicitly choose an
-    // upscaler; VIXEN_UPSCALER and an explicit RenderPathConfig remain authoritative.
-    Vixen::CapabilityGraph upscalerCapabilities;
-    PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
-    auto upscalerRuntime = upscalerCapabilities.GetUpscalerCapabilityRecords().runtime;
-    const auto* runtimeProfile = Vixen::ResolveUpscalerMachineProfile(
-        upscalerRuntime, RuntimeOperatingSystem());
-    upscalerRuntime.machineProfileId = runtimeProfile ? runtimeProfile->profileId : std::string{};
-    upscalerCapabilities.SetUpscalerRuntimeFacts(std::move(upscalerRuntime));
-    if (runtimeProfile && !std::getenv("VIXEN_UPSCALER") &&
-        renderPathConfig_.upscaler == UpscalerKind::None &&
-        runtimeProfile->defaultUpscaler != "native") {
-        renderPathConfig_.upscaler = ParseUpscalerKind(runtimeProfile->defaultUpscaler);
-    }
-    if (!renderPathConfig_.renderScaleExplicit && renderPathConfig_.upscaler != UpscalerKind::None) {
-        renderPathConfig_.renderScale = runtimeProfile &&
-            runtimeProfile->defaultUpscaler == UpscalerKindId(renderPathConfig_.upscaler)
-            ? runtimeProfile->defaultRenderScale
-            : DefaultUpscalerRenderScale(renderPathConfig_.upscaler);
-    }
-
     // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
     // swapchain. Keep ordinary app launches on the window presentation path.
     if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
@@ -542,6 +494,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                  envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
+    if (!renderGraph) {
+        mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
+        return;
+    }
+
     // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
     if (envFlagEnabled("VIXEN_UI_DEMO")) {
         mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
@@ -5310,9 +5267,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (hdrExposureEnabled) availableUpscalerInputs.push_back(RenderModuleFrameInput::Exposure);
     }
 
-    // Provider choice happens while assembling the graph, before DeviceNode creates a live
-    // VulkanDevice. The profile facts were resolved at function entry, before render extents,
-    // so the same record query now also owns the default render-path selection.
+    // Provider choice happens while assembling the graph, before DeviceNode creates its live
+    // VulkanDevice. Observe the same selected physical adapter into a temporary CapabilityGraph
+    // so selection can consume the read-only record query without depending on a created device.
+    Vixen::CapabilityGraph upscalerCapabilities;
+    PopulateSelectedDeviceCapabilities(instanceObj.instance, upscalerCapabilities);
+    auto upscalerRuntime = upscalerCapabilities.GetUpscalerCapabilityRecords().runtime;
+    const auto* runtimeProfile = Vixen::ResolveUpscalerMachineProfile(
+        upscalerRuntime, RuntimeOperatingSystem());
+    upscalerRuntime.machineProfileId = runtimeProfile ? runtimeProfile->profileId : std::string{};
+    upscalerCapabilities.SetUpscalerRuntimeFacts(std::move(upscalerRuntime));
     auto upscalerPolicy = upscalerCapabilities.GetUpscalerCapabilityRecords().policy;
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     const bool fsr3QualificationCapture = offscreenPresentation &&
