@@ -184,8 +184,7 @@ class LoadScenarioApplication final : public VulkanGraphApplication {
 public:
     explicit LoadScenarioApplication(std::filesystem::path outputDir) : outputDir_(std::move(outputDir)) {
         SetPresentationTarget(PresentationTarget::Offscreen);
-        auto config = gRenderPathConfig;
-        config.antiAliasing = GetRenderPathConfig().antiAliasing;
+        auto config = GetRenderPathConfig();
         config.samplingPath = Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
         SetRenderPathConfig(config);
         timeline_.open(outputDir_ / "timeline.csv");
