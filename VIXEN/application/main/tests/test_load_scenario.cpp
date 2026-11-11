@@ -69,17 +69,20 @@ struct Leg {
     bool capture;               // hash a frame at the end of the leg
 };
 
-// The timeline. 840 frames: about 14 s of the 60 fps budget.
-constexpr std::array<Leg, 9> kLegs{{
+// The timeline: 810 frames, about 13.5 s of the 60 fps budget (plus the recompile stalls).
+constexpr std::array<Leg, 10> kLegs{{
     {"warm-orbit-t0",        60, 0, Path::Orbit,      0,  0,  0, false, true },
     {"flythrough-t0",       120, 0, Path::Flythrough, 0,  0,  0, false, true },
     {"fastpan-t1",           60, 1, Path::FastPan,    0,  0,  0, false, true },
-    {"recipe-edits-t1",      60, 1, Path::Orbit,     20,  5,  0, false, true },
     {"view-switches-t1",     60, 1, Path::Orbit,      0,  0, 15, false, true },
     {"closeup-t2",          120, 2, Path::CloseUp,    0,  0,  0, false, true },
-    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  0,  0, false, true },
-    {"mixed-t3",            120, 3, Path::CloseUp,   40,  1, 30, true,  true },
-    {"scale-down-t1",       120, 1, Path::FastPan,    0,  0,  0, false, true },
+    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true },
+    {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true },
+    // Recipe legs last: each edit or swap recompiles the procedural shader, and the recompiles
+    // exhaust the 32 GPU timestamp query slots, so per-pass GPU time is only valid before them.
+    {"recipe-edits-t3",      90, 3, Path::Orbit,     40,  5,  0, false, true },
+    {"recipe-swap-t3",       90, 3, Path::CloseUp,   40,  1, 30, true,  true },
+    {"scale-down-t1",        90, 1, Path::FastPan,    0,  0,  0, false, true },
 }};
 
 uint32_t TotalFrames() {
@@ -226,7 +229,11 @@ public:
 
     bool Render() override {
         if (!error_.empty()) return false;
-        if (frame_ >= TotalFrames()) return VulkanGraphApplication::Render();   // drain ticks
+        HashDueCaptures(false);
+        if (frame_ >= TotalFrames()) {   // drain ticks
+            ++drainTicks_;
+            return VulkanGraphApplication::Render();
+        }
         const Leg* leg = &kLegs[0];
         uint32_t legStart = 0;
         size_t legIndex = 0;
@@ -274,9 +281,7 @@ public:
             const std::string file = std::string("frame-") + std::to_string(frame_) + ".png";
             const std::filesystem::path path = outputDir_ / file;
             if (!CaptureOffscreenFrameToPng(path.string(), error_)) return false;
-            std::ifstream in(path, std::ios::binary);
-            const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-            hashes_ << frame_ << ',' << leg->name << ',' << file << ',' << std::hex << Fnv1a(bytes) << std::dec << '\n';
+            pendingHashes_.push_back({frame_, leg->name, file, frame_ + 3u});
             event += "capture;";
         }
         timeline_ << frame_ << ',' << leg->name << ',' << tier_ << ',' << currentCount_ << ',' << event << ','
@@ -284,6 +289,20 @@ public:
         if (frame_ + 1 == TotalFrames()) RecordVram(kLegs.size() - 1);
         ++frame_;
         return true;
+    }
+
+    // The capture file is published asynchronously (written two ticks after the request), so each
+    // hash is taken a few frames later; `all` hashes whatever is left once the run has drained.
+    void HashDueCaptures(bool all) {
+        for (auto it = pendingHashes_.begin(); it != pendingHashes_.end();) {
+            if (!all && frame_ < it->due) { ++it; continue; }
+            std::ifstream in(outputDir_ / it->file, std::ios::binary);
+            const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (bytes.empty()) { if (all) it = pendingHashes_.erase(it); else ++it; continue; }
+            hashes_ << it->frame << ',' << it->leg << ',' << it->file << ',' << std::hex << Fnv1a(bytes) << std::dec << '\n';
+            it = pendingHashes_.erase(it);
+        }
+        hashes_.flush();
     }
 
     const std::string& Error() const { return error_; }
@@ -357,6 +376,14 @@ private:
         vram_.flush();
     }
 
+    struct PendingHash {
+        uint32_t frame;
+        const char* leg;
+        std::string file;
+        uint32_t due;
+    };
+    std::vector<PendingHash> pendingHashes_;
+    uint32_t drainTicks_ = 0;
     std::filesystem::path outputDir_;
     std::ofstream timeline_;
     std::ofstream hashes_;
@@ -395,6 +422,7 @@ int main(int argc, char** argv) {
     Vixen::Log::Logger::ApplyLevelFromEnvironment(Vixen::Log::LogLevel::LOG_INFO);
     LoadScenarioApplication app(out);
     const int result = app.Run(RunOptions{.exitAfterFrames = TotalFrames() + 2u});
+    app.HashDueCaptures(true);
     if (result != 0 || !app.Error().empty() || app.FramesRun() != TotalFrames()) {
         std::fprintf(stderr, "load scenario failed: result=%d frames=%u/%u error=%s\n", result, app.FramesRun(),
                      TotalFrames(), app.Error().c_str());
