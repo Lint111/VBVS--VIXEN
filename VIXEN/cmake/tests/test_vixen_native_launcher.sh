@@ -120,6 +120,13 @@ check "another holder's unspent reservation (Linux-side admission) does not come
         # (20000 - 1024) / 4000 = 4; the 8000 unspent MB is not subtracted
         out="$(VIXEN_BUILD_MB_PER_JOB=4000 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$other"
         echo "$out" | tail -1 | grep -qx 4 && echo "$out" | grep -q "other_claims_mb=0 other_holders=0"' "$launcher"
+check "a claim older than the ramp window is not subtracted (the build is already in the Windows counter)" \
+    bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
+        t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
+        printf "39528\npid=%s\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        touch -d "10 minutes ago" "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        out="$(UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=6456 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        echo "$out" | tail -1 | grep -qx 6 && echo "$out" | grep -q "other_claims_mb=0 other_holders=0"' "$launcher"
 check "another native build's width claim comes off the budget" \
     bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
         t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"

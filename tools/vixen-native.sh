@@ -228,7 +228,7 @@ need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
 # node width, capped by memory. jobs = max(1, min(Windows logical cores, (Windows available MB - other
 # native builds' width claims - headroom) / per_job_mb)). Linux-side queue reservations are NOT
 # subtracted (nw_other_claims_mb: the Windows counter already nets the WSL VM; measured 11-11, Available
-# 9553 MB with vmmemWSL at 70508 MB). A queue-admitted build keeps at least 4 jobs (nw_floor_jobs) unless
+# 9553 MB with vmmemWSL at 70508 MB); another build's claim counts only for 120 s after it is written. A queue-admitted build keeps at least 4 jobs (nw_floor_jobs) unless
 # Windows available MB < 4 * per_job. The queue grant sets admission only. It is
 # read at the start of every build step (each run_bat), so a step that starts later sees a freer node;
 # under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.

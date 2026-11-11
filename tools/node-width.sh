@@ -80,17 +80,24 @@ nw_other_uncommitted_mb() {
 # MBytes 9553 while vmmemWSL held a 70508 MB working set, of which 63842 MB was still MemAvailable
 # inside the VM). Memory a Linux job spends inside the VM comes out of that already-held pool and never
 # touches the Windows counter, so subtracting its unspent reservation counts the same bytes twice.
-# Other native builds' claims (jobs * per_job, published before their cl.exe start) are not in the counter
-# yet, so those do come off.
+# Another build's claim (jobs * per_job, published before its cl.exe start) is not in the counter only
+# until its compilers ramp up, so it comes off the budget for NW_CLAIM_RAMP_S (120, INFERRED: ninja starts
+# its full cl.exe set within seconds) after the claim file was written, and not after: a build running for
+# minutes is already in the counter, and subtracting its whole claim again made the first witness run size
+# 1 job off fb-lk3's 39528 MB claim (11-11, 33 min into its build).
+NW_CLAIM_RAMP_S="${NW_CLAIM_RAMP_S:-120}"
+
 nw_other_claims_mb() {
-    local dir file pid ticks recorded claim total=0 holders=0 own="${UT_QUEUE_HOLDER_PID:-}"
-    dir="$(nw_state_dir)"
+    local dir file pid ticks recorded claim age total=0 holders=0 own="${UT_QUEUE_HOLDER_PID:-}" now
+    dir="$(nw_state_dir)"; now="$(date +%s)"
     for file in "$dir"/undertow-width-claim.[0-9]*; do
         [[ -f "$file" ]] || continue
         pid="${file##*.}"
         [[ "$pid" =~ ^[0-9]+$ && "$pid" != "$own" ]] || continue
         claim="$(sed -n '1p' "$file" 2>/dev/null || true)"
         [[ "$claim" =~ ^[0-9]+$ ]] || continue
+        age=$(( now - $(stat -c %Y "$file" 2>/dev/null || echo "$now") ))
+        (( age <= NW_CLAIM_RAMP_S )) || continue
         recorded="$(sed -n 's/^start_ticks=//p' "$file" 2>/dev/null | head -1 || true)"
         ticks="$(nw_start_ticks "$pid")"
         [[ -n "$ticks" ]] || continue
