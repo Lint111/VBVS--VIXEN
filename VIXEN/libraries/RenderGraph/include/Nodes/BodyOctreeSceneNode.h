@@ -541,7 +541,6 @@ private:
     // (BodyInstanceRayMarch.comp). The INSTANCE_COUNT slot, this member, and the shader field are all
     // int32_t so the gatherer's reflection-driven any_cast<int32_t> at Execute succeeds.
     int32_t                                  instanceCount_ = 0;
-    int32_t                                  capWarnedInstanceCount_ = 0;  // requested count the cap warning last named
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
     VkBuffer       nodesBuffer_          = VK_NULL_HANDLE;

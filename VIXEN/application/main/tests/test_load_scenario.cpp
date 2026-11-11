@@ -66,7 +66,8 @@ struct Leg {
     uint32_t materialEvery;     // per-frame-style material colour/param change pushed via SetBodyInstances
     uint32_t viewEvery;         // lighting preset (view) switch
     bool recipeSwap;            // register a new recipe and move instances onto it at the leg start
-    bool capture;               // hash a frame at the end of the leg
+    bool capture;               // hash a frame of the leg (its last, or captureAt)
+    int captureAt = -1;         // frame within the leg to capture; -1 = the last frame
 };
 
 // The timeline: 900 frames, about 15 s of the 60 fps budget (plus the recompile stalls). Every leg
@@ -77,8 +78,10 @@ constexpr std::array<Leg, 11> kLegs{{
     {"fastpan-t1",           60, 1, Path::FastPan,    0,  0,  0, false, true },
     {"view-switches-t1",     60, 1, Path::Orbit,      0,  0, 15, false, true },
     {"closeup-t2",          120, 2, Path::CloseUp,    0,  0,  0, false, true },
-    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true },
-    {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true },
+    // Tier-3 flythrough and pan end looking away from the field; capture them early so the frame
+    // shows instances (GB0: the tier-3 captures were a single flat colour).
+    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true, 20 },
+    {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true, 30 },
     // GB0 (R857.2): the whole 13x13 field in frame at tier 3, slowly orbiting.
     {"overview-orbit-t3",    90, 3, Path::Overview,   0,  0,  0, false, true },
     // Recipe legs last: each edit or swap recompiles the procedural shader, and the recompiles
@@ -295,8 +298,9 @@ public:
         if (!VulkanGraphApplication::Render()) return false;
         const double renderMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 
-        const bool lastOfLeg = inLeg + 1 == leg->frames;
-        if (lastOfLeg && leg->capture) {
+        const bool captureNow = leg->captureAt >= 0 ? inLeg == static_cast<uint32_t>(leg->captureAt)
+                                                    : inLeg + 1 == leg->frames;
+        if (captureNow && leg->capture) {
             const std::string file = std::string("frame-") + std::to_string(frame_) + ".png";
             const std::filesystem::path path = outputDir_ / file;
             if (!CaptureOffscreenFrameToPng(path.string(), error_)) return false;

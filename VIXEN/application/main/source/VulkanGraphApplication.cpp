@@ -2723,6 +2723,20 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     // Replaces the StarSystemGenerator::Register + MarkVoxelSceneDirty flow for body rendering.
     auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
         renderGraph->GetInstance(bodyOctreeSceneNode_));
+    // R796 (R857.9): a scene over the march loop's capacity silently loses its tail. Say so once per
+    // change of the requested count (hosts re-submit every frame), located and actionable. The
+    // application logger is used because node loggers are off unless a diagnostic enables them.
+    const auto requested = static_cast<int32_t>(instances.size());
+    constexpr int32_t kCap = Vixen::RenderGraph::BodyOctreeSceneNode::kMarchLoopInstanceCap;
+    if (requested > kCap && requested != capWarnedBodyInstanceCount_ && mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] " + std::to_string(requested) +
+            " instances exceed the march loop capacity of " + std::to_string(kCap) +
+            " (VIXEN/shaders/TraceWorld.glsl, `clamp(pc.instanceCount, 0, 3 * 64)` in TraceWorld and TraceWorldShadowImpl): instances " +
+            std::to_string(kCap) + ".." + std::to_string(requested - 1) +
+            " are never marched or shadowed. Submit " + std::to_string(kCap) +
+            " instances or fewer; the tile candidate lists (GB1) remove this cap.");
+    }
+    capWarnedBodyInstanceCount_ = requested > kCap ? requested : 0;
     if (node) {
         node->SetInstances(std::move(instances));
     } else if (mainLogger) {
