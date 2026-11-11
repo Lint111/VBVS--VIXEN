@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "FrameTrace.h"
 #include "MainCacher.h"
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeOccupancy.h"
@@ -903,6 +904,7 @@ void VulkanGraphApplication::RecompileProceduralShader() {
         if (mainLogger) mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
         return;
     }
+    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-precompile-begin");
     // Compile off the frame thread: the builders run here (they read the live recipe table), their
     // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.
     for (const auto handle : proceduralShaderLibNodes_) {
@@ -944,6 +946,7 @@ void VulkanGraphApplication::FlushProceduralShaderSwap() {
 }
 
 void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
+    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-swap-mark");
     // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
     // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
     // even though the graph's ordinary recompile path does not wait device-wide.
