@@ -654,6 +654,11 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+    // Instances the host last asked for / the march loop actually iterates (0 when the body node is
+    // absent). The loop count is the requested count after the stream-capacity clamp and the
+    // shader's loop cap (BodyOctreeSceneNode::kMarchLoopInstanceCap).
+    int32_t RequestedBodyInstanceCount() const;
+    int32_t MarchedBodyInstanceCount() const;
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
     // boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into BodyOctreeSceneNode,
     // which then serves octree slots 0..N-1 for the render_recipe blob ids the bridge resolves in

@@ -115,6 +115,16 @@ public:
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
     void SetMotionGuidesEnabled(bool enabled) { motionGuidesEnabled_ = enabled; RefreshInstanceStreams(); }
 
+    /// The instance march loop's capacity: TraceWorld.glsl clamps `pc.instanceCount` to 3 * 64
+    /// (both the primary and the shadow loop). Keep in step with the shader until the tile
+    /// candidate lists (GB1) remove the cap.
+    static constexpr int32_t kMarchLoopInstanceCap = 3 * 64;
+    /// Instances the host asked for (the size of the last SetInstances list).
+    int32_t RequestedInstanceCount() const { return instanceCount_; }
+    /// Instances the march loop actually iterates: the requested count after the paired stream
+    /// capacity clamp and the shader's loop cap.
+    int32_t MarchedInstanceCount() const;
+
     /**
      * @brief Reorder the current instance list front-to-back by distance from
      *        `cameraPos` (Sparse-Mip ESVO LOD Inc1 M4b).
@@ -531,6 +541,7 @@ private:
     // (BodyInstanceRayMarch.comp). The INSTANCE_COUNT slot, this member, and the shader field are all
     // int32_t so the gatherer's reflection-driven any_cast<int32_t> at Execute succeeds.
     int32_t                                  instanceCount_ = 0;
+    int32_t                                  capWarnedInstanceCount_ = 0;  // requested count the cap warning last named
 
     // --- GPU resources (persistent across recompile; freed only at FinalTeardown) ---
     VkBuffer       nodesBuffer_          = VK_NULL_HANDLE;

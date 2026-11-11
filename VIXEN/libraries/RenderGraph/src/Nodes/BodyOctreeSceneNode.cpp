@@ -281,11 +281,34 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
                       std::to_string(materialRingCapacity_) + "B) — requesting recompile to grow rings");
         MarkNeedsRecompile();
     }
+    // R796 (R857.9): a scene over the march loop's capacity silently drops its tail. Say so once
+    // per change of the requested count (callers re-submit every frame), located and actionable.
+    if (instanceCount_ > kMarchLoopInstanceCap && instanceCount_ != capWarnedInstanceCount_) {
+        NODE_LOG_WARNING("[BodyOctreeSceneNode] SetInstances: " + std::to_string(instanceCount_) +
+                         " instances exceed the march loop capacity of " + std::to_string(kMarchLoopInstanceCap) +
+                         " (VIXEN/shaders/TraceWorld.glsl, `clamp(pc.instanceCount, 0, 3 * 64)` in TraceWorld and"
+                         " TraceWorldShadowImpl): instances " + std::to_string(kMarchLoopInstanceCap) + ".." +
+                         std::to_string(instanceCount_ - 1) + " are never marched or shadowed. Reduce the scene to " +
+                         std::to_string(kMarchLoopInstanceCap) + " instances or fewer; the tile candidate lists (GB1) remove this cap.");
+        capWarnedInstanceCount_ = instanceCount_;
+    } else if (instanceCount_ <= kMarchLoopInstanceCap) {
+        capWarnedInstanceCount_ = 0;
+    }
     // Callers re-submit every frame; build the log string only when the count changes.
     if (instanceCount_ != previousInstanceCount) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
                       std::to_string(instanceCount_) + " instances staged for next Execute");
     }
+}
+
+int32_t BodyOctreeSceneNode::MarchedInstanceCount() const {
+    // Same paired-stream clamp RefreshInstanceStreams applies to the emitted INSTANCE_COUNT.
+    int32_t capacity = std::min(
+        static_cast<int32_t>(transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
+        static_cast<int32_t>(materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
+    if (motionGuidesEnabled_) capacity = std::min(capacity,
+        static_cast<int32_t>(motionRingCapacity_ / sizeof(Vixen::Gpu::BodyInstanceMotion)));
+    return std::clamp(std::min(instanceCount_, capacity), 0, kMarchLoopInstanceCap);
 }
 
 void BodyOctreeSceneNode::RefreshInstanceStreams() {
