@@ -89,6 +89,9 @@ public:
     enum class UpscalerKind { None, Linear, Fsr1, Fsr3 };
     struct RenderPathConfig {
         float renderScale = 1.0f;
+        // Hosts that intentionally request scale 1.0 set this bit so a machine-profile
+        // performance default cannot silently replace the requested full-resolution path.
+        bool renderScaleExplicit = false;
         UpscalerKind upscaler = UpscalerKind::None;
         // Requested anti-aliasing provider id (AntiAliasingModule.h); selection falls back to
         // the `none` pass-through wherever the pass or the frame does not admit it.
@@ -347,6 +350,7 @@ private:
     std::vector<RenderModuleProviderCandidate> upscalerCandidatesForCompile_;
     std::string selectedUpscalerProviderId_;
     bool selectedUpscalerHasRealContext_ = false;
+    bool renderPathResolutionLogged_ = false;
     std::string selectedAntiAliasingProviderId_ = "none";
     // Set by the selected provider's context initialization during CompileRenderGraph; Prepare()
     // reads it to decide whether to fall back. Cleared before every graph build.

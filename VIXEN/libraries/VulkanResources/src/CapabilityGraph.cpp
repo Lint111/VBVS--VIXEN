@@ -112,13 +112,13 @@ const std::vector<UpscalerMachineProfile>& GetUpscalerMachineProfiles() {
             "amd-8060s-windows", "AMD Radeon 8060S", "Windows", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
-            {{"8060S"}, {}, 0x1002, "Windows", 100},
+            {{"8060S"}, {}, 0x1002, "Windows", 100}, "fsr1", 2.0f / 3.0f,
         },
         {
             "amd-8060s-linux", "AMD Radeon 8060S", "Linux", "x86_64", "native",
             {"Upscaler.Native", "Upscaler.Linear", "Upscaler.Fsr1", "Upscaler.Fsr3.1.4"},
             {UpscalerViewMode::Canonical, {}, 0, 0, UpscalerWorkRole::Interactive},
-            {{"8060S"}, {}, 0x1002, "Linux", 100},
+            {{"8060S"}, {}, 0x1002, "Linux", 100}, "fsr1", 2.0f / 3.0f,
         },
         {
             "nvidia-rtx-3060-windows", "NVIDIA GeForce RTX 3060", "Windows", "x86_64", "native",
