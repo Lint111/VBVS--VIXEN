@@ -663,8 +663,8 @@ public:
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
     void SetRecipePoolProducer(std::function<Vixen::SVO::ConcatenatedOctrees()> producer);
     // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: register a zero-bake procedural recipe
-    // by id. Fills any unset bounds-metadata field via Recipe::ApplyRecipeBoundsDefaults
-    // (Recipe/RecipeBounds.h) before registering. Safe to call BEFORE the graph's first
+    // by id. Fills any unset bounds/occupancy metadata through the kernel recipe analysis
+    // service before registering. Safe to call BEFORE the graph's first
     // Compile() (the common case -- the shader builder lambda reads proceduralRecipes_ live
     // when it runs) OR AFTER (a live scene addition) -- in the latter case the caller MUST
     // also call RecompileProceduralShader() to force the spliced source to regenerate and the

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "Recipe/RecipeBounds.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfRecipeEval.h"
 #include <array>
@@ -37,18 +37,30 @@ SdfInstruction twist(float k) {
     return in;
 }
 
+struct BoundAnalysis {
+    RecipeRegistry::RecipeEntry entry;
+    RecipeRegistrationAnalysis result;
+};
+
+BoundAnalysis AnalyzeBounds(const std::vector<SdfInstruction>& program) {
+    BoundAnalysis analysis;
+    analysis.entry.bytecode = program;
+    analysis.result = AnalyzeRecipeRegistration(analysis.entry, 24.0f, 0.9f);
+    return analysis;
+}
+
 } // namespace
 
-// --- DeriveConservativeBounds: whitelist opcodes -------------------------
+// --- Kernel analysis service: conservative bound contract -----------------
 
 TEST(RecipeBounds, SingleSphereBoundIsExact) {
     std::vector<SdfInstruction> prog = { sphere({1.f, 2.f, 3.f}, 5.f) };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
-    EXPECT_FLOAT_EQ(r.center.x, 1.f);
-    EXPECT_FLOAT_EQ(r.center.y, 2.f);
-    EXPECT_FLOAT_EQ(r.center.z, 3.f);
-    EXPECT_FLOAT_EQ(r.radius, 5.f);
+    const auto r = AnalyzeBounds(prog);
+    ASSERT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+    EXPECT_FLOAT_EQ(r.entry.boundCenter.x, 1.f);
+    EXPECT_FLOAT_EQ(r.entry.boundCenter.y, 2.f);
+    EXPECT_FLOAT_EQ(r.entry.boundCenter.z, 3.f);
+    EXPECT_FLOAT_EQ(r.entry.boundRadius, 5.f);
 }
 
 TEST(RecipeBounds, UnionOfDisjointSpheresBoundsBoth) {
@@ -58,11 +70,11 @@ TEST(RecipeBounds, UnionOfDisjointSpheresBoundsBoth) {
         sphere({10.f, 0.f, 0.f}, 1.f),
         combine(SdfOpCode::Union),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    ASSERT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
     // Every point of both source spheres must lie within [center, radius].
-    EXPECT_LE(glm::length((glm::vec3(0,0,0)) - r.center) + 1.f, r.radius + 1e-4f);
-    EXPECT_LE(glm::length((glm::vec3(10,0,0)) - r.center) + 1.f, r.radius + 1e-4f);
+    EXPECT_LE(glm::length((glm::vec3(0,0,0)) - r.entry.boundCenter) + 1.f, r.entry.boundRadius + 1e-4f);
+    EXPECT_LE(glm::length((glm::vec3(10,0,0)) - r.entry.boundCenter) + 1.f, r.entry.boundRadius + 1e-4f);
 }
 
 TEST(RecipeBounds, SmoothUnionBoundContainsSampledFieldOutsideExtent) {
@@ -73,8 +85,9 @@ TEST(RecipeBounds, SmoothUnionBoundContainsSampledFieldOutsideExtent) {
         sphere({3.f, 0.f, 0.f}, 1.f),
         combine(SdfOpCode::SmoothUnion, 0.75f),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
+    const auto analysis = AnalyzeBounds(prog);
+    ASSERT_EQ(analysis.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+    const struct { glm::vec3 center; float radius; } r{analysis.entry.boundCenter, analysis.entry.boundRadius};
     const std::array<glm::vec3, 6> directions = {
         glm::vec3(1, 0, 0), glm::vec3(-1, 0, 0),
         glm::vec3(0, 1, 0), glm::vec3(0, -1, 0),
@@ -95,9 +108,9 @@ TEST(RecipeBounds, SmoothSubtractBoundIsConservativeUnion) {
         sphere({0.f, 0.f, 0.f}, 1.f),
         combine(SdfOpCode::SmoothSubtract, 0.2f),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
-    EXPECT_GE(r.radius, 5.f - 1e-4f);  // must still cover the larger operand
+    const auto r = AnalyzeBounds(prog);
+    ASSERT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+    EXPECT_GE(r.entry.boundRadius, 5.f - 1e-4f);  // must still cover the larger operand
 }
 
 TEST(RecipeBounds, RoundInflatesTopOfStackRadius) {
@@ -105,9 +118,9 @@ TEST(RecipeBounds, RoundInflatesTopOfStackRadius) {
         sphere({0.f, 0.f, 0.f}, 3.f),
         roundOp(0.5f),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
-    EXPECT_FLOAT_EQ(r.radius, 3.5f);
+    const auto r = AnalyzeBounds(prog);
+    ASSERT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+    EXPECT_FLOAT_EQ(r.entry.boundRadius, 3.5f);
 }
 
 TEST(RecipeBounds, MultiOpCsgAndModifierChainStaysConservative) {
@@ -122,20 +135,20 @@ TEST(RecipeBounds, MultiOpCsgAndModifierChainStaysConservative) {
         sphere({5.f, 0.f, 0.f}, 1.f),
         combine(SdfOpCode::SmoothUnion, 0.1f),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    ASSERT_TRUE(r.ok);
-    EXPECT_GT(r.radius, 0.f);
+    const auto r = AnalyzeBounds(prog);
+    ASSERT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
+    EXPECT_GT(r.entry.boundRadius, 0.f);
 }
 
-// --- DeriveConservativeBounds: outside-whitelist opcodes MUST bail -------
+// --- Kernel analysis service: unproved programs use the engine default ------
 
 TEST(RecipeBounds, TwistBendBailsOut) {
     std::vector<SdfInstruction> prog = {
         sphere({0.f, 0.f, 0.f}, 1.f),
         twist(1.0f),
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    EXPECT_FALSE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    EXPECT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
 }
 
 TEST(RecipeBounds, RepeatInfiniteBailsOut) {
@@ -143,8 +156,8 @@ TEST(RecipeBounds, RepeatInfiniteBailsOut) {
     repeat.opCode = (uint8_t)SdfOpCode::RepeatInfinite;
     repeat.data[0] = 4.f; repeat.data[1] = 4.f; repeat.data[2] = 4.f;
     std::vector<SdfInstruction> prog = { sphere({0,0,0}, 1.f), repeat };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    EXPECT_FALSE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    EXPECT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
 }
 
 TEST(RecipeBounds, TransformWithScaleBailsOut) {
@@ -154,8 +167,8 @@ TEST(RecipeBounds, TransformWithScaleBailsOut) {
     xf.data[8] = 2.f; xf.data[9] = 2.f; xf.data[10] = 2.f; // invScale
     xf.data[11] = 2.f;   // distScale
     std::vector<SdfInstruction> prog = { sphere({0,0,0}, 1.f), xf };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    EXPECT_FALSE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    EXPECT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
 }
 
 TEST(RecipeBounds, DisplacementBailsOut) {
@@ -164,8 +177,8 @@ TEST(RecipeBounds, DisplacementBailsOut) {
     std::vector<SdfInstruction> prog = {
         sphere({0,0,0}, 1.f), sphere({0,0,0}, 0.1f), disp,
     };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    EXPECT_FALSE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    EXPECT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
 }
 
 TEST(RecipeBounds, PlaneIsUnboundedBailsOut) {
@@ -173,28 +186,27 @@ TEST(RecipeBounds, PlaneIsUnboundedBailsOut) {
     plane.opCode = (uint8_t)SdfOpCode::Plane;
     plane.data[1] = 1.f; // normal.y
     std::vector<SdfInstruction> prog = { plane };
-    auto r = DeriveConservativeBounds(prog.data(), (uint32_t)prog.size());
-    EXPECT_FALSE(r.ok);
+    const auto r = AnalyzeBounds(prog);
+    EXPECT_EQ(r.result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
 }
 
-// --- ApplyRecipeBoundsDefaults ---------------------------------------------
+// --- Registration defaults are applied from the service analysis ------------
 
 TEST(RecipeBounds, ApplyDefaultsPrefersDerivedForWhitelistedProgram) {
     RecipeRegistry::RecipeEntry entry{};
     entry.bytecode = { sphere({2.f, 0.f, 0.f}, 4.f) };
-    auto result = ApplyRecipeBoundsDefaults(entry, /*defaultBoundRadius=*/24.f, /*defaultStepRelaxation=*/0.9f);
-    EXPECT_EQ(result.boundSource, RecipeBoundsSource::Derived);
+    auto result = AnalyzeRecipeRegistration(entry, /*defaultBoundRadius=*/24.f, /*defaultStepRelaxation=*/0.9f);
+    EXPECT_EQ(result.boundSource, RecipeRegistrationAnalysis::BoundSource::Derived);
     EXPECT_FLOAT_EQ(entry.boundRadius, 4.f);
     EXPECT_FLOAT_EQ(entry.boundCenter.x, 2.f);
-    EXPECT_EQ(result.relaxationSource, RecipeBoundsSource::EngineDefault);
     EXPECT_FLOAT_EQ(entry.stepRelaxation, 0.9f);
 }
 
 TEST(RecipeBounds, ApplyDefaultsFallsBackForNonWhitelistedProgram) {
     RecipeRegistry::RecipeEntry entry{};
     entry.bytecode = { sphere({0,0,0}, 1.f), twist(1.f) };
-    auto result = ApplyRecipeBoundsDefaults(entry, 24.f, 0.9f);
-    EXPECT_EQ(result.boundSource, RecipeBoundsSource::EngineDefault);
+    auto result = AnalyzeRecipeRegistration(entry, 24.f, 0.9f);
+    EXPECT_EQ(result.boundSource, RecipeRegistrationAnalysis::BoundSource::EngineDefault);
     EXPECT_FLOAT_EQ(entry.boundRadius, 24.f);
 }
 
@@ -203,9 +215,8 @@ TEST(RecipeBounds, ApplyDefaultsNeverOverwritesAuthoredValues) {
     entry.bytecode = { sphere({0,0,0}, 1.f) };  // would derive radius=1
     entry.boundRadius = 99.f;                    // caller authored something else
     entry.stepRelaxation = 0.5f;
-    auto result = ApplyRecipeBoundsDefaults(entry, 24.f, 0.9f);
-    EXPECT_EQ(result.boundSource, RecipeBoundsSource::Authored);
-    EXPECT_EQ(result.relaxationSource, RecipeBoundsSource::Authored);
+    auto result = AnalyzeRecipeRegistration(entry, 24.f, 0.9f);
+    EXPECT_EQ(result.boundSource, RecipeRegistrationAnalysis::BoundSource::Authored);
     EXPECT_FLOAT_EQ(entry.boundRadius, 99.f);
     EXPECT_FLOAT_EQ(entry.stepRelaxation, 0.5f);
 }

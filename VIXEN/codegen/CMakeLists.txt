@@ -489,9 +489,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h" _out_sdf_opcodes_run)
         _codegen_to_wsl_path("${_recipe_simd_build_output}" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc" _out_recipe_eval_dispatch_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc" _out_recipe_glsl_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl" _out_recipe_tape_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h" _out_recipe_glsl_literals_run)
+        _codegen_to_wsl_path("${CMAKE_CURRENT_BINARY_DIR}/recipe-services" _recipe_services_dir_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -595,9 +595,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_sdf_opcodes_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h")
         set(_out_recipe_simd_run "${_recipe_simd_build_output}")
         set(_out_recipe_eval_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc")
-        set(_out_recipe_glsl_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc")
         set(_out_recipe_tape_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl")
         set(_out_recipe_glsl_literals_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h")
+        set(_recipe_services_dir_run "${CMAKE_CURRENT_BINARY_DIR}/recipe-services")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -812,6 +812,78 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         _codegen_to_wsl_path("${_yk_dll}" _yk_dll_run)
     else()
         set(_yk_dll_run "${_yk_dll}")
+    endif()
+
+    # R841: one pinned-kernel job emits the three native recipe services and their private
+    # support face.  The public ABI is deliberately limited to these fixed headers; the
+    # generated implementation stays in the build tree behind the provider targets below.
+    set(_recipe_services_dir "${CMAKE_CURRENT_BINARY_DIR}/recipe-services")
+    set(_recipe_services_outputs
+        "${_recipe_services_dir}/GlyphOutlineInstance.g.hpp"
+        "${_recipe_services_dir}/PathInstance.g.hpp"
+        "${_recipe_services_dir}/PathPoint.g.hpp"
+        "${_recipe_services_dir}/PathSegment.g.hpp"
+        "${_recipe_services_dir}/RecipeAnalysisService.g.cpp"
+        "${_recipe_services_dir}/RecipeAnalysisService.impl.g.hpp"
+        "${_recipe_services_dir}/RecipeAnalysisService.manifest.json"
+        "${_recipe_services_dir}/RecipeContainer.g.h"
+        "${_recipe_services_dir}/RecipeCpuService.g.cpp"
+        "${_recipe_services_dir}/RecipeCpuService.impl.g.hpp"
+        "${_recipe_services_dir}/RecipeCpuService.manifest.json"
+        "${_recipe_services_dir}/RecipeGpuService.g.cpp"
+        "${_recipe_services_dir}/RecipeGpuService.impl.g.hpp"
+        "${_recipe_services_dir}/RecipeGpuService.manifest.json"
+        "${_recipe_services_dir}/RecipeGpuServiceGlslDispatch.g.inc"
+        "${_recipe_services_dir}/RecipeGpuServiceHlslDispatch.g.inc"
+        "${_recipe_services_dir}/RecipeGpuServiceModules.g.hpp"
+        "${_recipe_services_dir}/RecipeLowering.impl.g.hpp"
+        "${_recipe_services_dir}/RecipeScalarDispatch.g.inc"
+        "${_recipe_services_dir}/SdfCoreKernels.g.hpp"
+        "${_recipe_services_dir}/SdfOpCodes.g.h"
+        "${_recipe_services_dir}/YkRecipeAnalysis.h"
+        "${_recipe_services_dir}/YkRecipeGpuLowering.h"
+        "${_recipe_services_dir}/YkRecipeRuntime.h")
+    set(_recipe_services_args
+        "${_yk_dll_run}" --recipe-services
+        --namespace Vixen::SVO::Recipe
+        --recipe-opcodes "${_recipe_opcode_source_run}"
+        --recipe-kernels "${_recipe_kernel_source_run}"
+        --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
+        --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
+        --recipe-kernels-extra "${_recipe_op_declarations_run}"
+        --recipe-container "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
+        --out-dir "${_recipe_services_dir_run}")
+    add_custom_command(OUTPUT ${_recipe_services_outputs}
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_recipe_services_dir}"
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_services_args}
+        DEPENDS "${_yk_dll}" "${_tool_stamp}" "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
+            "${_recipe_opcode_source_run}" "${_recipe_kernel_source_run}" "${_recipe_glyph_outline_source_run}"
+            "${_recipe_kernel_extra_source_run}" "${_recipe_value_kernel_source_run}" "${_recipe_op_declarations_run}"
+        COMMENT "[codegen] emitting pinned-kernel recipe CPU/GPU/analysis services"
+        VERBATIM)
+    add_custom_target(recipe_services_codegen DEPENDS ${_recipe_services_outputs})
+
+    add_library(recipe_cpu_service STATIC "${_recipe_services_dir}/RecipeCpuService.g.cpp")
+    add_library(recipe_gpu_service STATIC "${_recipe_services_dir}/RecipeGpuService.g.cpp")
+    add_library(recipe_analysis_service STATIC "${_recipe_services_dir}/RecipeAnalysisService.g.cpp")
+    foreach(_recipe_service IN ITEMS recipe_cpu_service recipe_gpu_service recipe_analysis_service)
+        add_dependencies(${_recipe_service} recipe_services_codegen)
+        target_compile_features(${_recipe_service} PRIVATE cxx_std_23)
+        target_include_directories(${_recipe_service} PUBLIC "${_recipe_services_dir}")
+        target_link_libraries(${_recipe_service} PRIVATE glm)
+        target_compile_definitions(${_recipe_service} PRIVATE YK_RECIPE_RUNTIME_BUILD=1)
+        if(MSVC)
+            target_compile_options(${_recipe_service} PRIVATE /fp:strict /arch:AVX2)
+        else()
+            target_compile_options(${_recipe_service} PRIVATE -fno-fast-math -ffp-contract=off
+                -fvisibility=hidden -fvisibility-inlines-hidden)
+        endif()
+    endforeach()
+    if(TARGET SVO)
+        target_include_directories(SVO PUBLIC "${_recipe_services_dir}")
+        target_link_libraries(SVO PUBLIC recipe_cpu_service recipe_gpu_service recipe_analysis_service)
+        add_dependencies(SVO recipe_services_codegen)
     endif()
 
     set(_oc_args
