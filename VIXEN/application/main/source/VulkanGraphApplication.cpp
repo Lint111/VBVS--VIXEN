@@ -606,6 +606,9 @@ void VulkanGraphApplication::PostTick() {
         passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
     }
     addNamedComputeStagePasses({"direct_lighting", "spatial_reuse"});
+    // GB0: the B1 occlusion passes (hi-Z reduce, then the per-instance cull that writes the skip
+    // mask the march reads). Default-on stages; absent when VIXEN_B1_OCCLUSION_CULL opts out.
+    addNamedComputeStagePasses({"b1_hiz_downsample", "b1_instance_occlusion_cull"});
     for (const auto& metric : upscalerPerfPasses_) {
         auto* node = static_cast<ComputeStageNode*>(renderGraph->GetInstance(metric.node));
         passes.push_back({metric.columnName, node ? node->GetGPUPerformanceLogger() : nullptr});
@@ -2725,6 +2728,18 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] bodyOctreeSceneNode_ not found — bodies not updated");
     }
+}
+
+int32_t VulkanGraphApplication::RequestedBodyInstanceCount() const {
+    const auto* node = static_cast<const Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node ? node->RequestedInstanceCount() : 0;
+}
+
+int32_t VulkanGraphApplication::MarchedBodyInstanceCount() const {
+    const auto* node = static_cast<const Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node ? node->MarchedInstanceCount() : 0;
 }
 
 void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
