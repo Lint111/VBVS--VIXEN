@@ -323,7 +323,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // attributed to the UI pass specifically instead of guessed at.
         auto* queryMgrPtr = static_cast<GPUQueryManager*>(device->GetQueryManager());
         if (queryMgrPtr) {
-            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            auto queryManager = std::shared_ptr<GPUQueryManager>(device->GetQueryManagerShared(), queryMgrPtr);
             ReleaseGPUPerfLogger(GetLogger(), gpuPerfLogger_);  // free the old slot (recompile)
             gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
             gpuPerfLogger_->SetEnabled(true);

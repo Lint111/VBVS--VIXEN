@@ -7,6 +7,7 @@ REM   Runs vixen_load_scenario (deterministic heavy dynamic load timeline) with 
 REM   frame trace and phase timing written into ROOT\NAME\. ROOT\NAME must not exist (earlier
 REM   evidence is never overwritten). KEY:VALUE pairs become environment variables for the run
 REM   (resolution VIXEN_WINDOW_WIDTH/HEIGHT and the illumination feature settings).
+REM   LOAD_SCENARIO_ARGS:--lockstep makes recipe recompiles swap on a fixed frame (deterministic hashes).
 set "CAPTURE_ROOT="
 if /i "%~1"=="--evidence-root" (
     set "CAPTURE_ROOT=%~2"
@@ -39,6 +40,6 @@ shift
 goto args
 :run
 cd /d "%ROOT%\build\ninja-release\application\main"
-"%EXE%" --out "%OUT%" > "%OUT%\run.log" 2>&1
+"%EXE%" --out "%OUT%" %LOAD_SCENARIO_ARGS% > "%OUT%\run.log" 2>&1
 echo exit %errorlevel%
 exit /b %errorlevel%

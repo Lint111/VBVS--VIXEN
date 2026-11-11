@@ -406,8 +406,11 @@ private:
 
 int main(int argc, char** argv) {
     std::filesystem::path out;
-    for (int i = 1; i + 1 < argc; ++i)
-        if (std::string(argv[i]) == "--out") out = argv[i + 1];
+    bool lockstep = false;  // --lockstep: recipe recompiles swap on a fixed frame (deterministic hashes)
+    for (int i = 1; i < argc; ++i) {
+        if (i + 1 < argc && std::string(argv[i]) == "--out") out = argv[i + 1];
+        if (std::string(argv[i]) == "--lockstep") lockstep = true;
+    }
     if (out.empty()) {
         std::fprintf(stderr, "usage: vixen_load_scenario --out DIR\n");
         return 2;
@@ -421,6 +424,7 @@ int main(int argc, char** argv) {
     // INFO like the player: the DEBUG node logging is a harness artefact (sn-framecpu1).
     Vixen::Log::Logger::ApplyLevelFromEnvironment(Vixen::Log::LogLevel::LOG_INFO);
     LoadScenarioApplication app(out);
+    app.SetLockstepProceduralRecompile(lockstep);
     const int result = app.Run(RunOptions{.exitAfterFrames = TotalFrames() + 2u});
     app.HashDueCaptures(true);
     if (result != 0 || !app.Error().empty() || app.FramesRun() != TotalFrames()) {

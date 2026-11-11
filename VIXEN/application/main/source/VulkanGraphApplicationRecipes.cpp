@@ -909,6 +909,14 @@ void VulkanGraphApplication::RecompileProceduralShader() {
         if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->BeginPrecompile();
     }
     proceduralSwapPending_ = true;
+    if (lockstepProceduralRecompile_) {
+        for (const auto handle : proceduralShaderLibNodes_) {
+            if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->WaitPrecompile();
+        }
+        proceduralSwapPending_ = false;
+        MarkProceduralShaderLibsDirty();  // recompiles at the next update tick, like the synchronous path did
+        return;
+    }
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] compiling " +
             std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families off the frame thread");

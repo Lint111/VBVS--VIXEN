@@ -425,6 +425,7 @@ private:
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
     // Registered source families share the recipe registry and its live invalidation.
     std::vector<NodeHandle> proceduralShaderLibNodes_;
+    bool lockstepProceduralRecompile_ = false;
     bool proceduralSwapPending_ = false;             // precompiles running; swap at the next update tick when done
     void MarkProceduralShaderLibsDirty();            // drain GPU, then mark the libraries for recompile
     void PollProceduralShaderSwap();                 // per update tick: swap when every precompile finished
@@ -693,6 +694,9 @@ public:
     // Finishes a pending procedural shader swap now (waits for the compiles, swaps, recompiles).
     // No-op when none is pending. Capture entry points call it; hosts may too.
     void FlushProceduralShaderSwap();
+    // Lockstep: RecompileProceduralShader waits for the compile and marks the libraries dirty at once,
+    // so the swap lands on a fixed frame (the pre-async behaviour). For deterministic captures/replays.
+    void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --
