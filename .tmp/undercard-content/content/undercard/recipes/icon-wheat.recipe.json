@@ -1,0 +1,8 @@
+{
+  "id": "undercard:icon-wheat",
+  "kind": "render_recipe",
+  "fidelity": "block-out",
+  "op": "GlyphOutline",
+  "glyph": "wheat",
+  "size": [8.0, 1.0, 10.0]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "undercard:icon-flour",
+  "kind": "render_recipe",
+  "fidelity": "block-out",
+  "op": "GlyphOutline",
+  "glyph": "flour",
+  "size": [8.0, 1.0, 8.0]
+}

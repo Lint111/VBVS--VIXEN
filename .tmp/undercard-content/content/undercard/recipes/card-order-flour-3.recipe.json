@@ -1,0 +1,8 @@
+{
+  "id": "undercard:card-order-flour-3",
+  "kind": "render_recipe",
+  "invoke": "undercard:card-template",
+  "card_type": "order_brass",
+  "text": ["FLOUR 3", "Deliver 3 Flour"],
+  "icon": "undercard:icon-flour"
+}

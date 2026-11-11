@@ -1,0 +1,8 @@
+{
+  "id": "undercard:card-wheat-field",
+  "kind": "render_recipe",
+  "invoke": "undercard:card-template",
+  "card_type": "industry_plain",
+  "text": ["WHEAT FIELD", "Produces 1 Wheat"],
+  "icon": "undercard:icon-wheat"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "undercard:card-hand-mill",
+  "kind": "render_recipe",
+  "invoke": "undercard:card-template",
+  "card_type": "industry_plain",
+  "text": ["HAND MILL", "1 Wheat -> 1 Flour"],
+  "icon": "undercard:icon-flour"
+}
