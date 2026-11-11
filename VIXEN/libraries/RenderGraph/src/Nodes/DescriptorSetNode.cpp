@@ -1,4 +1,5 @@
 #include "Nodes/DescriptorSetNode.h"
+#include "FrameTrace.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
@@ -390,6 +391,7 @@ void DescriptorSetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                         "vkUpdateDescriptorSets-Dependency frame=" + std::to_string(i));
                 }
 #endif
+                VIXEN_FRAME_COUNT(DescriptorUpdates, 1);
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
                 NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) + " Dependency descriptor(s) for frame " + std::to_string(i));
             }
@@ -424,6 +426,7 @@ void DescriptorSetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     if (!writes.empty()) {
+        VIXEN_FRAME_COUNT(DescriptorUpdates, 1);
         vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Updated " + std::to_string(writes.size()) +
                       " Execute descriptor(s) for frame " + std::to_string(imageIndex));

@@ -738,10 +738,18 @@ void VulkanGraphApplication::PostTick() {
         static_cast<double>(waitLedger.violationNs) / 1'000'000.0,
         static_cast<double>(waitLedger.unusedNs) / 1'000'000.0,
         waitLedger.Utilisation()};
+    const auto taken = Vixen::FrameTrace::TakeFrameCounts();
+    using Vixen::FrameTrace::Counter;
+    const auto counted = [&taken](Counter c) { return taken.value[static_cast<uint32_t>(c)]; };
+    const PerfCsvWriter::FrameCounters frameCounters{
+        counted(Counter::MappedBufferAccesses), counted(Counter::MappedBufferBytes),
+        counted(Counter::DescriptorUpdates),    counted(Counter::CommandRecordings),
+        counted(Counter::QueueSubmits),         waitLedger.gpuRetireWaitCount,
+        waitLedger.framePaceWaitNs > 0 ? 1u : 0u};
     {
         VIXEN_FRAME_TRACE_SCOPE("post", "perf-csv-frame");
         perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
-                                   windowMetrics, wholesale);
+                                   windowMetrics, wholesale, frameCounters);
     }
     std::vector<PerfCsvWriter::WindowSample> windowSamples;
     windowSamples.reserve(waitLedger.waitSampleCount);

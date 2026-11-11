@@ -1,4 +1,5 @@
 #include "Core/PerFrameResources.h"
+#include "FrameTrace.h"
 #include "VulkanDevice.h"
 #include <stdexcept>
 
@@ -101,6 +102,8 @@ VkBuffer PerFrameResources::GetUniformBuffer(uint32_t frameIndex) const {
 
 void* PerFrameResources::GetUniformBufferMapped(uint32_t frameIndex) const {
     ValidateFrameIndex(frameIndex, "GetUniformBufferMapped");
+    VIXEN_FRAME_COUNT(MappedBufferAccesses, 1);
+    VIXEN_FRAME_COUNT(MappedBufferBytes, frames[frameIndex].uniformBufferSize);
     return frames[frameIndex].uniformMappedData;
 }
 

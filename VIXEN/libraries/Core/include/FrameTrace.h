@@ -50,6 +50,27 @@ void AddCalibration(uint64_t deviceTicks, uint64_t hostNs);
 /// Write frame-trace.csv and the per-thread CPU census; no-op unless Enabled().
 void Write();
 
+/// Per-frame event counters (design fb-framepipe1 section 5.1, R851.7). Always counted in benchmark
+/// builds, independent of Enabled(), because the perf CSV reads them: a relaxed atomic add per
+/// event, no allocation, no lock.
+enum class Counter : uint32_t {
+    MappedBufferAccesses,  ///< PerFrameResources::GetUniformBufferMapped calls (proxy for buffers written)
+    MappedBufferBytes,     ///< size of the buffers those calls returned
+    DescriptorUpdates,     ///< vkUpdateDescriptorSets calls
+    CommandRecordings,     ///< vkBeginCommandBuffer calls on node paths
+    QueueSubmits,          ///< vkQueueSubmit2 calls through the submit channel
+    Count_
+};
+inline constexpr uint32_t kCounterCount = static_cast<uint32_t>(Counter::Count_);
+
+void CountAdd(Counter counter, uint64_t amount);
+
+/// The counts since the previous call; resets them. Called once per frame by the perf CSV recorder.
+struct FrameCounts {
+    uint64_t value[kCounterCount] = {};
+};
+[[nodiscard]] FrameCounts TakeFrameCounts();
+
 class Scope {
 public:
     Scope(const char* category, std::string_view name);
@@ -75,12 +96,15 @@ private:
     std::optional<::Vixen::FrameTrace::Scope> var; \
     (var).emplace((category), (name))
 #define VIXEN_FRAME_TRACE_END(var) (var).reset()
+#define VIXEN_FRAME_COUNT(counter, amount) \
+    ::Vixen::FrameTrace::CountAdd(::Vixen::FrameTrace::Counter::counter, static_cast<uint64_t>(amount))
 
 #else
 
 #define VIXEN_FRAME_TRACE_SCOPE(category, name) static_cast<void>(0)
 #define VIXEN_FRAME_TRACE_BEGIN(var, category, name) static_cast<void>(0)
 #define VIXEN_FRAME_TRACE_END(var) static_cast<void>(0)
+#define VIXEN_FRAME_COUNT(counter, amount) static_cast<void>(0)
 
 namespace Vixen::FrameTrace {
 inline constexpr bool Enabled() noexcept { return false; }

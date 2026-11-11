@@ -631,6 +631,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = 0;
 
+    VIXEN_FRAME_COUNT(CommandRecordings, 1);
     VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
@@ -727,6 +728,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
                 if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
                     throw std::runtime_error("ComputeDispatchNode: failed to end tile commands");
                 cmdBuffer = recordedBuffers[tileIndex];
+                VIXEN_FRAME_COUNT(CommandRecordings, 1);
                 if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
                     throw std::runtime_error("ComputeDispatchNode: failed to begin tile commands");
                 // Each retired command owns four queries. Resetting the entire

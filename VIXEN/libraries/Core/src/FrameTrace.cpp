@@ -144,6 +144,22 @@ uint64_t HostCounterToNs(uint64_t counter) {
 #endif
 }
 
+namespace {
+std::atomic<uint64_t> g_counters[kCounterCount];
+}  // namespace
+
+void CountAdd(Counter counter, uint64_t amount) {
+    g_counters[static_cast<uint32_t>(counter)].fetch_add(amount, std::memory_order_relaxed);
+}
+
+FrameCounts TakeFrameCounts() {
+    FrameCounts counts;
+    for (uint32_t i = 0; i < kCounterCount; ++i) {
+        counts.value[i] = g_counters[i].exchange(0, std::memory_order_relaxed);
+    }
+    return counts;
+}
+
 Scope::Scope(const char* category, std::string_view name)
     : category_(category), t0_(0), active_(Enabled()) {
     name_[0] = '\0';

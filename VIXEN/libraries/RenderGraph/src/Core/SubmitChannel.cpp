@@ -320,6 +320,7 @@ VkResult SubmitRecord::Submit(const IssueFn& issue, QueueTimeline& timeline) con
         VkResult result;
         {
             VIXEN_FRAME_TRACE_SCOPE("submit", "vkQueueSubmit2");
+            VIXEN_FRAME_COUNT(QueueSubmits, 1);
             result = issue(si, last ? fence : VK_NULL_HANDLE);
         }
 #if UNDERSET_NATIVE_BENCHMARK

@@ -312,6 +312,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                              uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VIXEN_FRAME_COUNT(CommandRecordings, 1);
     if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
         GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands vkBeginCommandBuffer",
                                          beginResult);

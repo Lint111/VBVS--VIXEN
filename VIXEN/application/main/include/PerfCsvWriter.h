@@ -12,6 +12,7 @@ class PerfCsvWriter {
 public:
     struct WholesaleMetrics {};
     struct PassSource {};
+    struct FrameCounters {};
 
     constexpr PerfCsvWriter() noexcept = default;
     constexpr bool IsEnabled() const noexcept { return false; }
@@ -89,6 +90,18 @@ public:
         double windowUtilisation = 0.0;
     };
 
+    // Per-frame event counts for the frame-pipeline ledger (design fb-framepipe1 section 5.1,
+    // R851.7): how much CPU-to-GPU work one frame does, so lanes that remove it show a number.
+    struct FrameCounters {
+        uint64_t mappedBufferAccesses = 0;  ///< per-frame mapped buffer accesses (proxy for buffers written)
+        uint64_t mappedBufferBytes = 0;     ///< bytes of the mapped buffers those accesses returned
+        uint64_t descriptorUpdates = 0;     ///< vkUpdateDescriptorSets calls
+        uint64_t commandRecordings = 0;     ///< command buffer recordings (vkBeginCommandBuffer)
+        uint64_t queueSubmits = 0;          ///< vkQueueSubmit2 calls
+        uint64_t gpuRetireWaits = 0;        ///< blocking GPU-retire waits on the frame thread
+        uint64_t framePaceWaits = 0;        ///< pace sleeps (0 or 1)
+    };
+
     // One idle window, exported to "<VIXEN_PERF_CSV>.windows.csv" so misses can be attributed.
     struct WindowSample {
         uint64_t frame = 0;
@@ -116,7 +129,8 @@ public:
                      uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                      double wholeFrameGpuSpanMs,
                      WindowMetrics windowMetrics,
-                     WholesaleMetrics wholesale);
+                     WholesaleMetrics wholesale,
+                     const FrameCounters& counters);
 
     // Writes the accumulated rows to VIXEN_PERF_CSV. Safe to call once at shutdown; no-op if
     // disabled or already flushed (idempotent — DeInitialize() may run more than once-guarded,
@@ -136,6 +150,7 @@ private:
         double wholeFrameGpuSpanMs = 0.0;  // Task 0.1: first CB start -> last CB end, this frame
         WindowMetrics windowMetrics;
         WholesaleMetrics wholesale;
+        FrameCounters counters;
         std::vector<std::pair<std::string, double>> passMs;  // (columnName, ms) — same set every row
     };
 
