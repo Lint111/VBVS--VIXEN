@@ -697,6 +697,8 @@ public:
     // Lockstep: RecompileProceduralShader waits for the compile and marks the libraries dirty at once,
     // so the swap lands on a fixed frame (the pre-async behaviour). For deterministic captures/replays.
     void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
+    // True while an off-thread procedural shader compile is running and its swap has not happened yet.
+    [[nodiscard]] bool IsProceduralShaderSwapPending() const { return proceduralSwapPending_; }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

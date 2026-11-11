@@ -7,6 +7,7 @@
 #include "error/VulkanError.h"
 #include "MainCacher.h"
 #include "ShaderModuleCacher.h"
+#include "FrameTrace.h"
 #include <ShaderBundleBuilder.h>
 #include <ShaderCompiler.h>
 #include <chrono>
@@ -138,11 +139,18 @@ void ShaderLibraryNode::BeginPrecompile() {
         return job.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
     });
 
-    auto builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
-        shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    std::shared_ptr<::ShaderManagement::ShaderBundleBuilder> builder;
+    {
+        // Benchmark-only span: the builder callback splices the live recipe table into the source.
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "emit:" + GetInstanceName());
+        builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
+            shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    }
     precompileVulkan_ = deviceVulkanVersion;
     precompileSpirv_ = deviceSpirvVersion;
-    precompile_ = std::async(std::launch::async, [builder]() -> PrecompileResult {
+    precompile_ = std::async(std::launch::async, [builder, name = GetInstanceName()]() -> PrecompileResult {
+        static_cast<void>(name);  // read only by the benchmark-build span below
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "spirv:" + name);
         // A failed build yields null: the swap-time Compile builds again and reports the message.
         auto result = builder->Build();
         return result.success ? std::move(result.bundle) : nullptr;

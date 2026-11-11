@@ -28,6 +28,7 @@
 #include "ComputePipelineCacher.h"
 #include "DescriptorSetLayoutCacher.h"
 #include "Hash.h"
+#include "FrameTrace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -949,6 +950,7 @@ void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
     // even though the graph's ordinary recompile path does not wait device-wide.
     if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
         if (auto* device = deviceInst->GetVulkanDevice()) {
+            VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "swap-device-wait-idle");
             const VkResult waitResult = vkDeviceWaitIdle(device->device);
             if (waitResult == VK_ERROR_DEVICE_LOST) {
                 renderGraph->NotifyDeviceLost(
