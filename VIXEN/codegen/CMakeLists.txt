@@ -858,8 +858,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${_recipe_services_dir}"
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_services_args}
         DEPENDS "${_yk_dll}" "${_tool_stamp}" "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
-            "${_recipe_opcode_source_run}" "${_recipe_kernel_source_run}" "${_recipe_glyph_outline_source_run}"
-            "${_recipe_kernel_extra_source_run}" "${_recipe_value_kernel_source_run}" "${_recipe_op_declarations_run}"
+            ${_recipe_simd_input_files}
         COMMENT "[codegen] emitting pinned-kernel recipe CPU/GPU/analysis services"
         VERBATIM)
     add_custom_target(recipe_services_codegen DEPENDS ${_recipe_services_outputs})
