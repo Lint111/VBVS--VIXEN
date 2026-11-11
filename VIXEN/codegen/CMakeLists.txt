@@ -227,6 +227,35 @@ set(_recipe_simd_input_files
     "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs"
     "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs"
     "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
+option(VIXEN_ERROR_CATALOG_REQUIRE_UNDERTOW
+    "Require the paired Undertow-owned error catalog fragment for VIXEN's composed catalog" ON)
+set(_error_catalog_kernel_fragment
+    "${_yk_tool}/ErrorCatalog/Fragments/KernelErrorCatalogFragment.cs")
+set(_error_catalog_vixen_fragment "${_cg}/error-catalog/VixenErrorCatalogFragment.cs")
+set(_error_catalog_vixen_collision_fragment
+    "${_cg}/error-catalog/fixtures/VixenAliasCollision.cs")
+set(_error_catalog_undertow_fragment "")
+if(_undertow_root_cmake AND EXISTS
+        "${_undertow_root_cmake}/tools/error-catalog/UndertowErrorCatalogFragment.cs")
+    set(_error_catalog_undertow_fragment
+        "${_undertow_root_cmake}/tools/error-catalog/UndertowErrorCatalogFragment.cs")
+elseif(VIXEN_ERROR_CATALOG_REQUIRE_UNDERTOW)
+    message(FATAL_ERROR
+        "[error-catalog] the paired Undertow fragment is required but missing. "
+        "Expected ${_undertow_root_cmake}/tools/error-catalog/UndertowErrorCatalogFragment.cs; "
+        "set UNDERTOW_ROOT to the paired Undertow checkout that owns the fragment, "
+        "then rerun configure.")
+else()
+    message(WARNING
+        "[error-catalog] Undertow fragment unavailable; the VIXEN catalog is incomplete. "
+        "Set UNDERTOW_ROOT to a checkout containing tools/error-catalog/UndertowErrorCatalogFragment.cs "
+        "before consuming renderer diagnostics.")
+endif()
+set(_error_catalog_output_dir "${CMAKE_CURRENT_BINARY_DIR}/error-catalog")
+set(_error_catalog_json "${_error_catalog_output_dir}/index.json")
+set(_error_catalog_docs "${_error_catalog_output_dir}/docs")
+set(_error_catalog_compat "${_error_catalog_output_dir}/compatibility.json")
+set(_error_catalog_cpp "${_cg}/generated/YeroketErrorCatalog.g.h")
 set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
 # AA kernel callables (R619.1): inlined into the GPU systems, C++ face for the resolve tests.
@@ -404,6 +433,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             set(${out_var} "${_translated}" PARENT_SCOPE)
         endfunction()
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
+        _codegen_to_wsl_path("${_error_catalog_kernel_fragment}" _error_catalog_kernel_fragment_run)
+        _codegen_to_wsl_path("${_error_catalog_vixen_fragment}" _error_catalog_vixen_fragment_run)
+        _codegen_to_wsl_path("${_error_catalog_vixen_collision_fragment}" _error_catalog_vixen_collision_fragment_run)
+        if(_error_catalog_undertow_fragment)
+            _codegen_to_wsl_path("${_error_catalog_undertow_fragment}" _error_catalog_undertow_fragment_run)
+        endif()
+        _codegen_to_wsl_path("${_error_catalog_json}" _error_catalog_json_run)
+        _codegen_to_wsl_path("${_error_catalog_docs}" _error_catalog_docs_run)
+        _codegen_to_wsl_path("${_error_catalog_compat}" _error_catalog_compat_run)
+        _codegen_to_wsl_path("${_error_catalog_cpp}" _error_catalog_cpp_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
         _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
@@ -525,6 +564,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_CODEGEN_RUNNER ${WSL_EXE} --cd / -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
+        set(_error_catalog_kernel_fragment_run "${_error_catalog_kernel_fragment}")
+        set(_error_catalog_vixen_fragment_run "${_error_catalog_vixen_fragment}")
+        set(_error_catalog_vixen_collision_fragment_run "${_error_catalog_vixen_collision_fragment}")
+        set(_error_catalog_undertow_fragment_run "${_error_catalog_undertow_fragment}")
+        set(_error_catalog_json_run "${_error_catalog_json}")
+        set(_error_catalog_docs_run "${_error_catalog_docs}")
+        set(_error_catalog_compat_run "${_error_catalog_compat}")
+        set(_error_catalog_cpp_run "${_error_catalog_cpp}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
         set(_schema_gpu_staged_run "${_schema_gpu_staged}")
@@ -807,6 +854,44 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     else()
         set(_yk_dll_run "${_yk_dll}")
     endif()
+
+    set(_error_catalog_args
+        "${_yk_dll_run}"
+        --error-catalog
+        --error-fragment "${_error_catalog_kernel_fragment_run}"
+        --error-fragment "${_error_catalog_undertow_fragment_run}"
+        --error-fragment "${_error_catalog_vixen_fragment_run}"
+        --out-json "${_error_catalog_json_run}"
+        --docs-dir "${_error_catalog_docs_run}"
+        --out-compat "${_error_catalog_compat_run}"
+        --out-cpp "${_error_catalog_cpp_run}")
+    vixen_add_codegen_check(error_catalog_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_error_catalog_args} --check
+        COMMENT "[error-catalog] check the pinned kernel, Undertow, and VIXEN catalog with identical arguments"
+        VERBATIM)
+    add_custom_target(error_catalog_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_error_catalog_args}
+        COMMENT "[error-catalog] regenerate the pinned kernel, Undertow, and VIXEN catalog"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    set(ERROR_CATALOG_RUNNER "${_CODEGEN_RUNNER}")
+    set(ERROR_CATALOG_DLL "${_yk_dll_run}")
+    set(ERROR_CATALOG_KERNEL_FRAGMENT "${_error_catalog_kernel_fragment_run}")
+    set(ERROR_CATALOG_VIXEN_COLLISION_FRAGMENT "${_error_catalog_vixen_collision_fragment_run}")
+    set(ERROR_CATALOG_COLLISION_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/error-catalog-collision")
+    set(ERROR_CATALOG_COLLISION_JSON "${ERROR_CATALOG_COLLISION_WORK_DIR}/index.json")
+    set(ERROR_CATALOG_COLLISION_DOCS "${ERROR_CATALOG_COLLISION_WORK_DIR}/docs")
+    set(ERROR_CATALOG_COLLISION_COMPAT "${ERROR_CATALOG_COLLISION_WORK_DIR}/compatibility.json")
+    set(ERROR_CATALOG_COLLISION_HEADER "${ERROR_CATALOG_COLLISION_WORK_DIR}/YeroketErrorCatalog.g.h")
+    set(_error_catalog_collision_test
+        "${CMAKE_CURRENT_BINARY_DIR}/test_error_catalog_alias_collision.cmake")
+    configure_file(
+        "${VIXEN_ROOT}/cmake/tests/test_error_catalog_alias_collision.cmake"
+        "${_error_catalog_collision_test}" @ONLY)
+    add_test(NAME Codegen.ErrorCatalogVixenAliasCollision
+        COMMAND "${CMAKE_COMMAND}" -P "${_error_catalog_collision_test}")
+    set_tests_properties(Codegen.ErrorCatalogVixenAliasCollision PROPERTIES LABELS "Codegen;cpu")
 
     set(_oc_args
         "${_yk_dll_run}"
