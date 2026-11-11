@@ -9,6 +9,7 @@
 #include "ShaderModuleCacher.h"
 #include <ShaderBundleBuilder.h>
 #include <ShaderCompiler.h>
+#include <chrono>
 #include "Message.h"
 #include "MessageBus.h"
 
@@ -124,6 +125,36 @@ void ShaderLibraryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     fragmentShader.reset();
 
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode complete");
+}
+
+void ShaderLibraryNode::BeginPrecompile() {
+    if (shaderBuilderFuncs.empty()) {
+        return;
+    }
+    if (precompile_.valid()) {
+        retiredPrecompiles_.push_back(std::move(precompile_));
+    }
+    std::erase_if(retiredPrecompiles_, [](std::future<bool>& job) {
+        return job.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    });
+
+    auto builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
+        shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    precompile_ = std::async(std::launch::async, [builder]() {
+        // The result is discarded on purpose: the point is the filled cache. A failed build is
+        // reported again, with its message, by the swap-time Compile of this node.
+        return builder->Build().success;
+    });
+}
+
+bool ShaderLibraryNode::IsPrecompileReady() const {
+    return !precompile_.valid() || precompile_.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
+void ShaderLibraryNode::WaitPrecompile() {
+    if (precompile_.valid()) {
+        precompile_.wait();
+    }
 }
 
 void ShaderLibraryNode::OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message) {

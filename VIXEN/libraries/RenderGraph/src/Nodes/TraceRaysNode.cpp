@@ -141,6 +141,7 @@ void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
         auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
 
+        ReleaseGPUPerfLogger(GetLogger(), gpuPerfLogger_);  // free the old slot (recompile)
         gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, queryManager);
         gpuPerfLogger_->SetEnabled(true);
         gpuPerfLogger_->SetLogFrequency(120);

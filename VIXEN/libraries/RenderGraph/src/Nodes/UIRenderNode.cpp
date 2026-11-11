@@ -324,6 +324,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         auto* queryMgrPtr = static_cast<GPUQueryManager*>(device->GetQueryManager());
         if (queryMgrPtr) {
             auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            ReleaseGPUPerfLogger(GetLogger(), gpuPerfLogger_);  // free the old slot (recompile)
             gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
             gpuPerfLogger_->SetEnabled(true);
             gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode

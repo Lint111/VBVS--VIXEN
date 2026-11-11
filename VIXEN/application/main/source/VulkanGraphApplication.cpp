@@ -2613,6 +2613,7 @@ void VulkanGraphApplication::Update() {
                 VIXEN_FRAME_TRACE_SCOPE("update", "process-events");
                 renderGraph->ProcessEvents();
             }
+            PollProceduralShaderSwap();  // swap point: a finished off-thread shader compile is applied here
             {
                 VIXEN_FRAME_TRACE_SCOPE("update", "recompile-dirty");
                 renderGraph->RecompileDirtyNodes();

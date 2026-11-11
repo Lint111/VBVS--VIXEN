@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 #include "Core/GPUQueryManager.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "VulkanDevice.h"
 #include <memory>
 #include <string>
@@ -451,4 +452,37 @@ TEST_F(GPUQueryManagerTest, ConsumerNamesAreMaintainedIndependently) {
     EXPECT_EQ(manager.GetSlotConsumerName(slot1), "Consumer1");
     EXPECT_EQ(manager.GetSlotConsumerName(slot2), "");  // Freed
     EXPECT_EQ(manager.GetSlotConsumerName(slot3), "Consumer3");
+}
+
+// ============================================================================
+// SLOT RELEASE ON RECOMPILE (sn-gpuquery1)
+// ============================================================================
+
+TEST_F(GPUQueryManagerTest, PerfLoggerDestructionFreesItsSlot) {
+    auto manager = std::make_shared<GPUQueryManager>(mockDevice, kDefaultFramesInFlight, kDefaultMaxConsumers);
+    {
+        GPUPerformanceLogger logger("Pass", manager);
+        EXPECT_EQ(manager->GetAllocatedSlotCount(), 1u);
+    }
+    EXPECT_EQ(manager->GetAllocatedSlotCount(), 0u);
+}
+
+TEST_F(GPUQueryManagerTest, RepeatedRecompilesKeepPerPassTimingAlive) {
+    // Every recompile re-creates each pass's logger, attached to a parent logger that holds
+    // it as a child. More recompiles than the slot cap must never exhaust the manager.
+    auto manager = std::make_shared<GPUQueryManager>(mockDevice, kDefaultFramesInFlight, kDefaultMaxConsumers);
+    Logger parent("NodeParent", false);
+    constexpr uint32_t kPasses = 4;
+    std::shared_ptr<GPUPerformanceLogger> loggers[kPasses];
+
+    for (uint32_t recompile = 0; recompile < 10 * kDefaultMaxConsumers; ++recompile) {
+        for (uint32_t p = 0; p < kPasses; ++p) {
+            ReleaseGPUPerfLogger(&parent, loggers[p]);
+            loggers[p] = std::make_shared<GPUPerformanceLogger>("Pass" + std::to_string(p), manager);
+            parent.AddChild(loggers[p]);
+            ASSERT_NE(loggers[p]->GetQuerySlot(), GPUQueryManager::INVALID_SLOT)
+                << "pass " << p << " lost its query slot on recompile " << recompile;
+        }
+        EXPECT_EQ(manager->GetAllocatedSlotCount(), kPasses);
+    }
 }
