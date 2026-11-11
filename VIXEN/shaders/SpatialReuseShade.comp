@@ -1,5 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+#extension GL_EXT_shader_realtime_clock : require
+#endif
 
 // SpatialReuseShade always exposes the optional module input. When no provider is
 // connected, the push-constant gatherer leaves this field zero-filled.
@@ -88,6 +91,29 @@ layout(std430, binding = 17) buffer HitRecordBuffer {
 layout(std430, binding = 17) readonly buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
+#endif
+
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+// SceneBindings already owns this block in the shadow-debug variant. The
+// production shade variant intentionally has no traversal include, so expose
+// only the existing binding-4 clock words here.
+#ifndef VIXEN_SHADOW_DBG
+layout(std430, binding = 4) buffer RayTraceBuffer {
+    uint leafClockWords[];
+};
+#endif
+
+void recordLeafShaderClockShade(uint startTick, uint endTick) {
+#ifdef VIXEN_SHADOW_DBG
+    atomicMin(farFieldTerminalPixels[30], startTick);
+    atomicMax(farFieldTerminalPixels[31], endTick);
+#else
+    // farFieldTerminalPixels[30..31] are words 130..131 in the binding-4
+    // header (the block begins at byte 0).
+    atomicMin(leafClockWords[130], startTick);
+    atomicMax(leafClockWords[131], endTick);
+#endif
+}
 #endif
 
 // ============================================================================
@@ -714,6 +740,9 @@ void main() {
     ivec2 imgSize     = imageSize(sceneRadianceImage);
 
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+    uint leafClockStart = uint(clockRealtimeEXT());
+#endif
 
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
     vec3 rayDir = getRayDir(uv);
@@ -1022,4 +1051,7 @@ void main() {
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the
     // companion history buffer — moved here verbatim from DirectLighting.comp (M5).
     imageStore(worldPosHistoryOutput, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+    recordLeafShaderClockShade(leafClockStart, uint(clockRealtimeEXT()));
+#endif
 }
