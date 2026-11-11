@@ -6,6 +6,7 @@
 #include "IDebugCapture.h"
 #include "DebugRaySample.h"
 #include <vulkan/vulkan.h>
+#include <array>
 #include <vector>
 #include <span>
 #include <any>
@@ -219,6 +220,15 @@ struct WalkCovStats {
 struct CompositeBlendStats {
     uint32_t blends = 0;
     float behindMax = 0.0f;
+};
+
+/** Capture-only leaf traversal histograms (binding-4 TraceBufferHeader). */
+struct LeafInstrumentationStats {
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> steps{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> bodies{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> candidates{};
+    std::array<uint32_t, LEAF_INSTR_PATH_CLASSES> pathClass{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> brickSteps{};
 };
 
 /** E1-T1 stencil slice 0 composition census. Indices are
@@ -524,6 +534,9 @@ public:
 
     /** Read the env-gated E7-T1 policy-stencil parity summary. */
     PolicyStencilStats ReadPolicyStencilStats(VkDevice device) const;
+
+    /** Read the capture-only leaf traversal histograms. */
+    LeafInstrumentationStats ReadLeafInstrumentationStats(VkDevice device) const;
 
     std::any GetData() const override;
 

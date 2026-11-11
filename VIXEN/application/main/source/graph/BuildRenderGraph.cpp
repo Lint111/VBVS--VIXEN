@@ -2229,6 +2229,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (envFlagEnabled("VIXEN_LEAF_COUNTERS")) {
+        marchShaderFeatures.push_back(kFeatureLeafInstrCounters.define);
+    }
     const bool policyStencilTilesEnabled =
         envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES");
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {

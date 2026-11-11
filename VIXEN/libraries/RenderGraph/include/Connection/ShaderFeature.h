@@ -40,6 +40,9 @@ inline constexpr ShaderFeature kFeatureGpuTraceHooks{"VIXEN_GPU_TRACE_HOOKS"};
 // E1-T1 stencil slice 0: image-inert composition histograms in the existing
 // TraceBufferHeader terminal-pixel ring. Env-gated; no capability requirement.
 inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_COUNTERS"};
+// cx-leafinstr2: capture-only per-ray leaf traversal histograms (candidates, bodies, steps).
+// Pixel-neutral; the measurement-only search/march variants and shader clocks stay on lane-leafinstr1.
+inline constexpr ShaderFeature kFeatureLeafInstrCounters{"VIXEN_LEAF_INSTR_COUNTERS"};
 // E7-T1: materialize the primary ray's policy stencil in HitRecord._pad0[2]
 // bits 8..15 and preserve/read back that byte across both shadow writers.
 // Env-gated; no capability or descriptor-interface requirement.

@@ -837,6 +837,27 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
                    << " (" << perFrame(tagStats.colorFallback[0]) << "/frame) not-primary=" << tagStats.colorFallback[1]
                    << " (" << perFrame(tagStats.colorFallback[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
 
+        // cx-leafinstr2: the leaf histogram is intentionally drained only on
+        // the capture path. Timing runs leave VIXEN_LEAF_COUNTERS unset, so
+        // this readback cannot perturb their measurements or their logs.
+        if (std::getenv("VIXEN_LEAF_COUNTERS") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto leaf = debugCaptureResource_->ReadLeafInstrumentationStats(vulkanDevice->device);
+                auto printHistogram = [](const char* metric, const auto& values) {
+                    std::cout << "[LeafInstrHistogram] metric=" << metric;
+                    for (size_t i = 0; i < values.size(); ++i) {
+                        std::cout << " b" << i << "=" << values[i];
+                    }
+                    std::cout << std::endl;
+                };
+                printHistogram("steps", leaf.steps);
+                printHistogram("bodies", leaf.bodies);
+                printHistogram("candidates", leaf.candidates);
+                printHistogram("path_class", leaf.pathClass);
+                printHistogram("brick_steps", leaf.brickSteps);
+            }
+        }
+
         // Round 12 instrument fix (b): the 32-slot pixel decode ring is
         // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32
         // writes before wrap), not a spatial sample of the far-field
