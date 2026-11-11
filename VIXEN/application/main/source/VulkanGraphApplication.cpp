@@ -260,9 +260,126 @@ std::vector<long> ParseHudCaptureFrames(const std::string& spec, Vixen::Log::Log
 }
 }  // namespace
 
+namespace {
+
+std::optional<std::string> RuntimeInputEnvText(const char* name) {
+    if (const char* value = std::getenv(name); value && *value) return std::string(value);
+    return std::nullopt;
+}
+
+std::vector<std::string> RuntimeInputEnvList(const char* name) {
+    std::vector<std::string> values;
+    const auto value = RuntimeInputEnvText(name);
+    if (!value) return values;
+    std::stringstream input(*value);
+    std::string item;
+    while (std::getline(input, item, ',')) {
+        if (!item.empty()) values.push_back(std::move(item));
+    }
+    return values;
+}
+
+Vixen::RuntimeInputValidationOptions RuntimeInputOptionsFromEnvironment() {
+    Vixen::RuntimeInputValidationOptions options;
+    options.productKey = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_PRODUCT_KEY");
+    options.facadeSchemaDigest = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_FACADE_SCHEMA_DIGEST");
+    options.cpuGpuLayoutDigest = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_CPU_GPU_LAYOUT_DIGEST");
+    options.shaderCompilerDigest = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_SHADER_COMPILER_DIGEST");
+    options.artifactSchemaDigest = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_ARTIFACT_SCHEMA_DIGEST");
+    options.shaderCompilerIdentity = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_SHADER_COMPILER_IDENTITY");
+    options.requiredArtifactKinds = RuntimeInputEnvList("VIXEN_RUNTIME_DATA_REQUIRED_KINDS");
+    options.requiredArtifactPaths = RuntimeInputEnvList("VIXEN_RUNTIME_DATA_REQUIRED_PATHS");
+    return options;
+}
+
+}  // namespace
+
+bool VulkanGraphApplication::LoadRuntimeInputBundle() {
+    const auto root = RuntimeInputEnvText("VIXEN_RUNTIME_DATA_ROOT");
+    if (!root) {
+        runtimeInputReady_ = true;
+        runtimeInputUsesCompatibilityAdapter_ = true;
+        if (mainLogger) {
+            mainLogger->Info(
+                "[RuntimeInputBundle] no provider bundle selected; using the legacy generated/header compatibility adapter");
+        }
+        return true;
+    }
+
+    std::string error;
+    if (!runtimeInputStore_.LoadBoot(*root, RuntimeInputOptionsFromEnvironment(), &error)) {
+        runtimeInputReady_ = false;
+        runtimeInputUsesCompatibilityAdapter_ = true;
+        lastError_ = "Runtime input bundle rejected before graph construction: " + error;
+        if (mainLogger) mainLogger->Error("[RuntimeInputBundle] " + lastError_);
+        return false;
+    }
+
+    runtimeInputReady_ = true;
+    runtimeInputUsesCompatibilityAdapter_ = false;
+    const auto active = runtimeInputStore_.Active();
+    if (active) {
+        if (!runtimeInputCompatibility_.Compare(*active, &error)) {
+            runtimeInputReady_ = false;
+            lastError_ = "Runtime input compatibility check failed before graph construction: " + error;
+            if (mainLogger) mainLogger->Error("[RuntimeInputBundle] " + lastError_);
+            return false;
+        }
+        if (mainLogger) {
+            mainLogger->Info(
+                "[RuntimeInputBundle] accepted product " + active->Identity().productKey + " with " +
+                std::to_string(active->ArtifactCount()) + " immutable artifacts");
+            if (!active->HasArtifactKindContaining("frame-target")) {
+                mainLogger->Warning(
+                    "[RuntimeInputBundle] frame-target projection is unavailable in this producer closure; "
+                    "using the generated compatibility path");
+            }
+            if (!active->HasArtifactKindContaining("gpu-system")) {
+                mainLogger->Warning(
+                    "[RuntimeInputBundle] GPU-system manifest is unavailable in this producer closure; "
+                    "using the generated compatibility path");
+            }
+            if (!active->HasArtifactKindContaining("spirv") && !active->HasArtifactKindContaining("reflection")) {
+                mainLogger->Warning(
+                    "[RuntimeInputBundle] SPIR-V/reflection members are unavailable in this producer closure; "
+                    "using the compiled shader compatibility path");
+            }
+            if (!active->HasArtifactKindContaining("viewblob")) {
+                mainLogger->Warning(
+                    "[RuntimeInputBundle] viewblob member is unavailable in this producer closure; "
+                    "using the existing ViewBlobFile path");
+            }
+        }
+    }
+    return true;
+}
+
+bool VulkanGraphApplication::RequestRuntimeInputReload(const std::filesystem::path& indexOrBundleRoot) {
+    std::string error;
+    if (!runtimeInputReady_ || runtimeInputUsesCompatibilityAdapter_) {
+        error = "runtime-data reload requires an active provider bundle; the legacy adapter is active";
+    } else if (!runtimeInputStore_.RequestReload(indexOrBundleRoot, &error)) {
+        // RequestRuntimeInputReload is fail-closed: RequestReload has not changed the active bundle.
+    } else {
+        if (mainLogger) {
+            mainLogger->Info(
+                "[RuntimeInputBundle] validated reload candidate; it will commit at the next frame boundary");
+        }
+        return true;
+    }
+    if (mainLogger) mainLogger->Error("[RuntimeInputBundle] reload rejected: " + error);
+    return false;
+}
+
 void VulkanGraphApplication::PreTick() {
     // Own try/catch (mirrors Update()'s) so a malformed script/env value never throws across the tick.
     try {
+        if (runtimeInputStore_.CommitFrameBoundary() && mainLogger) {
+            const auto active = runtimeInputStore_.Active();
+            mainLogger->Info(
+                "[RuntimeInputBundle] committed validated candidate at frame boundary" +
+                (active ? " (product " + active->Identity().productKey + ")" : std::string{}));
+        }
         if (!hudScriptParsed_) {
             hudScriptParsed_ = true;
             if (const char* scriptEnv = std::getenv("VIXEN_HUD_SCRIPT")) {
